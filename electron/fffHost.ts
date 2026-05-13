@@ -6,6 +6,8 @@
  * file search + content grep - all in-process without subprocess spawning.
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import type { FileItem, GrepMatch, GrepOptions, SearchOptions } from '@ff-labs/fff-node'
 import { FileFinder } from '@ff-labs/fff-node'
 
@@ -32,6 +34,7 @@ export interface FffGrepMatch {
 
 let finder: FileFinder | null = null
 let currentCwd: string | null = null
+let scanPromise: Promise<unknown> | null = null
 
 // ─── Init / teardown ──────────────────────────────────────────────────────────
 
@@ -62,8 +65,11 @@ export function initFff(cwd: string): void {
 
   finder = result.value
 
-  // Start scan in background — don’t block init
-  finder.waitForScan(30_000).catch((e: unknown) => {
+  // Start scan in background — don’t block workspace/session startup.
+  // Search calls await this briefly so the first @ query doesn't race the
+  // cold scanner and permanently render "No files match" until the user types
+  // again.
+  scanPromise = finder.waitForScan(30_000).catch((e: unknown) => {
     console.warn('[fffHost] scan timed out or errored:', e)
   })
 
@@ -77,6 +83,7 @@ export function destroyFff(): void {
     } catch {}
     finder = null
   }
+  scanPromise = null
   currentCwd = null
 }
 
@@ -86,23 +93,98 @@ export function destroyFff(): void {
  * Frecency-ranked fuzzy file search.
  * Empty query returns all indexed files sorted by frecency.
  */
-export function fffFileSearch(query: string, pageSize = 80): FffFileResult[] {
-  if (!finder) return []
+export async function fffFileSearch(query: string, pageSize = 80): Promise<FffFileResult[]> {
+  const cwd = currentCwd
+  if (!finder || !cwd) return fallbackFileSearch(cwd, query, pageSize)
   try {
+    await waitForInitialScan(1200)
     const opts: SearchOptions = { pageSize }
     const result = finder.fileSearch(query, opts)
-    if (!result.ok) return []
-    return result.value.items.map(fileItemToResult)
+    if (!result.ok) return fallbackFileSearch(cwd, query, pageSize)
+    const items = result.value.items.map(fileItemToResult)
+    return items.length > 0 || !query.trim() ? items : fallbackFileSearch(cwd, query, pageSize)
   } catch (e) {
     console.warn('[fffHost] fileSearch error:', e)
-    return []
+    return fallbackFileSearch(cwd, query, pageSize)
   }
+}
+
+async function waitForInitialScan(timeoutMs: number): Promise<void> {
+  if (!scanPromise) return
+  await Promise.race([scanPromise, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))])
 }
 
 function fileItemToResult(item: FileItem): FffFileResult {
   const idx = item.relativePath.lastIndexOf('/')
   const dir = idx >= 0 ? item.relativePath.slice(0, idx) : ''
   return { relativePath: item.relativePath, fileName: item.fileName, dir }
+}
+
+const FALLBACK_SKIP_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'out',
+  'dist',
+  'dist-electron',
+  'release',
+  'coverage',
+  'playwright-report',
+  'test-results',
+])
+
+function fallbackFileSearch(cwd: string | null, query: string, pageSize: number): FffFileResult[] {
+  if (!cwd) return []
+  const normalizedQuery = query.trim().toLowerCase()
+  const hits: Array<FffFileResult & { score: number }> = []
+  const stack = ['']
+  let visited = 0
+  const maxVisited = 8000
+
+  while (stack.length > 0 && visited < maxVisited) {
+    const relDir = stack.pop() ?? ''
+    const absDir = path.join(cwd, relDir)
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if (visited++ >= maxVisited) break
+      const relPath = relDir ? `${relDir}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (!FALLBACK_SKIP_DIRS.has(entry.name)) stack.push(relPath)
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      const score = fallbackScore(relPath, entry.name, normalizedQuery)
+      if (score == null) continue
+      hits.push({ relativePath: relPath, fileName: entry.name, dir: relDir, score })
+    }
+  }
+
+  return hits
+    .sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath))
+    .slice(0, pageSize)
+    .map(({ score: _score, ...item }) => item)
+}
+
+function fallbackScore(relativePath: string, fileName: string, query: string): number | null {
+  if (!query) return 1
+  const name = fileName.toLowerCase()
+  const full = relativePath.toLowerCase()
+  if (name === query) return 1000
+  if (name.startsWith(query)) return 900 - name.length
+  if (name.includes(query)) return 700 - name.indexOf(query)
+  if (full.includes(query)) return 500 - full.indexOf(query)
+
+  let qi = 0
+  for (let i = 0; i < full.length && qi < query.length; i += 1) {
+    if (full[i] === query[qi]) qi += 1
+  }
+  return qi === query.length ? 250 - full.length : null
 }
 
 // ─── Content grep ─────────────────────────────────────────────────────────────

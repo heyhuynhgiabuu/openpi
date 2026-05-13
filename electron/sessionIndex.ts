@@ -111,7 +111,8 @@ export class SessionIndexStore {
     const row = this.db
       .prepare(`
       select path from workspaces
-      order by last_opened_at desc nulls last
+      where last_opened_at is not null
+      order by last_opened_at desc
       limit 1
     `)
       .get() as { path: string } | undefined
@@ -125,8 +126,9 @@ export class SessionIndexStore {
         count(s.path) as session_count
       from workspaces w
       left join sessions s on s.workspace_path = w.path
+      where w.last_opened_at is not null
       group by w.path
-      order by w.last_opened_at desc nulls last, w.display_name asc
+      order by w.last_opened_at desc, w.display_name asc
     `)
       .all() as WorkspaceRow[]
 
