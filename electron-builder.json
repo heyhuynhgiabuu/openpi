@@ -11,6 +11,10 @@
     {
       "from": "icons",
       "to": "icons"
+    },
+    {
+      "from": "CHANGELOG.md",
+      "to": "CHANGELOG.md"
     }
   ],
   "mac": {

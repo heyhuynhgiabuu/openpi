@@ -588,6 +588,7 @@ export default function App() {
                     void handleUnarchiveSession(p)
                   }}
                   onOpenSession={session.openExistingSession}
+                  appVersion={appInfo()?.version}
                 />
                 <ResizeHandle direction="horizontal" onResize={resizeSidebar} />
               </Show>

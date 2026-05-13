@@ -44,6 +44,12 @@ export const IPC = {
   CHECK_PI_UPDATE: 'openpi:check-pi-update',
   INSTALL_PI_UPDATE: 'openpi:install-pi-update',
 
+  // App self-update (renderer → main / main → renderer)
+  APP_UPDATE_CHECK: 'openpi:app-update-check',
+  APP_UPDATE_OPEN_RELEASE: 'openpi:app-update-open-release',
+  APP_UPDATE_STATUS: 'openpi:app-update-status',
+  GET_CHANGELOG: 'openpi:get-changelog',
+
   // Git source control (renderer → main)
   GIT_STATUS: 'openpi:git-status',
   GIT_DIFF: 'openpi:git-diff',
@@ -811,3 +817,15 @@ export const fffGrepMatchSchema = z.object({
   matchRanges: z.array(z.tuple([z.number(), z.number()])),
 })
 export type FffGrepMatch = z.infer<typeof fffGrepMatchSchema>
+
+// ─── App self-update ─────────────────────────────────────────────────────────
+
+export const appUpdateStatusSchema = z.object({
+  state: z.enum(['idle', 'checking', 'available', 'up-to-date', 'error']),
+  currentVersion: z.string(),
+  latestVersion: z.string().nullable(),
+  releaseUrl: z.string().nullable(),
+  checkedAt: z.string().nullable(),
+  error: z.string().nullable(),
+})
+export type AppUpdateStatus = z.infer<typeof appUpdateStatusSchema>

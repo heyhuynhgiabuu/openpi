@@ -1,9 +1,15 @@
 import fuzzysort from 'fuzzysort'
-import { Archive, Check, Plus, RotateCcw, Search } from 'lucide-solid'
-import { createMemo, createSignal, For, Show } from 'solid-js'
-import type { ArchivedSessionItem, SessionListItem, WorkspaceInfo } from '../../lib/ipc'
+import { Archive, ArrowUpCircle, Check, FileText, Plus, RotateCcw, Search } from 'lucide-solid'
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+import type {
+  AppUpdateStatus,
+  ArchivedSessionItem,
+  SessionListItem,
+  WorkspaceInfo,
+} from '../../lib/ipc'
 import { formatRelativeTime, groupSessions } from '../../lib/sessionView'
 import type { GroupMode, SortMode } from '../../types/session'
+import { ChangelogModal } from '../ChangelogModal'
 import { SessionFilterMenu } from './SessionFilterMenu'
 import { SessionRow } from './SessionRow'
 
@@ -38,10 +44,23 @@ type SessionSidebarProps = {
   onToggleArchived: () => void
   onUnarchiveSession: (archivedPath: string) => void
   onOpenSession: (session: SessionListItem) => void
+  appVersion?: string
 }
 
 export function SessionSidebar(props: SessionSidebarProps) {
   const [searchVisible, setSearchVisible] = createSignal(Boolean(props.query))
+
+  // ─ Update state ───────────────────────────────────────────────────
+  const [updateStatus, setUpdateStatus] = createSignal<AppUpdateStatus | null>(null)
+  const [changelogOpen, setChangelogOpen] = createSignal(false)
+
+  onMount(() => {
+    // Subscribe to update events pushed from main on cold start
+    const unsub = window.openpi.appUpdate.onStatus((status) => setUpdateStatus(status))
+    onCleanup(unsub)
+  })
+
+  const updateAvailable = () => updateStatus()?.state === 'available'
 
   // Per-group visible count — only applied when not searching.
   // Map key is the group key string.
@@ -256,6 +275,49 @@ export function SessionSidebar(props: SessionSidebarProps) {
           }}
         </For>
       </div>
+
+      {/* ── Sidebar footer: version + update chip + changelog ──────── */}
+      <div class="sidebar-footer">
+        <Show
+          when={updateAvailable()}
+          fallback={
+            <button
+              type="button"
+              class="sidebar-footer-version"
+              title="Check for updates"
+              onClick={() => {
+                void window.openpi.appUpdate.check().then(setUpdateStatus)
+              }}
+            >
+              v{props.appVersion ?? '…'}
+            </button>
+          }
+        >
+          <button
+            type="button"
+            class="sidebar-footer-update-chip"
+            title={`OpenPi ${updateStatus()?.latestVersion} is available — click to download`}
+            onClick={() => {
+              const url = updateStatus()?.releaseUrl
+              if (url) void window.openpi.appUpdate.openRelease(url)
+            }}
+          >
+            <ArrowUpCircle size={12} />
+            {updateStatus()?.latestVersion ?? 'Update available'}
+          </button>
+        </Show>
+
+        <button
+          type="button"
+          class="sidebar-footer-changelog-btn"
+          title="What's new"
+          onClick={() => setChangelogOpen(true)}
+        >
+          <FileText size={13} />
+        </button>
+      </div>
+
+      <ChangelogModal open={changelogOpen()} onClose={() => setChangelogOpen(false)} />
     </aside>
   )
 }

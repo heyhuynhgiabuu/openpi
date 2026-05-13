@@ -6,8 +6,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { app, BrowserWindow, dialog, ipcMain, Notification, net, protocol, shell } from 'electron'
+import { z } from 'zod'
 import type {
   AppInfo,
+  AppUpdateStatus,
   ArchivedSessionItem,
   ArchiveSessionsResult,
   BashExecutionResult,
@@ -38,6 +40,7 @@ import type {
 } from '../src/lib/ipc'
 import {
   appInfoSchema,
+  appUpdateStatusSchema,
   archiveSessionsRequestSchema,
   customizationsInventorySchema,
   customProviderSchema,
@@ -107,6 +110,7 @@ type PtyHostInstance = InstanceType<typeof PtyHost>
 
 import { SessionIndexStore } from './sessionIndex'
 import { getSettings, saveSettings as writeSettings } from './settingsHost'
+import { checkForAppUpdate, openReleasePage, readChangelog } from './updater'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -963,6 +967,23 @@ function registerHandlers(): void {
     return installPiUpdate()
   })
 
+  // ── App self-update handlers ────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.APP_UPDATE_CHECK, async (): Promise<AppUpdateStatus> => {
+    const status = appUpdateStatusSchema.parse(await checkForAppUpdate())
+    mainWindow?.webContents.send(IPC.APP_UPDATE_STATUS, status)
+    return status
+  })
+
+  ipcMain.handle(IPC.APP_UPDATE_OPEN_RELEASE, (_e, raw: unknown): void => {
+    const { url } = z.object({ url: z.string().url() }).parse(raw)
+    openReleasePage(url)
+  })
+
+  ipcMain.handle(IPC.GET_CHANGELOG, (): string | null => {
+    return readChangelog()
+  })
+
   // ── Git source control handlers ──────────────────────────────────────────────────
 
   ipcMain.on(IPC.GIT_PANEL_MOUNTED, () => {
@@ -1567,7 +1588,21 @@ app.whenReady().then(() => {
   sessionIndex = new SessionIndexStore(path.join(app.getPath('userData'), 'openpi.sqlite'))
   registerHandlers()
   createWindow()
+
+  // Cold-start app update check — runs after window is created so the
+  // renderer is ready to receive APP_UPDATE_STATUS when it subscribes.
+  // Delay slightly to not compete with session startup IPC.
+  setTimeout(() => {
+    void checkForAppUpdate()
+      .then((status) => {
+        mainWindow?.webContents.send(IPC.APP_UPDATE_STATUS, appUpdateStatusSchema.parse(status))
+      })
+      .catch(() => {
+        /* silently ignore network errors on startup */
+      })
+  }, 3000)
 })
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })

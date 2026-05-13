@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppInfo,
+  AppUpdateStatus,
   ArchivedSessionItem,
   ArchiveSessionsResult,
   BashExecutionResult,
@@ -148,6 +149,19 @@ const api = {
     ipcRenderer.invoke(IPC.PLAY_SOUND_EFFECT, { sound }),
   checkPiUpdate: (): Promise<PiUpdateCheckResult> => ipcRenderer.invoke(IPC.CHECK_PI_UPDATE),
   installPiUpdate: (): Promise<PiUpdateInstallResult> => ipcRenderer.invoke(IPC.INSTALL_PI_UPDATE),
+
+  // ── App self-update ──────────────────────────────────────────────────────
+  appUpdate: {
+    check: (): Promise<AppUpdateStatus> => ipcRenderer.invoke(IPC.APP_UPDATE_CHECK),
+    openRelease: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.APP_UPDATE_OPEN_RELEASE, { url }),
+    onStatus: (cb: (status: AppUpdateStatus) => void): (() => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, status: AppUpdateStatus) => cb(status)
+      ipcRenderer.on(IPC.APP_UPDATE_STATUS, handler)
+      return () => ipcRenderer.removeListener(IPC.APP_UPDATE_STATUS, handler)
+    },
+  },
+  getChangelog: (): Promise<string | null> => ipcRenderer.invoke(IPC.GET_CHANGELOG),
 
   // ── Git source control ────────────────────────────────────────────────────
   notifyGitPanelMounted: (): void => ipcRenderer.send(IPC.GIT_PANEL_MOUNTED),
