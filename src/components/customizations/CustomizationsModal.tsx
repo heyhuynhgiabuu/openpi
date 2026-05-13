@@ -1,4 +1,3 @@
-import logoUrl from '@icons/icon.svg'
 import { Dialog } from '@kobalte/core'
 import {
   Blocks,
@@ -207,20 +206,12 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                 )}
               </For>
               <div class="customizations-rail-brand">
-                <img
-                  class="customizations-rail-brand-logo"
-                  src={logoUrl}
-                  alt=""
-                  aria-hidden="true"
-                />
-                <div class="customizations-rail-brand-copy">
-                  <span class="customizations-rail-brand-name">{props.appName}</span>
-                  <Show when={props.appVersionLabel}>
-                    {(versionLabel) => (
-                      <span class="customizations-rail-brand-version">{versionLabel()}</span>
-                    )}
-                  </Show>
-                </div>
+                <span class="customizations-rail-brand-name">{props.appName}</span>
+                <Show when={props.appVersionLabel}>
+                  {(versionLabel) => (
+                    <span class="customizations-rail-brand-version">{versionLabel()}</span>
+                  )}
+                </Show>
               </div>
             </nav>
           </aside>

@@ -3234,22 +3234,8 @@ input::placeholder {
   padding: 14px 10px 4px;
   border-top: 1px solid var(--hairline-soft);
   display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.customizations-rail-brand-logo {
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--hairline);
-  border-radius: 9px;
-  background: var(--canvas);
-  object-fit: cover;
-}
-.customizations-rail-brand-copy {
-  min-width: 0;
-  display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 .customizations-rail-brand-name {
   color: var(--ink);
