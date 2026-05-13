@@ -1,6 +1,6 @@
 # OpenPi Project Rules
 
-**Purpose:** Project-level operating rules for building OpenPi: a native desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.74.0+).
+**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.74.0+).
 **Audience:** human developers and AI coding agents.
 **Source references:** earendil-works/pi main repo (https://github.com/earendil-works/pi), especially `packages/coding-agent/docs/` (sdk.md, rpc.md, session-format.md, extensions.md) and `packages/agent/README.md`.
 
@@ -8,7 +8,7 @@
 
 ## Product Direction
 
-OpenPi is a native desktop workbench for the Pi coding agent. It wraps Pi's session tree, agent events, extensions, skills, and customizations in an Electron + SolidJS UI — not a terminal emulator clone, not a VS Code replacement.
+OpenPi is a desktop workbench for the Pi coding agent. It wraps Pi's session tree, agent events, extensions, skills, and customizations in an Electron + SolidJS UI — not a terminal emulator clone, not a VS Code replacement.
 
 Target UX: sessions sidebar (workspace-grouped, token/cost badges, filter/sort popover) + agent conversation (model selector, tool cards, queue controls) + customizations panel (modal with AI wizard, Extensions/Skills/Prompts/Themes/Packages) + persistent Git source control panel (Changes/Files tabs, commit workflow) + split-pane diff viewer + bottom terminal panel (Output tab + Terminal tab) + OpenCode-style command palette for commands, files, and sessions.
 

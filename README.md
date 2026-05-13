@@ -1,12 +1,12 @@
 # OpenPi
 
-A native desktop workbench for the [Pi coding agent](https://github.com/earendil-works/pi).
+A desktop workbench for the [Pi coding agent](https://github.com/earendil-works/pi).
 
 [![CI](https://github.com/heyhuynhgiabuu/openpi/actions/workflows/ci.yml/badge.svg)](https://github.com/heyhuynhgiabuu/openpi/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/heyhuynhgiabuu/openpi?include_prereleases&label=release)](https://github.com/heyhuynhgiabuu/openpi/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-OpenPi wraps Pi's sessions, agent events, customizations, file search, source control, diffs, and terminals in a local Electron app. It is not a fork of Pi's agent runtime; OpenPi hosts `@earendil-works/pi-coding-agent` in Electron main and presents it with a native desktop UI.
+OpenPi wraps Pi's sessions, agent events, customizations, file search, source control, diffs, and terminals in a local Electron app. It is not a fork of Pi's agent runtime; OpenPi hosts `@earendil-works/pi-coding-agent` in Electron main and presents it with a desktop UI.
 
 ![OpenPi desktop workbench screenshot](media/demo.png)
 
