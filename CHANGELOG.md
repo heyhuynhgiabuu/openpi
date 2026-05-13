@@ -6,6 +6,7 @@
 
 - **File mention fallback after native fff import failure** — The fff host no longer imports `@ff-labs/fff-node` at module load time. If the native package fails to import in a packaged app, OpenPi now still loads the host module and uses filesystem fallback search instead of returning no file mention results.
 - **GitHub release notes source** — The beta release workflow now extracts release bodies from the matching `CHANGELOG.md` version section, preventing stale `RELEASE_NOTES.md` content from being published to new GitHub Releases.
+- **CI action runtime warnings** — CI and beta release workflows use current GitHub action major versions to avoid Node 20 deprecation warnings on GitHub-hosted runners.
 
 ### Changed
 

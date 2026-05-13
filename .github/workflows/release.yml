@@ -32,10 +32,10 @@ jobs:
       OPENPI_RELEASE_CHANNEL: beta
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release notes
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate release notes from changelog
         run: node scripts/extract-release-notes.mjs "${{ github.ref_name }}" release-notes.generated.md
