@@ -179,7 +179,24 @@ async function startSession(
       settingsManager,
       noExtensions: true,
     })
-    await loader.reload()
+    // loader.reload() installs packages listed in settings via `npm install -g`.
+    // A missing or private npm package (e.g. one still in development) causes npm
+    // to exit non-zero, which throws here and kills the entire session startup.
+    // Per the Pi SDK, packages supply optional resources (skills, prompts, themes);
+    // they must not block core session functionality. Catch, warn, and continue.
+    try {
+      await loader.reload()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      outputLine(
+        'warn',
+        `[packages] One or more Pi packages failed to install and were skipped: ${msg}`,
+      )
+      outputLine(
+        'warn',
+        '[packages] Check ~/.pi/agent/settings.json — remove or fix broken "packages" entries, or set "npmCommand" to point to your npm binary.',
+      )
+    }
     _cachedResourceLoader = { cwd, loader }
   }
 
