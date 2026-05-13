@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-05-13
+
+OpenPi v0.1.5 fixes the packaged-app file mention fallback path and hardens release automation so GitHub Releases always publish current changelog content.
+
 ### Fixed
 
 - **File mention fallback after native fff import failure** — The fff host no longer imports `@ff-labs/fff-node` at module load time. If the native package fails to import in a packaged app, OpenPi now still loads the host module and uses filesystem fallback search instead of returning no file mention results.
