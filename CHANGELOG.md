@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-13
+
+OpenPi v0.1.6 fixes fff-backed file search across workspace switches and hardens beta release publishing.
+
 ### Fixed
 
 - **fff workspace targeting** — File search, content search, command palette file search, plus-button context picker, and inline `@` file mentions now pass the renderer's active workspace cwd through IPC instead of relying on Electron main's mutable session state. This prevents searches from running against a stale or wrong cwd while the visible UI is on another workspace.
