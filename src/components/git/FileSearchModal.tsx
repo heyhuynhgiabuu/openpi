@@ -179,7 +179,7 @@ export function FileSearchModal(props: FileSearchModalProps) {
   createEffect(() => {
     if (!props.cwd) return
 
-    void window.openpi.fff.fileSearch('', 500).then((items) => {
+    void window.openpi.fff.fileSearch('', 500, props.cwd).then((items) => {
       setQuery('')
       setActiveIdx(0)
       setTextResults([])
@@ -216,7 +216,13 @@ export function FileSearchModal(props: FileSearchModalProps) {
         searchQuery = `\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
       }
       void window.openpi.fff
-        .grep(searchQuery, { mode, smartCase: !mc, maxMatchesPerFile: 5, timeBudgetMs: 3000 })
+        .grep(searchQuery, {
+          mode,
+          smartCase: !mc,
+          maxMatchesPerFile: 5,
+          timeBudgetMs: 3000,
+          cwd: props.cwd,
+        })
         .then((matches) => {
           if (!mounted) return
           setTextResults(matches)

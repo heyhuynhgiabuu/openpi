@@ -100,6 +100,7 @@ function truncate(s: string, max = 36): string {
 // ─── Context Picker popover (fff-powered, async) ──────────────────────────────────────
 
 interface ContextPickerProps {
+  cwd: string | null
   attachedPaths: Set<string>
   onSelect: (file: FffFileResult) => void
   onClose: () => void
@@ -124,7 +125,10 @@ const ContextPicker: Component<ContextPickerProps> = (props) => {
     if (debounceRef) clearTimeout(debounceRef)
     const delay = q.trim() ? 100 : 0
     debounceRef = setTimeout(() => {
-      void window.openpi.fff.fileSearch(q, 60).then((items) => setResults(items))
+      void window.openpi.fff
+        .fileSearch(q, 60, props.cwd)
+        .then((items) => setResults(items))
+        .catch(() => setResults([]))
     }, delay)
 
     onCleanup(() => {
@@ -712,7 +716,7 @@ export const Composer: Component<ComposerProps> = (props) => {
     const delay = query.trim() ? 80 : 0
     fileMentionDebounceRef = setTimeout(() => {
       void window.openpi.fff
-        .fileSearch(query, 12)
+        .fileSearch(query, 12, props.cwd)
         .then((items) => setFileMentionResults(items))
         .catch(() => setFileMentionResults([]))
     }, delay)
@@ -1229,6 +1233,7 @@ export const Composer: Component<ComposerProps> = (props) => {
 
                 <Show when={pickerOpen()}>
                   <ContextPicker
+                    cwd={props.cwd}
                     attachedPaths={attachedSet()}
                     onSelect={(f) => props.onAddFile(f.relativePath)}
                     onClose={() => setPickerOpen(false)}

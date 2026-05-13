@@ -112,7 +112,7 @@ export async function fffFileSearch(query: string, pageSize = 80): Promise<FffFi
     const result = finder.fileSearch(query, opts)
     if (!result.ok) return fallbackFileSearch(cwd, query, pageSize)
     const items = result.value.items.map(fileItemToResult)
-    return items.length > 0 || !query.trim() ? items : fallbackFileSearch(cwd, query, pageSize)
+    return items.length > 0 ? items : fallbackFileSearch(cwd, query, pageSize)
   } catch (e) {
     console.warn('[fffHost] fileSearch error:', e)
     return fallbackFileSearch(cwd, query, pageSize)
@@ -213,9 +213,12 @@ export interface FffGrepOpts {
  * Content grep with three modes: plain (SIMD memmem), regex, fuzzy (Smith-Waterman).
  * Returns up to `maxMatchesPerFile` matches per file, with optional context lines.
  */
-export function fffGrep(query: string, opts: FffGrepOpts = {}): FffGrepMatch[] {
-  if (!finder || !query.trim()) return []
+export async function fffGrep(query: string, opts: FffGrepOpts = {}): Promise<FffGrepMatch[]> {
+  const cwd = currentCwd
+  if (!query.trim()) return []
+  if (!finder || !cwd) return fallbackGrep(cwd, query, opts)
   try {
+    await waitForInitialScan(1200)
     const grepOpts: GrepOptions = {
       mode: opts.mode ?? 'plain',
       smartCase: opts.smartCase ?? true,
@@ -225,11 +228,89 @@ export function fffGrep(query: string, opts: FffGrepOpts = {}): FffGrepMatch[] {
       afterContext: opts.afterContext ?? 0,
     }
     const result = finder.grep(query, grepOpts)
-    if (!result.ok) return []
-    return result.value.items.map(grepMatchToResult)
+    if (!result.ok) return fallbackGrep(cwd, query, opts)
+    const items = result.value.items.map(grepMatchToResult)
+    return items.length > 0 ? items : fallbackGrep(cwd, query, opts)
   } catch (e) {
     console.warn('[fffHost] grep error:', e)
-    return []
+    return fallbackGrep(cwd, query, opts)
+  }
+}
+
+function fallbackGrep(cwd: string | null, query: string, opts: FffGrepOpts): FffGrepMatch[] {
+  if (!cwd || !query.trim()) return []
+  const started = Date.now()
+  const timeBudgetMs = opts.timeBudgetMs ?? 3000
+  const maxMatchesPerFile = opts.maxMatchesPerFile ?? 5
+  const mode = opts.mode ?? 'plain'
+  const matcher = createFallbackMatcher(query, mode, opts.smartCase ?? true)
+  if (!matcher) return []
+
+  const matches: FffGrepMatch[] = []
+  for (const file of fallbackFileSearch(cwd, '', 8000)) {
+    if (Date.now() - started > timeBudgetMs) break
+    const absolutePath = path.join(cwd, file.relativePath)
+    let content: string
+    try {
+      const stat = fs.statSync(absolutePath)
+      if (!stat.isFile() || stat.size > 2_000_000) continue
+      const raw = fs.readFileSync(absolutePath)
+      if (raw.includes(0)) continue
+      content = raw.toString('utf8')
+    } catch {
+      continue
+    }
+
+    let perFile = 0
+    const lines = content.split(/\r?\n/)
+    for (let i = 0; i < lines.length; i += 1) {
+      const ranges = matcher(lines[i])
+      if (ranges.length === 0) continue
+      matches.push({
+        relativePath: file.relativePath,
+        fileName: file.fileName,
+        lineNumber: i + 1,
+        lineContent: lines[i],
+        matchRanges: ranges,
+      })
+      perFile += 1
+      if (perFile >= maxMatchesPerFile) break
+    }
+  }
+  return matches
+}
+
+function createFallbackMatcher(
+  query: string,
+  mode: 'plain' | 'regex' | 'fuzzy',
+  smartCase: boolean
+): ((line: string) => [number, number][]) | null {
+  if (mode === 'regex') {
+    try {
+      const flags = smartCase && query === query.toLowerCase() ? 'gi' : 'g'
+      const re = new RegExp(query, flags)
+      return (line) => {
+        const ranges: [number, number][] = []
+        re.lastIndex = 0
+        let match = re.exec(line)
+        while (match) {
+          ranges.push([match.index, match.index + match[0].length])
+          if (match[0].length === 0) re.lastIndex += 1
+          match = re.exec(line)
+        }
+        return ranges
+      }
+    } catch {
+      return null
+    }
+  }
+
+  const needle = smartCase && query === query.toLowerCase() ? query.toLowerCase() : query
+  const fold = smartCase && query === query.toLowerCase()
+  return (line) => {
+    const haystack = fold ? line.toLowerCase() : line
+    const index = haystack.indexOf(needle)
+    return index >= 0 ? [[index, index + needle.length]] : []
   }
 }
 

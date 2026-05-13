@@ -108,7 +108,7 @@ export function CommandPalette(props: CommandPaletteProps) {
 
     setIsSearchingFiles(true)
     void window.openpi.fff
-      .fileSearch(q, 9)
+      .fileSearch(q, 9, props.cwd)
       .then((items) => {
         if (!mounted || requestId !== fileSearchRequest) return
         setFiles(items)

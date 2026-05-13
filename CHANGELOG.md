@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **fff workspace targeting** — File search, content search, command palette file search, plus-button context picker, and inline `@` file mentions now pass the renderer's active workspace cwd through IPC instead of relying on Electron main's mutable session state. This prevents searches from running against a stale or wrong cwd while the visible UI is on another workspace.
+- **fff empty-query and grep fallback** — Empty file searches now fall back to filesystem listing when native fff returns no items, and content grep has a bounded filesystem fallback when native fff is unavailable or returns no matches.
+
 ### Changed
 
+- **Native fff packaging** — The `@ff-labs`, `ffi-rs`, and `@yuuang` native packages are explicitly unpacked from ASAR so their platform dylibs/binaries can be loaded reliably in packaged Electron builds.
 - **Release artifact actions** — Beta release artifact upload/download steps use current GitHub action major versions to avoid Node 20 runtime deprecation warnings on future release runs.
 - **Latest release visibility** — Beta release publishing uses normal GitHub Releases instead of prereleases so OpenPi's existing `/releases/latest` update check can see newly published versions.
 

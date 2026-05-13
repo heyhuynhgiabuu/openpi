@@ -233,8 +233,8 @@ async function getFffHost(): Promise<typeof FffHost> {
   return fffHostPromise
 }
 
-async function ensureFffInitialized(): Promise<typeof FffHost | null> {
-  const cwd = state?.cwd ?? deferredWorkspace ?? ''
+async function ensureFffInitialized(cwdOverride?: string | null): Promise<typeof FffHost | null> {
+  const cwd = resolveFffCwd(cwdOverride)
   if (!cwd) return null
   const host = await getFffHost()
   // Always delegate to initFff — it is idempotent via its own guard:
@@ -245,6 +245,18 @@ async function ensureFffInitialized(): Promise<typeof FffHost | null> {
   // to cwd, so subsequent calls skipped initFff and permanently returned [].
   await host.initFff(cwd)
   return host
+}
+
+function resolveFffCwd(cwdOverride?: string | null): string | null {
+  if (cwdOverride !== undefined && cwdOverride !== null) {
+    if (!path.isAbsolute(cwdOverride)) return null
+    try {
+      return fs.statSync(cwdOverride).isDirectory() ? path.resolve(cwdOverride) : null
+    } catch {
+      return null
+    }
+  }
+  return state?.cwd ?? deferredWorkspace ?? null
 }
 
 let gitHostPromise: Promise<typeof GitHost> | null = null
@@ -1125,16 +1137,16 @@ function registerHandlers(): void {
 
   // ── fff file search + content grep ───────────────────────────────────
   ipcMain.handle(IPC.FFF_FILE_SEARCH, async (_e, raw: unknown): Promise<FffFileResult[]> => {
-    const { query, pageSize } = fffFileSearchRequestSchema.parse(raw)
-    const host = await ensureFffInitialized()
+    const { query, pageSize, cwd } = fffFileSearchRequestSchema.parse(raw)
+    const host = await ensureFffInitialized(cwd)
     if (!host) return []
     return host.fffFileSearch(query, pageSize)
   })
 
   ipcMain.handle(IPC.FFF_GREP, async (_e, raw: unknown): Promise<FffGrepMatch[]> => {
-    const { query, mode, smartCase, maxMatchesPerFile, timeBudgetMs } =
+    const { query, mode, smartCase, maxMatchesPerFile, timeBudgetMs, cwd } =
       fffGrepRequestSchema.parse(raw)
-    const host = await ensureFffInitialized()
+    const host = await ensureFffInitialized(cwd)
     if (!host) return []
     return host.fffGrep(query, { mode, smartCase, maxMatchesPerFile, timeBudgetMs })
   })

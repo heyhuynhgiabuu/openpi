@@ -722,6 +722,7 @@ export type PromptTemplate = z.infer<typeof promptTemplateSchema>
 export const fffFileSearchRequestSchema = z.object({
   query: z.string(),
   pageSize: z.number().int().positive().max(1000).optional(),
+  cwd: z.string().optional(),
 })
 export type FffFileSearchRequest = z.infer<typeof fffFileSearchRequestSchema>
 
@@ -740,6 +741,7 @@ export const fffGrepRequestSchema = z.object({
   smartCase: z.boolean().optional(),
   maxMatchesPerFile: z.number().int().positive().max(50).optional(),
   timeBudgetMs: z.number().int().positive().max(10_000).optional(),
+  cwd: z.string().optional(),
 })
 export type FffGrepRequest = z.infer<typeof fffGrepRequestSchema>
 

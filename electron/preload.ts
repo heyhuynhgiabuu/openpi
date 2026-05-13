@@ -206,8 +206,8 @@ const api = {
 
   // fff-powered file search and content grep
   fff: {
-    fileSearch: (query: string, pageSize?: number): Promise<FffFileResult[]> =>
-      ipcRenderer.invoke(IPC.FFF_FILE_SEARCH, { query, pageSize }),
+    fileSearch: (query: string, pageSize?: number, cwd?: string | null): Promise<FffFileResult[]> =>
+      ipcRenderer.invoke(IPC.FFF_FILE_SEARCH, { query, pageSize, cwd: cwd ?? undefined }),
     grep: (
       query: string,
       opts?: {
@@ -215,8 +215,10 @@ const api = {
         smartCase?: boolean
         maxMatchesPerFile?: number
         timeBudgetMs?: number
+        cwd?: string | null
       }
-    ): Promise<FffGrepMatch[]> => ipcRenderer.invoke(IPC.FFF_GREP, { query, ...opts }),
+    ): Promise<FffGrepMatch[]> =>
+      ipcRenderer.invoke(IPC.FFF_GREP, { query, ...opts, cwd: opts?.cwd ?? undefined }),
   },
 
   // ── Settings ──────────────────────────────────────────────────────
