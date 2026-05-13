@@ -11,8 +11,8 @@ function usage() {
 
 Usage:
   npm run release:patch -- --notes "Fixes and improvements"
-  npm run release:minor -- --notes-file RELEASE_NOTES.md
-  npm run release:version -- 0.2.0-beta.0 --notes-file RELEASE_NOTES.md
+  npm run release:minor -- --notes-file /tmp/openpi-release-notes.md
+  npm run release:version -- 0.2.0-beta.0 --notes-file /tmp/openpi-release-notes.md
 
 Options:
   --notes "text"          Release note bullet text. A leading "-" is optional.
@@ -120,7 +120,9 @@ function releaseNotes(args, version) {
     const note = args.notes.trim()
     return note.startsWith('-') ? note : `- ${note}`
   }
-  return `- Release OpenPi v${version}.`
+  throw new Error(
+    `Release notes are required for v${version}. Use --notes or --notes-file; placeholder changelog entries are not allowed.`
+  )
 }
 
 function updateChangelog(version, notes) {

@@ -66,11 +66,11 @@ Maintainers should use the release helper instead of hand-editing versions and t
 
 ```bash
 npm run release:patch -- --notes "Short release note"
-npm run release:prerelease -- --preid beta --notes-file RELEASE_NOTES.md
-npm run release:version -- 0.2.0 --notes-file RELEASE_NOTES.md
+npm run release:prerelease -- --preid beta --notes-file /tmp/openpi-release-notes.md
+npm run release:version -- 0.2.0 --notes-file /tmp/openpi-release-notes.md
 ```
 
-The helper requires a clean worktree, updates `package.json`, `package-lock.json`, and `CHANGELOG.md`, runs verification, commits `chore(release): vX.Y.Z`, and creates an annotated `vX.Y.Z` tag.
+The helper requires a clean worktree and real release notes, updates `package.json`, `package-lock.json`, and `CHANGELOG.md`, runs verification, commits `chore(release): vX.Y.Z`, and creates an annotated `vX.Y.Z` tag. The GitHub release body is generated from the matching `CHANGELOG.md` version section.
 
 ## PR expectations
 

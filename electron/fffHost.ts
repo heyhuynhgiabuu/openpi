@@ -8,8 +8,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { FileItem, GrepMatch, GrepOptions, SearchOptions } from '@ff-labs/fff-node'
-import { FileFinder } from '@ff-labs/fff-node'
+import type { FileFinder, FileItem, GrepMatch, GrepOptions, SearchOptions } from '@ff-labs/fff-node'
 
 // ─── Exported result shapes (IPC-safe, lean) ──────────────────────────────────
 
@@ -44,15 +43,26 @@ let scanPromise: Promise<unknown> | null = null
  * Background scan starts immediately; searches work before it completes
  * (may return fewer results initially).
  */
-export function initFff(cwd: string): void {
+export async function initFff(cwd: string): Promise<void> {
   if (currentCwd === cwd && finder) return
 
   // Destroy previous instance
   destroyFff()
   currentCwd = cwd
 
-  // FileFinder is imported at the top of the module as a standard ESM import
-  const result = FileFinder.create({
+  let FileFinderCtor: typeof FileFinder
+  try {
+    ;({ FileFinder: FileFinderCtor } = await import('@ff-labs/fff-node'))
+  } catch (error) {
+    // The native fff package can fail at import time in packaged apps (for
+    // example quarantined/missing dylib). Keep currentCwd set so fileSearch can
+    // still use the filesystem fallback instead of making the renderer show an
+    // unhelpful permanent "No files match" state.
+    console.error('[fffHost] @ff-labs/fff-node import failed:', error)
+    return
+  }
+
+  const result = FileFinderCtor.create({
     basePath: cwd,
     aiMode: false,
     disableWatch: false, // watch FS for changes

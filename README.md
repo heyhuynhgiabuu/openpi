@@ -76,12 +76,12 @@ Tagged `v*` pushes run the beta release workflow and publish a GitHub prerelease
 
 ```bash
 npm run release:patch -- --notes "Short release note"
-npm run release:prerelease -- --preid beta --notes-file RELEASE_NOTES.md
-npm run release:version -- 0.2.0 --notes-file RELEASE_NOTES.md
+npm run release:prerelease -- --preid beta --notes-file /tmp/openpi-release-notes.md
+npm run release:version -- 0.2.0 --notes-file /tmp/openpi-release-notes.md
 git push origin main --follow-tags
 ```
 
-Current beta notes live in [`RELEASE_NOTES.md`](RELEASE_NOTES.md), and version history lives in [`CHANGELOG.md`](CHANGELOG.md).
+`CHANGELOG.md` is the release-note source of truth. The beta release workflow extracts the matching `## [x.y.z]` section and publishes that body to GitHub Releases.
 
 ## Beta caveats
 

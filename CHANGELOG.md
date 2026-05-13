@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **File mention fallback after native fff import failure** — The fff host no longer imports `@ff-labs/fff-node` at module load time. If the native package fails to import in a packaged app, OpenPi now still loads the host module and uses filesystem fallback search instead of returning no file mention results.
+- **GitHub release notes source** — The beta release workflow now extracts release bodies from the matching `CHANGELOG.md` version section, preventing stale `RELEASE_NOTES.md` content from being published to new GitHub Releases.
+
+### Changed
+
+- **Release helper safeguards** — `scripts/release.mjs` now requires explicit release notes and refuses to generate placeholder-only changelog entries.
+
 ## [0.1.4] - 2026-05-13
 
 OpenPi v0.1.4 hardens the file attachment picker, fixes workspace startup scoping, and documents stricter release-note requirements.

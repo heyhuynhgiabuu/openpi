@@ -243,7 +243,7 @@ async function ensureFffInitialized(): Promise<typeof FffHost | null> {
   // silent failure: if FileFinder.create() failed (e.g. quarantined binary,
   // permission error), finder stayed null but fffInitializedCwd was still set
   // to cwd, so subsequent calls skipped initFff and permanently returned [].
-  host.initFff(cwd)
+  await host.initFff(cwd)
   return host
 }
 
