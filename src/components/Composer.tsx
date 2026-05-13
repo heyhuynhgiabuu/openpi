@@ -123,10 +123,15 @@ const ContextPicker: Component<ContextPickerProps> = (props) => {
   createEffect(() => {
     const q = query()
     if (debounceRef) clearTimeout(debounceRef)
+    const cwd = props.cwd
+    if (!cwd) {
+      setResults([])
+      return
+    }
     const delay = q.trim() ? 100 : 0
     debounceRef = setTimeout(() => {
       void window.openpi.fff
-        .fileSearch(q, 60, props.cwd)
+        .fileSearch(q, 60, cwd)
         .then((items) => setResults(items))
         .catch(() => setResults([]))
     }, delay)
@@ -710,13 +715,14 @@ export const Composer: Component<ComposerProps> = (props) => {
   createEffect(() => {
     const trigger = fileMentionTrigger()
     if (fileMentionDebounceRef) clearTimeout(fileMentionDebounceRef)
-    if (!fileMentionOpen() || !trigger) return
+    const cwd = props.cwd
+    if (!fileMentionOpen() || !trigger || !cwd) return
 
     const query = trigger.query
     const delay = query.trim() ? 80 : 0
     fileMentionDebounceRef = setTimeout(() => {
       void window.openpi.fff
-        .fileSearch(query, 12, props.cwd)
+        .fileSearch(query, 12, cwd)
         .then((items) => setFileMentionResults(items))
         .catch(() => setFileMentionResults([]))
     }, delay)

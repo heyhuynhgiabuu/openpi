@@ -8,6 +8,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { FileFinder, FileItem, GrepMatch, GrepOptions, SearchOptions } from '@ff-labs/fff-node'
 
 // ─── Exported result shapes (IPC-safe, lean) ──────────────────────────────────
@@ -52,7 +53,7 @@ export async function initFff(cwd: string): Promise<void> {
 
   let FileFinderCtor: typeof FileFinder
   try {
-    ;({ FileFinder: FileFinderCtor } = await import('@ff-labs/fff-node'))
+    ;({ FileFinder: FileFinderCtor } = await importFffNode())
   } catch (error) {
     // The native fff package can fail at import time in packaged apps (for
     // example quarantined/missing dylib). Keep currentCwd set so fileSearch can
@@ -62,11 +63,17 @@ export async function initFff(cwd: string): Promise<void> {
     return
   }
 
-  const result = FileFinderCtor.create({
-    basePath: cwd,
-    aiMode: false,
-    disableWatch: false, // watch FS for changes
-  })
+  let result: ReturnType<typeof FileFinderCtor.create>
+  try {
+    result = FileFinderCtor.create({
+      basePath: cwd,
+      aiMode: false,
+      disableWatch: false, // watch FS for changes
+    })
+  } catch (error) {
+    console.error('[fffHost] FileFinder.create threw:', error)
+    return
+  }
 
   if (!result.ok) {
     console.error('[fffHost] FileFinder.create failed:', result.error)
@@ -84,6 +91,29 @@ export async function initFff(cwd: string): Promise<void> {
   })
 
   console.log('[fffHost] initialized for', cwd)
+}
+
+async function importFffNode(): Promise<typeof import('@ff-labs/fff-node')> {
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  if (resourcesPath) {
+    const unpackedEntry = path.join(
+      resourcesPath,
+      'app.asar.unpacked',
+      'node_modules',
+      '@ff-labs',
+      'fff-node',
+      'dist',
+      'src',
+      'index.js'
+    )
+    if (fs.existsSync(unpackedEntry)) {
+      return import(pathToFileURL(unpackedEntry).href) as Promise<
+        typeof import('@ff-labs/fff-node')
+      >
+    }
+  }
+
+  return import('@ff-labs/fff-node')
 }
 
 export function destroyFff(): void {

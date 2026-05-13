@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Packaged fff native loading** — Packaged macOS builds now import `@ff-labs/fff-node` from `app.asar.unpacked` so its `libfff_c.dylib` path resolves to a real file instead of the virtual `app.asar` archive path. `FileFinder.create()` is also guarded so native loader failures always fall back to filesystem search instead of surfacing as empty picker results.
+- **fff cwd contract** — fff IPC now requires an explicit absolute workspace cwd from the renderer and no longer silently falls back to mutable Electron main session state.
+
 ## [0.1.6] - 2026-05-13
 
 OpenPi v0.1.6 fixes fff-backed file search across workspace switches and hardens beta release publishing.

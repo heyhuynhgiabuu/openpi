@@ -233,9 +233,9 @@ async function getFffHost(): Promise<typeof FffHost> {
   return fffHostPromise
 }
 
-async function ensureFffInitialized(cwdOverride?: string | null): Promise<typeof FffHost | null> {
-  const cwd = resolveFffCwd(cwdOverride)
-  if (!cwd) return null
+async function ensureFffInitialized(cwd: string): Promise<typeof FffHost | null> {
+  const workspacePath = resolveFffCwd(cwd)
+  if (!workspacePath) return null
   const host = await getFffHost()
   // Always delegate to initFff — it is idempotent via its own guard:
   //   if (currentCwd === cwd && finder) return  // no-op when already healthy
@@ -243,20 +243,17 @@ async function ensureFffInitialized(cwdOverride?: string | null): Promise<typeof
   // silent failure: if FileFinder.create() failed (e.g. quarantined binary,
   // permission error), finder stayed null but fffInitializedCwd was still set
   // to cwd, so subsequent calls skipped initFff and permanently returned [].
-  await host.initFff(cwd)
+  await host.initFff(workspacePath)
   return host
 }
 
-function resolveFffCwd(cwdOverride?: string | null): string | null {
-  if (cwdOverride !== undefined && cwdOverride !== null) {
-    if (!path.isAbsolute(cwdOverride)) return null
-    try {
-      return fs.statSync(cwdOverride).isDirectory() ? path.resolve(cwdOverride) : null
-    } catch {
-      return null
-    }
+function resolveFffCwd(cwd: string): string | null {
+  if (!path.isAbsolute(cwd)) return null
+  try {
+    return fs.statSync(cwd).isDirectory() ? path.resolve(cwd) : null
+  } catch {
+    return null
   }
-  return state?.cwd ?? deferredWorkspace ?? null
 }
 
 let gitHostPromise: Promise<typeof GitHost> | null = null

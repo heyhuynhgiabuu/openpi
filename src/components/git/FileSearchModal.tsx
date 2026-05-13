@@ -179,14 +179,17 @@ export function FileSearchModal(props: FileSearchModalProps) {
   createEffect(() => {
     if (!props.cwd) return
 
-    void window.openpi.fff.fileSearch('', 500, props.cwd).then((items) => {
-      setQuery('')
-      setActiveIdx(0)
-      setTextResults([])
-      setTextSearching(false)
-      setFffFileHits([])
-      setFiles(items.map((f) => ({ name: f.fileName, path: f.relativePath, dir: f.dir })))
-    })
+    void window.openpi.fff
+      .fileSearch('', 500, props.cwd)
+      .then((items) => {
+        setQuery('')
+        setActiveIdx(0)
+        setTextResults([])
+        setTextSearching(false)
+        setFffFileHits([])
+        setFiles(items.map((f) => ({ name: f.fileName, path: f.relativePath, dir: f.dir })))
+      })
+      .catch(() => setFiles([]))
   })
 
   onMount(() => {
@@ -215,13 +218,19 @@ export function FileSearchModal(props: FileSearchModalProps) {
         mode = 'regex'
         searchQuery = `\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`
       }
+      const cwd = props.cwd
+      if (!cwd) {
+        setTextResults([])
+        setTextSearching(false)
+        return
+      }
       void window.openpi.fff
         .grep(searchQuery, {
           mode,
           smartCase: !mc,
           maxMatchesPerFile: 5,
           timeBudgetMs: 3000,
-          cwd: props.cwd,
+          cwd,
         })
         .then((matches) => {
           if (!mounted) return
