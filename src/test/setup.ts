@@ -1,10 +1,18 @@
-// SolidJS testing setup
-import '@testing-library/jest-dom/vitest'
+/**
+ * Vitest global setup.
+ *
+ * Provides a minimal in-memory localStorage stub because the jsdom version
+ * bundled with this vitest environment does not wire Storage.clear(), causing
+ * tests that call localStorage.clear() to throw TypeError.
+ *
+ * Note: @testing-library/jest-dom is an *optional* peer dep of
+ * vite-plugin-solid and is NOT in package-lock.json, so importing it here
+ * would break `npm ci` on CI runners.  Add it explicitly to devDependencies
+ * before importing it.
+ */
 
-// jsdom's Storage sometimes lacks `clear` in the version used by this
-// vitest environment. Provide a minimal in-memory stub so keybinding
-// tests can call localStorage.clear() without TypeError.
 const store: Record<string, string> = {}
+
 Object.defineProperty(globalThis, 'localStorage', {
   configurable: true,
   value: {
