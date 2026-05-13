@@ -32,10 +32,10 @@ jobs:
       OPENPI_RELEASE_CHANNEL: beta
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -75,16 +75,20 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v5
+
       - name: Download installers
         uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
           merge-multiple: true
 
-      - name: Publish draft release
+      - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          name: OpenPi ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
           prerelease: true
-          generate_release_notes: true
           files: dist-artifacts/**/*

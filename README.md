@@ -1,58 +1,98 @@
 # OpenPi
 
-OpenPi is a native desktop workbench for the Pi coding agent. It wraps Pi sessions, tool events, customizations, Git review, file search, and terminals in an Electron + SolidJS app.
+A native desktop workbench for the [Pi coding agent](https://github.com/earendil-works/pi).
+
+[![CI](https://github.com/heyhuynhgiabuu/openpi/actions/workflows/ci.yml/badge.svg)](https://github.com/heyhuynhgiabuu/openpi/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/heyhuynhgiabuu/openpi?include_prereleases&label=release)](https://github.com/heyhuynhgiabuu/openpi/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+OpenPi wraps Pi's sessions, agent events, customizations, file search, source control, diffs, and terminals in a local Electron app. It is not a fork of Pi's agent runtime; OpenPi hosts `@earendil-works/pi-coding-agent` in Electron main and presents it with a native desktop UI.
+
+![OpenPi desktop workbench screenshot](media/demo.png)
+
+## What is Pi?
+
+Pi is an open-source coding agent project by Earendil Works. Learn more from the upstream project:
+
+- [earendil-works/pi on GitHub](https://github.com/earendil-works/pi)
+- [Pi documentation](https://pi.dev/docs/latest)
+- [`@earendil-works/pi-coding-agent`](https://github.com/earendil-works/pi/tree/main/packages/coding-agent)
+
+OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session tree, tool execution, extensions, or model/provider behavior.
 
 ## Current beta surface
 
-- Secure Electron main/preload boundary with typed IPC and Zod validation.
-- Pi SDK session host in Electron main; renderer remains render-only.
-- Workspace/session sidebar, new-session hero, model selector, conversation stream, and tool cards.
-- OpenCode-style command palette (`Shift+Cmd+P`) for commands, files, and sessions.
-- Customizations modal for Extensions, Skills, Prompts, Themes, Packages, Models, General, Notifications, Keybindings, Updates, and About.
-- Main-owned Git/source-control panel, file tree/search, diff viewer, and file viewer.
-- Bottom terminal/output panel using `node-pty` from Electron main.
-- OpenPi runtime branding, app icons, and beta release workflows.
+- **Pi sessions in a desktop shell** — session sidebar, workspace grouping, model selector, conversation stream, tool cards, and token/cost metadata.
+- **Command palette** — `Shift+Cmd+P` searches commands, files, and sessions in an OpenCode-style overlay.
+- **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About.
+- **Source control** — persistent Git panel, file tree, search, split diff viewer, and file viewer, with mutations owned by Electron main.
+- **Terminal/output panel** — local PTY lifecycle through Electron main, not the renderer.
+- **OpenPi branding and release automation** — app icon, dynamic app version, CI, and tag-triggered beta builds.
+
+## Architecture boundaries
+
+OpenPi follows three hard boundaries:
+
+1. **Renderer renders only.** It collects intent and displays state. It does not access the filesystem, shell, Git, SQLite, secrets, or Pi internals directly.
+2. **Electron main owns desktop authority.** IPC handlers validate payloads with Zod and perform privileged actions: Pi SDK hosting, PTY, Git, SQLite, file search, app metadata, and native dialogs.
+3. **Pi SDK owns agent semantics.** Session trees, compaction, queues, tools, extensions, providers, and model behavior remain Pi's responsibility.
+
+See [`AGENTS.md`](AGENTS.md) for the full project rules and [`ROADMAP.md`](ROADMAP.md) for the beta roadmap.
+
+## Install from source
+
+Requirements:
+
+- Node.js 22+
+- npm
+- macOS, Linux, or Windows for development builds
+
+```bash
+git clone https://github.com/heyhuynhgiabuu/openpi.git
+cd openpi
+npm ci
+npm run dev
+```
 
 ## Development
 
 ```bash
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run dev
+npm run lint       # Biome checks
+npm run typecheck  # TypeScript
+npm test           # Vitest
+npm run build      # Electron/Vite production build
 ```
 
-## Release process
-
-Prepare a verified release commit and annotated `v*` tag:
-
-```bash
-npm run release:patch -- --notes "Short release note"
-npm run release:prerelease -- --preid beta --notes-file RELEASE_NOTES.md
-npm run release:version -- 0.2.0 --notes-file RELEASE_NOTES.md
-```
-
-Push the generated tag with `git push origin main --follow-tags` to trigger the beta release workflow.
-
-## Packaging
+Package a local unsigned beta build:
 
 ```bash
 CSC_IDENTITY_AUTO_DISCOVERY=false OPENPI_RELEASE_CHANNEL=beta \
   npx electron-builder --config electron-builder.json --dir --publish never
 ```
 
-Tagged releases (`v*`) run `.github/workflows/release.yml` and create draft beta releases. Signing/notarization secrets are intentionally not included yet.
+## Releases
+
+Tagged `v*` pushes run the beta release workflow and publish a GitHub prerelease with installers attached.
+
+```bash
+npm run release:patch -- --notes "Short release note"
+npm run release:prerelease -- --preid beta --notes-file RELEASE_NOTES.md
+npm run release:version -- 0.2.0 --notes-file RELEASE_NOTES.md
+git push origin main --follow-tags
+```
+
+Current beta notes live in [`RELEASE_NOTES.md`](RELEASE_NOTES.md), and version history lives in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Beta caveats
 
-- macOS notarization and Windows code signing still need release credentials.
-- Permission gates, workspace trust hardening, and keychain-backed secrets remain beta blockers before broad distribution.
-- Some custom-widget accessibility rules are warning-level while the desktop UI matures; concrete label/button checks remain enforced.
+- macOS notarization and Windows code signing are not configured yet, so beta installers may show OS trust warnings.
+- Permission gates, workspace trust hardening, protected-path policy, and keychain-backed secrets are still active roadmap items.
+- Some custom-widget accessibility diagnostics are warning-level while the desktop UI matures; concrete label/button checks remain enforced.
 
-See `ROADMAP.md` for the full roadmap and `AGENTS.md` for project architecture rules.
+## Contributing
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening issues or pull requests. Changes that cross renderer/main/Pi SDK boundaries need extra care and tests.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
