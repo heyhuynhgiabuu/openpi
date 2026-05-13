@@ -15,6 +15,7 @@ import { SessionRow } from './SessionRow'
 
 const PAGE_SIZE_INITIAL = 10
 const PAGE_SIZE_MORE = 5
+const HOMEBREW_UPGRADE_COMMAND = 'brew update && brew upgrade --cask openpi'
 
 type SessionSidebarProps = {
   style?: string | Record<string, string>
@@ -53,6 +54,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
   // ─ Update state ───────────────────────────────────────────────────
   const [updateStatus, setUpdateStatus] = createSignal<AppUpdateStatus | null>(null)
   const [changelogOpen, setChangelogOpen] = createSignal(false)
+  const [updateCommandCopied, setUpdateCommandCopied] = createSignal(false)
 
   onMount(() => {
     // Subscribe to update events pushed from main on cold start
@@ -61,6 +63,17 @@ export function SessionSidebar(props: SessionSidebarProps) {
   })
 
   const updateAvailable = () => updateStatus()?.state === 'available'
+
+  const copyUpgradeCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(HOMEBREW_UPGRADE_COMMAND)
+      setUpdateCommandCopied(true)
+      setTimeout(() => setUpdateCommandCopied(false), 2500)
+    } catch {
+      const url = updateStatus()?.releaseUrl
+      if (url) void window.openpi.appUpdate.openRelease(url)
+    }
+  }
 
   // Per-group visible count — only applied when not searching.
   // Map key is the group key string.
@@ -296,14 +309,15 @@ export function SessionSidebar(props: SessionSidebarProps) {
           <button
             type="button"
             class="sidebar-footer-update-chip"
-            title={`OpenPi ${updateStatus()?.latestVersion} is available — click to download`}
+            title={`OpenPi ${updateStatus()?.latestVersion} is available — click to copy: ${HOMEBREW_UPGRADE_COMMAND}`}
             onClick={() => {
-              const url = updateStatus()?.releaseUrl
-              if (url) void window.openpi.appUpdate.openRelease(url)
+              void copyUpgradeCommand()
             }}
           >
             <ArrowUpCircle size={12} />
-            {updateStatus()?.latestVersion ?? 'Update available'}
+            {updateCommandCopied()
+              ? 'Copied brew command'
+              : (updateStatus()?.latestVersion ?? 'Update available')}
           </button>
         </Show>
 

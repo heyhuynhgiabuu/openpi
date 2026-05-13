@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Homebrew cask distribution** — OpenPi can now be installed and upgraded from the `heyhuynhgiabuu/openpi` Homebrew tap with `brew install --cask openpi` and `brew upgrade --cask openpi`.
+
+### Changed
+
+- **Update chip behavior** — The in-app update chip now copies the Homebrew upgrade command instead of opening the GitHub release page, reducing manual download/install noise for beta users.
+
 ## [0.1.7] - 2026-05-14
 
 OpenPi v0.1.7 fixes packaged-app fff native loading from ASAR/unpacked paths.

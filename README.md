@@ -39,6 +39,22 @@ OpenPi follows three hard boundaries:
 
 See [`AGENTS.md`](AGENTS.md) for the full project rules and [`ROADMAP.md`](ROADMAP.md) for the beta roadmap.
 
+## Install with Homebrew
+
+Recommended for macOS beta users:
+
+```sh
+brew tap heyhuynhgiabuu/openpi
+brew install --cask openpi
+```
+
+Upgrade later with:
+
+```sh
+brew update
+brew upgrade --cask openpi
+```
+
 ## Install from source
 
 Requirements:
@@ -72,7 +88,7 @@ CSC_IDENTITY_AUTO_DISCOVERY=false OPENPI_RELEASE_CHANNEL=beta \
 
 ## Releases
 
-Tagged `v*` pushes run the beta release workflow and publish a GitHub prerelease with installers attached.
+Tagged `v*` pushes run the beta release workflow and publish a GitHub release with installers attached.
 
 ```bash
 npm run release:patch -- --notes "Short release note"
@@ -85,7 +101,7 @@ git push origin main --follow-tags
 
 ## Beta caveats
 
-**macOS — app is not notarized yet.** After dragging `OpenPi.app` to `/Applications`, macOS Gatekeeper will block it on first launch. Run this once in Terminal to remove the quarantine flag:
+**macOS — app is not notarized yet.** Homebrew can handle download/install/upgrade, but macOS Gatekeeper may still block unsigned builds on first launch. If blocked, run this once in Terminal to remove the quarantine flag:
 
 ```sh
 xattr -rd com.apple.quarantine /Applications/OpenPi.app
