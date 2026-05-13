@@ -1,0 +1,11 @@
+# Keep checked-out files LF on every platform so Biome formatting is deterministic.
+* text=auto eol=lf
+
+# Binary assets
+*.icns binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.gif binary
