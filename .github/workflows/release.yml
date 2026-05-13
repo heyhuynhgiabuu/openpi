@@ -93,5 +93,5 @@ jobs:
           name: OpenPi ${{ github.ref_name }}
           body_path: release-notes.generated.md
           draft: false
-          prerelease: true
+          prerelease: false
           files: dist-artifacts/**/*

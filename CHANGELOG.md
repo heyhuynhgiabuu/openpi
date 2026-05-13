@@ -5,6 +5,7 @@
 ### Changed
 
 - **Release artifact actions** — Beta release artifact upload/download steps use current GitHub action major versions to avoid Node 20 runtime deprecation warnings on future release runs.
+- **Latest release visibility** — Beta release publishing uses normal GitHub Releases instead of prereleases so OpenPi's existing `/releases/latest` update check can see newly published versions.
 
 ## [0.1.5] - 2026-05-13
 
