@@ -2,11 +2,19 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-13
+
+OpenPi v0.1.4 hardens the file attachment picker, fixes workspace startup scoping, and documents stricter release-note requirements.
+
 ### Fixed
 
 - **File mention picker reliability** — `@` file attachments now wait briefly for fff's cold-start scan and fall back to a bounded filesystem search if the native fff package is unavailable, quarantined, or temporarily returns no matches. This keeps queries like `@AG` finding `AGENTS.md` instead of showing a permanent "No files match" state.
 - **Workspace startup scope** — startup restore and the workspace rail now use only workspaces explicitly opened in OpenPi. Historical Pi session directories discovered during indexing no longer pollute the rail or cause OpenPi to auto-restore the wrong workspace.
 - **Ignore generated artifacts correctly** — `.gitignore` now uses standalone comments instead of inline comments after patterns, so generated `out/` and `release/` directories are actually ignored by Git.
+
+### Changed
+
+- **Release discipline** — Project rules now require every release to inspect commits since the previous tag and replace automation-generated placeholder changelog entries with concrete user-facing notes before tagging.
 
 ## [0.1.3] - 2026-05-13
 
