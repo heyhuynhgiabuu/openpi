@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-05-14
+
+OpenPi v0.1.7 fixes packaged-app fff native loading from ASAR/unpacked paths.
+
 ### Fixed
 
 - **Packaged fff native loading** — Packaged macOS builds now import `@ff-labs/fff-node` from `app.asar.unpacked` so its `libfff_c.dylib` path resolves to a real file instead of the virtual `app.asar` archive path. `FileFinder.create()` is also guarded so native loader failures always fall back to filesystem search instead of surfacing as empty picker results.
