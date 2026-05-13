@@ -315,6 +315,19 @@ Before claiming completion on any slice:
 
 ---
 
+## Release and Changelog Rules
+
+Before tagging, pushing, or claiming any version release:
+
+1. Run `git log --oneline <previous-version-tag>..HEAD` and inspect every commit included in the release.
+2. Update `CHANGELOG.md` for the version with concrete, user-facing release notes grouped under headings such as `Added`, `Fixed`, and `Changed`.
+3. Mention relevant implementation/ops changes when they affect users or maintainers: CI, packaging, updater behavior, Git/workspace behavior, file attachments, Pi package loading, docs, and beta caveats.
+4. Never leave a placeholder-only entry such as `Release OpenPi vX.Y.Z.` for a released version.
+5. Verify the packaged changelog path when release UI changes: `CHANGELOG.md` must be included in `electron-builder.json` `extraResources` and readable by the app's What's New modal.
+6. If release automation creates a placeholder entry, edit it into full notes before creating or pushing the tag.
+
+---
+
 ## Editing Rules
 
 1. Read relevant files before editing.
