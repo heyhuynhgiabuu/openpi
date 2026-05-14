@@ -21,6 +21,16 @@ import {
   gitSyncResultSchema,
 } from '../src/lib/ipc'
 
+// Pin git identity env vars for every git operation in this file.
+// Environment variables take highest priority over .git/config, so an empty
+// GIT_AUTHOR_NAME on a CI runner would override initRepo's local config and
+// cause "fatal: empty ident name" failures. Setting them here makes the tests
+// hermetic against whatever identity the CI environment provides.
+process.env.GIT_AUTHOR_NAME = 'OpenPi Test'
+process.env.GIT_AUTHOR_EMAIL = 'openpi@example.com'
+process.env.GIT_COMMITTER_NAME = 'OpenPi Test'
+process.env.GIT_COMMITTER_EMAIL = 'openpi@example.com'
+
 let tmp: string | null = null
 
 function makeWorkspace(): string {
