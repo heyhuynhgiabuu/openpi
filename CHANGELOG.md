@@ -13,8 +13,11 @@ OpenPi v0.1.10 consolidates the CI hermetic fixes, packaged-app sidecar launch f
 ### Fixed
 
 - **Packaged Pi sidecar launch crash** — packaged builds now force `utilityProcess.fork()` so the sidecar can load from Electron ASAR archives instead of crashing under standalone system `node` (`7ff4263`)
-- **Electron security audit** — upgraded Electron from 37.x to 42.0.1 to resolve all high-severity advisories reported by `npm audit`, including AppleScript injection (`GHSA-5rqw-r77c-jp79`) and service-worker IPC spoofing (`GHSA-xj5x-m3f3-5x3h`); `npm audit` now reports 0 vulnerabilities (`1a49f0b`)
+- **Electron security audit** — upgraded Electron from 37.x to 41.6.0 to resolve the high-severity advisories reported by `npm audit`, including AppleScript injection (`GHSA-5rqw-r77c-jp79`) and service-worker IPC spoofing (`GHSA-xj5x-m3f3-5x3h`), while staying on the latest native-addon-compatible stable line; `npm audit` now reports 0 vulnerabilities (`1a49f0b`)
 - **Deprecated rebuild dependency** — removed unused `electron-rebuild@3.2.9` and replaced it with `@electron/rebuild@4.0.4`, eliminating transitive CVEs from outdated `tar`, `cacache`, and `node-gyp` versions (`1a49f0b`)
+- **Native addon rebuild hook** — `npm ci` now runs `electron-rebuild -f -w better-sqlite3` so the development app starts with Electron's Node ABI instead of crashing on a host-Node build (`b7e4351`)
+- **CI: npm lockfile sync** — regenerated `package-lock.json` with npm 10 peer/optional resolution so `npm ci` installs the Electron 41 and electron-builder 26 dependency graph cleanly on GitHub Actions (`d7dc5d5`)
+- **Release workflow Homebrew guard** — moved the optional `BREW_TAP_TOKEN` check through job env so GitHub Actions no longer rejects the workflow before jobs are created (`ad13f54`)
 - **CI: bare remote default branch** — `git init --bare` on ubuntu-latest defaults to `master`; tests now pass `-b main` explicitly so the bare remote's HEAD matches the branch we push (`19d670a`)
 - **CI: hermetic git identity** — pin `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars in the git integration test file so runners with no global git identity don't fail commits (`6558204`)
 
