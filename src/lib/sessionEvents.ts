@@ -141,7 +141,7 @@ export function applySessionEvent(
     }
 
     case 'compaction_end': {
-      const e = event as { aborted?: boolean; result?: { tokensBefore?: number } }
+      const e = event as CompactionEndEvent
       const idx = [...next]
         .reverse()
         .findIndex(
@@ -150,9 +150,7 @@ export function applySessionEvent(
             (m as SystemMessage).kind === 'compaction' &&
             !(m as SystemMessage).done
         )
-      const text = e.aborted
-        ? 'Context compaction aborted'
-        : `Context compacted — ${(e.result?.tokensBefore ?? 0).toLocaleString()} tokens freed`
+      const text = formatCompactionEndText(e)
       if (idx !== -1) {
         const realIdx = next.length - 1 - idx
         next[realIdx] = { ...(next[realIdx] as SystemMessage), text, done: true }
@@ -236,6 +234,32 @@ function resultText(result: unknown): string {
       .map((part) => part.text ?? '')
       .join('') ?? ''
   )
+}
+
+type CompactionEndEvent = {
+  aborted?: boolean
+  willRetry?: boolean
+  errorMessage?: string
+  result?: {
+    tokensBefore?: unknown
+  }
+}
+
+export function formatCompactionEndText(event: CompactionEndEvent): string {
+  if (event.aborted) return 'Context compaction aborted'
+
+  if (event.errorMessage) {
+    return event.willRetry
+      ? `Context compaction failed — will retry: ${event.errorMessage}`
+      : `Context compaction failed — ${event.errorMessage}`
+  }
+
+  const tokensBefore = numeric(event.result?.tokensBefore)
+  if (tokensBefore > 0) {
+    return `Context compacted — ${tokensBefore.toLocaleString()} tokens before compaction`
+  }
+
+  return 'Context compacted'
 }
 
 type UsageLike = Record<string, unknown> & {
