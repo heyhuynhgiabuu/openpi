@@ -65,6 +65,13 @@ function copyTarget(item: CustomizationItem): string | null {
   return item.path ?? item.packageSource ?? item.source ?? null
 }
 
+function formatModifiedAt(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function ExtensionCard(props: { item: CustomizationItem }) {
   const [copied, setCopied] = createSignal(false)
   const displayPath = () => copyTarget(props.item)
@@ -83,6 +90,12 @@ function ExtensionCard(props: { item: CustomizationItem }) {
       <div class="extension-card-body">
         <div class="extension-card-title-row">
           <h3>{props.item.name}</h3>
+          <div class="resource-provenance-chips">
+            <span class={`resource-risk-chip risk-${props.item.riskLevel ?? 'low'}`}>
+              {props.item.riskLevel ?? 'low'} risk
+            </span>
+            <span class="resource-scope-chip">{props.item.scope}</span>
+          </div>
           <button
             type="button"
             class={`extension-copy-btn${copied() ? ' is-copied' : ''}`}
@@ -105,6 +118,9 @@ function ExtensionCard(props: { item: CustomizationItem }) {
           <FolderOpen size={13} />
           <span>{shortenPath(displayPath())}</span>
         </div>
+        <Show when={formatModifiedAt(props.item.lastModifiedAt)}>
+          {(modified) => <div class="resource-modified">Modified {modified()}</div>}
+        </Show>
       </div>
     </article>
   )

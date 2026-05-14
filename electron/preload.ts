@@ -8,6 +8,7 @@ import type {
   CustomizationsInventory,
   CustomProvider,
   CustomProviderInfo,
+  DiagnosticsBundle,
   FffFileResult,
   FffGrepMatch,
   FileContent,
@@ -119,6 +120,9 @@ const api = {
     workspacePath?: string | null
   ): Promise<PathProtectionResult> =>
     ipcRenderer.invoke(IPC.CHECK_PATH_PROTECTION, { path: targetPath, workspacePath }),
+
+  getDiagnosticsBundle: (): Promise<DiagnosticsBundle> =>
+    ipcRenderer.invoke(IPC.GET_DIAGNOSTICS_BUNDLE),
 
   // ── Customizations ────────────────────────────────────────────────────────
   getCustomizations: (): Promise<CustomizationsInventory> =>

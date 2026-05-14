@@ -55,6 +55,7 @@ type SavedKey =
   | UpdatePreferenceKey
   | keyof AppearancePreferences
   | 'theme'
+  | 'diagnostics'
   | 'checkPiUpdate'
   | 'installPiUpdate'
 
@@ -82,6 +83,8 @@ export function GeneralPane(props: GeneralPaneProps) {
   const [checkingUpdates, setCheckingUpdates] = createSignal(false)
   const [installingUpdate, setInstallingUpdate] = createSignal(false)
   const [installOutput, setInstallOutput] = createSignal<string | null>(null)
+  const [diagnosticsOutput, setDiagnosticsOutput] = createSignal<string | null>(null)
+  const [copyingDiagnostics, setCopyingDiagnostics] = createSignal(false)
   const [appearance, setAppearance] = createSignal<AppearancePreferences>({
     ...DEFAULT_APPEARANCE_PREFERENCES,
   })
@@ -269,6 +272,27 @@ export function GeneralPane(props: GeneralPaneProps) {
         ? `https://github.com/earendil-works/pi/releases/tag/v${version}`
         : 'https://github.com/earendil-works/pi/releases'
     )
+  }
+
+  const copyDiagnostics = () => {
+    setCopyingDiagnostics(true)
+    setDiagnosticsOutput(null)
+    void window.openpi
+      .getDiagnosticsBundle()
+      .then(async (bundle) => {
+        const text = JSON.stringify(bundle, null, 2)
+        await navigator.clipboard.writeText(text)
+        setDiagnosticsOutput(
+          'Diagnostics bundle copied to clipboard. Secrets and sensitive paths were redacted in Electron main.'
+        )
+        markSaved('diagnostics')
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        setDiagnosticsOutput(message)
+        props.onError(message)
+      })
+      .finally(() => setCopyingDiagnostics(false))
   }
 
   const saveAppearance = <K extends keyof AppearancePreferences>(
@@ -679,6 +703,39 @@ export function GeneralPane(props: GeneralPaneProps) {
                 )
               }}
             </For>
+          </section>
+
+          <section class="osp-section">
+            <div class="osp-section-head">Beta support diagnostics</div>
+            <div class="osp-row osp-row-last">
+              <div class="osp-row-left">
+                <div class="osp-row-name">
+                  Diagnostics export
+                  <Show when={savedKey() === 'diagnostics'}>
+                    <span class="osp-saved">
+                      <Check size={10} /> copied
+                    </span>
+                  </Show>
+                </div>
+                <div class="osp-row-desc">
+                  Copy a redacted support bundle with app/runtime metadata, sidecar state, resource
+                  inventory, Git state, and SQLite file stats. Provider credentials are never read.
+                </div>
+                <Show when={diagnosticsOutput()}>
+                  {(output) => <pre class="osp-update-output">{output()}</pre>}
+                </Show>
+              </div>
+              <div class="osp-row-right osp-row-right-actions">
+                <button
+                  class="osp-action-btn"
+                  type="button"
+                  disabled={copyingDiagnostics()}
+                  onClick={copyDiagnostics}
+                >
+                  {copyingDiagnostics() ? 'Copying…' : 'Copy bundle'}
+                </button>
+              </div>
+            </div>
           </section>
 
           <section class="osp-section">

@@ -134,6 +134,13 @@ function shortenPath(p: string | null): string {
   return p.replace(/^\/Users\/[^/]+\//, '~/')
 }
 
+function formatModifiedAt(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 type ScopeFilter = 'all' | 'user' | 'project'
 
 const SCOPE_LABELS: Record<ScopeFilter, string> = { all: 'All', user: 'Global', project: 'Project' }
@@ -194,6 +201,9 @@ function PackageCard(props: {
               </span>
             </Show>
             <span class="pkg-scope-chip">{DISPLAY_SCOPE[props.entry.item.scope]}</span>
+            <span class={`resource-risk-chip risk-${props.entry.item.riskLevel ?? 'medium'}`}>
+              {props.entry.item.riskLevel ?? 'medium'} risk
+            </span>
             <Show when={!props.entry.item.enabled}>
               <span class="pkg-disabled-chip">disabled</span>
             </Show>
@@ -201,6 +211,9 @@ function PackageCard(props: {
 
           <Show when={props.entry.item.path}>
             <div class="pkg-card-path">{shortenPath(props.entry.item.path)}</div>
+          </Show>
+          <Show when={formatModifiedAt(props.entry.item.lastModifiedAt)}>
+            {(modified) => <div class="resource-modified">Modified {modified()}</div>}
           </Show>
 
           <Show when={props.entry.item.warning}>
@@ -299,6 +312,10 @@ export function PackagesPane(props: PackagesPaneProps) {
   const [installing, setInstalling] = createSignal(false)
   const [removingId, setRemovingId] = createSignal<string | null>(null)
   const [status, setStatus] = createSignal<string | null>(null)
+  const [pendingInstall, setPendingInstall] = createSignal<{
+    source: string
+    scope: PackageScope
+  } | null>(null)
 
   const allParsed = createMemo<ParsedEntry[]>(() =>
     props.items.map((item) => ({ item, parsed: parsePackage(item.name) }))
@@ -336,15 +353,17 @@ export function PackagesPane(props: PackagesPaneProps) {
     }))
   })
 
-  const submitInstall = async (event: SubmitEvent) => {
-    event.preventDefault()
-    const source = normalizeInstallSource(installSource())
+  const performInstall = async () => {
+    const pending = pendingInstall()
+    const source = pending?.source ?? normalizeInstallSource(installSource())
+    const scope = pending?.scope ?? installScope()
     if (!source) return
+    setPendingInstall(null)
 
     setInstalling(true)
     setStatus(null)
     try {
-      const result = await window.openpi.installPackage({ source, scope: installScope() })
+      const result = await window.openpi.installPackage({ source, scope })
       if (!result.ok) {
         props.onError(result.output)
         setStatus(result.output)
@@ -360,6 +379,16 @@ export function PackagesPane(props: PackagesPaneProps) {
     } finally {
       setInstalling(false)
     }
+  }
+
+  const submitInstall = (event: SubmitEvent) => {
+    event.preventDefault()
+    const source = normalizeInstallSource(installSource())
+    if (!source) return
+
+    // Show a confirmation dialog before installing — packages can contain
+    // extensions that run with full system permissions.
+    setPendingInstall({ source, scope: installScope() })
   }
 
   const removePackage = async (entry: ParsedEntry) => {
@@ -441,6 +470,41 @@ export function PackagesPane(props: PackagesPaneProps) {
       </form>
 
       <Show when={status()}>{(message) => <div class="pkg-status">{message()}</div>}</Show>
+
+      <Show when={pendingInstall()}>
+        {(pending) => (
+          <div class="pkg-install-confirm">
+            <ShieldAlert size={14} class="pkg-security-icon" />
+            <div class="pkg-install-confirm-body">
+              <strong>Confirm package installation</strong>
+              <p>
+                <code>{pending().source}</code> will be installed in your{' '}
+                <strong>{pending().scope === 'project' ? 'project' : 'global'}</strong> Pi
+                configuration. Packages can provide extensions with{' '}
+                <strong>full system permissions</strong>. Only install from sources you trust.
+              </p>
+              <div class="pkg-install-confirm-actions">
+                <button
+                  type="button"
+                  class="pkg-confirm-btn pkg-confirm-btn-primary"
+                  disabled={installing()}
+                  onClick={() => void performInstall()}
+                >
+                  {installing() ? 'Installing…' : 'Install'}
+                </button>
+                <button
+                  type="button"
+                  class="pkg-confirm-btn"
+                  disabled={installing()}
+                  onClick={() => setPendingInstall(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
 
       <div class="pkg-toolbar">
         <div class="pkg-scope-tabs">

@@ -50,6 +50,7 @@ import {
   archiveSessionsRequestSchema,
   customizationsInventorySchema,
   customProviderSchema,
+  diagnosticsBundleSchema,
   fffFileSearchRequestSchema,
   fffGrepRequestSchema,
   fileTreeResultSchema,
@@ -129,6 +130,7 @@ import type { PtyHost } from './ptyHost'
 type PtyHostInstance = InstanceType<typeof PtyHost>
 
 import { checkProtectedPath, filterBlockedPaths } from './protectedPaths'
+import { redactObject } from './secretRedact'
 import { SessionIndexStore } from './sessionIndex'
 import { getSettings, saveSettings as writeSettings } from './settingsHost'
 import { checkForAppUpdate, openReleasePage, readChangelog } from './updater'
@@ -207,6 +209,102 @@ function getAppInfo(): AppInfo {
     version,
     releaseChannel: releaseChannelFor(version),
   })
+}
+
+function safeFileStats(filePath: string): Record<string, unknown> {
+  try {
+    const stats = fs.statSync(filePath)
+    return {
+      exists: true,
+      path: filePath,
+      size: stats.size,
+      modifiedAt: stats.mtime.toISOString(),
+    }
+  } catch {
+    return { exists: false, path: filePath }
+  }
+}
+
+function redactDiagnosticPaths<T>(value: T, workspacePath?: string | null): T {
+  const replacements = [
+    [app.getPath('userData'), '$OPENPI_USER_DATA'],
+    [getAgentDir(), '$PI_AGENT_DIR'],
+    [workspacePath ?? '', '$WORKSPACE'],
+    [app.getPath('home'), '~'],
+  ].filter(([from]) => from.length > 0)
+
+  let text = JSON.stringify(redactObject(value), null, 2)
+  for (const [from, to] of replacements.sort((a, b) => b[0].length - a[0].length)) {
+    text = text.split(from).join(to)
+  }
+  return JSON.parse(text) as T
+}
+
+async function buildDiagnosticsBundle(): Promise<z.infer<typeof diagnosticsBundleSchema>> {
+  const cwd = state?.cwd ?? deferredWorkspace ?? null
+  const dbPath = path.join(app.getPath('userData'), 'openpi.sqlite')
+  const notes = [
+    'Secrets and sensitive paths are redacted in Electron main before this bundle reaches the renderer.',
+    'Pi AuthStorage-owned provider credentials are not read or exported by OpenPi.',
+  ]
+
+  let resources: Record<string, unknown> | null = null
+  try {
+    if (cwd) {
+      const { discoverCustomizations } = await getCustomizationsHost()
+      resources = await discoverCustomizations({
+        cwd,
+        agentDir: getAgentDir(),
+        workspaceTrusted: sessionIndex?.isWorkspaceTrusted(cwd) ?? false,
+      })
+    }
+  } catch (err) {
+    resources = { error: err instanceof Error ? err.message : String(err) }
+  }
+
+  let git: Record<string, unknown> | null = null
+  try {
+    if (cwd) {
+      const gitHost = await getGitHost()
+      git = await gitHost.getGitStatus(cwd)
+    }
+  } catch (err) {
+    git = { error: err instanceof Error ? err.message : String(err) }
+  }
+
+  const bundle = diagnosticsBundleSchema.parse({
+    generatedAt: new Date().toISOString(),
+    app: getAppInfo(),
+    runtime: {
+      electron: process.versions.electron,
+      node: process.versions.node,
+      chrome: process.versions.chrome,
+      platform: process.platform,
+      arch: process.arch,
+      isPackaged: app.isPackaged,
+    },
+    workspace: {
+      cwd,
+      deferredWorkspace,
+      activeSessionFile: state?.sessionFile ?? null,
+      activeSessionId: state?.sessionId ?? null,
+      trusted: cwd ? (sessionIndex?.isWorkspaceTrusted(cwd) ?? false) : false,
+    },
+    sidecar: {
+      hostCreated: piSidecarHost !== null,
+      activeSession: state !== null,
+    },
+    resources,
+    git,
+    database: {
+      main: safeFileStats(dbPath),
+      wal: safeFileStats(`${dbPath}-wal`),
+      shm: safeFileStats(`${dbPath}-shm`),
+    },
+    notes,
+  })
+
+  return diagnosticsBundleSchema.parse(redactDiagnosticPaths(bundle, cwd))
 }
 
 function getAgentDir(): string {
@@ -968,6 +1066,11 @@ function registerHandlers(): void {
     })
     return customizationsInventorySchema.parse(inventory)
   })
+
+  ipcMain.handle(
+    IPC.GET_DIAGNOSTICS_BUNDLE,
+    async (): Promise<z.infer<typeof diagnosticsBundleSchema>> => buildDiagnosticsBundle()
+  )
 
   ipcMain.handle(
     IPC.INSTALL_PACKAGE,

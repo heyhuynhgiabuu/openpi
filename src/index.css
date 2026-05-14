@@ -3630,6 +3630,53 @@ input::placeholder {
 .trust-banner-action:hover {
   background: rgba(234, 215, 177, 0.16);
 }
+.trust-banner-action-danger {
+  background: rgba(240, 80, 80, 0.12);
+  border-color: rgba(240, 80, 80, 0.3);
+  color: #f05050;
+  margin-left: 0;
+}
+.trust-banner-action-danger:hover {
+  background: rgba(240, 80, 80, 0.2);
+}
+.trust-banner-action-cancel {
+  background: transparent;
+  border-color: rgba(255,255,255,0.1);
+  color: var(--ink-secondary);
+  margin-left: 0;
+}
+.trust-confirm-panel {
+  width: 100%;
+  margin-top: 6px;
+}
+.trust-confirm-warning {
+  font-size: 12px;
+  color: #f0a050;
+  margin: 0 0 8px;
+}
+.trust-confirm-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trust-confirm-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.trust-confirm-path {
+  color: var(--ink-secondary);
+  font-family: var(--code-font);
+  font-size: 11px;
+}
+.trust-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
 .diagnostics-panel {
   padding: 14px 16px;
 }
@@ -9162,6 +9209,54 @@ input::placeholder {
   font-size: 11.5px;
   line-height: 1.4;
 }
+.pkg-install-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(240, 160, 80, 0.3);
+  background: rgba(240, 160, 80, 0.06);
+  color: var(--graphite);
+  font-size: 12px;
+}
+.pkg-install-confirm-body {
+  flex: 1;
+}
+.pkg-install-confirm-body strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.pkg-install-confirm-body p {
+  margin: 0 0 10px;
+  color: var(--graphite);
+  line-height: 1.5;
+}
+.pkg-install-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+.pkg-confirm-btn {
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+.pkg-confirm-btn-primary {
+  background: rgba(240, 160, 80, 0.15);
+  border-color: rgba(240, 160, 80, 0.35);
+  color: #e07030;
+}
+.pkg-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* Toolbar */
 .pkg-toolbar {
@@ -10617,4 +10712,47 @@ input::placeholder {
   justify-content: center;
   color: var(--ash);
   font-size: 13px;
+}
+
+.resource-provenance-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.resource-risk-chip,
+.resource-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.resource-risk-chip.risk-high {
+  color: #d94c4c;
+  background: rgba(217, 76, 76, 0.1);
+  border: 1px solid rgba(217, 76, 76, 0.22);
+}
+.resource-risk-chip.risk-medium {
+  color: #c77a20;
+  background: rgba(199, 122, 32, 0.1);
+  border: 1px solid rgba(199, 122, 32, 0.22);
+}
+.resource-risk-chip.risk-low {
+  color: #4f8a5b;
+  background: rgba(79, 138, 91, 0.1);
+  border: 1px solid rgba(79, 138, 91, 0.22);
+}
+.resource-scope-chip {
+  color: var(--ink-secondary);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--hairline);
+}
+.resource-modified {
+  margin-top: 5px;
+  color: var(--ink-secondary);
+  font-size: 11px;
 }

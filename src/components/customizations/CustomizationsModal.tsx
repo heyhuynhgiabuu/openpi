@@ -142,8 +142,20 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
 
   const diagnostics = createMemo(() => inventory()?.diagnostics ?? [])
 
+  const [pendingTrustConfirm, setPendingTrustConfirm] = createSignal(false)
+
   const trustWorkspace = async () => {
     if (!props.cwd) return
+    // Show a confirmation dialog before enabling workspace trust so the user
+    // sees all extensions that will become executable.
+    const projectExts = (inventory()?.items ?? []).filter(
+      (item) => item.type === 'extensions' && item.scope === 'project'
+    )
+    if (projectExts.length > 0 && !pendingTrustConfirm()) {
+      setPendingTrustConfirm(true)
+      return
+    }
+    setPendingTrustConfirm(false)
     try {
       await window.openpi.setWorkspaceTrust(props.cwd, true)
       await loadInventory()
@@ -247,13 +259,57 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                         workspace.
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      class="trust-banner-action"
-                      onClick={() => void trustWorkspace()}
+                    <Show
+                      when={pendingTrustConfirm()}
+                      fallback={
+                        <button
+                          type="button"
+                          class="trust-banner-action"
+                          onClick={() => void trustWorkspace()}
+                        >
+                          Trust workspace
+                        </button>
+                      }
                     >
-                      Trust workspace
-                    </button>
+                      <div class="trust-confirm-panel">
+                        <p class="trust-confirm-warning">
+                          ⚠ The following extensions will be granted full system permissions (file
+                          system, network, shell). Review source before trusting.
+                        </p>
+                        <ul class="trust-confirm-list">
+                          <For
+                            each={(inventory()?.items ?? []).filter(
+                              (item) => item.type === 'extensions' && item.scope === 'project'
+                            )}
+                          >
+                            {(ext) => (
+                              <li>
+                                <strong>{ext.name}</strong>
+                                <span class="trust-confirm-path">
+                                  {ext.path?.replace(/^\/Users\/[^/]+\//, '~/')}
+                                </span>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                        <div class="trust-confirm-actions">
+                          <button
+                            type="button"
+                            class="trust-banner-action trust-banner-action-danger"
+                            onClick={() => void trustWorkspace()}
+                          >
+                            Confirm trust
+                          </button>
+                          <button
+                            type="button"
+                            class="trust-banner-action trust-banner-action-cancel"
+                            onClick={() => setPendingTrustConfirm(false)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
                   </div>
                 </Show>
 

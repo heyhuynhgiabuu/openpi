@@ -29,6 +29,7 @@ export const IPC = {
   GET_WORKSPACE_SUMMARY: 'openpi:get-workspace-summary',
   SET_WORKSPACE_TRUST: 'openpi:set-workspace-trust',
   CHECK_PATH_PROTECTION: 'openpi:check-path-protection',
+  GET_DIAGNOSTICS_BUNDLE: 'openpi:get-diagnostics-bundle',
   GET_CUSTOMIZATIONS: 'openpi:get-customizations',
   INSTALL_PACKAGE: 'openpi:install-package',
   REMOVE_PACKAGE: 'openpi:remove-package',
@@ -290,6 +291,19 @@ export const pathProtectionResultSchema = z.object({
   reason: z.string().nullable(),
 })
 export type PathProtectionResult = z.infer<typeof pathProtectionResultSchema>
+
+export const diagnosticsBundleSchema = z.object({
+  generatedAt: z.string(),
+  app: z.record(z.unknown()),
+  runtime: z.record(z.unknown()),
+  workspace: z.record(z.unknown()),
+  sidecar: z.record(z.unknown()),
+  resources: z.record(z.unknown()).nullable(),
+  git: z.record(z.unknown()).nullable(),
+  database: z.record(z.unknown()),
+  notes: z.array(z.string()),
+})
+export type DiagnosticsBundle = z.infer<typeof diagnosticsBundleSchema>
 
 // ─── Customizations inventory ───────────────────────────────────────────────
 

@@ -363,6 +363,22 @@ const SECTIONS: SettingSection[] = [
     label: 'Resources',
     fields: [
       {
+        key: 'packages',
+        type: 'string-array',
+        label: 'Pi Packages',
+        description:
+          'Pi package sources loaded by the SDK. MCP support appears only when supplied by an installed Pi package or extension; it is not a built-in OpenPi/Pi core feature.',
+        placeholder: 'npm:@scope/pi-package',
+      },
+      {
+        key: 'extensions',
+        type: 'string-array',
+        label: 'Extension Paths',
+        description:
+          'Additional Pi extension entrypoints. Extensions execute with full Node permissions and are governed by workspace trust.',
+        placeholder: './.pi/extensions/my-extension.ts',
+      },
+      {
         key: 'enableSkillCommands',
         type: 'boolean',
         label: 'Skill Slash Commands',

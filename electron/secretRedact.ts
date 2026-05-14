@@ -129,7 +129,7 @@ export function redact(input: string, options: RedactOptions = {}): string {
     if (output.includes(prefix)) {
       // Escape special regex characters in the path
       const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      output = output.replace(new RegExp(escaped + '[^\\s,\'"\\)\\]>]*', 'g'), (match) => {
+      output = output.replace(new RegExp(`${escaped}[^\\s,'"\\)\\]>]*`, 'g'), (match) => {
         return `${path.basename(prefix)}/${path.relative(prefix, match)}`
       })
     }
