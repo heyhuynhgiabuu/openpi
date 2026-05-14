@@ -10,6 +10,7 @@ import type {
   CustomizationItem,
   CustomizationsInventory,
   PackageOperationResult,
+  ResourceRiskLevel,
 } from '../src/lib/ipc'
 import { packageOperationResultSchema } from '../src/lib/ipc'
 
@@ -154,6 +155,8 @@ export async function discoverCustomizations(options: {
       source: source.source,
       enabled: !skill.disableModelInvocation,
       packageSource: source.origin === 'package' ? source.source : undefined,
+      riskLevel: riskLevelForType('skills'),
+      lastModifiedAt: mtimeIso(skill.filePath),
     })
   }
 
@@ -173,6 +176,8 @@ export async function discoverCustomizations(options: {
       source: source.source,
       enabled: true,
       packageSource: source.origin === 'package' ? source.source : undefined,
+      riskLevel: riskLevelForType('prompts'),
+      lastModifiedAt: mtimeIso(prompt.filePath),
     })
   }
 
@@ -194,6 +199,8 @@ export async function discoverCustomizations(options: {
       source: source.source,
       enabled: true,
       packageSource: source.origin === 'package' ? source.source : undefined,
+      riskLevel: riskLevelForType('themes'),
+      lastModifiedAt: mtimeIso(themePath),
     })
   }
 
@@ -213,6 +220,8 @@ export async function discoverCustomizations(options: {
         source: configured.source,
         enabled: true,
         packageSource: configured.source,
+        riskLevel: 'medium' as const,
+        lastModifiedAt: mtimeIso(configured.installedPath ?? null),
       })
     }
   } catch (err) {
@@ -338,6 +347,8 @@ function collectExtensionPath(
     warning: !options.workspaceTrusted
       ? 'Extensions have full system permissions and require workspace trust before OpenPi loads them.'
       : undefined,
+    riskLevel: 'high' as const,
+    lastModifiedAt: mtimeIso(filePath),
   }))
 }
 
@@ -374,6 +385,21 @@ function collectExtensionFiles(targetPath: string): string[] {
   }
 
   return files.sort((a, b) => a.localeCompare(b))
+}
+
+function riskLevelForType(type: CustomizationItem['type']): ResourceRiskLevel {
+  if (type === 'extensions') return 'high'
+  if (type === 'packages') return 'medium'
+  return 'low'
+}
+
+function mtimeIso(filePath: string | null | undefined): string | null {
+  if (!filePath) return null
+  try {
+    return new Date(statSync(filePath).mtimeMs).toISOString()
+  } catch {
+    return null
+  }
 }
 
 function isExtensionEntryFile(filePath: string): boolean {

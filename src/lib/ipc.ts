@@ -28,6 +28,7 @@ export const IPC = {
   GET_GIT_BRANCH: 'openpi:get-git-branch',
   GET_WORKSPACE_SUMMARY: 'openpi:get-workspace-summary',
   SET_WORKSPACE_TRUST: 'openpi:set-workspace-trust',
+  CHECK_PATH_PROTECTION: 'openpi:check-path-protection',
   GET_CUSTOMIZATIONS: 'openpi:get-customizations',
   INSTALL_PACKAGE: 'openpi:install-package',
   REMOVE_PACKAGE: 'openpi:remove-package',
@@ -276,6 +277,20 @@ export const workspaceTrustResultSchema = z.object({
 })
 export type WorkspaceTrustResult = z.infer<typeof workspaceTrustResultSchema>
 
+export const pathProtectionRequestSchema = z.object({
+  path: z.string().min(1),
+  workspacePath: z.string().nullable().optional(),
+})
+export type PathProtectionRequest = z.infer<typeof pathProtectionRequestSchema>
+
+export const pathProtectionResultSchema = z.object({
+  protected: z.boolean(),
+  level: z.enum(['hard', 'soft', 'scope']).nullable(),
+  rule: z.string().nullable(),
+  reason: z.string().nullable(),
+})
+export type PathProtectionResult = z.infer<typeof pathProtectionResultSchema>
+
 // ─── Customizations inventory ───────────────────────────────────────────────
 
 export const customizationTypeSchema = z.enum([
@@ -293,6 +308,9 @@ export type CustomizationScope = z.infer<typeof customizationScopeSchema>
 export const customizationOriginSchema = z.enum(['top-level', 'package', 'settings'])
 export type CustomizationOrigin = z.infer<typeof customizationOriginSchema>
 
+export const resourceRiskLevelSchema = z.enum(['low', 'medium', 'high'])
+export type ResourceRiskLevel = z.infer<typeof resourceRiskLevelSchema>
+
 export const customizationItemSchema = z.object({
   id: z.string(),
   type: customizationTypeSchema,
@@ -306,6 +324,10 @@ export const customizationItemSchema = z.object({
   enabled: z.boolean(),
   packageSource: z.string().optional(),
   warning: z.string().optional(),
+  /** ISO timestamp of the resource file's last modification, when available */
+  lastModifiedAt: z.string().nullable().optional(),
+  /** Risk classification: extensions/packages that run arbitrary code are 'high' */
+  riskLevel: resourceRiskLevelSchema.optional(),
 })
 export type CustomizationItem = z.infer<typeof customizationItemSchema>
 

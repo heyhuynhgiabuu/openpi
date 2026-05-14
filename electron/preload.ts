@@ -26,6 +26,7 @@ import type {
   OutputLine,
   PackageOperationRequest,
   PackageOperationResult,
+  PathProtectionResult,
   PickWorkspaceResult,
   PiSettings,
   PiUpdateCheckResult,
@@ -112,6 +113,12 @@ const api = {
 
   setWorkspaceTrust: (cwd: string, trusted: boolean): Promise<WorkspaceTrustResult> =>
     ipcRenderer.invoke(IPC.SET_WORKSPACE_TRUST, { cwd, trusted }),
+
+  checkPathProtection: (
+    targetPath: string,
+    workspacePath?: string | null
+  ): Promise<PathProtectionResult> =>
+    ipcRenderer.invoke(IPC.CHECK_PATH_PROTECTION, { path: targetPath, workspacePath }),
 
   // ── Customizations ────────────────────────────────────────────────────────
   getCustomizations: (): Promise<CustomizationsInventory> =>

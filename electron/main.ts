@@ -75,6 +75,8 @@ import {
   openSessionSchema,
   packageOperationRequestSchema,
   packageOperationResultSchema,
+  pathProtectionRequestSchema,
+  pathProtectionResultSchema,
   piUpdateCheckResultSchema,
   piUpdateInstallResultSchema,
   playSoundEffectSchema,
@@ -126,6 +128,7 @@ import type { PtyHost } from './ptyHost'
 
 type PtyHostInstance = InstanceType<typeof PtyHost>
 
+import { checkProtectedPath, filterBlockedPaths } from './protectedPaths'
 import { SessionIndexStore } from './sessionIndex'
 import { getSettings, saveSettings as writeSettings } from './settingsHost'
 import { checkForAppUpdate, openReleasePage, readChangelog } from './updater'
@@ -941,6 +944,20 @@ function registerHandlers(): void {
     return workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
   })
 
+  ipcMain.handle(
+    IPC.CHECK_PATH_PROTECTION,
+    (_event, raw: unknown): z.infer<typeof pathProtectionResultSchema> => {
+      const { path: targetPath, workspacePath } = pathProtectionRequestSchema.parse(raw)
+      const violation = checkProtectedPath(targetPath, workspacePath)
+      return pathProtectionResultSchema.parse({
+        protected: violation !== null,
+        level: violation?.level ?? null,
+        rule: violation?.rule ?? null,
+        reason: violation?.reason ?? null,
+      })
+    }
+  )
+
   ipcMain.handle(IPC.GET_CUSTOMIZATIONS, async (): Promise<CustomizationsInventory> => {
     const { discoverCustomizations } = await getCustomizationsHost()
     const cwd = state?.cwd ?? deferredWorkspace
@@ -1101,6 +1118,10 @@ function registerHandlers(): void {
   ipcMain.handle(IPC.GIT_STAGE, async (_event, raw: unknown): Promise<void> => {
     if (!state?.cwd) return
     const { path: filePath } = gitStageSchema.parse(raw)
+    const { blocked } = filterBlockedPaths([filePath])
+    if (blocked.length > 0) {
+      throw new Error(`Cannot stage protected path: ${blocked[0].violation.reason}`)
+    }
     const git = await getGitHost()
     await git.stageFile(state.cwd, filePath)
   })
@@ -1115,8 +1136,15 @@ function registerHandlers(): void {
   ipcMain.handle(IPC.GIT_COMMIT, async (_event, raw: unknown): Promise<void> => {
     if (!state?.cwd) return
     const { paths, message, push, amend, signoff } = gitCommitSchema.parse(raw)
+    // Strip hard-blocked paths before commit — belt-and-suspenders in case a
+    // staged set contains protected locations that slipped through stage().
+    const { allowed: safePaths, blocked: blockedPaths } = filterBlockedPaths(paths)
+    if (blockedPaths.length > 0) {
+      const labels = blockedPaths.map((b) => path.basename(b.path)).join(', ')
+      throw new Error(`Commit blocked: ${labels} matches a protected path policy.`)
+    }
     const git = await getGitHost()
-    await git.commitFiles(state.cwd, paths, message, push, { amend, signoff })
+    await git.commitFiles(state.cwd, safePaths, message, push, { amend, signoff })
   })
 
   ipcMain.handle(IPC.GIT_DISCARD, async (_event, raw: unknown): Promise<void> => {

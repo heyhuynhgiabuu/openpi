@@ -27,7 +27,8 @@ jobs:
           - name: Linux
             os: ubuntu-latest
     env:
-      # Public beta builds remain unsigned unless signing/notarization secrets are configured.
+      # Signing and notarization are enabled when the Apple/Windows secrets are configured.
+      # Public beta builds run unsigned when the secrets are absent.
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       OPENPI_RELEASE_CHANNEL: beta
     steps:
@@ -56,7 +57,86 @@ jobs:
         run: npm run build
 
       - name: Package installers
+        env:
+          # macOS notarization — set these secrets in the repository to enable notarization.
+          # Required secrets: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID,
+          # CSC_LINK (base64-encoded .p12), CSC_KEY_PASSWORD
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # When Apple secrets are set, enable notarization.
+          # electron-builder reads APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
+          # for notarization automatically when CSC_IDENTITY_AUTO_DISCOVERY is true.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' && 'true' || 'false' }}
+          # Windows code signing — set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npx electron-builder --config electron-builder.json --publish never
+
+      - name: Verify packaged artifacts (minimum size checks)
+        shell: bash
+        run: |
+          set -e
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          RELEASE_DIR="release/${VERSION}"
+
+          echo "=== Verifying packaged artifacts in $RELEASE_DIR ==="
+
+          MIN_BYTES=1048576  # 1 MB minimum — guards against empty/truncated output
+
+          fail=0
+          while IFS= read -r -d '' artifact; do
+            size=$(wc -c < "$artifact")
+            if [ "$size" -lt "$MIN_BYTES" ]; then
+              echo "FAIL: $artifact is only ${size} bytes (expected >= ${MIN_BYTES})"
+              fail=1
+            else
+              echo "OK:   $artifact (${size} bytes)"
+            fi
+          done < <(find "$RELEASE_DIR" \
+            \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.exe" \) \
+            -not -name "*helper*" \
+            -print0 2>/dev/null || true)
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more packaged artifacts failed the minimum-size check."
+            exit 1
+          fi
+
+          echo "All artifacts passed minimum-size verification."
+
+      - name: Generate per-platform checksums
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          RELEASE_DIR="release/${VERSION}"
+
+          if [ ! -d "$RELEASE_DIR" ]; then
+            echo "No release directory found — nothing to checksum."
+            exit 0
+          fi
+
+          CHECKSUMS_FILE="$RELEASE_DIR/checksums-${{ matrix.name }}.txt"
+          echo "# SHA-256 checksums for OpenPi ${{ github.ref_name }} (${{ matrix.name }})" > "$CHECKSUMS_FILE"
+          echo "# Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$CHECKSUMS_FILE"
+          echo "" >> "$CHECKSUMS_FILE"
+
+          find "$RELEASE_DIR" \
+            \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.exe" \) \
+            -not -name "*helper*" | sort | while IFS= read -r f; do
+            if command -v sha256sum &>/dev/null; then
+              sha256sum "$f" | sed "s|$RELEASE_DIR/||" >> "$CHECKSUMS_FILE"
+            elif command -v shasum &>/dev/null; then
+              shasum -a 256 "$f" | sed "s|$RELEASE_DIR/||" >> "$CHECKSUMS_FILE"
+            fi
+          done
+
+          echo "=== Checksums ==="
+          cat "$CHECKSUMS_FILE"
 
       - name: Upload installers
         uses: actions/upload-artifact@v5
@@ -68,6 +148,7 @@ jobs:
             release/**/*.exe
             release/**/*.blockmap
             release/**/latest*.yml
+            release/**/checksums-*.txt
           if-no-files-found: error
 
   publish:
@@ -89,6 +170,21 @@ jobs:
           path: dist-artifacts
           merge-multiple: true
 
+      - name: Merge platform checksums into combined checksums.txt
+        run: |
+          COMBINED="dist-artifacts/checksums.txt"
+          echo "# SHA-256 checksums for OpenPi ${{ github.ref_name }}" > "$COMBINED"
+          echo "# Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$COMBINED"
+          echo "" >> "$COMBINED"
+          for f in dist-artifacts/checksums-*.txt; do
+            [ -f "$f" ] || continue
+            echo "## $(basename "$f")" >> "$COMBINED"
+            grep -v '^#' "$f" >> "$COMBINED" || true
+            echo "" >> "$COMBINED"
+          done
+          echo "=== Combined checksums.txt ==="
+          cat "$COMBINED"
+
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
@@ -101,7 +197,9 @@ jobs:
           body_path: release-notes.generated.md
           draft: false
           prerelease: false
-          files: dist-artifacts/**/*
+          files: |
+            dist-artifacts/**/*
+            dist-artifacts/checksums.txt
 
       - name: Update Homebrew tap
         if: ${{ env.BREW_TAP_TOKEN != '' }}
@@ -113,3 +211,20 @@ jobs:
           fi
           echo "Updating Homebrew tap with $DMG"
           node scripts/update-brew.mjs "${{ github.ref_name }}" "$DMG"
+
+      - name: Verify Homebrew tap reflects new version
+        if: ${{ env.BREW_TAP_TOKEN != '' }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "Verifying tap has version $VERSION..."
+          TAP_CONTENT=$(curl -sL \
+            -H "Authorization: Bearer $BREW_TAP_TOKEN" \
+            "https://api.github.com/repos/heyhuynhgiabuu/homebrew-openpi/contents/Casks/openpi.rb" \
+            | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode())")
+          if echo "$TAP_CONTENT" | grep -q "version \"$VERSION\""; then
+            echo "✓ Homebrew tap correctly reflects version $VERSION"
+          else
+            echo "::warning::Homebrew tap does not appear to reflect version $VERSION — manual update may be needed"
+            echo "$TAP_CONTENT"
+          fi

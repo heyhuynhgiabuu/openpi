@@ -83,10 +83,20 @@ export class SessionIndexStore {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true })
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
+    this.db.pragma('synchronous = NORMAL') // safe + fast with WAL
+    this.db.pragma('foreign_keys = ON') // enforce FK constraints
+    this.db.pragma('busy_timeout = 5000') // wait up to 5 s instead of failing immediately
     this.migrate()
   }
 
   close(): void {
+    try {
+      // Flush WAL frames to the main DB file before closing so a hard-kill
+      // between close() and the OS journal cleanup cannot lose committed rows.
+      this.db.pragma('wal_checkpoint(TRUNCATE)')
+    } catch {
+      // Non-fatal: WAL auto-recovery handles this on next open.
+    }
     this.db.close()
   }
 
@@ -497,16 +507,19 @@ export class SessionIndexStore {
         value text not null
       );
     `)
-    // Additive migrations — safe to run on existing DBs
-    try {
-      this.db.exec(`alter table sessions add column last_model text not null default ''`)
-    } catch {
-      /* column already exists */
-    }
-    try {
-      this.db.exec(`alter table sessions add column file_mtime integer not null default 0`)
-    } catch {
-      /* column already exists */
+    // Additive migrations — safe to run on existing DBs.
+    // Each block uses try/catch so they are idempotent on re-open.
+    const addColumns: Array<[string, string]> = [
+      ['sessions', "add column last_model text not null default ''"],
+      ['sessions', 'add column file_mtime integer not null default 0'],
+      ['workspaces', 'add column trusted_at text'],
+    ]
+    for (const [table, clause] of addColumns) {
+      try {
+        this.db.exec(`alter table ${table} ${clause}`)
+      } catch {
+        // column already exists — safe to ignore
+      }
     }
   }
 }
