@@ -8,7 +8,7 @@
 import { type ChildProcess, fork, spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { type UtilityProcess, utilityProcess } from 'electron'
+import { app, type UtilityProcess, utilityProcess } from 'electron'
 import type { SidecarCommand, SidecarMessage } from './piSidecar'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
@@ -31,10 +31,16 @@ function isUtilityProcess(child: SidecarProcess): child is UtilityProcess {
 }
 
 function findNodeExecutable(): string | null {
-  // Prefer regular Node for Pi SDK execution so user extensions with native
-  // dependencies (for example better-sqlite3 in DCP) use the ABI they were
-  // installed/rebuilt for. Fall back to Electron utilityProcess only when no
-  // standalone Node executable is available.
+  // In the packaged app every module (including the Pi SDK) lives inside
+  // app.asar. Standalone node cannot read ASAR archives, so the sidecar
+  // would fail to require('@earendil-works/pi-coding-agent') and crash
+  // immediately. Electron's utilityProcess has native ASAR support, so
+  // always use it when packaged.
+  if (app.isPackaged) return null
+
+  // In development, prefer regular Node so user extensions with native
+  // dependencies (e.g. better-sqlite3 in DCP) use the system-Node ABI
+  // they were installed/rebuilt for.
   const candidates = [process.env.OPENPI_NODE_EXECUTABLE, 'node'].filter(
     (candidate): candidate is string => Boolean(candidate)
   )
