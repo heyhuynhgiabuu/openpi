@@ -225,6 +225,53 @@ function safeFileStats(filePath: string): Record<string, unknown> {
   }
 }
 
+const HIGH_RISK_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  {
+    pattern: /\brm\s+(-[^\s]*[rf][^\s]*|--recursive|--force)/,
+    reason: 'recursive/forced file deletion',
+  },
+  { pattern: /\bgit\s+reset\s+--hard\b/, reason: 'Git hard reset discards local changes' },
+  { pattern: /\bgit\s+clean\s+-[^\s]*[fd]/, reason: 'Git clean deletes untracked files' },
+  {
+    pattern: /\bgit\s+push\b[^\n]*\s(--force|-f|--force-with-lease)\b/,
+    reason: 'force-push rewrites remote history',
+  },
+  { pattern: /\bgit\s+rebase\s+--abort\b/, reason: 'rebase abort rewrites the working tree state' },
+  {
+    pattern: /\b(?:sudo\s+)?(?:dd|mkfs|diskutil|fdisk)\b/,
+    reason: 'disk-level command can destroy data',
+  },
+  { pattern: /\bchmod\s+-R\s+777\b/, reason: 'recursive world-writable permission change' },
+  { pattern: /\bchown\s+-R\b/, reason: 'recursive ownership change' },
+]
+
+function highRiskShellReason(command: string): string | null {
+  const normalized = command.replace(/\\\n/g, '\n')
+  for (const { pattern, reason } of HIGH_RISK_COMMAND_PATTERNS) {
+    if (pattern.test(normalized)) return reason
+  }
+  return null
+}
+
+async function confirmHighRiskMutation(options: {
+  title: string
+  message: string
+  detail: string
+}): Promise<boolean> {
+  if (!mainWindow) return false
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: options.title,
+    message: options.message,
+    detail: options.detail,
+    buttons: ['Cancel', 'Approve'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  })
+  return result.response === 1
+}
+
 function redactDiagnosticPaths<T>(value: T, workspacePath?: string | null): T {
   const replacements = [
     [app.getPath('userData'), '$OPENPI_USER_DATA'],
@@ -906,6 +953,22 @@ function registerHandlers(): void {
       const active = await ensureActiveSession()
       if (!active) return undefined
       const { command, excludeFromContext } = sessionBashSchema.parse(raw)
+      const riskReason = highRiskShellReason(command)
+      if (riskReason) {
+        const approved = await confirmHighRiskMutation({
+          title: 'Confirm high-risk shell command',
+          message: 'This shell command can mutate or delete data.',
+          detail: `${riskReason}\n\nCommand:\n${command}`,
+        })
+        if (!approved) {
+          return {
+            output: 'Command cancelled by user.',
+            exitCode: 130,
+            cancelled: true,
+            truncated: false,
+          }
+        }
+      }
       const requestId = createRequestId()
       const response = await requirePiSidecar().request<
         Extract<SidecarMessage, { type: 'bash_result' }>
@@ -1036,11 +1099,34 @@ function registerHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC.SET_WORKSPACE_TRUST, (_event, raw: unknown): WorkspaceTrustResult => {
-    const { cwd, trusted } = workspaceTrustRequestSchema.parse(raw)
-    if (!sessionIndex) throw new Error('Session index is not ready')
-    return workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
-  })
+  ipcMain.handle(
+    IPC.SET_WORKSPACE_TRUST,
+    async (_event, raw: unknown): Promise<WorkspaceTrustResult> => {
+      const { cwd, trusted } = workspaceTrustRequestSchema.parse(raw)
+      if (!sessionIndex) throw new Error('Session index is not ready')
+      if (trusted && !sessionIndex.isWorkspaceTrusted(cwd)) {
+        const { discoverCustomizations } = await getCustomizationsHost()
+        const inventory = await discoverCustomizations({
+          cwd,
+          agentDir: getAgentDir(),
+          workspaceTrusted: false,
+        })
+        const projectExtensions = inventory.items.filter(
+          (item) => item.type === 'extensions' && item.scope === 'project'
+        )
+        if (projectExtensions.length > 0) {
+          const approved = await confirmHighRiskMutation({
+            title: 'Trust workspace extensions?',
+            message: 'Confirm workspace trust before enabling executable project resources.',
+            detail: `This will allow ${projectExtensions.length} project extension${projectExtensions.length === 1 ? '' : 's'} to run with full Node permissions:\n\n${projectExtensions.map((item) => `• ${item.name}: ${item.path ?? item.source}`).join('\n')}`,
+          })
+          if (!approved)
+            return workspaceTrustResultSchema.parse({ cwd, trusted: false, trustedAt: null })
+        }
+      }
+      return workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
+    }
+  )
 
   ipcMain.handle(
     IPC.CHECK_PATH_PROTECTION,
@@ -1076,6 +1162,17 @@ function registerHandlers(): void {
     IPC.INSTALL_PACKAGE,
     async (_event, raw: unknown): Promise<PackageOperationResult> => {
       const { source, scope } = packageOperationRequestSchema.parse(raw)
+      const approved = await confirmHighRiskMutation({
+        title: 'Install Pi package?',
+        message: 'Confirm Pi package installation',
+        detail: `${source} will be installed in ${scope} settings. Pi packages may provide executable extensions with full Node permissions.`,
+      })
+      if (!approved) {
+        return packageOperationResultSchema.parse({
+          ok: false,
+          output: 'Package installation cancelled.',
+        })
+      }
       const { installCustomizationPackage } = await getCustomizationsHost()
       return packageOperationResultSchema.parse(
         await installCustomizationPackage({
@@ -1092,6 +1189,12 @@ function registerHandlers(): void {
     IPC.REMOVE_PACKAGE,
     async (_event, raw: unknown): Promise<PackageOperationResult> => {
       const { source, scope } = packageOperationRequestSchema.parse(raw)
+      const approved = await confirmHighRiskMutation({
+        title: 'Confirm Pi package removal',
+        message: `Remove ${scope} Pi package?`,
+        detail: `${source}\n\nThis mutates Pi ${scope} settings and may remove extension/skill resources from OpenPi.`,
+      })
+      if (!approved) return packageOperationResultSchema.parse({ ok: false, output: 'Cancelled.' })
       const { removeCustomizationPackage } = await getCustomizationsHost()
       return packageOperationResultSchema.parse(
         await removeCustomizationPackage({
@@ -1253,6 +1356,12 @@ function registerHandlers(): void {
   ipcMain.handle(IPC.GIT_DISCARD, async (_event, raw: unknown): Promise<void> => {
     if (!state?.cwd) return
     const { path: filePath } = gitDiscardSchema.parse(raw)
+    const approved = await confirmHighRiskMutation({
+      title: 'Discard file changes?',
+      message: 'Confirm destructive Git discard',
+      detail: `This will discard local changes for:\n\n${filePath}\n\nThis cannot be undone by OpenPi.`,
+    })
+    if (!approved) return
     const git = await getGitHost()
     await git.discardFile(state.cwd, filePath)
   })
@@ -1344,13 +1453,25 @@ function registerHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC.WRITE_FILE, (_event, raw: unknown): void => {
+  ipcMain.handle(IPC.WRITE_FILE, async (_event, raw: unknown): Promise<void> => {
     if (!state?.cwd) throw new Error('No active workspace')
     const { path: relPath, content } = writeFileRequestSchema.parse(raw)
     const full = path.resolve(state.cwd, relPath)
     const sep = path.sep
     if (full !== state.cwd && !full.startsWith(state.cwd + sep)) {
       throw new Error('Refusing to write outside workspace')
+    }
+    const violation = checkProtectedPath(full, state.cwd)
+    if (violation?.level === 'hard') {
+      throw new Error(`Refusing to write protected path: ${violation.reason}`)
+    }
+    if (violation) {
+      const approved = await confirmHighRiskMutation({
+        title: 'Confirm protected file write',
+        message: `Write to ${path.basename(full)}?`,
+        detail: `${violation.reason}\n\nPath: ${full}`,
+      })
+      if (!approved) return
     }
     fs.writeFileSync(full, content, 'utf-8')
   })
