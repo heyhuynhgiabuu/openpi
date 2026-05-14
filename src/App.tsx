@@ -51,6 +51,20 @@ import {
 } from './lib/keybindings'
 import { restoreThemeFromStorage } from './lib/themeApply'
 
+/**
+ * Strip YAML frontmatter from a SKILL.md file before sending to the LLM.
+ * Matches Pi SDK's internal stripFrontmatter() used in _expandSkillCommand().
+ * Frontmatter is metadata for the skill registry — the LLM only needs the body.
+ */
+function stripSkillFrontmatter(content: string): string {
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('---')) return trimmed
+  const afterOpen = trimmed.slice(3)
+  const closeIdx = afterOpen.indexOf('\n---')
+  if (closeIdx === -1) return trimmed
+  return afterOpen.slice(closeIdx + 4).trimStart()
+}
+
 export default function App() {
   const session = useOpenPiSession()
 
@@ -397,13 +411,20 @@ export default function App() {
       const skillReads = await Promise.all(
         skills.map((s) => window.openpi.readSkillFile(`${s.path}/SKILL.md`).catch(() => null))
       )
+      // Build skill blocks matching Pi SDK's _expandSkillCommand() format exactly:
+      //   <skill name="..." location=".../SKILL.md">\nReferences are relative to ...\n\n{body}\n</skill>
+      // This ensures the LLM can resolve relative paths (./scripts/...) in skill content.
+      // Frontmatter is stripped — it is registry metadata, not instructions.
       const skillBlocks = skillReads
-        .map((content, i) =>
-          content ? `<skill name="${skills[i].name}">\n${content}\n</skill>` : null
-        )
+        .map((content, i) => {
+          if (!content) return null
+          const skill = skills[i]
+          const body = stripSkillFrontmatter(content)
+          return `<skill name="${skill.name}" location="${skill.path}/SKILL.md">\nReferences are relative to ${skill.path}.\n\n${body}\n</skill>`
+        })
         .filter(Boolean) as string[]
       if (skillBlocks.length > 0) {
-        prefix = `Load and apply the following skill instructions before responding:\n\n${skillBlocks.join('\n\n')}`
+        prefix = skillBlocks.join('\n\n')
       }
       setLoadedSkills([])
     }
