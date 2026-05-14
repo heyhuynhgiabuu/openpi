@@ -20,7 +20,9 @@ import type {
   FileContent,
   FileContentHit,
   GitBranchInfo,
+  GitCheckoutBranchResult,
   GitFileDiff,
+  GitRefsResult,
   GitStatusResult,
   GitSyncResult,
   ModelInfo,
@@ -52,9 +54,12 @@ import {
   forkSessionSchema,
   getPrefSchema,
   gitBranchSchema,
+  gitCheckoutBranchResultSchema,
+  gitCheckoutBranchSchema,
   gitCommitSchema,
   gitDiffRequestSchema,
   gitDiscardSchema,
+  gitRefsResultSchema,
   gitStageSchema,
   gitSyncResultSchema,
   gitSyncSchema,
@@ -1098,6 +1103,23 @@ function registerHandlers(): void {
     const result = await git.syncRemote(state.cwd, action)
     return gitSyncResultSchema.parse(result)
   })
+
+  ipcMain.handle(IPC.GIT_REFS, async (): Promise<GitRefsResult | null> => {
+    if (!state?.cwd) return null
+    const git = await getGitHost()
+    return gitRefsResultSchema.parse(await git.getGitRefs(state.cwd))
+  })
+
+  ipcMain.handle(
+    IPC.GIT_CHECKOUT_BRANCH,
+    async (_event, raw: unknown): Promise<GitCheckoutBranchResult | null> => {
+      if (!state?.cwd) return null
+      const { branch } = gitCheckoutBranchSchema.parse(raw)
+      const git = await getGitHost()
+      const result = await git.checkoutBranch(state.cwd, branch)
+      return gitCheckoutBranchResultSchema.parse(result)
+    }
+  )
 
   ipcMain.handle(
     IPC.GIT_FILE_TREE,

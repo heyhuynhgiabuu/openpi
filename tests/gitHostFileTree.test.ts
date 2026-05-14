@@ -3,8 +3,19 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { getFileTree, getGitStatus, syncRemote } from '../electron/gitHost'
-import { gitStatusResultSchema, gitSyncResultSchema } from '../src/lib/ipc'
+import {
+  checkoutBranch,
+  getFileTree,
+  getGitRefs,
+  getGitStatus,
+  syncRemote,
+} from '../electron/gitHost'
+import {
+  gitCheckoutBranchResultSchema,
+  gitRefsResultSchema,
+  gitStatusResultSchema,
+  gitSyncResultSchema,
+} from '../src/lib/ipc'
 
 let tmp: string | null = null
 
@@ -168,5 +179,56 @@ describe('syncRemote', () => {
     expect(result.ok).toBe(false)
     expect(result.action).toBe('push')
     expect(result.output).not.toHaveLength(0)
+  })
+})
+
+describe('git refs and branch checkout', () => {
+  it('lists local branches, remote branches, and stashes', async () => {
+    const root = makeWorkspace()
+    const repo = join(root, 'repo')
+    const remote = join(root, 'remote.git')
+    mkdirSync(repo)
+
+    initRepo(repo)
+    writeFileSync(join(repo, 'README.md'), 'initial\n')
+    commitPaths(repo, 'initial', ['README.md'])
+    runGit(repo, ['checkout', '-b', 'feature/test'])
+    writeFileSync(join(repo, 'feature.txt'), 'feature\n')
+    commitPaths(repo, 'feature', ['feature.txt'])
+    runGit(root, ['init', '--bare', remote])
+    runGit(repo, ['remote', 'add', 'origin', remote])
+    runGit(repo, ['push', '-u', 'origin', 'feature/test'])
+
+    writeFileSync(join(repo, 'README.md'), 'stashed\n')
+    runGit(repo, ['stash', 'push', '-m', 'saved work'])
+
+    const refs = await getGitRefs(repo)
+
+    expect(gitRefsResultSchema.parse(refs)).toEqual(refs)
+    expect(refs.branches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'feature/test', current: true, remote: false }),
+        expect.objectContaining({ name: 'remotes/origin/feature/test', remote: true }),
+      ])
+    )
+    expect(refs.stashes[0]).toMatchObject({ index: 0 })
+    expect(refs.stashes[0]?.message).toContain('saved work')
+  })
+
+  it('blocks branch checkout when the worktree is dirty', async () => {
+    const repo = makeWorkspace()
+    initRepo(repo)
+    writeFileSync(join(repo, 'README.md'), 'initial\n')
+    commitPaths(repo, 'initial', ['README.md'])
+    runGit(repo, ['checkout', '-b', 'feature/test'])
+    runGit(repo, ['checkout', 'main'])
+    writeFileSync(join(repo, 'README.md'), 'dirty\n')
+
+    const result = await checkoutBranch(repo, 'feature/test')
+
+    expect(gitCheckoutBranchResultSchema.parse(result)).toEqual(result)
+    expect(result.ok).toBe(false)
+    expect(result.output).toContain('Commit, stash, or discard')
+    expect((await getGitStatus(repo)).branch).toBe('main')
   })
 })

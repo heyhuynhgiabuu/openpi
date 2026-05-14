@@ -5154,6 +5154,112 @@ input::placeholder {
   line-height: 1.35;
 }
 
+.git-refs-picker {
+  margin-top: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.git-refs-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.git-refs-tabs button {
+  flex: 1;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--mute);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.git-refs-tabs button.is-active {
+  background: var(--surface-soft);
+  color: var(--graphite);
+}
+
+.git-refs-search {
+  width: calc(100% - 8px);
+  margin: 4px;
+  padding: 5px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.git-refs-list {
+  max-height: 220px;
+  overflow: auto;
+  padding: 2px 0 4px;
+}
+
+.git-refs-group-title {
+  padding: 5px 8px 3px;
+  color: var(--ash);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.git-ref-row,
+.git-stash-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--graphite);
+  font-size: 11px;
+  text-align: left;
+}
+
+.git-ref-row {
+  cursor: pointer;
+}
+
+.git-ref-row:hover:not(:disabled) {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.git-ref-row:disabled {
+  color: var(--ash);
+  cursor: default;
+}
+
+.git-ref-row span:nth-child(2),
+.git-stash-row span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-ref-row span:nth-child(3) {
+  color: var(--ash);
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.git-refs-empty {
+  padding: 10px 8px;
+  color: var(--ash);
+  font-size: 11px;
+  text-align: center;
+}
+
 .git-delta-add {
   color: #4ade80;
 }

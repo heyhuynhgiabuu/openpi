@@ -7,7 +7,14 @@
 
 import { ChevronsUp, Search } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js'
-import type { GitChangedFile, GitFileDiff, GitStatusResult, GitSyncAction } from '../../lib/ipc'
+import type {
+  GitBranchRef,
+  GitChangedFile,
+  GitFileDiff,
+  GitRefsResult,
+  GitStatusResult,
+  GitSyncAction,
+} from '../../lib/ipc'
 import { FileTree } from './FileTree'
 
 interface GitPanelProps {
@@ -45,6 +52,12 @@ export function GitPanel(props: GitPanelProps) {
   const [syncingAction, setSyncingAction] = createSignal<GitSyncAction | null>(null)
   const [commitError, setCommitError] = createSignal<string | null>(null)
   const [syncMessage, setSyncMessage] = createSignal<string | null>(null)
+  const [refs, setRefs] = createSignal<GitRefsResult | null>(null)
+  const [refsLoading, setRefsLoading] = createSignal(false)
+  const [refsMessage, setRefsMessage] = createSignal<string | null>(null)
+  const [refsOpen, setRefsOpen] = createSignal(false)
+  const [refsTab, setRefsTab] = createSignal<'branches' | 'stash'>('branches')
+  const [refsQuery, setRefsQuery] = createSignal('')
   const [loadingDiff, setLoadingDiff] = createSignal<string | null>(null)
   const [localActiveTab, setLocalActiveTab] = createSignal<'changes' | 'files'>('changes')
   const [collapseAllCount, setCollapseAllCount] = createSignal(0)
@@ -121,6 +134,39 @@ export function GitPanel(props: GitPanelProps) {
     }
     const nextStatus = await window.openpi.git.getStatus()
     if (nextStatus && mounted) setStatus(nextStatus)
+  }
+
+  const loadRefs = async () => {
+    setRefsLoading(true)
+    setRefsMessage(null)
+    try {
+      const nextRefs = await window.openpi.git.getRefs()
+      if (mounted && nextRefs) setRefs(nextRefs)
+    } catch (err) {
+      if (mounted) setRefsMessage(String(err))
+    } finally {
+      if (mounted) setRefsLoading(false)
+    }
+  }
+
+  const toggleRefs = async () => {
+    const nextOpen = !refsOpen()
+    setRefsOpen(nextOpen)
+    if (nextOpen) await loadRefs()
+  }
+
+  const handleCheckoutBranch = async (branch: GitBranchRef) => {
+    if (branch.current || branch.remote) return
+    setRefsMessage(null)
+    const result = await window.openpi.git.checkoutBranch(branch.name)
+    if (!mounted || !result) return
+    setRefsMessage(result.output)
+    const nextStatus = await window.openpi.git.getStatus()
+    if (nextStatus) setStatus(nextStatus)
+    if (result.ok) {
+      setRefsOpen(false)
+      await loadRefs()
+    }
   }
 
   const handleSync = async (action: GitSyncAction) => {
@@ -207,6 +253,18 @@ export function GitPanel(props: GitPanelProps) {
       !current || current.operation !== 'none' || current.hasConflicts || syncingAction() !== null
     )
   })
+  const branchMatchesQuery = (branch: GitBranchRef) =>
+    branch.name.toLowerCase().includes(refsQuery().trim().toLowerCase())
+  const localBranches = createMemo(
+    () => refs()?.branches.filter((branch) => !branch.remote && branchMatchesQuery(branch)) ?? []
+  )
+  const remoteBranches = createMemo(
+    () => refs()?.branches.filter((branch) => branch.remote && branchMatchesQuery(branch)) ?? []
+  )
+  const visibleStashes = createMemo(() => {
+    const query = refsQuery().trim().toLowerCase()
+    return refs()?.stashes.filter((stash) => stash.message.toLowerCase().includes(query)) ?? []
+  })
 
   return (
     <aside class="git-panel" style={props.style}>
@@ -256,7 +314,9 @@ export function GitPanel(props: GitPanelProps) {
 
         <Show when={status()}>
           <div class="git-status-strip">
-            <span class="git-branch-chip">{branchLabel()}</span>
+            <button type="button" class="git-branch-chip" onClick={() => void toggleRefs()}>
+              {branchLabel()}
+            </button>
             <Show when={syncLabel()}>
               <span class="git-upstream-chip">{syncLabel()}</span>
             </Show>
@@ -312,6 +372,90 @@ export function GitPanel(props: GitPanelProps) {
               </div>
             </div>
           </div>
+          <Show when={refsOpen()}>
+            <div class="git-refs-picker">
+              <div class="git-refs-tabs">
+                <button
+                  type="button"
+                  class={refsTab() === 'branches' ? 'is-active' : ''}
+                  onClick={() => setRefsTab('branches')}
+                >
+                  Branches
+                </button>
+                <button
+                  type="button"
+                  class={refsTab() === 'stash' ? 'is-active' : ''}
+                  onClick={() => setRefsTab('stash')}
+                >
+                  Stash
+                  <Show when={refs()?.stashes.length}> ({refs()?.stashes.length})</Show>
+                </button>
+              </div>
+              <input
+                class="git-refs-search"
+                value={refsQuery()}
+                onInput={(event) => setRefsQuery(event.currentTarget.value)}
+                placeholder={refsTab() === 'branches' ? 'Switch branch…' : 'Search stashes…'}
+              />
+              <Show when={refsLoading()}>
+                <div class="git-refs-empty">Loading refs…</div>
+              </Show>
+              <Show when={!refsLoading() && refsTab() === 'branches'}>
+                <div class="git-refs-list">
+                  <Show when={localBranches().length === 0 && remoteBranches().length === 0}>
+                    <div class="git-refs-empty">No branches found</div>
+                  </Show>
+                  <Show when={localBranches().length > 0}>
+                    <div class="git-refs-group-title">Local</div>
+                    <For each={localBranches()}>
+                      {(branch) => (
+                        <button
+                          type="button"
+                          class="git-ref-row"
+                          disabled={branch.current}
+                          onClick={() => void handleCheckoutBranch(branch)}
+                        >
+                          <span>{branch.current ? '✓' : ''}</span>
+                          <span>{branch.name}</span>
+                          <span>{branch.commit.slice(0, 7)}</span>
+                        </button>
+                      )}
+                    </For>
+                  </Show>
+                  <Show when={remoteBranches().length > 0}>
+                    <div class="git-refs-group-title">Remote</div>
+                    <For each={remoteBranches()}>
+                      {(branch) => (
+                        <button type="button" class="git-ref-row" disabled>
+                          <span />
+                          <span>{branch.name.replace(/^remotes\//, '')}</span>
+                          <span>{branch.commit.slice(0, 7)}</span>
+                        </button>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </Show>
+              <Show when={!refsLoading() && refsTab() === 'stash'}>
+                <div class="git-refs-list">
+                  <Show when={visibleStashes().length === 0}>
+                    <div class="git-refs-empty">No stashes found</div>
+                  </Show>
+                  <For each={visibleStashes()}>
+                    {(stash) => (
+                      <div class="git-stash-row">
+                        <span>{`stash@{${stash.index}}`}</span>
+                        <span>{stash.message}</span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <Show when={refsMessage()}>
+                <div class="git-sync-message">{refsMessage()}</div>
+              </Show>
+            </div>
+          </Show>
           <Show when={syncMessage()}>
             <div class="git-sync-message">{syncMessage()}</div>
           </Show>

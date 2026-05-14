@@ -60,6 +60,8 @@ export const IPC = {
   GIT_COMMIT: 'openpi:git-commit',
   GIT_DISCARD: 'openpi:git-discard',
   GIT_SYNC: 'openpi:git-sync',
+  GIT_REFS: 'openpi:git-refs',
+  GIT_CHECKOUT_BRANCH: 'openpi:git-checkout-branch',
   GIT_FILE_TREE: 'openpi:git-file-tree',
   GIT_PANEL_MOUNTED: 'openpi:git-panel-mounted',
   READ_FILE: 'openpi:read-file',
@@ -648,6 +650,39 @@ export const gitSyncResultSchema = z.object({
   output: z.string(),
 })
 export type GitSyncResult = z.infer<typeof gitSyncResultSchema>
+
+export const gitBranchRefSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  commit: z.string(),
+  current: z.boolean(),
+  remote: z.boolean(),
+})
+export type GitBranchRef = z.infer<typeof gitBranchRefSchema>
+
+export const gitStashEntrySchema = z.object({
+  index: z.number(),
+  hash: z.string(),
+  message: z.string(),
+  date: z.string(),
+})
+export type GitStashEntry = z.infer<typeof gitStashEntrySchema>
+
+export const gitRefsResultSchema = z.object({
+  branches: z.array(gitBranchRefSchema),
+  stashes: z.array(gitStashEntrySchema),
+})
+export type GitRefsResult = z.infer<typeof gitRefsResultSchema>
+
+export const gitCheckoutBranchSchema = z.object({ branch: z.string().min(1) })
+export type GitCheckoutBranchRequest = z.infer<typeof gitCheckoutBranchSchema>
+
+export const gitCheckoutBranchResultSchema = z.object({
+  ok: z.boolean(),
+  branch: z.string(),
+  output: z.string(),
+})
+export type GitCheckoutBranchResult = z.infer<typeof gitCheckoutBranchResultSchema>
 
 // ─── File tree schema ──────────────────────────────────────────────────
 

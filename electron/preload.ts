@@ -14,7 +14,9 @@ import type {
   FileContentHit,
   FileTreeResult,
   GitBranchInfo,
+  GitCheckoutBranchResult,
   GitFileDiff,
+  GitRefsResult,
   GitStatusResult,
   GitSyncAction,
   GitSyncResult,
@@ -190,6 +192,9 @@ const api = {
       ipcRenderer.invoke(IPC.GIT_DISCARD, { path: filePath }),
     sync: (action: GitSyncAction): Promise<GitSyncResult | null> =>
       ipcRenderer.invoke(IPC.GIT_SYNC, { action }),
+    getRefs: (): Promise<GitRefsResult | null> => ipcRenderer.invoke(IPC.GIT_REFS),
+    checkoutBranch: (branch: string): Promise<GitCheckoutBranchResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_CHECKOUT_BRANCH, { branch }),
     onStatusChanged: (cb: (status: GitStatusResult) => void) => {
       const handler = (_: Electron.IpcRendererEvent, s: GitStatusResult) => cb(s)
       ipcRenderer.on(IPC.GIT_STATUS_CHANGED, handler)

@@ -14,9 +14,13 @@ import simpleGit from 'simple-git'
 import type {
   FileTreeNode,
   FileTreeResult,
+  GitBranchRef,
   GitChangedFile,
+  GitCheckoutBranchResult,
   GitFileDiff,
   GitOperation,
+  GitRefsResult,
+  GitStashEntry,
   GitStatusResult,
   GitSyncAction,
   GitSyncResult,
@@ -339,6 +343,53 @@ export async function commitFiles(
 /** Discard working-tree changes for a tracked file (git checkout -- <file>) */
 export async function discardFile(cwd: string, filePath: string): Promise<void> {
   await simpleGit({ baseDir: cwd }).checkout(['--', filePath])
+}
+
+export async function getGitRefs(cwd: string): Promise<GitRefsResult> {
+  const git = simpleGit({ baseDir: cwd })
+  const [branchSummary, stashSummary] = await Promise.all([
+    git.branch(['-a']),
+    git.stashList().catch(() => ({ all: [] })),
+  ])
+
+  const branches: GitBranchRef[] = Object.values(branchSummary.branches).map((branch) => ({
+    name: branch.name,
+    label: branch.label,
+    commit: branch.commit,
+    current: branch.current,
+    remote: branch.name.startsWith('remotes/') || branch.name.startsWith('origin/'),
+  }))
+
+  const stashes: GitStashEntry[] = stashSummary.all.map((stash, index) => ({
+    index,
+    hash: stash.hash,
+    message: stash.message,
+    date: stash.date,
+  }))
+
+  return { branches, stashes }
+}
+
+export async function checkoutBranch(
+  cwd: string,
+  branch: string
+): Promise<GitCheckoutBranchResult> {
+  const git = simpleGit({ baseDir: cwd })
+  const status = await getGitStatus(cwd)
+  if (status.files.length > 0) {
+    return {
+      ok: false,
+      branch,
+      output: 'Commit, stash, or discard local changes before switching branches.',
+    }
+  }
+
+  try {
+    await git.checkout(branch)
+    return { ok: true, branch, output: `Switched to ${branch}.` }
+  } catch (error) {
+    return { ok: false, branch, output: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 export async function syncRemote(cwd: string, action: GitSyncAction): Promise<GitSyncResult> {
