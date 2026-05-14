@@ -57,22 +57,11 @@ jobs:
         run: npm run build
 
       - name: Package installers
-        env:
-          # macOS notarization — set these secrets in the repository to enable notarization.
-          # Required secrets: APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID,
-          # CSC_LINK (base64-encoded .p12), CSC_KEY_PASSWORD
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # When Apple secrets are set, enable notarization.
-          # electron-builder reads APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID
-          # for notarization automatically when CSC_IDENTITY_AUTO_DISCOVERY is true.
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' && 'true' || 'false' }}
-          # Windows code signing — set WIN_CSC_LINK (base64 .pfx) and WIN_CSC_KEY_PASSWORD.
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        # Unsigned beta build. To enable macOS notarization, add repository secrets:
+        # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, CSC_LINK (base64 .p12),
+        # CSC_KEY_PASSWORD — and replace this step with a conditional signing env block.
+        # Do NOT pass CSC_LINK/APPLE_ID as empty env vars: electron-builder treats any
+        # non-unset CSC_LINK as "certificate configured" and fails signing on empty values.
         run: npx electron-builder --config electron-builder.json --publish never
 
       - name: Verify packaged artifacts (minimum size checks)
