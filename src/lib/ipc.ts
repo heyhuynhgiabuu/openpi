@@ -586,10 +586,18 @@ export const gitChangedFileSchema = z.object({
 })
 export type GitChangedFile = z.infer<typeof gitChangedFileSchema>
 
+export const gitOperationSchema = z.enum(['none', 'merge', 'rebase', 'cherry-pick'])
+export type GitOperation = z.infer<typeof gitOperationSchema>
+
 export const gitStatusResultSchema = z.object({
   branch: z.string(),
+  upstream: z.string().nullable(),
   ahead: z.number(),
   behind: z.number(),
+  isDetached: z.boolean(),
+  hasConflicts: z.boolean(),
+  operation: gitOperationSchema,
+  stashCount: z.number(),
   totalAdded: z.number(),
   totalRemoved: z.number(),
   files: z.array(gitChangedFileSchema),

@@ -16,6 +16,7 @@ import type {
   FileTreeResult,
   GitChangedFile,
   GitFileDiff,
+  GitOperation,
   GitStatusResult,
   WorkspaceSummaryInfo,
 } from '../src/lib/ipc'
@@ -74,23 +75,53 @@ export async function getWorkspaceSummary(cwd: string): Promise<WorkspaceSummary
 // ─── Status ────────────────────────────────────────────────────────────────
 
 function effectiveStatus(index: string, workingDir: string): GitChangedFile['status'] {
+  if (index === 'U' || workingDir === 'U') return 'U'
+
   // Prefer staged status; fall back to working-dir status.
   const s = index !== ' ' && index !== '?' && index !== '' ? index : workingDir
   if (s === 'A') return 'A'
   if (s === 'D') return 'D'
   if (s === 'R') return 'R'
   if (s === '?') return '?'
-  if (s === 'U') return 'U'
   return 'M'
+}
+
+function resolveGitDir(cwd: string, gitDir: string): string {
+  return path.isAbsolute(gitDir) ? gitDir : path.resolve(cwd, gitDir)
+}
+
+function gitFileExists(gitDir: string, name: string): boolean {
+  return fs.existsSync(path.join(gitDir, name))
+}
+
+function gitDirExists(gitDir: string, name: string): boolean {
+  try {
+    return fs.statSync(path.join(gitDir, name)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+async function detectGitOperation(cwd: string): Promise<GitOperation> {
+  const git = simpleGit({ baseDir: cwd })
+  const rawGitDir = (await git.raw(['rev-parse', '--git-dir']).catch(() => '.git')).trim()
+  const gitDir = resolveGitDir(cwd, rawGitDir)
+
+  if (gitFileExists(gitDir, 'MERGE_HEAD')) return 'merge'
+  if (gitDirExists(gitDir, 'rebase-merge') || gitDirExists(gitDir, 'rebase-apply')) return 'rebase'
+  if (gitFileExists(gitDir, 'CHERRY_PICK_HEAD')) return 'cherry-pick'
+  return 'none'
 }
 
 export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
   const git = simpleGit({ baseDir: cwd })
 
-  const [status, unstagedSummary, stagedSummary] = await Promise.all([
+  const [status, unstagedSummary, stagedSummary, operation, stashList] = await Promise.all([
     git.status(),
     git.diffSummary().catch(() => null),
     git.diffSummary(['--staged']).catch(() => null),
+    detectGitOperation(cwd),
+    git.stashList().catch(() => ({ total: 0 })),
   ])
 
   // Build per-file line-count maps
@@ -132,9 +163,14 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
   const totalRemoved = files.reduce((s, f) => s + f.removed, 0)
 
   return {
-    branch: status.current ?? '',
+    branch: status.current ?? (status.detached ? 'HEAD' : ''),
+    upstream: status.tracking ?? null,
     ahead: status.ahead ?? 0,
     behind: status.behind ?? 0,
+    isDetached: status.detached,
+    hasConflicts: status.conflicted.length > 0 || files.some((file) => file.status === 'U'),
+    operation,
+    stashCount: stashList.total,
     totalAdded,
     totalRemoved,
     files,

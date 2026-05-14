@@ -5049,7 +5049,40 @@ input::placeholder {
   color: var(--ash);
 }
 
-/* .git-panel-branch removed — branch summary moved to TopBar badge */
+.git-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-height: 20px;
+}
+
+.git-branch-chip,
+.git-upstream-chip,
+.git-meta-chip,
+.git-warning-chip {
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--ash);
+  background: var(--surface-soft);
+}
+
+.git-branch-chip {
+  color: var(--graphite);
+}
+
+.git-warning-chip {
+  color: #fb923c;
+  border-color: rgba(251, 146, 60, 0.35);
+  background: rgba(251, 146, 60, 0.08);
+}
+
 .git-delta-add {
   color: #4ade80;
 }
@@ -5073,6 +5106,19 @@ input::placeholder {
 
 .git-section {
   margin-top: 2px;
+}
+
+.git-worktree-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  color: var(--ash);
+}
+
+.git-worktree-actions .git-stage-all-btn {
+  margin-left: auto;
 }
 
 .git-section-title {
@@ -5113,7 +5159,6 @@ input::placeholder {
   padding: 4px 10px;
   background: transparent;
   border: none;
-  cursor: pointer;
   text-align: left;
   font-size: 12px;
   color: var(--graphite);
@@ -5128,18 +5173,41 @@ input::placeholder {
   cursor: wait;
 }
 
+.git-file-open-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-file-open-btn:focus-visible,
+.git-stage-check:focus-visible {
+  outline: 1px solid var(--hairline-strong);
+  outline-offset: 2px;
+}
+
 .git-stage-check {
   flex-shrink: 0;
   width: 14px;
   height: 14px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--hairline-strong);
   border-radius: 2px;
   font-size: 9px;
+  line-height: 1;
   cursor: pointer;
   color: var(--ash);
+  background: transparent;
 }
 .git-stage-check:hover {
   border-color: var(--graphite);

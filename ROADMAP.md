@@ -350,6 +350,44 @@ Acceptance criteria:
 - `@pierre/diffs` can be swapped via a local adapter without touching git logic
 - Hunk accept/reject correctly applies or reverts the specific hunk
 
+### Comprehensive Git Workflow Roadmap (Zed-style reference, adapted)
+
+**Goal:** make OpenPi's Git surface mature enough for agent-assisted development: inspect history, understand branch/remote state, review agent edits, stage safely, commit cleanly, and sync deliberately without leaving the workbench. Zed is the interaction reference, but OpenPi must adapt it around agent safety, main-owned Git authority, and review-before-commit workflows.
+
+**Brutal screenshot audit — what is worth copying:**
+- Zed's Git graph works because history, branch labels, author/date/short SHA, selected commit details, changed-file list, and `View on GitHub` are visible in one flow; OpenPi needs that same traceability before users trust agent commits.
+- Branch and stash pickers are compact and keyboard-friendly: `Branches` / `Stash` tabs, search-first switching, current-branch checkmark, remote rows, and empty stash state. OpenPi should copy the workflow, not the exact visual density.
+- The right source-control dock has strong state signaling: empty `No changes to commit`, disabled `Stage All`, branch chip, fetch/sync dropdown, commit message box, and commit-mode dropdown. OpenPi should keep these affordances because they reduce accidental Git actions.
+- Remote operations are explicit menu choices (`Fetch`, `Fetch From`, `Pull`, `Pull (Rebase)`, `Push`, `Push To`, `Force Push`) with shortcuts shown. OpenPi should expose the choices but gate destructive/high-risk actions.
+- Commit actions include `Commit Tracked`, `Amend`, and `Signoff`; OpenPi should support these as deliberate modes only after staged/tracked file semantics are clear.
+
+**What not to copy blindly:**
+- Do not turn OpenPi into a full Zed/VS Code clone: no broad source editor, no always-primary history graph, and no Git feature that competes with the agent conversation unless it improves review/commit safety.
+- Do not expose `Force Push`, checkout, reset, discard, amend, or rebase as one-click actions; require confirmation, clear affected branch/remote labels, and main-process policy checks.
+- Do not let renderer code compute Git truth or execute Git commands. Renderer shows intent only; Electron main owns status, refs, diffs, staging, commits, sync, and conflict detection.
+- Do not hide empty/error states. `No changes`, `No stashes`, detached HEAD, missing upstream, merge/rebase in progress, and auth failures need explicit UI states.
+
+**Build in thin slices:**
+1. **Git read model v2:** main-owned snapshot containing worktree status, staged vs unstaged files, branch, upstream, ahead/behind counts, remotes, tags, stash count, merge/rebase/cherry-pick state, and last fetch time.
+2. **Source-control panel v2:** grouped `Staged` / `Unstaged` / `Untracked` sections, per-file stage/unstage/discard intent buttons, `Stage All` disabled when unsafe, empty-state copy, and visible branch/upstream/ahead-behind status.
+3. **Commit composer v2:** commit summary/body fields, author preview, signoff toggle, amend mode, commit tracked vs commit staged distinction, validation for empty messages/no staged files, and optional AI draft commit message based on the selected diff.
+4. **Remote sync menu:** fetch, fetch-from, pull, pull-rebase, push, push-to, and force-push entries with disabled states, shortcut hints, progress output, and protected-branch/high-risk confirmation gates.
+5. **Branch/stash picker:** search-first branch switcher with local/remote grouping, current branch checkmark, create branch action, checkout confirmation for dirty worktrees, stash list/apply/pop/drop with empty/error states.
+6. **History graph:** searchable commit list with simple graph lanes, branch/remote labels, author/date/short SHA columns, selected commit details, changed files with stats, and GitHub/open-remote links when a remote URL is recognized.
+7. **Review-first diff integration:** selected history commit or changed file opens the split diff viewer; hunk stage/unstage/revert operates through main-owned patch application with preview and rollback on failure.
+8. **Conflict and operation states:** show merge/rebase/cherry-pick in progress, conflicted files, continue/abort intent buttons, and clear blockers instead of pretending normal commit flow still applies.
+9. **Agent-aware Git workflow:** after a Pi turn modifies files, pin the changed-file set, offer `Review agent changes`, optionally generate a commit message from the diff, and never commit files outside the user's selected scope.
+
+**Acceptance criteria:**
+- Worktree status matches `git status --porcelain=v2 --branch` and staged/unstaged sections match `git diff --name-status` / `git diff --cached --name-status` fixture repos.
+- Ahead/behind, upstream, remotes, and branch labels match `git branch -vv` and `git for-each-ref` fixtures, including detached HEAD and no-upstream cases.
+- Remote sync actions surface progress and failures; force push, rebase, reset/discard, and checkout with dirty worktree require explicit confirmation.
+- Commit actions never use `git add .` or `git add -A`; tests assert only selected paths are staged or committed.
+- History graph can open selected commit details and changed-file diffs without blocking the live source-control panel.
+- Stash and branch pickers have keyboard search, empty states, and safe dirty-worktree behavior.
+- Agent-generated commit messages are suggestions only; user can inspect diff and edit before committing.
+- Renderer has no Git execution path; all Git tests exercise Electron-main modules or pure adapters with fixture repos.
+
 ---
 
 ## Phase 6 — Security Hardening + Settings + Release
