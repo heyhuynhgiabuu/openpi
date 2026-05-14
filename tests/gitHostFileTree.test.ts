@@ -107,7 +107,7 @@ describe('getGitStatus', () => {
     initRepo(repo)
     writeFileSync(join(repo, 'README.md'), 'initial\n')
     commitPaths(repo, 'initial', ['README.md'])
-    runGit(root, ['init', '--bare', remote])
+    runGit(root, ['init', '--bare', '-b', 'main', remote])
     runGit(repo, ['remote', 'add', 'origin', remote])
     runGit(repo, ['push', '-u', 'origin', 'main'])
 
@@ -167,7 +167,7 @@ describe('syncRemote', () => {
     initRepo(repo)
     writeFileSync(join(repo, 'README.md'), 'initial\n')
     commitPaths(repo, 'initial', ['README.md'])
-    runGit(root, ['init', '--bare', remote])
+    runGit(root, ['init', '--bare', '-b', 'main', remote])
     runGit(repo, ['remote', 'add', 'origin', remote])
     runGit(repo, ['push', '-u', 'origin', 'main'])
 
@@ -209,7 +209,7 @@ describe('git refs and branch checkout', () => {
     runGit(repo, ['checkout', '-b', 'feature/test'])
     writeFileSync(join(repo, 'feature.txt'), 'feature\n')
     commitPaths(repo, 'feature', ['feature.txt'])
-    runGit(root, ['init', '--bare', remote])
+    runGit(root, ['init', '--bare', '-b', 'main', remote])
     runGit(repo, ['remote', 'add', 'origin', remote])
     runGit(repo, ['push', '-u', 'origin', 'feature/test'])
 
