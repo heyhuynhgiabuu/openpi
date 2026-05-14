@@ -106,8 +106,9 @@ async function runPackageOperation(options: {
 export async function discoverCustomizations(options: {
   cwd: string | null
   agentDir: string
+  workspaceTrusted: boolean
 }): Promise<CustomizationsInventory> {
-  const { cwd, agentDir } = options
+  const { cwd, agentDir, workspaceTrusted } = options
   if (!cwd) {
     return { cwd: null, workspaceTrusted: false, items: [], diagnostics: [] }
   }
@@ -134,7 +135,9 @@ export async function discoverCustomizations(options: {
     })
   })
 
-  items.push(...discoverExtensionItems({ cwd, agentDir, settingsManager, diagnostics }))
+  items.push(
+    ...discoverExtensionItems({ cwd, agentDir, settingsManager, diagnostics, workspaceTrusted })
+  )
 
   const skills = loader.getSkills()
   diagnostics.push(...skills.diagnostics.map(toDiagnostic))
@@ -224,13 +227,10 @@ export async function discoverCustomizations(options: {
   }
 
   const dedupedItems = dedupeItems(items)
-  const hasProjectExtensions = dedupedItems.some(
-    (item) => item.type === 'extensions' && item.scope === 'project'
-  )
 
   return {
     cwd,
-    workspaceTrusted: !hasProjectExtensions,
+    workspaceTrusted,
     items: dedupedItems,
     diagnostics,
   }
@@ -241,8 +241,9 @@ function discoverExtensionItems(options: {
   agentDir: string
   settingsManager: SettingsManager
   diagnostics: CustomizationDiagnostic[]
+  workspaceTrusted: boolean
 }): CustomizationItem[] {
-  const { cwd, agentDir, settingsManager, diagnostics } = options
+  const { cwd, agentDir, settingsManager, diagnostics, workspaceTrusted } = options
   const items: CustomizationItem[] = []
 
   const globalSettings = settingsManager.getGlobalSettings()
@@ -254,6 +255,7 @@ function discoverExtensionItems(options: {
       origin: 'top-level',
       source: 'user-global',
       diagnostics,
+      workspaceTrusted,
     })
   )
   items.push(
@@ -262,6 +264,7 @@ function discoverExtensionItems(options: {
       origin: 'top-level',
       source: 'project-local',
       diagnostics,
+      workspaceTrusted,
     })
   )
 
@@ -273,6 +276,7 @@ function discoverExtensionItems(options: {
         source: 'settings.json',
         diagnostics,
         configuredPath,
+        workspaceTrusted,
       })
     )
   }
@@ -285,6 +289,7 @@ function discoverExtensionItems(options: {
         source: '.pi/settings.json',
         diagnostics,
         configuredPath,
+        workspaceTrusted,
       })
     )
   }
@@ -300,6 +305,7 @@ function collectExtensionPath(
     source: string
     diagnostics: CustomizationDiagnostic[]
     configuredPath?: string
+    workspaceTrusted: boolean
   }
 ): CustomizationItem[] {
   const resolvedPath = path.resolve(targetPath)
@@ -322,17 +328,16 @@ function collectExtensionPath(
     name: extensionName(filePath),
     description:
       options.scope === 'project'
-        ? 'Project-local executable Pi extension. OpenPi lists it but does not load it until the trust gate exists.'
-        : 'Executable Pi extension. OpenPi lists it read-only in this Phase 2 slice.',
+        ? 'Project-local executable Pi extension.'
+        : 'Executable Pi extension.',
     path: filePath,
     scope: options.scope,
     origin: options.origin,
     source: options.source,
-    enabled: false,
-    warning:
-      options.scope === 'project'
-        ? 'Project-local extensions have full system permissions and require explicit workspace trust before enabling.'
-        : 'Extensions have full system permissions; execution remains disabled in OpenPi for this slice.',
+    enabled: options.workspaceTrusted,
+    warning: !options.workspaceTrusted
+      ? 'Extensions have full system permissions and require workspace trust before OpenPi loads them.'
+      : undefined,
   }))
 }
 

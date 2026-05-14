@@ -30,6 +30,7 @@ export type SidecarCommand =
       sessionFile?: string
       forkEntryId?: string
       requestId?: string
+      workspaceTrusted?: boolean
     }
   | { type: 'prompt'; text: string }
   | { type: 'steer'; text: string }
@@ -97,6 +98,7 @@ let _authStorage: ReturnType<typeof AuthStorage.create> | null = null
 let _modelRegistry: ReturnType<typeof ModelRegistry.create> | null = null
 let _cachedResourceLoader: {
   cwd: string
+  workspaceTrusted: boolean
   loader: InstanceType<typeof DefaultResourceLoader>
 } | null = null
 const _pendingOAuthPrompts = new Map<string, (v: string) => void>()
@@ -163,7 +165,12 @@ function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
 
 async function startSession(
   cwd: string,
-  opts: { sessionFile?: string; forkEntryId?: string; requestId?: string } = {}
+  opts: {
+    sessionFile?: string
+    forkEntryId?: string
+    requestId?: string
+    workspaceTrusted?: boolean
+  } = {}
 ): Promise<void> {
   // Dispose previous session
   if (state) {
@@ -175,7 +182,11 @@ async function startSession(
   const agentDir = getAgentDir()
   const authStorage = getAuthStorage()
   const modelRegistry = getModelRegistry()
-  const settingsManager = SettingsManager.create(cwd, agentDir)
+  const fileSettingsManager = SettingsManager.create(cwd, agentDir)
+  const workspaceTrusted = opts.workspaceTrusted ?? false
+  const settingsManager = workspaceTrusted
+    ? fileSettingsManager
+    : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
   let sessionManager = opts.sessionFile
     ? SessionManager.open(opts.sessionFile, undefined, cwd)
     : SessionManager.create(cwd)
@@ -188,16 +199,19 @@ async function startSession(
   }
 
   // Cache resource loader per workspace — avoid re-reading all skills/themes on every session switch
-  if (!_cachedResourceLoader || _cachedResourceLoader.cwd !== cwd) {
+  if (
+    !_cachedResourceLoader ||
+    _cachedResourceLoader.cwd !== cwd ||
+    _cachedResourceLoader.workspaceTrusted !== workspaceTrusted
+  ) {
     const loader = new DefaultResourceLoader({
       cwd,
       agentDir,
       settingsManager,
-      // Extensions are intentionally enabled — packages listed in settings.json
-      // are user-configured and trusted (same trust model as Pi CLI). Extensions
-      // run in the isolated utility process with full Node.js access, identical
-      // to how Pi CLI runs them. The Pi SDK uses jiti for TypeScript transpilation,
-      // so .ts extension entry points work natively.
+      noExtensions: !workspaceTrusted,
+      // Extensions are executable Node.js code. In untrusted workspaces OpenPi
+      // uses global settings only and disables extension loading until the user
+      // grants workspace trust from the desktop UI.
     })
     // loader.reload() installs packages listed in settings via `npm install -g`.
     // A missing or private npm package (e.g. one still in development) causes npm
@@ -217,7 +231,7 @@ async function startSession(
         '[packages] Check ~/.pi/agent/settings.json — remove or fix broken "packages" entries, or set "npmCommand" to point to your npm binary.'
       )
     }
-    _cachedResourceLoader = { cwd, loader }
+    _cachedResourceLoader = { cwd, workspaceTrusted, loader }
   }
 
   const { session } = await createAgentSession({
@@ -309,6 +323,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
           sessionFile: cmd.sessionFile,
           forkEntryId: cmd.forkEntryId,
           requestId: cmd.requestId,
+          workspaceTrusted: cmd.workspaceTrusted,
         })
       } catch (err) {
         send({

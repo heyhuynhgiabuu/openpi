@@ -49,6 +49,7 @@ import type {
   ThemeTokens,
   WorkspaceInfo,
   WorkspaceSummaryInfo,
+  WorkspaceTrustResult,
 } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 
@@ -108,6 +109,9 @@ const api = {
 
   getWorkspaceSummary: (cwd: string): Promise<WorkspaceSummaryInfo> =>
     ipcRenderer.invoke(IPC.GET_WORKSPACE_SUMMARY, { cwd }),
+
+  setWorkspaceTrust: (cwd: string, trusted: boolean): Promise<WorkspaceTrustResult> =>
+    ipcRenderer.invoke(IPC.SET_WORKSPACE_TRUST, { cwd, trusted }),
 
   // ── Customizations ────────────────────────────────────────────────────────
   getCustomizations: (): Promise<CustomizationsInventory> =>

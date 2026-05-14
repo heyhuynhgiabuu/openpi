@@ -10,6 +10,7 @@ import type {
   SessionListItem,
   SessionListOptions,
   WorkspaceInfo,
+  WorkspaceTrustResult,
 } from '../src/lib/ipc'
 
 type FileEntry = Record<string, unknown> & { type: string }
@@ -105,6 +106,23 @@ export class SessionIndexStore {
         lastOpenedAt: new Date().toISOString(),
       })
     return workspacePath
+  }
+
+  setWorkspaceTrust(cwd: string, trusted: boolean): WorkspaceTrustResult {
+    const workspacePath = this.upsertWorkspace(cwd)
+    const trustedAt = trusted ? new Date().toISOString() : null
+    this.db
+      .prepare('update workspaces set trusted_at = @trustedAt where path = @path')
+      .run({ path: workspacePath, trustedAt })
+    return { cwd: workspacePath, trusted, trustedAt }
+  }
+
+  isWorkspaceTrusted(cwd: string): boolean {
+    const workspacePath = canonicalizePath(cwd)
+    const row = this.db
+      .prepare('select trusted_at from workspaces where path = ?')
+      .get(workspacePath) as { trusted_at: string | null } | undefined
+    return Boolean(row?.trusted_at)
   }
 
   getLastWorkspace(): string | null {

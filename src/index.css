@@ -3615,6 +3615,21 @@ input::placeholder {
   font-size: 13px;
   line-height: 1.4;
 }
+.trust-banner-action {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid rgba(234, 215, 177, 0.28);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--ink);
+  background: rgba(234, 215, 177, 0.1);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.trust-banner-action:hover {
+  background: rgba(234, 215, 177, 0.16);
+}
 .diagnostics-panel {
   padding: 14px 16px;
 }

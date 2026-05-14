@@ -27,6 +27,7 @@ export const IPC = {
   NEW_SESSION: 'openpi:new-session',
   GET_GIT_BRANCH: 'openpi:get-git-branch',
   GET_WORKSPACE_SUMMARY: 'openpi:get-workspace-summary',
+  SET_WORKSPACE_TRUST: 'openpi:set-workspace-trust',
   GET_CUSTOMIZATIONS: 'openpi:get-customizations',
   INSTALL_PACKAGE: 'openpi:install-package',
   REMOVE_PACKAGE: 'openpi:remove-package',
@@ -261,6 +262,19 @@ export const workspaceSummaryInfoSchema = z.object({
   lastModifiedAt: z.string().nullable(),
 })
 export type WorkspaceSummaryInfo = z.infer<typeof workspaceSummaryInfoSchema>
+
+export const workspaceTrustRequestSchema = z.object({
+  cwd: z.string().min(1),
+  trusted: z.boolean(),
+})
+export type WorkspaceTrustRequest = z.infer<typeof workspaceTrustRequestSchema>
+
+export const workspaceTrustResultSchema = z.object({
+  cwd: z.string(),
+  trusted: z.boolean(),
+  trustedAt: z.string().nullable(),
+})
+export type WorkspaceTrustResult = z.infer<typeof workspaceTrustResultSchema>
 
 // ─── Customizations inventory ───────────────────────────────────────────────
 

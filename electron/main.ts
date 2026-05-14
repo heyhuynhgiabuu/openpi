@@ -42,6 +42,7 @@ import type {
   SkillItem,
   WorkspaceInfo,
   WorkspaceSummaryInfo,
+  WorkspaceTrustResult,
 } from '../src/lib/ipc'
 import {
   appInfoSchema,
@@ -100,6 +101,8 @@ import {
   unarchiveSessionsRequestSchema,
   workspaceSummaryInfoSchema,
   workspaceSummaryRequestSchema,
+  workspaceTrustRequestSchema,
+  workspaceTrustResultSchema,
   writeFileRequestSchema,
 } from '../src/lib/ipc'
 import {
@@ -634,6 +637,7 @@ async function startSession(cwd: string, options: StartSessionOptions = {}): Pro
     type: 'start_session',
     requestId,
     cwd: workspacePath,
+    workspaceTrusted: sessionIndex?.isWorkspaceTrusted(workspacePath) ?? false,
     sessionFile: options.sessionFile,
     forkEntryId: options.forkEntryId,
   })
@@ -931,11 +935,19 @@ function registerHandlers(): void {
     }
   )
 
+  ipcMain.handle(IPC.SET_WORKSPACE_TRUST, (_event, raw: unknown): WorkspaceTrustResult => {
+    const { cwd, trusted } = workspaceTrustRequestSchema.parse(raw)
+    if (!sessionIndex) throw new Error('Session index is not ready')
+    return workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
+  })
+
   ipcMain.handle(IPC.GET_CUSTOMIZATIONS, async (): Promise<CustomizationsInventory> => {
     const { discoverCustomizations } = await getCustomizationsHost()
+    const cwd = state?.cwd ?? deferredWorkspace
     const inventory = await discoverCustomizations({
-      cwd: state?.cwd ?? deferredWorkspace,
+      cwd,
       agentDir: getAgentDir(),
+      workspaceTrusted: cwd ? (sessionIndex?.isWorkspaceTrusted(cwd) ?? false) : false,
     })
     return customizationsInventorySchema.parse(inventory)
   })

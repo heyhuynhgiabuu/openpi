@@ -142,6 +142,16 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
 
   const diagnostics = createMemo(() => inventory()?.diagnostics ?? [])
 
+  const trustWorkspace = async () => {
+    if (!props.cwd) return
+    try {
+      await window.openpi.setWorkspaceTrust(props.cwd, true)
+      await loadInventory()
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   return (
     <Dialog.Root open={props.open} onOpenChange={(isOpen) => !isOpen && props.onClose()}>
       <Dialog.Portal>
@@ -219,7 +229,13 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
           <div class="customizations-main">
             <main class="customizations-content">
               <div class={`customizations-page-shell customizations-page-shell-${activeType()}`}>
-                <Show when={activeType() === 'extensions' && projectExtensionCount() > 0}>
+                <Show
+                  when={
+                    activeType() === 'extensions' &&
+                    projectExtensionCount() > 0 &&
+                    inventory()?.workspaceTrusted === false
+                  }
+                >
                   <div class="trust-banner">
                     <Wrench size={16} />
                     <div>
@@ -227,9 +243,17 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                       <span>
                         {projectExtensionCount()} extension
                         {projectExtensionCount() === 1 ? '' : 's'} can execute arbitrary Node code.
-                        OpenPi lists them read-only until a workspace trust gate exists.
+                        OpenPi will not load workspace extensions until you explicitly trust this
+                        workspace.
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      class="trust-banner-action"
+                      onClick={() => void trustWorkspace()}
+                    >
+                      Trust workspace
+                    </button>
                   </div>
                 </Show>
 
