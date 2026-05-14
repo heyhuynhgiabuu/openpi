@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-05-15
+
+OpenPi v0.1.11 ships Phase 6: Trust, Policy, and Release Hardening — putting explicit security boundaries around Pi extensions, packages, file mutations, secrets, and release artifacts.
+
+### Added
+
+- **Workspace trust model** — new workspaces are untrusted by default; project-local extensions and packages are disabled until the user explicitly trusts the workspace (`a80e60c`). Trust state persisted in Electron-main–owned SQLite with an additive `trusted_at` column migration.
+- **Resource provenance inventory** — every Extension, Skill, Prompt, Theme, and Package now shows path, scope (global/project/package), origin, risk level (`high`/`medium`/`low`), and last-modified timestamp in the Customizations panel (`f5d09cb`).
+- **Extension/package enablement gates** — enabling project-local extensions displays a confirmation panel listing each extension path before trust is granted (`f328e4e`). Installing a Pi package shows a two-step confirmation with source, scope, and full-system-permissions warning before the install proceeds.
+- **Protected path policy** — Electron main blocks or confirms writes to sensitive locations including `~/.ssh`, `~/.gnupg`, Pi AuthStorage, shell profiles, `.gitconfig`, `.git/objects`, and paths outside the trusted workspace (`f5d09cb`). Git stage and commit paths are validated before reaching `simple-git`.
+- **High-risk mutation confirmations** — destructive shell commands (`rm -rf`, `git reset --hard`, `git clean`, force-push, rebase-abort, disk commands, `chmod 777`, `chown -R`) routed through Pi sidecar are intercepted and require Electron-main approval before forwarding (`c8a16b1`). Same gate applied to Git discard/revert, package install/remove, and workspace trust promotion.
+- **Secret storage and redaction** — `electron/secretRedact.ts` redacts GitHub tokens, Anthropic/OpenAI API keys, AWS access keys, Bearer auth headers, and generic env-var assignments from logs, IPC output, and diagnostics bundles (`f5d09cb`).
+- **Diagnostics export bundle** — General → Beta support diagnostics copies a redacted JSON bundle to clipboard with app/runtime/OS metadata, sidecar+session state, workspace trust, resource inventory, Git status, and SQLite file stats. Provider credentials owned by Pi AuthStorage are never read (`f328e4e`).
+- **MCP capability clarification** — extension security note explicitly states that MCP server integration requires a Pi extension or package; Pi does not natively embed MCP (`297f279`).
+- **SQLite durability hardening** — `PRAGMA synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000` applied on open; `wal_checkpoint(TRUNCATE)` on close; migration loop now covers all columns (`last_model`, `file_mtime`, `trusted_at`) so missing-column ALTER TABLE errors no longer crash cold starts (`f5d09cb`).
+- **Release CI hardening** — per-platform artifact size verification (≥1MB), SHA-256 checksum merging into `checksums.txt`, macOS notarization conditional on `CSC_LINK` secret, Windows signing conditional on `WIN_CSC_LINK`, Homebrew tap post-update verification (`f5d09cb`).
+
+### Changed
+
+- Settings pane adds Model & Thinking, Compaction, Retry, Message Delivery, UI, Terminal, Shell, Sessions, and Resources sections driven by a declarative field schema — replaces the previous minimal form.
+- `installPackage` / `removePackage` IPC handlers gate on Electron-main `confirmHighRiskMutation` dialog in addition to the renderer-side two-step confirmation.
+
+### Fixed
+
+- Cold-start SQLite crash when `last_model` or `file_mtime` columns were absent from an older DB.
+- Trust state not invalidating cached Pi resource loader — cache key now includes `workspaceTrusted` so session restart after trust grant picks up extensions correctly.
+
 ## [0.1.10] - 2026-05-14
 
 OpenPi v0.1.10 consolidates the CI hermetic fixes, packaged-app sidecar launch fix, Homebrew release automation, and Electron security upgrade.
