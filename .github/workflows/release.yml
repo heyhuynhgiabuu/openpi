@@ -74,6 +74,8 @@ jobs:
     name: Publish GitHub release
     needs: build
     runs-on: ubuntu-latest
+    env:
+      BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v5
@@ -102,9 +104,7 @@ jobs:
           files: dist-artifacts/**/*
 
       - name: Update Homebrew tap
-        if: ${{ secrets.BREW_TAP_TOKEN != '' }}
-        env:
-          BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
+        if: ${{ env.BREW_TAP_TOKEN != '' }}
         run: |
           DMG=$(find dist-artifacts -name "*-arm64.dmg" | head -1)
           if [ -z "$DMG" ]; then
