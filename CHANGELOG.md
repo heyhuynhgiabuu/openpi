@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-## [0.1.10] - 2026-05-14
-
-### Fixed
-
 - **CI: bare remote default branch** — `git init --bare` on ubuntu-latest defaults to `master`; tests now pass `-b main` explicitly so the bare remote's HEAD matches the branch we push (`19d670a`)
 - **CI: hermetic git identity** — pin `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars in the git integration test file so runners with no global git identity don't fail commits (`6558204`)
 
