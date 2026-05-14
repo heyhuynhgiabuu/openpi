@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-05-14
+
+### Fixed
+
+- **Pi sidecar crash on launch** — `findNodeExecutable()` found the system `node` binary and called `child_process.fork()` with a path inside Electron's ASAR archive. Standalone `node` cannot read ASAR files, so the sidecar failed to `require('@earendil-works/pi-coding-agent')` and crashed immediately. After three retries the app showed "Pi sidecar crashed repeatedly." The fix: check `app.isPackaged` and always use `utilityProcess.fork()` in the packaged app — Electron's utility process has native ASAR support built in (`7ff4263`)
+
+
 ## [0.1.10] - 2026-05-14
 
 ## Fixed
