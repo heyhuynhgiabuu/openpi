@@ -9,6 +9,7 @@
  *   - className  → class in SolidJS JSX
  */
 import { batch, createMemo, createSignal, onMount, Show } from 'solid-js'
+import { AskUserQuestionModal } from './components/AskUserQuestionModal'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { Composer } from './components/Composer'
 import { ConversationPane } from './components/conversation/ConversationPane'
@@ -20,9 +21,11 @@ import { GitPanel } from './components/git/GitPanel'
 import { ConnectProviderModal } from './components/providers/ConnectProviderModal'
 import { ManageModelsModal } from './components/providers/ManageModelsModal'
 import { ResizeHandle } from './components/ResizeHandle'
+import { SubagentWidget } from './components/SubagentWidget'
 import { ArchiveConfirmModal } from './components/sidebar/ArchiveConfirmModal'
 import { SessionSidebar } from './components/sidebar/SessionSidebar'
 import { WorkspaceRail } from './components/sidebar/WorkspaceRail'
+import { TaskWidget } from './components/TaskWidget'
 import { TopBar } from './components/TopBar'
 import { TerminalPanel } from './components/terminal/TerminalPanel'
 import { Welcome } from './components/Welcome'
@@ -631,6 +634,21 @@ export default function App() {
                     isLoadingOlderHistory={session.isLoadingOlderHistory}
                     onLoadOlderHistory={session.loadOlderSessionMessages}
                   />
+
+                  {/* Extension widgets — rendered between conversation and composer */}
+                  <SubagentWidget agents={session.agents} />
+                  <TaskWidget tasks={session.tasks} />
+
+                  <Show when={session.askState}>
+                    {(state) => (
+                      <AskUserQuestionModal
+                        state={state()}
+                        isStreaming={session.isStreaming}
+                        onSubmit={(formatted) => void session.submitAsk(formatted)}
+                        onDismiss={() => session.dismissAsk()}
+                      />
+                    )}
+                  </Show>
 
                   <Show when={session.error}>
                     {(getErr) => (

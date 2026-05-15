@@ -14,6 +14,14 @@
  * tracking when accessed from JSX or createEffect.
  */
 import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
+import {
+  type AskState,
+  AskTracker,
+  SubagentTracker,
+  TaskTracker,
+  type TrackedAgent,
+  type TrackedTask,
+} from '../lib/extensionTrackers'
 import type {
   BashExecutionResult,
   ModelInfo,
@@ -69,6 +77,14 @@ export function useOpenPiSession() {
   const [hasMoreHistoryBefore, setHasMoreHistoryBefore] = createSignal(false)
   const [historyBeforeEntryId, setHistoryBeforeEntryId] = createSignal<string | null>(null)
   const [isLoadingOlderHistory, setIsLoadingOlderHistory] = createSignal(false)
+
+  // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
+  const _taskTracker = new TaskTracker()
+  const _askTracker = new AskTracker()
+  const _subagentTracker = new SubagentTracker()
+  const [tasks, setTasks] = createSignal<TrackedTask[]>([])
+  const [askState, setAskState] = createSignal<AskState | null>(null)
+  const [agents, setAgents] = createSignal<TrackedAgent[]>([])
 
   // ── Refs — plain variables assigned via SolidJS ref= callback ────────────
   let _bottomEl: HTMLDivElement | undefined
@@ -127,6 +143,51 @@ export function useOpenPiSession() {
       setQueueMode('prompt')
       currentTurnStartMs = null
       void refreshContextUsage()
+      // Clear finished subagents on session end; keep tasks/ask across agent turns
+      _subagentTracker.clearFinished()
+      setAgents(_subagentTracker.snapshot())
+    }
+
+    // ── Extension tracker dispatch ───────────────────────────────────────────
+    if (event.type === 'tool_execution_start') {
+      const e = event as { toolCallId?: string; toolName?: string; args?: Record<string, unknown> }
+      const id = e.toolCallId ?? ''
+      const name = e.toolName ?? ''
+      const args = e.args ?? {}
+      let changed = false
+      changed = _taskTracker.onToolStart(id, name, args) || changed
+      changed = _askTracker.onToolStart(id, name, args) || changed
+      changed = _subagentTracker.onToolStart(id, name, args) || changed
+      if (changed) {
+        batch(() => {
+          setTasks(_taskTracker.snapshot())
+          setAskState(_askTracker.snapshot())
+          setAgents(_subagentTracker.snapshot())
+        })
+      }
+    }
+    if (event.type === 'tool_execution_end') {
+      const e = event as {
+        toolCallId?: string
+        toolName?: string
+        result?: unknown
+        isError?: boolean
+      }
+      const id = e.toolCallId ?? ''
+      const name = e.toolName ?? ''
+      const result = typeof e.result === 'string' ? e.result : JSON.stringify(e.result ?? '')
+      const isError = Boolean(e.isError)
+      let changed = false
+      changed = _taskTracker.onToolEnd(id, name, result) || changed
+      changed = _askTracker.onToolEnd(id, name) || changed
+      changed = _subagentTracker.onToolEnd(id, name, result, isError) || changed
+      if (changed) {
+        batch(() => {
+          setTasks(_taskTracker.snapshot())
+          setAskState(_askTracker.snapshot())
+          setAgents(_subagentTracker.snapshot())
+        })
+      }
     }
 
     if (event.type === 'queue_update') {
@@ -200,6 +261,13 @@ export function useOpenPiSession() {
           setSteeringQueue([])
           setFollowUpQueue([])
           setSessionNameState(payload.sessionName ?? null)
+          // Clear extension trackers on new session
+          _taskTracker.clear()
+          _askTracker.clear()
+          _subagentTracker.clear()
+          setTasks([])
+          setAskState(null)
+          setAgents([])
           if (payload.model) {
             setCurrentModel(payload.model)
             currentModelName = payload.model.name
@@ -464,6 +532,26 @@ export function useOpenPiSession() {
     }
   }
 
+  // ── Ask-user-question actions ─────────────────────────────────────────
+  const submitAsk = async (formatted: string) => {
+    _askTracker.clear()
+    setAskState(null)
+    try {
+      if (isStreaming()) {
+        await window.openpi.steer(formatted)
+      } else {
+        await window.openpi.followUp(formatted)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const dismissAsk = () => {
+    _askTracker.clear()
+    setAskState(null)
+  }
+
   // ── Return — getter-based object so callers use session.ready (not session.ready()) ──
   return {
     // Signals exposed as getters (transparent to callers, reactive in JSX/createEffect)
@@ -549,6 +637,17 @@ export function useOpenPiSession() {
       return isLoadingOlderHistory()
     },
 
+    // ── Extension tracker state ─────────────────────────────────────
+    get tasks() {
+      return tasks()
+    },
+    get askState() {
+      return askState()
+    },
+    get agents() {
+      return agents()
+    },
+
     // Ref setters — pass as `ref={session.setBottomRef}` in JSX
     setBottomRef: (el: HTMLDivElement) => {
       _bottomEl = el
@@ -582,5 +681,7 @@ export function useOpenPiSession() {
     collapseAllGroups,
     setSessionName,
     forkFromMessage,
+    submitAsk,
+    dismissAsk,
   }
 }

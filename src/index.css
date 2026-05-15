@@ -568,6 +568,7 @@ input::placeholder {
   flex-direction: column;
   background: var(--scrim);
   overflow: hidden;
+  position: relative;
 }
 
 /* Common controls */
@@ -10805,3 +10806,265 @@ input::placeholder {
   color: var(--ink-secondary);
   font-size: 11px;
 }
+
+/* ── Task Widget ─────────────────────────────────────────────────────────── */
+.task-widget {
+  margin: 0 12px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255,255,255,0.03));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.task-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.task-widget-header:hover { background: var(--hover, rgba(255,255,255,0.04)); }
+.task-widget-summary { flex: 1; color: var(--ink); }
+.task-widget-chevron { color: var(--mute); flex-shrink: 0; }
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 6px;
+  border-top: 1px solid var(--hairline);
+}
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+.task-row--completed { color: var(--mute); }
+.task-row--completed .task-subject { text-decoration: line-through; opacity: 0.6; }
+.task-row--in_progress { color: var(--ink); font-weight: 500; }
+.task-row--pending { color: var(--ink-secondary); }
+
+.task-icon { width: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.task-icon-done { color: #3a8f54; }
+.task-icon-active {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #5b7cf6);
+  box-shadow: 0 0 5px var(--accent, #5b7cf6);
+}
+.task-icon-pending {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mute);
+}
+.task-subject { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Subagent Widget ─────────────────────────────────────────────────────── */
+.subagent-widget {
+  margin: 0 12px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(255,255,255,0.03));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.subagent-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+.subagent-widget-header:hover { background: var(--hover, rgba(255,255,255,0.04)); }
+.subagent-widget-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #5b7cf6);
+  animation: sa-pulse 2s infinite;
+  flex-shrink: 0;
+}
+@keyframes sa-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.subagent-widget-title { flex: 1; display: flex; align-items: center; gap: 6px; }
+.subagent-chevron { color: var(--mute); flex-shrink: 0; }
+.subagent-badge {
+  font-size: 10px; font-weight: 600; padding: 1px 6px;
+  border-radius: 10px;
+}
+.subagent-badge--running { background: rgba(91,124,246,0.15); color: var(--accent, #5b7cf6); }
+.subagent-badge--done { background: rgba(58,143,84,0.12); color: #3a8f54; }
+
+.subagent-list {
+  list-style: none; margin: 0; padding: 2px 0 6px;
+  border-top: 1px solid var(--hairline);
+}
+.subagent-card {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; font-size: 12px;
+}
+.subagent-status-icon { width: 14px; text-align: center; flex-shrink: 0; font-size: 13px; }
+.subagent-status-icon--running { color: var(--accent, #5b7cf6); animation: sa-spin 1s linear infinite; }
+@keyframes sa-spin { to { transform: rotate(360deg); } }
+.subagent-status-icon--completed { color: #3a8f54; }
+.subagent-status-icon--failed { color: #c0392b; }
+.subagent-status-icon--queued { color: var(--mute); }
+.subagent-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.subagent-type { font-size: 10px; font-weight: 600; color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
+.subagent-desc { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-meta { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.subagent-elapsed { font-size: 11px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.subagent-bg-badge { font-size: 10px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,0.07); color: var(--mute); }
+
+/* ── Ask User Question Modal ─────────────────────────────────────────────── */
+.ask-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px 8px;
+  pointer-events: none;
+}
+.ask-modal {
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  background: var(--surface-1, #1a1a1a);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  overflow: hidden;
+  pointer-events: all;
+}
+.ask-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+}
+.ask-modal-counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+}
+.ask-progress-dots { display: flex; gap: 5px; align-items: center; }
+.ask-progress-dot {
+  width: 8px; height: 3px;
+  border-radius: 2px;
+  background: var(--hairline);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
+}
+.ask-progress-dot.is-active { background: var(--ink); width: 14px; }
+
+.ask-modal-body { padding: 0 16px 8px; }
+.ask-question-text {
+  font-size: 14px; font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+.ask-question-hint {
+  font-size: 12px; color: var(--mute);
+  margin: 0 0 10px;
+}
+
+.ask-options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ask-option {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  color: var(--ink);
+}
+.ask-option:hover { background: var(--hover, rgba(255,255,255,0.05)); border-color: rgba(255,255,255,0.15); }
+.ask-option.is-selected { background: rgba(91,124,246,0.1); border-color: rgba(91,124,246,0.4); }
+.ask-option--freetext { align-items: center; }
+
+.ask-option-indicator {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mute);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  transition: border-color 0.1s;
+}
+.ask-option-indicator.is-checkbox { border-radius: 4px; }
+.ask-option.is-selected .ask-option-indicator { border-color: var(--accent, #5b7cf6); }
+.ask-option-indicator-fill {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #5b7cf6);
+}
+.ask-option-indicator.is-checkbox .ask-option-indicator-fill { border-radius: 2px; }
+
+.ask-option-content { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.ask-option-content--full { width: 100%; }
+.ask-option-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.ask-option-desc { font-size: 12px; color: var(--mute); }
+
+.ask-freetext-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: inherit;
+  padding: 0;
+}
+.ask-freetext-input::placeholder { color: var(--mute); }
+
+.ask-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--hairline);
+}
+.ask-btn-dismiss {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--mute); padding: 5px 0;
+}
+.ask-btn-dismiss:hover { color: var(--ink); }
+.ask-btn-next {
+  background: var(--surface-3, rgba(255,255,255,0.08));
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ask-btn-next:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.ask-btn-next.is-submit {
+  background: var(--accent, #5b7cf6);
+  border-color: transparent;
+  color: #fff;
+}
+.ask-btn-next.is-submit:hover:not(:disabled) { filter: brightness(1.1); }
+.ask-btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
