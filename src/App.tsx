@@ -10,21 +10,25 @@
  */
 import { batch, createMemo, createSignal, onMount, Show } from 'solid-js'
 import { AskUserQuestionModal } from './components/AskUserQuestionModal'
+import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { Composer } from './components/Composer'
 import { ConversationPane } from './components/conversation/ConversationPane'
 import { CustomizationsModal } from './components/customizations/CustomizationsModal'
-import { FileViewerModal } from './components/FileViewerModal'
+import { FilePreviewPane } from './components/FilePreviewPane'
+import { FileTabBar } from './components/FileTabBar'
 import { DiffViewer } from './components/git/DiffViewer'
 import { FileSearchModal } from './components/git/FileSearchModal'
+import { FileTree } from './components/git/FileTree'
 import { GitPanel } from './components/git/GitPanel'
+import { RefsPickerPanel } from './components/git/RefsPickerPanel'
 import { ConnectProviderModal } from './components/providers/ConnectProviderModal'
 import { ManageModelsModal } from './components/providers/ManageModelsModal'
 import { ResizeHandle } from './components/ResizeHandle'
 import { SubagentWidget } from './components/SubagentWidget'
 import { ArchiveConfirmModal } from './components/sidebar/ArchiveConfirmModal'
 import { SessionSidebar } from './components/sidebar/SessionSidebar'
-import { WorkspaceRail } from './components/sidebar/WorkspaceRail'
+import { WorkspacePane } from './components/sidebar/WorkspacePane'
 import { TaskWidget } from './components/TaskWidget'
 import { TopBar } from './components/TopBar'
 import { TerminalPanel } from './components/terminal/TerminalPanel'
@@ -52,6 +56,7 @@ import {
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from './lib/keybindings'
+import { DEFAULT_GIT_PANEL_SIDE, type GitPanelSide, parseGitPanelSide } from './lib/panelLayout'
 import { restoreThemeFromStorage } from './lib/themeApply'
 
 /**
@@ -75,9 +80,72 @@ export default function App() {
   const [terminalOpen, setTerminalOpen] = createSignal(false)
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [sidebarOpen, setSidebarOpen] = createSignal(true)
+  const [leftDrawerMode, setLeftDrawerMode] = createSignal<LeftDrawerMode>('threads')
   const [secondaryPanelOpen, setSecondaryPanelOpen] = createSignal(false)
-  const [gitPanelTab, setGitPanelTab] = createSignal<'changes' | 'files' | 'history'>('changes')
+
+  const toggleLeftDrawerMode = (mode: LeftDrawerMode) => {
+    if (sidebarOpen() && leftDrawerMode() === mode) {
+      setSidebarOpen(false)
+      return
+    }
+    setLeftDrawerMode(mode)
+    setSidebarOpen(true)
+  }
+
+  // ── Git panel side (left or right of main pane) ───────────────────────────
+  // Sessions sidebar is always fixed on the left and is not draggable.
+  const [gitPanelSide, setGitPanelSide] = createSignal<GitPanelSide>(DEFAULT_GIT_PANEL_SIDE)
+
+  // ── Git panel drag state ──────────────────────────────────────────────────
+  const [isDraggingGit, setIsDraggingGit] = createSignal(false)
+  const [dropSide, setDropSide] = createSignal<GitPanelSide | null>(null)
+  let workbenchRef: HTMLDivElement | undefined
+
+  /**
+   * Drag the git panel to the left or right of the main conversation pane.
+   * Cursor position relative to the workbench midpoint determines the target side.
+   */
+  const startGitDrag = (e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingGit(true)
+    setDropSide(gitPanelSide())
+    document.body.classList.add('panel-dragging')
+
+    const onMove = (ev: MouseEvent) => {
+      if (!workbenchRef) return
+      const rect = workbenchRef.getBoundingClientRect()
+      setDropSide((ev.clientX - rect.left) / rect.width < 0.5 ? 'left' : 'right')
+    }
+
+    const onUp = () => {
+      const target = dropSide()
+      if (target && target !== gitPanelSide()) {
+        setGitPanelSide(target)
+        void window.openpi.setPref('panel.git_side', target)
+      }
+      setIsDraggingGit(false)
+      setDropSide(null)
+      document.body.classList.remove('panel-dragging')
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const [gitPanelTab, setGitPanelTab] = createSignal<'changes' | 'history'>('changes')
+  // ── Git panel → TopBar bridge ──────────────────────────────────────────────
+  // The active GitPanel surfaces its branch/upstream labels here so TopBar can
+  // display them as clickable chips, and provides a toggleRefs callback so
+  // clicking the branch chip in TopBar opens the refs picker in GitPanel.
+  const [gitSyncLabel, setGitSyncLabel] = createSignal<string>('')
+  let toggleRefsRef: (() => void) | undefined
+  const [gitSyncAction, setGitSyncAction] = createSignal<string | null>(null)
+  const [gitSyncMessage, setGitSyncMessage] = createSignal<string | null>(null)
+  const [filePanelOpen, setFilePanelOpen] = createSignal(false)
   const [fileSearchOpen, setFileSearchOpen] = createSignal(false)
+  const [fileFindOpen, setFileFindOpen] = createSignal(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false)
   const [connectProviderOpen, setConnectProviderOpen] = createSignal(false)
   const [manageModelsOpen, setManageModelsOpen] = createSignal(false)
@@ -91,7 +159,28 @@ export default function App() {
   const [loadedSkills, setLoadedSkills] = createSignal<SkillItem[]>([])
   const [hiddenModels, setHiddenModels] = createSignal<Set<string>>(new Set())
   const [activeDiff, setActiveDiff] = createSignal<GitFileDiff | null>(null)
-  const [fileViewer, setFileViewer] = createSignal<string | null>(null)
+  const [openFiles, setOpenFiles] = createSignal<string[]>([])
+  const [activeFileIdx, setActiveFileIdx] = createSignal(0)
+
+  const openFile = (relPath: string) => {
+    const files = openFiles()
+    const existing = files.indexOf(relPath)
+    if (existing >= 0) {
+      setActiveFileIdx(existing)
+    } else {
+      const newFiles = [...files, relPath]
+      setOpenFiles(newFiles)
+      setActiveFileIdx(newFiles.length - 1)
+    }
+  }
+
+  const closeFile = (idx: number) => {
+    const newFiles = openFiles().filter((_, i) => i !== idx)
+    setOpenFiles(newFiles)
+    if (newFiles.length > 0) {
+      setActiveFileIdx((prev) => Math.min(prev, newFiles.length - 1))
+    }
+  }
   const [diffFiles, setDiffFiles] = createSignal<GitChangedFile[]>([])
   const [diffIndex, setDiffIndex] = createSignal(0)
   const [archivePending, setArchivePending] = createSignal<{
@@ -118,13 +207,17 @@ export default function App() {
   const GIT_PANEL_DEFAULT = 260
   const SIDEBAR_MIN = 240
   const SIDEBAR_MAX = 480
-  const GIT_MIN = 200
+  const GIT_MIN = 300
   const GIT_MAX = 560
+  const PREVIEW_DEFAULT = 480
+  const PREVIEW_MIN = 280
+  const PREVIEW_MAX = 900
 
   const [sidebarWidth, setSidebarWidth] = createSignal(SIDEBAR_DEFAULT)
   const [gitPanelWidth, setGitPanelWidth] = createSignal(GIT_PANEL_DEFAULT)
+  const [previewWidth, setPreviewWidth] = createSignal(PREVIEW_DEFAULT)
 
-  // Load persisted panel widths once
+  // Load persisted panel widths and git side once
   onMount(() => {
     window.openpi
       .getPref('panel.sidebar_width')
@@ -140,8 +233,13 @@ export default function App() {
         if (!Number.isNaN(n)) setGitPanelWidth(Math.max(GIT_MIN, Math.min(GIT_MAX, n)))
       })
       .catch(() => {})
+    window.openpi
+      .getPref('panel.git_side')
+      .then((raw) => setGitPanelSide(parseGitPanelSide(raw)))
+      .catch(() => {})
   })
 
+  // Sessions sidebar resize: always on the left, handle on its right edge.
   const resizeSidebar = (delta: number) => {
     setSidebarWidth((prev) => {
       const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, prev + delta))
@@ -150,12 +248,21 @@ export default function App() {
     })
   }
 
+  // Git panel resize: sign depends on which side of main it is.
+  // Left of main  → drag right (+delta) grows the panel.
+  // Right of main → drag right (+delta) shrinks it (handle is on its left edge).
   const resizeGitPanel = (delta: number) => {
+    const sign = gitPanelSide() === 'left' ? 1 : -1
     setGitPanelWidth((prev) => {
-      const next = Math.max(GIT_MIN, Math.min(GIT_MAX, prev - delta)) // negative: panel grows to the left
+      const next = Math.max(GIT_MIN, Math.min(GIT_MAX, prev + sign * delta))
       void window.openpi.setPref('panel.git_panel_width', String(next))
       return next
     })
+  }
+
+  // Preview split: drag handle is on the left edge of preview → negative delta grows it.
+  const resizePreview = (delta: number) => {
+    setPreviewWidth((prev) => Math.max(PREVIEW_MIN, Math.min(PREVIEW_MAX, prev - delta)))
   }
 
   onMount(() => {
@@ -261,7 +368,7 @@ export default function App() {
       }
       if (eventMatchesBinding(event, binding('toggleSidebar'))) {
         event.preventDefault()
-        setSidebarOpen((prev) => !prev)
+        toggleLeftDrawerMode('threads')
         return
       }
       if (eventMatchesBinding(event, binding('toggleGitPanel'))) {
@@ -271,19 +378,27 @@ export default function App() {
       }
       if (eventMatchesBinding(event, binding('toggleFileTree'))) {
         event.preventDefault()
-        if (secondaryPanelOpen() && gitPanelTab() === 'files') {
-          setSecondaryPanelOpen(false)
-        } else {
-          setGitPanelTab('files')
-          setSecondaryPanelOpen(true)
-        }
+        setFilePanelOpen((prev) => !prev)
         return
       }
       if (eventMatchesBinding(event, binding('openFileSearch'))) {
         event.preventDefault()
-        setGitPanelTab('files')
-        setSecondaryPanelOpen(true)
+        setFilePanelOpen(true)
         setFileSearchOpen(true)
+        return
+      }
+      if (eventMatchesBinding(event, binding('closeFileTab'))) {
+        if (openFiles().length > 0) {
+          event.preventDefault()
+          closeFile(activeFileIdx())
+        }
+        return
+      }
+      if (eventMatchesBinding(event, binding('searchInFile'))) {
+        if (openFiles().length > 0) {
+          event.preventDefault()
+          setFileFindOpen(true)
+        }
         return
       }
       if (eventMatchesBinding(event, binding('openCustomizations'))) {
@@ -327,6 +442,21 @@ export default function App() {
   const handleUnarchiveSession = async (archivedPath: string) => {
     await window.openpi.unarchiveSessions([archivedPath])
     void loadArchivedSessions()
+  }
+
+  const handleDeleteArchivedSession = async (archivedPath: string) => {
+    const confirmed = window.confirm(
+      'Permanently delete this archived session?\n\nIt will be moved to the system Trash when possible.'
+    )
+    if (!confirmed) return
+
+    const result = await window.openpi.deleteSessions([archivedPath])
+    void loadArchivedSessions()
+    if (result.failed > 0) {
+      window.alert(
+        'OpenPi could not delete this archived session. It may have already moved or be protected.'
+      )
+    }
   }
 
   const togglePinSession = (path: string) => {
@@ -484,23 +614,21 @@ export default function App() {
     return [
       command('newSession', () => void session.createNewSession()),
       command('openFileSearch', () => {
-        setGitPanelTab('files')
-        setSecondaryPanelOpen(true)
+        setFilePanelOpen(true)
         setFileSearchOpen(true)
+      }),
+      command('closeFileTab', () => {
+        if (openFiles().length > 0) closeFile(activeFileIdx())
+      }),
+      command('searchInFile', () => {
+        if (openFiles().length > 0) setFileFindOpen(true)
       }),
       command('openCustomizations', () => setCustomizationsOpen(true)),
       command('openProject', () => void session.openWorkspace()),
       command('renameSession', () => triggerRename?.()),
-      command('toggleSidebar', () => setSidebarOpen((prev) => !prev)),
+      command('toggleSidebar', () => toggleLeftDrawerMode('threads')),
       command('toggleGitPanel', () => setSecondaryPanelOpen((prev) => !prev)),
-      command('toggleFileTree', () => {
-        if (secondaryPanelOpen() && gitPanelTab() === 'files') {
-          setSecondaryPanelOpen(false)
-        } else {
-          setGitPanelTab('files')
-          setSecondaryPanelOpen(true)
-        }
-      }),
+      command('toggleFileTree', () => setFilePanelOpen((prev) => !prev)),
       command('toggleTerminal', () => setTerminalOpen((prev) => !prev)),
       command('newTerminal', () => {
         setTerminalOpen(true)
@@ -537,18 +665,37 @@ export default function App() {
               ? (activeSessionPath()!.split('/').pop()?.replace('.jsonl', '') ?? 'session')
               : 'new session')
         )
+        const promptHistory = createMemo(() =>
+          session.messages
+            .filter((message) => message.role === 'user' && message.text.trim().length > 0)
+            .map((message) => message.text)
+            .reverse()
+        )
 
         const visibleModels = () =>
           session.models.filter((m) => !hiddenModels().has(`${m.provider}/${m.id}`))
 
         return (
           <div class="app-shell">
+            {/* RefsPickerPanel: always mounted so TopBar branch click works
+                even when the git panel is closed */}
+            <RefsPickerPanel
+              cwd={cwd()}
+              registerToggle={(fn) => {
+                toggleRefsRef = fn
+              }}
+            />
             <TopBar
-              sidebarOpen={sidebarOpen()}
-              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
               workspaceName={workspaceName()}
               gitBranch={session.gitBranch}
               gitStats={session.gitStats}
+              gitUpstream={gitSyncLabel() || null}
+              gitChangeCount={
+                session.gitStats
+                  ? (session.gitStats.changed ?? 0) + (session.gitStats.untracked ?? 0) || null
+                  : null
+              }
+              onBranchClick={() => toggleRefsRef?.()}
               sessionName={displayName()}
               isStreaming={session.isStreaming}
               onRenameSession={session.setSessionName}
@@ -556,149 +703,229 @@ export default function App() {
               models={session.models}
               currentModel={session.currentModel}
               onSelectModel={session.selectModel}
-              terminalOpen={terminalOpen()}
-              onToggleTerminal={() => setTerminalOpen((prev) => !prev)}
-              secondaryPanelOpen={secondaryPanelOpen()}
-              onToggleSecondaryPanel={() => setSecondaryPanelOpen((prev) => !prev)}
               onOpenSettings={() => setCustomizationsOpen(true)}
               startRenameRef={(fn) => {
                 triggerRename = fn
               }}
             />
 
-            <div class="workbench">
+            <div
+              class="workbench"
+              ref={(el) => {
+                workbenchRef = el
+              }}
+            >
+              {/* Drop zones — shown while git panel is being dragged */}
+              <Show when={isDraggingGit()}>
+                <div
+                  class={`panel-drop-zone panel-drop-zone--left${dropSide() === 'left' ? ' is-over' : ''}`}
+                >
+                  <span class="panel-drop-zone-hint">← Left of main</span>
+                </div>
+                <div
+                  class={`panel-drop-zone panel-drop-zone--right${dropSide() === 'right' ? ' is-over' : ''}`}
+                >
+                  <span class="panel-drop-zone-hint">Right of main →</span>
+                </div>
+              </Show>
+
+              {/* Left drawer — fixed left, switches between Threads and Workspace */}
               <Show when={sidebarOpen()}>
-                <WorkspaceRail
-                  workspaces={session.workspaces}
-                  selectedPath={session.selectedWorkspacePath}
-                  activePath={cwd()}
-                  onSelectWorkspace={(workspacePath) => {
-                    void session.selectWorkspace(workspacePath)
-                  }}
-                  onOpenWorkspace={session.openWorkspace}
-                  onNewSessionIn={handleNewSessionIn}
-                  onOpenSession={session.openExistingSession}
-                  onPreviewSessions={session.loadWorkspacePreview}
-                />
-                <SessionSidebar
-                  style={{ width: `${sidebarWidth()}px` }}
-                  sessions={session.sessions}
-                  workspaces={session.workspaces}
-                  selectedWorkspacePath={session.selectedWorkspacePath}
-                  activePath={activeSessionPath()}
-                  query={session.sessionQuery}
-                  sortBy={session.sortBy}
-                  groupBy={session.groupBy}
-                  showRecent={session.showRecent}
-                  collapsedGroups={session.collapsedGroups}
-                  onQuery={session.setSessionQuery}
-                  onSort={session.setSortBy}
-                  onGroup={session.setGroupBy}
-                  onShowRecent={session.setShowRecent}
-                  onCollapseAll={session.collapseAllGroups}
-                  onToggleGroup={session.toggleGroup}
-                  onNewSession={session.createNewSession}
-                  onNewSessionIn={handleNewSessionIn}
-                  onArchiveGroup={handleArchiveGroup}
-                  onArchiveSession={(path) => {
-                    void handleArchiveSession(path)
-                  }}
-                  onPinSession={togglePinSession}
-                  pinnedSessions={pinnedSessions()}
-                  showArchived={showArchived()}
-                  archivedSessions={archivedSessions()}
-                  onToggleArchived={handleToggleArchived}
-                  onUnarchiveSession={(p) => {
-                    void handleUnarchiveSession(p)
-                  }}
-                  onOpenSession={session.openExistingSession}
-                  appVersion={appInfo()?.version}
-                />
+                <Show
+                  when={leftDrawerMode() === 'workspace'}
+                  fallback={
+                    <SessionSidebar
+                      style={{ width: `${sidebarWidth()}px` }}
+                      sessions={session.sessions}
+                      workspaces={session.workspaces}
+                      selectedWorkspacePath={session.selectedWorkspacePath}
+                      activePath={activeSessionPath()}
+                      query={session.sessionQuery}
+                      sortBy={session.sortBy}
+                      groupBy={session.groupBy}
+                      showRecent={session.showRecent}
+                      collapsedGroups={session.collapsedGroups}
+                      onQuery={session.setSessionQuery}
+                      onSort={session.setSortBy}
+                      onGroup={session.setGroupBy}
+                      onShowRecent={session.setShowRecent}
+                      onCollapseAll={session.collapseAllGroups}
+                      onToggleGroup={session.toggleGroup}
+                      onNewSession={session.createNewSession}
+                      onNewSessionIn={handleNewSessionIn}
+                      onArchiveGroup={handleArchiveGroup}
+                      onArchiveSession={(path) => {
+                        void handleArchiveSession(path)
+                      }}
+                      onPinSession={togglePinSession}
+                      pinnedSessions={pinnedSessions()}
+                      showArchived={showArchived()}
+                      archivedSessions={archivedSessions()}
+                      onToggleArchived={handleToggleArchived}
+                      onUnarchiveSession={(p) => {
+                        void handleUnarchiveSession(p)
+                      }}
+                      onDeleteArchivedSession={(p) => {
+                        void handleDeleteArchivedSession(p)
+                      }}
+                      onOpenSession={session.openExistingSession}
+                    />
+                  }
+                >
+                  <WorkspacePane
+                    style={{ width: `${sidebarWidth()}px` }}
+                    workspaces={session.workspaces}
+                    selectedPath={session.selectedWorkspacePath}
+                    activePath={cwd()}
+                    onSelectWorkspace={(workspacePath) => {
+                      void session.selectWorkspace(workspacePath)
+                      setLeftDrawerMode('threads')
+                    }}
+                    onOpenWorkspace={session.openWorkspace}
+                    onNewSessionIn={handleNewSessionIn}
+                  />
+                </Show>
                 <ResizeHandle direction="horizontal" onResize={resizeSidebar} />
               </Show>
 
+              {/* Git panel LEFT of main — [git-panel][resize] */}
+              <Show when={secondaryPanelOpen() && gitPanelSide() === 'left'}>
+                <GitPanel
+                  style={{ width: `${gitPanelWidth()}px` }}
+                  side="left"
+                  cwd={cwd()}
+                  activeTab={gitPanelTab()}
+                  onActiveTabChange={setGitPanelTab}
+                  onRequestFileSearch={() => {
+                    setFileSearchOpen(true)
+                  }}
+                  onDiffOpen={(diff, files, idx) => {
+                    batch(() => {
+                      setActiveDiff(diff)
+                      setDiffFiles(files)
+                      setDiffIndex(idx)
+                    })
+                  }}
+                  onFileClick={(relPath) => openFile(relPath)}
+                  onDragHandleMouseDown={startGitDrag}
+                  onSyncLabelChange={setGitSyncLabel}
+                  onSyncActionChange={(a) => setGitSyncAction(a)}
+                  onSyncMessageChange={(m) => setGitSyncMessage(m)}
+                />
+                <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
+              </Show>
+
+              {/* Main conversation pane — always center, grows to fill */}
               <div class="center-col">
-                <main class="main-panel">
-                  <ConversationPane
-                    messages={session.messages}
-                    workspaceName={workspaceName()}
-                    workspaceSummary={session.workspaceSummary}
-                    activeSessionPath={activeSessionPath()}
-                    setBottomRef={session.setBottomRef}
-                    onFork={session.forkFromMessage}
-                    onFileClick={(path) => setFileViewer(path)}
-                    onOpenWorkspace={session.openWorkspace}
-                    displayPreferences={displayPreferences()}
-                    isStreaming={session.isStreaming}
-                    hasMoreHistoryBefore={session.hasMoreHistoryBefore}
-                    isLoadingOlderHistory={session.isLoadingOlderHistory}
-                    onLoadOlderHistory={session.loadOlderSessionMessages}
-                  />
+                <main class={`main-panel${openFiles().length > 0 ? ' main-panel--split' : ''}`}>
+                  {/* Conversation side — always mounted */}
+                  <div class="main-panel-conversation">
+                    <ConversationPane
+                      messages={session.messages}
+                      workspaceName={workspaceName()}
+                      workspaceSummary={session.workspaceSummary}
+                      activeSessionPath={activeSessionPath()}
+                      setBottomRef={session.setBottomRef}
+                      onFork={session.forkFromMessage}
+                      onFileClick={(path) => openFile(path)}
+                      onOpenWorkspace={session.openWorkspace}
+                      displayPreferences={displayPreferences()}
+                      isStreaming={session.isStreaming}
+                      hasMoreHistoryBefore={session.hasMoreHistoryBefore}
+                      isLoadingOlderHistory={session.isLoadingOlderHistory}
+                      onLoadOlderHistory={session.loadOlderSessionMessages}
+                    />
 
-                  {/* Extension widgets — rendered between conversation and composer */}
-                  <SubagentWidget agents={session.agents} />
-                  <TaskWidget tasks={session.tasks} />
+                    {/* Extension widgets */}
+                    <SubagentWidget agents={session.agents} />
+                    <TaskWidget tasks={session.tasks} />
 
-                  <Show when={session.askState}>
-                    {(state) => (
-                      <AskUserQuestionModal
-                        state={state()}
-                        isStreaming={session.isStreaming}
-                        onSubmit={(formatted) => void session.submitAsk(formatted)}
-                        onDismiss={() => session.dismissAsk()}
+                    <Show when={session.askState}>
+                      {(state) => (
+                        <AskUserQuestionModal
+                          state={state()}
+                          isStreaming={session.isStreaming}
+                          onSubmit={(formatted) => void session.submitAsk(formatted)}
+                          onDismiss={() => session.dismissAsk()}
+                        />
+                      )}
+                    </Show>
+
+                    <Show when={session.error}>
+                      {(getErr) => (
+                        <div class="error-toast">
+                          <span>{getErr()}</span>
+                          <button type="button" onClick={() => session.setError(null)}>
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </Show>
+
+                    <Composer
+                      input={session.input}
+                      isStreaming={session.isStreaming}
+                      isShellRunning={session.isShellRunning}
+                      queueMode={session.queueMode}
+                      workspaceName={workspaceName()}
+                      promptHistory={promptHistory()}
+                      steeringQueue={session.steeringQueue}
+                      followUpQueue={session.followUpQueue}
+                      setTextareaRef={session.setTextareaRef}
+                      cwd={cwd()}
+                      attachedFiles={attachedFiles()}
+                      onAddFile={addAttachedFile}
+                      onRemoveFile={removeAttachedFile}
+                      lineComments={lineComments()}
+                      onRemoveLineComment={removeLineComment}
+                      loadedSkills={loadedSkills()}
+                      onAddSkill={addLoadedSkill}
+                      onRemoveSkill={removeLoadedSkill}
+                      models={visibleModels()}
+                      currentModel={session.currentModel}
+                      onSelectModel={session.selectModel}
+                      thinkingLevel={session.thinkingLevel}
+                      onThinkingLevel={session.selectThinkingLevel}
+                      onConnectProvider={() => setConnectProviderOpen(true)}
+                      onManageModels={() => setManageModelsOpen(true)}
+                      onInput={session.setInput}
+                      onQueueMode={session.setQueueMode}
+                      onSend={() => {
+                        void handleSend()
+                      }}
+                      onShellSend={() => {
+                        void session.sendShell()
+                      }}
+                      onAbort={() => {
+                        void window.openpi.abort()
+                      }}
+                      contextPercent={session.contextPercent}
+                    />
+                  </div>
+
+                  {/* File preview side — shown alongside conversation */}
+                  {/* File preview side — shown alongside conversation */}
+                  <Show when={openFiles().length > 0}>
+                    <ResizeHandle direction="horizontal" onResize={resizePreview} />
+                    <div class="main-panel-preview" style={{ width: `${previewWidth()}px` }}>
+                      <FileTabBar
+                        files={openFiles()}
+                        activeIndex={activeFileIdx()}
+                        onSelect={setActiveFileIdx}
+                        onClose={closeFile}
                       />
-                    )}
+                      <FilePreviewPane
+                        relativePath={openFiles()[activeFileIdx()] ?? ''}
+                        cwd={cwd()}
+                        workspaceName={workspaceName()}
+                        background={fileSearchOpen()}
+                        findOpen={fileFindOpen()}
+                        onFindOpened={() => setFileFindOpen(false)}
+                        onAddLineComment={addLineComment}
+                        onClose={() => closeFile(activeFileIdx())}
+                      />
+                    </div>
                   </Show>
-
-                  <Show when={session.error}>
-                    {(getErr) => (
-                      <div class="error-toast">
-                        <span>{getErr()}</span>
-                        <button type="button" onClick={() => session.setError(null)}>
-                          ×
-                        </button>
-                      </div>
-                    )}
-                  </Show>
-
-                  <Composer
-                    input={session.input}
-                    isStreaming={session.isStreaming}
-                    isShellRunning={session.isShellRunning}
-                    queueMode={session.queueMode}
-                    workspaceName={workspaceName()}
-                    steeringQueue={session.steeringQueue}
-                    followUpQueue={session.followUpQueue}
-                    setTextareaRef={session.setTextareaRef}
-                    cwd={cwd()}
-                    attachedFiles={attachedFiles()}
-                    onAddFile={addAttachedFile}
-                    onRemoveFile={removeAttachedFile}
-                    lineComments={lineComments()}
-                    onRemoveLineComment={removeLineComment}
-                    loadedSkills={loadedSkills()}
-                    onAddSkill={addLoadedSkill}
-                    onRemoveSkill={removeLoadedSkill}
-                    models={visibleModels()}
-                    currentModel={session.currentModel}
-                    onSelectModel={session.selectModel}
-                    thinkingLevel={session.thinkingLevel}
-                    onThinkingLevel={session.selectThinkingLevel}
-                    onConnectProvider={() => setConnectProviderOpen(true)}
-                    onManageModels={() => setManageModelsOpen(true)}
-                    onInput={session.setInput}
-                    onQueueMode={session.setQueueMode}
-                    onSend={() => {
-                      void handleSend()
-                    }}
-                    onShellSend={() => {
-                      void session.sendShell()
-                    }}
-                    onAbort={() => {
-                      void window.openpi.abort()
-                    }}
-                    contextPercent={session.contextPercent}
-                  />
                 </main>
 
                 <TerminalPanel
@@ -709,15 +936,17 @@ export default function App() {
                 />
               </div>
 
-              <Show when={secondaryPanelOpen()}>
+              {/* Git panel RIGHT of main (default) — [resize][git-panel] */}
+              <Show when={secondaryPanelOpen() && gitPanelSide() === 'right'}>
                 <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
                 <GitPanel
                   style={{ width: `${gitPanelWidth()}px` }}
+                  side="right"
                   cwd={cwd()}
                   activeTab={gitPanelTab()}
                   onActiveTabChange={setGitPanelTab}
                   onRequestFileSearch={() => {
-                    setGitPanelTab('files')
+                    setFilePanelOpen(true)
                     setFileSearchOpen(true)
                   }}
                   onDiffOpen={(diff, files, idx) => {
@@ -727,29 +956,48 @@ export default function App() {
                       setDiffIndex(idx)
                     })
                   }}
-                  onFileClick={(relPath) => setFileViewer(relPath)}
+                  onFileClick={(relPath) => openFile(relPath)}
+                  onDragHandleMouseDown={startGitDrag}
+                  onSyncLabelChange={setGitSyncLabel}
+                  onSyncActionChange={(a) => setGitSyncAction(a)}
+                  onSyncMessageChange={(m) => setGitSyncMessage(m)}
                 />
+              </Show>
+              {/* File tree panel — separate from git panel */}
+              <Show when={filePanelOpen()}>
+                <ResizeHandle direction="horizontal" onResize={() => {}} />
+                <div class="file-panel" style={{ width: '240px' }}>
+                  <FileTree
+                    cwd={cwd()}
+                    changedPaths={new Set()}
+                    onFileClick={(relPath) => openFile(relPath)}
+                  />
+                </div>
               </Show>
             </div>
 
-            <Show when={fileViewer()}>
-              {(getPath) => (
-                <FileViewerModal
-                  relativePath={getPath()}
-                  cwd={cwd()}
-                  workspaceName={workspaceName()}
-                  background={fileSearchOpen()}
-                  onAddLineComment={addLineComment}
-                  onClose={() => setFileViewer(null)}
-                />
-              )}
-            </Show>
+            <BottomBar
+              leftDrawerOpen={sidebarOpen()}
+              leftDrawerMode={leftDrawerMode()}
+              onToggleThreads={() => toggleLeftDrawerMode('threads')}
+              onToggleWorkspace={() => toggleLeftDrawerMode('workspace')}
+              gitPanelOpen={secondaryPanelOpen()}
+              onToggleGitPanel={() => setSecondaryPanelOpen((prev) => !prev)}
+              filePanelOpen={filePanelOpen()}
+              onToggleFilePanel={() => setFilePanelOpen((prev) => !prev)}
+              terminalOpen={terminalOpen()}
+              onToggleTerminal={() => setTerminalOpen((prev) => !prev)}
+              appVersion={appInfo()?.version}
+              isStreaming={session.isStreaming}
+              gitSyncAction={gitSyncAction()}
+              gitSyncMessage={gitSyncMessage()}
+            />
 
             <Show when={fileSearchOpen()}>
               <FileSearchModal
                 cwd={cwd()}
                 onClose={() => setFileSearchOpen(false)}
-                onFileClick={(path) => setFileViewer(path)}
+                onFileClick={(path) => openFile(path)}
               />
             </Show>
 
@@ -759,7 +1007,7 @@ export default function App() {
                 commands={paletteCommands()}
                 sessions={session.sessions}
                 onClose={() => setCommandPaletteOpen(false)}
-                onOpenFile={(path) => setFileViewer(path)}
+                onOpenFile={(path) => openFile(path)}
                 onOpenSession={session.openExistingSession}
               />
             </Show>

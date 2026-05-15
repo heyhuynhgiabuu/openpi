@@ -273,6 +273,16 @@ The right panel is a **persistent live git source control panel** (always visibl
 
 **Critical:** Commit workflow must never use `git add .` or `git add -A`. Always pass specific file paths.
 
+### File preview is a center workbench surface
+
+Normal source/file preview should be docked in the main center surface, not opened as a blocking modal. Keep the workbench spatial model Zed-like:
+- Left drawer: Threads or Workspace navigation.
+- Center surface: Conversation by default, or a temporary/pinned file preview surface.
+- Right panel: Git/file tree/diff utilities.
+- Bottom: terminal/output plus compact status/action bar.
+
+Do not add another modal for routine file preview. Do not create another permanent side pane for preview. Do not turn OpenPi into a full IDE; file preview supports agent context and review workflows, while Pi remains the source of agent semantics.
+
 ### Customizations panel is a modal with an AI wizard
 
 The customizations panel opens as a full modal/overlay with:

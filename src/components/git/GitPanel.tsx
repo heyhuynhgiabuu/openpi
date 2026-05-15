@@ -5,23 +5,21 @@
  * ALL git mutations go through window.openpi.git.* → Electron main.
  */
 
-import { ArrowUp, ArrowUpDown, ChevronDown, ChevronsUp, Search, Sparkles } from 'lucide-solid'
+import { ArrowUp, ArrowUpDown, ChevronDown, GripVertical, Search, Sparkles } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js'
+import { Portal } from 'solid-js/web'
 
 import type {
-  GitBranchRef,
   GitChangedFile,
   GitFileDiff,
   GitHistoryCommit,
   GitHistoryResult,
-  GitRefsResult,
   GitStatusResult,
   GitSyncAction,
 } from '../../lib/ipc'
 import { ConflictResolverModal } from './ConflictResolverModal'
-import { FileTree } from './FileTree'
 
-type GitPanelTab = 'changes' | 'files' | 'history'
+type GitPanelTab = 'changes' | 'history'
 
 interface GitPanelProps {
   style?: string | Record<string, string>
@@ -31,6 +29,18 @@ interface GitPanelProps {
   onRequestFileSearch?: () => void
   onDiffOpen: (diff: GitFileDiff, files: GitChangedFile[], index: number) => void
   onFileClick?: (relPath: string) => void
+  /** Called on mousedown of the drag grip; parent handles the drag lifecycle. */
+  onDragHandleMouseDown?: (e: MouseEvent) => void
+  /** Which side of the main pane the panel is on — controls border direction. */
+  side?: 'left' | 'right'
+  /** Called whenever the local branch label changes — surfaces it in the TopBar. */
+  onBranchLabelChange?: (label: string) => void
+  /** Called whenever the upstream/sync label changes — surfaces it in the TopBar. */
+  onSyncLabelChange?: (label: string) => void
+  /** Called when the active sync action changes (null = idle). */
+  onSyncActionChange?: (action: GitSyncAction | null) => void
+  /** Called when the sync result message changes. */
+  onSyncMessageChange?: (msg: string | null) => void
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -61,14 +71,11 @@ export function GitPanel(props: GitPanelProps) {
   const [commitAmend, setCommitAmend] = createSignal(false)
   const [commitSignoff, setCommitSignoff] = createSignal(false)
   const [syncingAction, setSyncingAction] = createSignal<GitSyncAction | null>(null)
+  const [syncMenuOpen, setSyncMenuOpen] = createSignal(false)
+  let syncBtnRef: HTMLButtonElement | undefined
+  const [syncMenuAnchor, setSyncMenuAnchor] = createSignal<DOMRect | null>(null)
   const [commitError, setCommitError] = createSignal<string | null>(null)
   const [syncMessage, setSyncMessage] = createSignal<string | null>(null)
-  const [refs, setRefs] = createSignal<GitRefsResult | null>(null)
-  const [refsLoading, setRefsLoading] = createSignal(false)
-  const [refsMessage, setRefsMessage] = createSignal<string | null>(null)
-  const [refsOpen, setRefsOpen] = createSignal(false)
-  const [refsTab, setRefsTab] = createSignal<'branches' | 'stash'>('branches')
-  const [refsQuery, setRefsQuery] = createSignal('')
   const [loadingDiff, setLoadingDiff] = createSignal<string | null>(null)
   const [history, setHistory] = createSignal<GitHistoryResult | null>(null)
   const [historyQuery, setHistoryQuery] = createSignal('')
@@ -76,7 +83,6 @@ export function GitPanel(props: GitPanelProps) {
   const [historyError, setHistoryError] = createSignal<string | null>(null)
   const [selectedCommit, setSelectedCommit] = createSignal<GitHistoryCommit | null>(null)
   const [localActiveTab, setLocalActiveTab] = createSignal<GitPanelTab>('changes')
-  const [collapseAllCount, setCollapseAllCount] = createSignal(0)
   const [conflictPath, setConflictPath] = createSignal<string | null>(null)
   let mounted = true
 
@@ -93,6 +99,21 @@ export function GitPanel(props: GitPanelProps) {
       setAgentChangedCount(count)
     })
     return unsub
+  })
+
+  // Surface branch + upstream labels up to the parent (→ TopBar via App).
+  createEffect(() => {
+    props.onBranchLabelChange?.(branchLabel())
+  })
+  createEffect(() => {
+    props.onSyncLabelChange?.(syncLabel())
+  })
+  // Surface sync action + message to BottomBar via App.
+  createEffect(() => {
+    props.onSyncActionChange?.(syncingAction())
+  })
+  createEffect(() => {
+    props.onSyncMessageChange?.(syncMessage())
   })
 
   createEffect(() => {
@@ -178,39 +199,6 @@ export function GitPanel(props: GitPanelProps) {
     }
     const nextStatus = await window.openpi.git.getStatus()
     if (nextStatus && mounted) setStatus(nextStatus)
-  }
-
-  const loadRefs = async () => {
-    setRefsLoading(true)
-    setRefsMessage(null)
-    try {
-      const nextRefs = await window.openpi.git.getRefs()
-      if (mounted && nextRefs) setRefs(nextRefs)
-    } catch (err) {
-      if (mounted) setRefsMessage(String(err))
-    } finally {
-      if (mounted) setRefsLoading(false)
-    }
-  }
-
-  const toggleRefs = async () => {
-    const nextOpen = !refsOpen()
-    setRefsOpen(nextOpen)
-    if (nextOpen) await loadRefs()
-  }
-
-  const handleCheckoutBranch = async (branch: GitBranchRef) => {
-    if (branch.current || branch.remote) return
-    setRefsMessage(null)
-    const result = await window.openpi.git.checkoutBranch(branch.name)
-    if (!mounted || !result) return
-    setRefsMessage(result.output)
-    const nextStatus = await window.openpi.git.getStatus()
-    if (nextStatus) setStatus(nextStatus)
-    if (result.ok) {
-      setRefsOpen(false)
-      await loadRefs()
-    }
   }
 
   const handleSync = async (action: GitSyncAction) => {
@@ -320,22 +308,21 @@ export function GitPanel(props: GitPanelProps) {
       !current || current.operation !== 'none' || current.hasConflicts || syncingAction() !== null
     )
   })
-  const branchMatchesQuery = (branch: GitBranchRef) =>
-    branch.name.toLowerCase().includes(refsQuery().trim().toLowerCase())
-  const localBranches = createMemo(
-    () => refs()?.branches.filter((branch) => !branch.remote && branchMatchesQuery(branch)) ?? []
-  )
-  const remoteBranches = createMemo(
-    () => refs()?.branches.filter((branch) => branch.remote && branchMatchesQuery(branch)) ?? []
-  )
-  const visibleStashes = createMemo(() => {
-    const query = refsQuery().trim().toLowerCase()
-    return refs()?.stashes.filter((stash) => stash.message.toLowerCase().includes(query)) ?? []
-  })
 
   return (
-    <aside class="git-panel" style={props.style}>
-      <div class="git-panel-header">
+    <aside class="git-panel" style={props.style} data-side={props.side ?? 'right'}>
+      <div class={`git-panel-header${props.onDragHandleMouseDown ? ' has-drag-grip' : ''}`}>
+        <Show when={props.onDragHandleMouseDown}>
+          <button
+            type="button"
+            class="panel-drag-grip"
+            title="Drag to move panel to the other side"
+            aria-label="Drag panel"
+            onMouseDown={props.onDragHandleMouseDown}
+          >
+            <GripVertical size={13} />
+          </button>
+        </Show>
         <div class="git-panel-tab-bar">
           <div class="git-panel-tabs">
             <button
@@ -355,45 +342,13 @@ export function GitPanel(props: GitPanelProps) {
                 <span class="git-panel-tab-count">{totalChanged()}</span>
               </Show>
             </button>
-            <button
-              type="button"
-              class={`git-panel-tab ${activeTab() === 'files' ? 'is-active' : ''}`}
-              onClick={() => setActiveTab('files')}
-            >
-              Files
-            </button>
           </div>
-
-          <Show when={activeTab() === 'files'}>
-            <div class="git-panel-actions">
-              <button
-                type="button"
-                class="git-panel-action-btn"
-                title="Search files (Shift+⌘F)"
-                onClick={() => props.onRequestFileSearch?.()}
-              >
-                <Search size={14} />
-              </button>
-              <button
-                type="button"
-                class="git-panel-action-btn"
-                title="Collapse all folders"
-                onClick={() => setCollapseAllCount((n) => n + 1)}
-              >
-                <ChevronsUp size={14} />
-              </button>
-            </div>
-          </Show>
         </div>
 
-        <Show when={status()}>
+        <Show
+          when={status()?.stashCount || status()?.operation !== 'none' || status()?.hasConflicts}
+        >
           <div class="git-status-strip">
-            <button type="button" class="git-branch-chip" onClick={() => void toggleRefs()}>
-              {branchLabel()}
-            </button>
-            <Show when={syncLabel()}>
-              <span class="git-upstream-chip">{syncLabel()}</span>
-            </Show>
             <Show when={status()?.stashCount}>
               <span class="git-meta-chip">stash {status()?.stashCount}</span>
             </Show>
@@ -403,142 +358,7 @@ export function GitPanel(props: GitPanelProps) {
             <Show when={status()?.hasConflicts}>
               <span class="git-warning-chip">conflicts</span>
             </Show>
-            <div class="git-sync-menu">
-              <button
-                type="button"
-                class="git-icon-btn"
-                disabled={syncBlocked()}
-                title={syncingAction() ? 'Syncing...' : 'Sync remote'}
-                aria-label="Sync with remote"
-              >
-                <ArrowUpDown size={16} />
-              </button>
-              <div class="git-sync-popover">
-                <button
-                  type="button"
-                  onClick={() => void handleSync('fetch')}
-                  disabled={syncBlocked()}
-                >
-                  Fetch
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSync('pull')}
-                  disabled={syncBlocked() || !status()?.upstream || totalChanged() > 0}
-                >
-                  Pull
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSync('pull-rebase')}
-                  disabled={syncBlocked() || !status()?.upstream || totalChanged() > 0}
-                >
-                  Pull (Rebase)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSync('push')}
-                  disabled={syncBlocked() || !status()?.upstream}
-                >
-                  Push
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="Force push requires protected-action confirmation"
-                >
-                  Force Push
-                </button>
-              </div>
-            </div>
           </div>
-          <Show when={refsOpen()}>
-            <div class="git-refs-picker">
-              <div class="git-refs-tabs">
-                <button
-                  type="button"
-                  class={refsTab() === 'branches' ? 'is-active' : ''}
-                  onClick={() => setRefsTab('branches')}
-                >
-                  Branches
-                </button>
-                <button
-                  type="button"
-                  class={refsTab() === 'stash' ? 'is-active' : ''}
-                  onClick={() => setRefsTab('stash')}
-                >
-                  Stash
-                  <Show when={refs()?.stashes.length}> ({refs()?.stashes.length})</Show>
-                </button>
-              </div>
-              <input
-                class="git-refs-search"
-                value={refsQuery()}
-                onInput={(event) => setRefsQuery(event.currentTarget.value)}
-                placeholder={refsTab() === 'branches' ? 'Switch branch…' : 'Search stashes…'}
-              />
-              <Show when={refsLoading()}>
-                <div class="git-refs-empty">Loading refs…</div>
-              </Show>
-              <Show when={!refsLoading() && refsTab() === 'branches'}>
-                <div class="git-refs-list">
-                  <Show when={localBranches().length === 0 && remoteBranches().length === 0}>
-                    <div class="git-refs-empty">No branches found</div>
-                  </Show>
-                  <Show when={localBranches().length > 0}>
-                    <div class="git-refs-group-title">Local</div>
-                    <For each={localBranches()}>
-                      {(branch) => (
-                        <button
-                          type="button"
-                          class="git-ref-row"
-                          disabled={branch.current}
-                          onClick={() => void handleCheckoutBranch(branch)}
-                        >
-                          <span>{branch.current ? '✓' : ''}</span>
-                          <span>{branch.name}</span>
-                          <span>{branch.commit.slice(0, 7)}</span>
-                        </button>
-                      )}
-                    </For>
-                  </Show>
-                  <Show when={remoteBranches().length > 0}>
-                    <div class="git-refs-group-title">Remote</div>
-                    <For each={remoteBranches()}>
-                      {(branch) => (
-                        <button type="button" class="git-ref-row" disabled>
-                          <span />
-                          <span>{branch.name.replace(/^remotes\//, '')}</span>
-                          <span>{branch.commit.slice(0, 7)}</span>
-                        </button>
-                      )}
-                    </For>
-                  </Show>
-                </div>
-              </Show>
-              <Show when={!refsLoading() && refsTab() === 'stash'}>
-                <div class="git-refs-list">
-                  <Show when={visibleStashes().length === 0}>
-                    <div class="git-refs-empty">No stashes found</div>
-                  </Show>
-                  <For each={visibleStashes()}>
-                    {(stash) => (
-                      <div class="git-stash-row">
-                        <span>{`stash@{${stash.index}}`}</span>
-                        <span>{stash.message}</span>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-              <Show when={refsMessage()}>
-                <div class="git-sync-message">{refsMessage()}</div>
-              </Show>
-            </div>
-          </Show>
-          <Show when={syncMessage()}>
-            <div class="git-sync-message">{syncMessage()}</div>
-          </Show>
         </Show>
       </div>
 
@@ -669,21 +489,110 @@ export function GitPanel(props: GitPanelProps) {
                   disabled={isCommitting()}
                 />
                 <div class="git-commit-composer-footer">
-                  <button
-                    type="button"
-                    class="git-generate-msg-btn"
-                    title="Generate commit message from staged diff"
-                    aria-label="Generate commit message from staged diff"
-                    disabled={isGeneratingMsg() || isCommitting()}
-                    onClick={() => void handleGenerateCommitMessage()}
-                  >
-                    <Show
-                      when={!isGeneratingMsg()}
-                      fallback={<span class="git-generate-spinner">⋯</span>}
+                  <div class="git-commit-footer-left">
+                    <button
+                      type="button"
+                      class="git-generate-msg-btn"
+                      title="Generate commit message from staged diff"
+                      aria-label="Generate commit message from staged diff"
+                      disabled={isGeneratingMsg() || isCommitting()}
+                      onClick={() => void handleGenerateCommitMessage()}
                     >
-                      <Sparkles size={14} />
+                      <Show
+                        when={!isGeneratingMsg()}
+                        fallback={<span class="git-generate-spinner">⋯</span>}
+                      >
+                        <Sparkles size={14} />
+                      </Show>
+                    </button>
+                    {/* Sync remote — Portal-based click popover to avoid overflow clipping */}
+                    <button
+                      ref={(el) => {
+                        syncBtnRef = el
+                      }}
+                      type="button"
+                      class={`git-icon-btn${syncMenuOpen() ? ' is-active' : ''}`}
+                      disabled={syncBlocked()}
+                      title={syncingAction() ? 'Syncing…' : 'Sync remote'}
+                      aria-label="Sync with remote"
+                      aria-expanded={syncMenuOpen()}
+                      onClick={() => {
+                        const rect = syncBtnRef?.getBoundingClientRect() ?? null
+                        setSyncMenuAnchor(rect)
+                        setSyncMenuOpen((v) => !v)
+                      }}
+                    >
+                      <ArrowUpDown size={14} />
+                    </button>
+                    <Show when={syncMenuOpen() && syncMenuAnchor()}>
+                      {(anchor) => (
+                        <Portal>
+                          <div
+                            role="presentation"
+                            aria-hidden="true"
+                            class="git-sync-backdrop"
+                            onClick={() => setSyncMenuOpen(false)}
+                          />
+                          <div
+                            class="git-sync-popover git-sync-popover--portal"
+                            style={{
+                              bottom: `${window.innerHeight - anchor().top + 4}px`,
+                              left: `${anchor().left}px`,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyncMenuOpen(false)
+                                void handleSync('fetch')
+                              }}
+                              disabled={syncBlocked()}
+                            >
+                              Fetch
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyncMenuOpen(false)
+                                void handleSync('pull')
+                              }}
+                              disabled={syncBlocked() || !status()?.upstream || totalChanged() > 0}
+                            >
+                              Pull
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyncMenuOpen(false)
+                                void handleSync('pull-rebase')
+                              }}
+                              disabled={syncBlocked() || !status()?.upstream || totalChanged() > 0}
+                            >
+                              Pull (Rebase)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyncMenuOpen(false)
+                                void handleSync('push')
+                              }}
+                              disabled={syncBlocked() || !status()?.upstream}
+                            >
+                              Push
+                            </button>
+                            <button
+                              type="button"
+                              disabled
+                              title="Force push requires protected-action confirmation"
+                            >
+                              Force Push
+                            </button>
+                          </div>
+                        </Portal>
+                      )}
                     </Show>
-                  </button>
+                  </div>
+                  {/* end git-commit-footer-left */}
                   <div class="git-commit-mode-actions">
                     <button
                       type="button"
@@ -750,17 +659,6 @@ export function GitPanel(props: GitPanelProps) {
               </Show>
             </div>
           </Show>
-        </div>
-      </Show>
-
-      <Show when={activeTab() === 'files'}>
-        <div class="git-panel-body">
-          <FileTree
-            cwd={props.cwd}
-            changedPaths={new Set(status()?.files.map((f) => f.path))}
-            onFileClick={props.onFileClick}
-            triggerCollapseAll={collapseAllCount()}
-          />
         </div>
       </Show>
 

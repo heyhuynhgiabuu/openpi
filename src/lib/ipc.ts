@@ -86,6 +86,7 @@ export const IPC = {
   ARCHIVE_SESSIONS: 'openpi:archive-sessions',
   LIST_ARCHIVED_SESSIONS: 'openpi:list-archived-sessions',
   UNARCHIVE_SESSIONS: 'openpi:unarchive-sessions',
+  DELETE_SESSIONS: 'openpi:delete-sessions',
   LIST_SKILLS: 'openpi:list-skills',
   READ_SKILL_FILE: 'openpi:read-skill-file',
 
@@ -108,6 +109,7 @@ export const IPC = {
   PTY_DATA: 'openpi:pty-data',
   PTY_EXIT: 'openpi:pty-exit',
   OUTPUT_APPEND: 'openpi:output-append',
+  GET_OUTPUT_BUFFER: 'openpi:get-output-buffer',
   GIT_STATUS_CHANGED: 'openpi:git-status-changed',
   FILE_TREE_CHANGED: 'openpi:file-tree-changed',
 } as const
@@ -978,6 +980,17 @@ export const archiveSessionsResultSchema = z.object({
   skipped: z.number(),
 })
 export type ArchiveSessionsResult = z.infer<typeof archiveSessionsResultSchema>
+
+export const deleteSessionsRequestSchema = z.object({
+  paths: z.array(z.string().min(1)).min(1),
+})
+export type DeleteSessionsRequest = z.infer<typeof deleteSessionsRequestSchema>
+
+export const deleteSessionsResultSchema = z.object({
+  deleted: z.number(),
+  failed: z.number(),
+})
+export type DeleteSessionsResult = z.infer<typeof deleteSessionsResultSchema>
 
 export const fffGrepMatchSchema = z.object({
   relativePath: z.string(),

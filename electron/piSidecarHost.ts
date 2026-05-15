@@ -71,6 +71,9 @@ export class PiSidecarHost {
   private readonly pendingRequests = new Map<string, PendingRequest>()
   private restartCount = 0
   private stopping = false
+  /** Partial-line buffers: chunks may split across line boundaries. */
+  private _stdoutBuf = ''
+  private _stderrBuf = ''
 
   constructor(opts: {
     onMessage: (msg: SidecarMessage) => void
@@ -100,9 +103,31 @@ export class PiSidecarHost {
 
     child.stdout?.on('data', (chunk: Buffer) => {
       process.stdout.write(`[piSidecar] ${chunk.toString('utf8').trimEnd()}\n`)
+      // Accumulate until a newline boundary so partial chunks don't produce
+      // truncated log entries in the Output pane.
+      this._stdoutBuf += chunk.toString('utf8')
+      const parts = this._stdoutBuf.split('\n')
+      this._stdoutBuf = parts.pop() ?? ''
+      for (const line of parts) {
+        if (!line.trim()) continue
+        this.onMessage({
+          type: 'output_append',
+          line: { level: 'info', text: `[sidecar] ${line}`, ts: Date.now() },
+        })
+      }
     })
     child.stderr?.on('data', (chunk: Buffer) => {
       process.stderr.write(`[piSidecar] ${chunk.toString('utf8').trimEnd()}\n`)
+      this._stderrBuf += chunk.toString('utf8')
+      const parts = this._stderrBuf.split('\n')
+      this._stderrBuf = parts.pop() ?? ''
+      for (const line of parts) {
+        if (!line.trim()) continue
+        this.onMessage({
+          type: 'output_append',
+          line: { level: 'error', text: `[sidecar] ${line}`, ts: Date.now() },
+        })
+      }
     })
 
     child.on('message', (msg: unknown) => {
@@ -133,14 +158,46 @@ export class PiSidecarHost {
           pending.reject(new Error(`Pi sidecar exited with code ${code}`))
         }
         this.pendingRequests.clear()
+        // Flush any partial line remaining in the buffers at process exit.
+        for (const [buf, level] of [
+          [this._stdoutBuf, 'info' as const],
+          [this._stderrBuf, 'error' as const],
+        ] as const) {
+          if (buf.trim()) {
+            this.onMessage({
+              type: 'output_append',
+              line: { level, text: `[sidecar] ${buf}`, ts: Date.now() },
+            })
+          }
+        }
+        this._stdoutBuf = ''
+        this._stderrBuf = ''
         if (this.stopping) return
+        const exitMsg = `[sidecar] process exited with code ${code ?? 'null'}`
         process.stderr.write(`[piSidecarHost] sidecar exited with code ${code}\n`)
+        this.onMessage({
+          type: 'output_append',
+          line: { level: 'error', text: exitMsg, ts: Date.now() },
+        })
         if (this.restartCount < MAX_RESTARTS) {
           this.restartCount++
+          const retryMsg = `[sidecar] restarting (attempt ${this.restartCount}/${MAX_RESTARTS}) in ${RESTART_DELAY_MS}ms…`
+          this.onMessage({
+            type: 'output_append',
+            line: { level: 'warn', text: retryMsg, ts: Date.now() },
+          })
           setTimeout(() => {
             if (!this.stopping) this.spawnChild()
           }, RESTART_DELAY_MS)
         } else {
+          this.onMessage({
+            type: 'output_append',
+            line: {
+              level: 'error',
+              text: '[sidecar] max restarts reached — giving up',
+              ts: Date.now(),
+            },
+          })
           this.onCrash()
         }
       }

@@ -53,6 +53,11 @@ export function useOpenPiSession() {
   const [models, setModels] = createSignal<ModelInfo[]>([])
   const [error, setError] = createSignal<string | null>(null)
   const [queueMode, setQueueMode] = createSignal<QueueMode>('prompt')
+  // Tracks whether the user just sent a fresh prompt (not a steer/followup).
+  // Used to limit auto-steer activation to explicit user-initiated prompts only,
+  // so intermediate agent_start events (e.g. after steer delivery) don't override
+  // a mode the user intentionally set mid-stream.
+  let _justSentPrompt = false
   const [currentModel, setCurrentModel] = createSignal<ModelInfo | null>(null)
   const [thinkingLevel, setThinkingLevelState] = createSignal<string>('medium')
   const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
@@ -69,6 +74,7 @@ export function useOpenPiSession() {
     added: number
     removed: number
     untracked: number
+    changed: number
   } | null>(null)
   const [steeringQueue, setSteeringQueue] = createSignal<string[]>([])
   const [followUpQueue, setFollowUpQueue] = createSignal<string[]>([])
@@ -133,7 +139,17 @@ export function useOpenPiSession() {
   }
 
   const handleEvent = (event: SessionEvent) => {
-    if (event.type === 'agent_start') setIsStreaming(true)
+    if (event.type === 'agent_start') {
+      setIsStreaming(true)
+      // Auto-activate steer mode ONLY when the user explicitly sent a fresh
+      // prompt — not on every agent_start (e.g. intermediate restarts after
+      // a steer delivery). This prevents overriding a mode the user set
+      // intentionally while the agent was already running.
+      if (_justSentPrompt) {
+        setQueueMode('steer')
+        _justSentPrompt = false
+      }
+    }
     if (event.type === 'turn_start') {
       const e = event as { timestamp?: number }
       currentTurnStartMs = e.timestamp ?? Date.now()
@@ -334,6 +350,7 @@ export function useOpenPiSession() {
           added: s.totalAdded,
           removed: s.totalRemoved,
           untracked: s.files.filter((f) => f.status === '?').length,
+          changed: s.files.length,
         })
       })
     )
@@ -414,7 +431,10 @@ export function useOpenPiSession() {
         await window.openpi.steer(promptPayload.text, promptPayload.contextPrefix)
       else if (queueMode() === 'followup')
         await window.openpi.followUp(promptPayload.text, promptPayload.contextPrefix)
-      else await window.openpi.prompt(promptPayload.text, promptPayload.contextPrefix)
+      else {
+        _justSentPrompt = true
+        await window.openpi.prompt(promptPayload.text, promptPayload.contextPrefix)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }

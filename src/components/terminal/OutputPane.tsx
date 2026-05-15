@@ -6,6 +6,18 @@ export function OutputPane() {
   let bottomRef!: HTMLDivElement
 
   onMount(() => {
+    // Pre-populate with lines emitted before this pane was mounted
+    // (startup logs, sidecar stderr, crashes that happened while closed).
+    void window.openpi.getOutputBuffer().then((buffered) => {
+      setLines((prev) => {
+        const seen = new Set(prev.map((l) => `${l.ts}:${l.text}`))
+        const fresh = buffered.filter((l) => !seen.has(`${l.ts}:${l.text}`))
+        // Sort by timestamp so any live lines received during the async gap
+        // land in chronological order relative to the buffered history.
+        return [...fresh, ...prev].sort((a, b) => a.ts - b.ts).slice(-999)
+      })
+    })
+
     const unsub = window.openpi.onOutputAppend((line) => {
       setLines((prev) => [...prev.slice(-999), line])
     })

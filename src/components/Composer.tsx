@@ -4,12 +4,15 @@ import {
   ArrowUp,
   BookOpen,
   ChevronDown,
+  Clock,
   MessageSquare,
+  Paperclip,
   Plus,
   Search,
   SlidersHorizontal,
   Square,
   TerminalSquare,
+  Zap,
 } from 'lucide-solid'
 import {
   type Component,
@@ -65,6 +68,8 @@ type ComposerProps = {
   isShellRunning: boolean
   queueMode: QueueMode
   workspaceName: string
+  /** Most-recent-first list of user message texts for Up/Down history navigation */
+  promptHistory: string[]
   steeringQueue: string[]
   followUpQueue: string[]
   setTextareaRef: (el: HTMLTextAreaElement) => void
@@ -594,6 +599,10 @@ export const Composer: Component<ComposerProps> = (props) => {
   const [shellMode, setShellMode] = createSignal(false)
   const [customKeybindings, setCustomKeybindings] = createSignal<KeybindingOverrides>({})
 
+  // ─ Prompt history navigation (Up/Down when cursor at start) ──────────────
+  // -1 = typing draft; ≥0 = browsing history (0 = most recent)
+  const [historyIndex, setHistoryIndex] = createSignal(-1)
+  const [savedDraft, setSavedDraft] = createSignal('')
   // Model dropdown
   const [modelOpen, setModelOpen] = createSignal(false)
   const [modelSearch, setModelSearch] = createSignal('')
@@ -830,6 +839,36 @@ export const Composer: Component<ComposerProps> = (props) => {
     requestAnimationFrame(() => textareaEl?.focus())
   }
 
+  // Helpers for Up/Down prompt-history navigation
+  const historyBack = () => {
+    const history = props.promptHistory
+    if (!history.length) return
+    const current = historyIndex()
+    if (current === -1) {
+      // First Up press — save draft and go to most-recent message
+      setSavedDraft(props.input)
+      setHistoryIndex(0)
+      props.onInput(history[0] ?? '')
+    } else if (current < history.length - 1) {
+      // Go further back
+      setHistoryIndex(current + 1)
+      props.onInput(history[current + 1] ?? '')
+    }
+    // At oldest entry — do nothing
+  }
+
+  const historyForward = () => {
+    const current = historyIndex()
+    if (current <= 0) {
+      // Back to draft
+      setHistoryIndex(-1)
+      props.onInput(savedDraft())
+    } else {
+      setHistoryIndex(current - 1)
+      props.onInput(props.promptHistory[current - 1] ?? '')
+    }
+  }
+
   const keybindingEntries = () => buildKeybindingEntries(customKeybindings())
   const binding = (actionId: KeybindingActionId) => findBinding(keybindingEntries(), actionId)
 
@@ -970,50 +1009,59 @@ export const Composer: Component<ComposerProps> = (props) => {
           />
         </Show>
 
-        {/* ── Pending queue chips ──────────────────────────────────────── */}
+        {/* ── Pending queue list ────────────────────────────────────── */}
         <Show when={hasQueue()}>
-          <div class="queue-chips-row">
+          <div class="pending-queue">
+            <div class="pending-queue-header">
+              <span class="pending-queue-count">
+                Queued · {props.steeringQueue.length + props.followUpQueue.length}
+              </span>
+            </div>
             <For each={props.steeringQueue}>
               {(item) => (
-                <span class="queue-chip-item is-steer" title={item}>
-                  steer: {truncate(item)}
-                </span>
+                <div class="pq-row">
+                  <span
+                    class="pq-badge pq-badge--steer"
+                    title="Interrupt — injected after current tool calls"
+                  >
+                    <Zap size={10} />
+                  </span>
+                  <span class="pq-text" title={item}>
+                    {truncate(item, 72)}
+                  </span>
+                </div>
               )}
             </For>
             <For each={props.followUpQueue}>
               {(item) => (
-                <span class="queue-chip-item is-followup" title={item}>
-                  follow-up: {truncate(item)}
-                </span>
+                <div class="pq-row">
+                  <span
+                    class="pq-badge pq-badge--followup"
+                    title="Queue — delivered when agent fully stops"
+                  >
+                    <Clock size={10} />
+                  </span>
+                  <span class="pq-text" title={item}>
+                    {truncate(item, 72)}
+                  </span>
+                </div>
               )}
             </For>
-          </div>
-        </Show>
-
-        {/* ── Mode controls while streaming ────────────────────────────── */}
-        <Show when={props.isStreaming}>
-          <div class="queue-controls">
-            <For each={['steer', 'followup'] as const}>
-              {(mode) => (
-                <button
-                  type="button"
-                  class={props.queueMode === mode ? 'queue-chip is-active' : 'queue-chip'}
-                  onClick={() =>
-                    props.onQueueMode((current) => (current === mode ? 'prompt' : mode))
-                  }
-                >
-                  {mode === 'steer' ? 'Steer' : 'Follow-up'}
-                </button>
-              )}
-            </For>
-            <span class="running-indicator">
-              <span class="pulse">·</span> running
-            </span>
           </div>
         </Show>
 
         {/* ── Composer box ─────────────────────────────────────────────── */}
-        <div class={`composer-box${shellMode() ? ' is-shell-mode' : ''}`}>
+        <div
+          class={`composer-box${shellMode() ? ' is-shell-mode' : ''}${
+            props.isStreaming
+              ? props.queueMode === 'steer'
+                ? ' is-steer-mode'
+                : props.queueMode === 'followup'
+                  ? ' is-followup-mode'
+                  : ''
+              : ''
+          }`}
+        >
           {/* ── Attached file chips ──────────────────────────────────── */}
           <Show
             when={
@@ -1066,10 +1114,10 @@ export const Composer: Component<ComposerProps> = (props) => {
                 ? 'Enter shell command…'
                 : props.isStreaming
                   ? props.queueMode === 'steer'
-                    ? 'Steer after current tool calls…'
+                    ? 'Interrupt Pi after current tool calls…'
                     : props.queueMode === 'followup'
-                      ? 'Queue a follow-up…'
-                      : 'Send message…'
+                      ? 'Queue message for when Pi finishes…'
+                      : 'Message Pi…'
                   : `Ask Pi about ${props.workspaceName}…`
             }
             value={props.input}
@@ -1077,6 +1125,8 @@ export const Composer: Component<ComposerProps> = (props) => {
               const val = event.currentTarget.value
               const caret = event.currentTarget.selectionStart ?? val.length
               props.onInput(val)
+              // Any direct typing exits history-browsing mode
+              if (historyIndex() !== -1) setHistoryIndex(-1)
 
               if (shellMode()) {
                 if (slashOpen()) setSlashOpen(false)
@@ -1209,8 +1259,63 @@ export const Composer: Component<ComposerProps> = (props) => {
                 }
               }
 
+              // ─ Prompt history navigation (Up/Down) ───────────────────────────────
+              // Up at the start enters prompt history; while browsing, Up keeps going older.
+              if (
+                event.key === 'ArrowUp' &&
+                !event.shiftKey &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.altKey &&
+                !shellMode() &&
+                !slashOpen() &&
+                !skillOpen() &&
+                !fileMentionOpen() &&
+                (historyIndex() !== -1 ||
+                  (event.currentTarget.selectionStart === 0 &&
+                    event.currentTarget.selectionEnd === 0))
+              ) {
+                event.preventDefault()
+                historyBack()
+                requestAnimationFrame(() => {
+                  if (textareaEl) {
+                    const len = textareaEl.value.length
+                    textareaEl.setSelectionRange(len, len)
+                    textareaEl.style.height = 'auto'
+                    textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, 200)}px`
+                  }
+                })
+                return
+              }
+
+              // Down when browsing history → move forward toward draft
+              if (
+                event.key === 'ArrowDown' &&
+                !event.shiftKey &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.altKey &&
+                !shellMode() &&
+                historyIndex() !== -1
+              ) {
+                event.preventDefault()
+                historyForward()
+                requestAnimationFrame(() => {
+                  if (textareaEl) {
+                    const len = textareaEl.value.length
+                    textareaEl.setSelectionRange(len, len)
+                    textareaEl.style.height = 'auto'
+                    textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, 200)}px`
+                  }
+                })
+                return
+              }
+
               if (event.key === 'Enter' && !event.shiftKey && !event.altKey) {
                 event.preventDefault()
+                // Reset history cursor so next Up starts at most-recent message again
+                setHistoryIndex(-1)
+                setSavedDraft('')
                 props.onSend()
               }
 
@@ -1244,7 +1349,7 @@ export const Composer: Component<ComposerProps> = (props) => {
                   title="Add context file (⌘/)"
                   aria-label="Add context file"
                 >
-                  <Plus size={13} strokeWidth={2} />
+                  <Paperclip size={13} strokeWidth={2} />
                 </button>
 
                 <Show when={pickerOpen()}>
@@ -1402,6 +1507,35 @@ export const Composer: Component<ComposerProps> = (props) => {
 
             {/* Send / Stop */}
             <div class="composer-toolbar-right">
+              <Show when={props.isStreaming}>
+                {/* Delivery mode selector — only visible while the agent is running */}
+                <div class="delivery-seg">
+                  <button
+                    type="button"
+                    class={`delivery-btn${props.queueMode === 'steer' ? ' is-on' : ''}`}
+                    onClick={() => props.onQueueMode((m) => (m === 'steer' ? 'prompt' : 'steer'))}
+                    title="Interrupt — injected after current tool calls, before next LLM call"
+                    aria-pressed={props.queueMode === 'steer'}
+                  >
+                    <Zap size={11} />
+                    <span>Interrupt</span>
+                  </button>
+                  <button
+                    type="button"
+                    class={`delivery-btn is-queue-variant${props.queueMode === 'followup' ? ' is-on' : ''}`}
+                    onClick={() =>
+                      props.onQueueMode((m) => (m === 'followup' ? 'prompt' : 'followup'))
+                    }
+                    title="Queue — delivered when agent fully stops"
+                    aria-pressed={props.queueMode === 'followup'}
+                  >
+                    <Clock size={11} />
+                    <span>Queue</span>
+                  </button>
+                </div>
+                <span class="composer-toolbar-divider" aria-hidden />
+              </Show>
+
               <Show
                 when={props.isStreaming}
                 fallback={
@@ -1423,11 +1557,12 @@ export const Composer: Component<ComposerProps> = (props) => {
                   </button>
                 }
               >
+                {/* During streaming: only the stop button — Enter key sends in the active delivery mode */}
                 <button
                   type="button"
                   class="composer-stop-btn"
                   onClick={props.onAbort}
-                  title="Stop"
+                  title="Stop agent"
                 >
                   <Square size={13} strokeWidth={2} />
                 </button>
@@ -1439,8 +1574,13 @@ export const Composer: Component<ComposerProps> = (props) => {
         <p class="composer-hint">
           {shellMode()
             ? 'enter to run shell · esc cancel · ⌘⇧X shell mode'
-            : 'enter to send · shift+enter new line · ⌘/ add context · ⌘⇧X shell'}
-          {props.isStreaming && !shellMode() ? ' · alt+enter switch mode' : ''}
+            : props.isStreaming && !shellMode()
+              ? props.queueMode === 'steer'
+                ? 'interrupt mode · injects after tool calls · enter to send · alt+enter switch'
+                : props.queueMode === 'followup'
+                  ? 'queue mode · delivers when agent stops · enter to send · alt+enter switch'
+                  : 'enter to send · alt+enter switch delivery mode'
+              : 'enter to send · shift+enter new line · ↑ recall last · ⌘/ add context · ⌘⇧X shell'}
         </p>
       </div>
     </div>

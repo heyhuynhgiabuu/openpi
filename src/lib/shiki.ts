@@ -1,57 +1,79 @@
 /**
  * shiki.ts — shared syntax highlighter instance.
  *
- * Used by MarkdownContent and FileViewerModal/LineNumberedEditor.
+ * Used by MarkdownContent and FilePreviewPane/LineNumberedEditor.
  * Exposes a synchronous `highlightCode` function that returns plain HTML
  * when the highlighter is ready (falls back to escaped text otherwise).
+ *
+ * Theme strategy: use embedded themes (github-dark-dimmed / github-light)
+ * instead of css-variables — css-variables is NOT bundled in shiki v3 and
+ * causes createHighlighter to reject, silently breaking all highlighting.
  */
 import type { createHighlighter } from 'shiki'
 
 type HighlighterInstance = Awaited<ReturnType<typeof createHighlighter>>
 
 let _highlighter: HighlighterInstance | null = null
+// Do NOT cache rejected promises — reset to null so the next call retries.
 let _highlighterPromise: Promise<HighlighterInstance> | null = null
 
 export async function ensureHighlighter(): Promise<HighlighterInstance> {
   if (_highlighter) return _highlighter
 
-  _highlighterPromise ??= import('shiki')
-    .then(({ createHighlighter }) =>
-      createHighlighter({
-        themes: ['github-dark-dimmed', 'css-variables'],
-        langs: [
-          'typescript',
-          'javascript',
-          'tsx',
-          'jsx',
-          'css',
-          'scss',
-          'html',
-          'json',
-          'bash',
-          'python',
-          'rust',
-          'go',
-          'yaml',
-          'markdown',
-          'sql',
-          'toml',
-          'ruby',
-          'php',
-          'graphql',
-          'plaintext',
-        ],
+  if (!_highlighterPromise) {
+    _highlighterPromise = import('shiki')
+      .then(({ createHighlighter, createJavaScriptRegexEngine }) =>
+        createHighlighter({
+          // Use the JS regex engine — no WebAssembly needed, works under any CSP.
+          // Falls back gracefully on grammars that use Oniguruma-only features.
+          engine: createJavaScriptRegexEngine(),
+          // css-variables is NOT a bundled shiki v3 theme — do not include it.
+          // github-dark-dimmed  → dark UI, github-light → light UI.
+          themes: ['github-dark-dimmed', 'github-light'],
+          langs: [
+            'typescript',
+            'javascript',
+            'tsx',
+            'jsx',
+            'css',
+            'scss',
+            'html',
+            'json',
+            'bash',
+            'python',
+            'rust',
+            'go',
+            'yaml',
+            'markdown',
+            'sql',
+            'toml',
+            'ruby',
+            'php',
+            'graphql',
+            'plaintext',
+          ],
+        })
+      )
+      .then((h) => {
+        _highlighter = h
+        return h
       })
-    )
-    .then((h) => {
-      _highlighter = h
-      return h
-    })
+      .catch((err) => {
+        // Reset so the next call can retry instead of caching the rejection.
+        _highlighterPromise = null
+        throw err
+      })
+  }
 
   return _highlighterPromise
 }
 
-const LANG_MAP: Record<string, string> = {
+/**
+ * Map common fence-language aliases to the shiki-registered language id.
+ * Shiki v3 resolves js/ts automatically but NOT py/sh/rb/etc.
+ * This map covers all the gaps.
+ */
+export const LANG_MAP: Record<string, string> = {
   ts: 'typescript',
   tsx: 'tsx',
   mts: 'typescript',
@@ -95,9 +117,19 @@ export function extToLang(filename: string): string | null {
 }
 
 /**
+ * Select the shiki theme that matches the current app theme.
+ * Reads the data-theme attribute on :root (set by OpenPi's theme system).
+ */
+export function activeShikiTheme(): 'github-dark-dimmed' | 'github-light' {
+  if (typeof document === 'undefined') return 'github-dark-dimmed'
+  return document.documentElement.getAttribute('data-theme') === 'light'
+    ? 'github-light'
+    : 'github-dark-dimmed'
+}
+
+/**
  * Highlight `code` for the given `filename` extension.
- * Uses shiki's css-variables theme so token colours follow the active
- * OpenPi theme palette via --shiki-* CSS variables.
+ * Synchronous: returns a plain <pre> if the highlighter isn't ready yet.
  */
 export function highlightCode(code: string, filename: string): string {
   const lang = extToLang(filename)
@@ -105,7 +137,7 @@ export function highlightCode(code: string, filename: string): string {
   try {
     return _highlighter.codeToHtml(code, {
       lang,
-      theme: 'css-variables',
+      theme: activeShikiTheme(),
     })
   } catch {
     return `<pre>${escHtml(code)}</pre>`

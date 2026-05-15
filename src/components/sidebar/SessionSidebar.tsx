@@ -1,21 +1,14 @@
 import fuzzysort from 'fuzzysort'
-import { Archive, ArrowUpCircle, Check, FileText, Plus, RotateCcw, Search } from 'lucide-solid'
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
-import type {
-  AppUpdateStatus,
-  ArchivedSessionItem,
-  SessionListItem,
-  WorkspaceInfo,
-} from '../../lib/ipc'
+import { Archive, Check, Plus, RotateCcw, Search, Trash2 } from 'lucide-solid'
+import { createMemo, createSignal, For, Show } from 'solid-js'
+import type { ArchivedSessionItem, SessionListItem, WorkspaceInfo } from '../../lib/ipc'
 import { formatRelativeTime, groupSessions } from '../../lib/sessionView'
 import type { GroupMode, SortMode } from '../../types/session'
-import { ChangelogModal } from '../ChangelogModal'
 import { SessionFilterMenu } from './SessionFilterMenu'
 import { SessionRow } from './SessionRow'
 
 const PAGE_SIZE_INITIAL = 10
 const PAGE_SIZE_MORE = 5
-const HOMEBREW_UPGRADE_COMMAND = 'brew update && brew upgrade --cask openpi'
 
 type SessionSidebarProps = {
   style?: string | Record<string, string>
@@ -44,37 +37,14 @@ type SessionSidebarProps = {
   onPinSession: (path: string) => void
   onToggleArchived: () => void
   onUnarchiveSession: (archivedPath: string) => void
+  onDeleteArchivedSession: (archivedPath: string) => void
   onOpenSession: (session: SessionListItem) => void
-  appVersion?: string
 }
 
 export function SessionSidebar(props: SessionSidebarProps) {
   const [searchVisible, setSearchVisible] = createSignal(Boolean(props.query))
 
   // ─ Update state ───────────────────────────────────────────────────
-  const [updateStatus, setUpdateStatus] = createSignal<AppUpdateStatus | null>(null)
-  const [changelogOpen, setChangelogOpen] = createSignal(false)
-  const [updateCommandCopied, setUpdateCommandCopied] = createSignal(false)
-
-  onMount(() => {
-    // Subscribe to update events pushed from main on cold start
-    const unsub = window.openpi.appUpdate.onStatus((status) => setUpdateStatus(status))
-    onCleanup(unsub)
-  })
-
-  const updateAvailable = () => updateStatus()?.state === 'available'
-
-  const copyUpgradeCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(HOMEBREW_UPGRADE_COMMAND)
-      setUpdateCommandCopied(true)
-      setTimeout(() => setUpdateCommandCopied(false), 2500)
-    } catch {
-      const url = updateStatus()?.releaseUrl
-      if (url) void window.openpi.appUpdate.openRelease(url)
-    }
-  }
-
   // Per-group visible count — only applied when not searching.
   // Map key is the group key string.
   const [visibleCounts, setVisibleCounts] = createSignal<Map<string, number>>(new Map())
@@ -107,13 +77,13 @@ export function SessionSidebar(props: SessionSidebarProps) {
     <aside class="session-sidebar" style={props.style}>
       <div class="sidebar-header">
         <div class="sidebar-title-row">
-          <div class="eyebrow">Sessions</div>
+          <div class="eyebrow">Threads</div>
           <div class="sidebar-actions">
             <button
               type="button"
               class="icon-button"
               onClick={() => setSearchVisible((value) => !value)}
-              aria-label="Search sessions"
+              aria-label="Search threads"
             >
               <Search size={15} />
             </button>
@@ -130,18 +100,19 @@ export function SessionSidebar(props: SessionSidebarProps) {
               type="button"
               class={`icon-button${props.showArchived ? ' is-active' : ''}`}
               onClick={props.onToggleArchived}
-              title={`Archived sessions${props.archivedSessions.length > 0 ? ` (${props.archivedSessions.length})` : ''}`}
-              aria-label="Archived sessions"
+              title={`Archived threads${props.archivedSessions.length > 0 ? ` (${props.archivedSessions.length})` : ''}`}
+              aria-label="Archived threads"
             >
               <Archive size={15} />
             </button>
             <button
               type="button"
-              class="sidebar-new-btn no-drag"
+              class="icon-button no-drag"
               onClick={props.onNewSession}
-              title="New session (⌘N)"
+              title="New thread (⌘N)"
+              aria-label="New thread"
             >
-              New <kbd class="sidebar-kbd">⌘N</kbd>
+              <Plus size={15} />
             </button>
           </div>
         </div>
@@ -152,7 +123,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
             <input
               value={props.query}
               onInput={(event) => props.onQuery(event.currentTarget.value)}
-              placeholder="Search sessions"
+              placeholder="Search threads"
             />
           </label>
         </Show>
@@ -184,6 +155,14 @@ export function SessionSidebar(props: SessionSidebarProps) {
                         onClick={() => props.onUnarchiveSession(item.archivedPath)}
                       >
                         <RotateCcw size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        class="archived-delete-btn"
+                        title="Permanently delete session"
+                        onClick={() => props.onDeleteArchivedSession(item.archivedPath)}
+                      >
+                        <Trash2 size={11} />
                       </button>
                     </div>
                   )}
@@ -217,7 +196,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
 
         <Show when={grouped().length === 0 && pinnedItems().length === 0 && !props.showArchived}>
           <div class="sidebar-empty">
-            No sessions indexed yet. Start a prompt to create the first Pi session.
+            No threads indexed yet. Start a prompt to create the first Pi thread.
           </div>
         </Show>
 
@@ -288,50 +267,6 @@ export function SessionSidebar(props: SessionSidebarProps) {
           }}
         </For>
       </div>
-
-      {/* ── Sidebar footer: version + update chip + changelog ──────── */}
-      <div class="sidebar-footer">
-        <Show
-          when={updateAvailable()}
-          fallback={
-            <button
-              type="button"
-              class="sidebar-footer-version"
-              title="Check for updates"
-              onClick={() => {
-                void window.openpi.appUpdate.check().then(setUpdateStatus)
-              }}
-            >
-              v{props.appVersion ?? '…'}
-            </button>
-          }
-        >
-          <button
-            type="button"
-            class="sidebar-footer-update-chip"
-            title={`OpenPi ${updateStatus()?.latestVersion} is available — click to copy: ${HOMEBREW_UPGRADE_COMMAND}`}
-            onClick={() => {
-              void copyUpgradeCommand()
-            }}
-          >
-            <ArrowUpCircle size={12} />
-            {updateCommandCopied()
-              ? 'Copied brew command'
-              : (updateStatus()?.latestVersion ?? 'Update available')}
-          </button>
-        </Show>
-
-        <button
-          type="button"
-          class="sidebar-footer-changelog-btn"
-          title="What's new"
-          onClick={() => setChangelogOpen(true)}
-        >
-          <FileText size={13} />
-        </button>
-      </div>
-
-      <ChangelogModal open={changelogOpen()} onClose={() => setChangelogOpen(false)} />
     </aside>
   )
 }

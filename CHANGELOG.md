@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-05-16
+
+OpenPi v0.1.13 focuses on the desktop workbench experience: persistent file preview tabs, a bottom utility bar, safer archived-session cleanup, smoother composer history recall, and more reliable markdown/code rendering.
+
+### Added
+
+- **Center file preview pane** — workspace files now open in the main workbench surface with tabs, editable line-numbered text, markdown/code preview, image preview, save support, find/replace, minimap, and file-line comment chips for agent context.
+- **Bottom utility bar** — added a compact bottom bar for thread/workspace navigation, Git/file/terminal panel toggles, app update status, and live Git sync feedback.
+- **Workspace pane** — added a workspace-focused left drawer showing recent project roots, active workspace state, session counts, and quick “new thread in workspace” actions.
+- **Movable Git panel** — the source-control panel can be dragged to the left or right of the conversation pane, with its side persisted across launches.
+- **Branch/stash picker overlay** — Git refs now open from the top bar as a floating picker for local branches, remote branches, and stashes.
+- **Composer prompt history** — pressing ↑ in the composer recalls previous user prompts, with ↓ returning toward the saved draft.
+- **Output history buffer** — startup, sidecar, update, and crash output emitted before the Output pane opens is now replayed when the pane mounts.
+
+### Changed
+
+- **Git layout** — split the Git file tree into its own file panel and streamlined the source-control panel around changes, history, commit composition, and sync actions.
+- **Markdown rendering** — message markdown now uses a cached Shiki-backed parser, code-block copy buttons, table wrappers, language alias handling, and theme-aware syntax colors.
+- **Shiki loading** — syntax highlighting uses bundled dark/light themes and the JavaScript regex engine to avoid CSP/WebAssembly startup failures.
+- **File preview search controls** — replaced the show/hide replace, replace-next, and replace-all controls with clearer Lucide icons.
+- **Sidebar filter menu** — anchored the filter/sort menu to the sidebar toolbar so it no longer clips off-screen.
+
+### Fixed
+
+- **Archived session deletion safety** — deleting archived sessions now requires confirmation, only accepts `.jsonl.archived` files under Pi’s sessions directory, validates symlinks with real paths, and moves files to the system Trash instead of permanently unlinking them.
+- **Workspace image preview boundary** — `localfile://` image serving is constrained to regular files inside the active workspace, preventing renderer-originated previews from reading arbitrary local paths.
+- **Markdown injection hardening** — code-block language labels and fallback code HTML are escaped, and rendered markdown is sanitized before insertion into the renderer.
+- **Release lint gate** — reformatted changed files so `npm run lint` is clean before the version bump.
+
 ## [0.1.12] - 2026-05-15
 
 OpenPi v0.1.12 fixes fork-from-message crashes, the GitHub Copilot device-code login flow, and a silent extension-loading failure that caused global Pi extensions (e.g. `copilot-provider.ts`) to be bypassed even when shown as Active. Also fixes slash prompt/skill expansion and refreshes icon assets.

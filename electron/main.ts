@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { app, BrowserWindow, dialog, ipcMain, Notification, net, protocol, shell } from 'electron'
 import { z } from 'zod'
@@ -50,6 +50,7 @@ import {
   archiveSessionsRequestSchema,
   customizationsInventorySchema,
   customProviderSchema,
+  deleteSessionsRequestSchema,
   diagnosticsBundleSchema,
   fffFileSearchRequestSchema,
   fffGrepRequestSchema,
@@ -383,6 +384,42 @@ let fffHostPromise: Promise<typeof FffHost> | null = null
 let customizationsHostPromise: Promise<typeof CustomizationsHost> | null = null
 let piSidecarHost: PiSidecarHost | null = null
 
+function isPathInside(parentPath: string, childPath: string): boolean {
+  const relative = path.relative(parentPath, childPath)
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+// ── Output ring buffer ─────────────────────────────────────────────────
+// Lines emitted before the Output pane opens are held here so they are
+// replayed when the renderer calls GET_OUTPUT_BUFFER on mount.
+const OUTPUT_BUFFER_MAX = 500
+const outputBuffer: OutputLine[] = []
+
+function emitOutputLine(line: OutputLine): void {
+  outputBuffer.push(line)
+  if (outputBuffer.length > OUTPUT_BUFFER_MAX) outputBuffer.shift()
+  mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+}
+
+// Capture main-process crashes and forward them to the Output pane,
+// then exit so Electron doesn't run in a corrupted state.
+process.on('uncaughtException', (err: Error) => {
+  const text = `[crash] ${err.message}${err.stack ? `\n${err.stack}` : ''}`
+  process.stderr.write(`[main] uncaughtException: ${err.stack ?? err.message}\n`)
+  emitOutputLine({ level: 'error', text, ts: Date.now() })
+  // Give the IPC channel one tick to flush before hard-exit.
+  setImmediate(() => app.exit(1))
+})
+process.on('unhandledRejection', (reason: unknown) => {
+  const text =
+    reason instanceof Error
+      ? `[rejection] ${reason.message}${reason.stack ? `\n${reason.stack}` : ''}`
+      : `[rejection] ${String(reason)}`
+  process.stderr.write(`[main] unhandledRejection: ${text}\n`)
+  emitOutputLine({ level: 'warn', text, ts: Date.now() })
+  // Unhandled rejections are non-fatal — log and continue.
+})
+
 function createRequestId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
@@ -557,7 +594,7 @@ async function maybeCheckPiUpdateOnStartup(): Promise<void> {
       text: `[updates] Pi ${result.latestVersion} is available; current bundled SDK is ${result.currentVersion}.`,
       ts: Date.now(),
     }
-    mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+    emitOutputLine(line)
   }
 }
 
@@ -734,7 +771,7 @@ function handleSidecarMessage(msg: SidecarMessage): void {
     }
 
     case 'output_append':
-      mainWindow?.webContents.send(IPC.OUTPUT_APPEND, msg.line)
+      emitOutputLine(msg.line as OutputLine)
       return
 
     case 'error':
@@ -806,7 +843,7 @@ async function startSession(cwd: string, options: StartSessionOptions = {}): Pro
       text: `[updates] ${err instanceof Error ? err.message : String(err)}`,
       ts: Date.now(),
     }
-    mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+    emitOutputLine(line)
   })
   await refreshSessionIndex()
 }
@@ -841,7 +878,7 @@ function showDeferredWorkspace(cwd: string): void {
       text: `[updates] ${err instanceof Error ? err.message : String(err)}`,
       ts: Date.now(),
     }
-    mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+    emitOutputLine(line)
   })
 }
 
@@ -908,6 +945,10 @@ function writeModelsJson(agentDir: string, data: ModelsJson): void {
 
 function registerHandlers(): void {
   ipcMain.handle(IPC.GET_APP_INFO, async (): Promise<AppInfo> => getAppInfo())
+
+  // Return the current ring-buffer contents so the Output pane can pre-populate
+  // on mount with lines that arrived before it was opened.
+  ipcMain.handle(IPC.GET_OUTPUT_BUFFER, (): OutputLine[] => [...outputBuffer])
 
   ipcMain.handle(IPC.PICK_WORKSPACE, async () => {
     if (!mainWindow) return { cancelled: true }
@@ -1567,7 +1608,7 @@ function registerHandlers(): void {
             text: `[archive] rename failed: ${String(err)}`,
             ts: Date.now(),
           }
-          mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+          emitOutputLine(line)
         }
       }
 
@@ -1678,6 +1719,50 @@ function registerHandlers(): void {
     refreshInFlight = null
     await refreshSessionIndex()
   })
+
+  ipcMain.handle(
+    IPC.DELETE_SESSIONS,
+    async (_event, raw: unknown): Promise<{ deleted: number; failed: number }> => {
+      const { paths } = deleteSessionsRequestSchema.parse(raw)
+      const sessionsDir = path.resolve(getAgentDir(), 'sessions')
+      const realSessionsDir = fs.existsSync(sessionsDir)
+        ? fs.realpathSync(sessionsDir)
+        : sessionsDir
+      let deleted = 0
+      let failed = 0
+
+      for (const submittedPath of paths) {
+        const filePath = path.resolve(submittedPath)
+        try {
+          if (!filePath.endsWith('.jsonl.archived') || !isPathInside(sessionsDir, filePath)) {
+            failed++
+            continue
+          }
+
+          const stat = fs.lstatSync(filePath)
+          if (!stat.isFile()) {
+            failed++
+            continue
+          }
+
+          const realFilePath = fs.realpathSync(filePath)
+          if (!isPathInside(realSessionsDir, realFilePath)) {
+            failed++
+            continue
+          }
+
+          await shell.trashItem(filePath)
+          deleted++
+        } catch (err) {
+          console.warn(`[delete-sessions] failed to trash ${filePath}: ${String(err)}`)
+          failed++
+        }
+      }
+      refreshInFlight = null
+      await refreshSessionIndex()
+      return { deleted, failed }
+    }
+  )
 
   ipcMain.handle(IPC.READ_THEME_COLORS, (_event, rawPath: unknown) => {
     if (typeof rawPath !== 'string' || !rawPath.endsWith('.json')) return null
@@ -1907,10 +1992,33 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   if (process.platform === 'darwin') app.dock?.setIcon(dockIconPath())
 
-  // Handle localfile:// — decode URL pathname and proxy to file protocol
+  // Handle localfile:// — decode URL pathname and proxy to file protocol.
+  // Only the active workspace may be served; the renderer must never gain
+  // arbitrary local filesystem read authority through image previews.
   protocol.handle('localfile', (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname)
-    return net.fetch(`file://${encodeURI(filePath)}`)
+    const cwd = state?.cwd
+    if (!cwd) return new Response('No active workspace', { status: 404 })
+
+    const filePath = path.resolve(decodeURIComponent(new URL(request.url).pathname))
+    const workspaceRoot = path.resolve(cwd)
+    if (!isPathInside(workspaceRoot, filePath)) {
+      return new Response('File outside workspace', { status: 403 })
+    }
+
+    try {
+      const stat = fs.lstatSync(filePath)
+      if (!stat.isFile()) return new Response('Not a file', { status: 404 })
+
+      const realWorkspaceRoot = fs.realpathSync(workspaceRoot)
+      const realFilePath = fs.realpathSync(filePath)
+      if (!isPathInside(realWorkspaceRoot, realFilePath)) {
+        return new Response('File outside workspace', { status: 403 })
+      }
+    } catch {
+      return new Response('File not found', { status: 404 })
+    }
+
+    return net.fetch(pathToFileURL(filePath).toString())
   })
 
   sessionIndex = new SessionIndexStore(path.join(app.getPath('userData'), 'openpi.sqlite'))

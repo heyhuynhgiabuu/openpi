@@ -8,6 +8,7 @@ import type {
   CustomizationsInventory,
   CustomProvider,
   CustomProviderInfo,
+  DeleteSessionsResult,
   DiagnosticsBundle,
   FffFileResult,
   FffGrepMatch,
@@ -171,6 +172,7 @@ const api = {
     ipcRenderer.on(IPC.OUTPUT_APPEND, handler)
     return () => ipcRenderer.removeListener(IPC.OUTPUT_APPEND, handler)
   },
+  getOutputBuffer: (): Promise<OutputLine[]> => ipcRenderer.invoke(IPC.GET_OUTPUT_BUFFER),
 
   // ── Preferences ────────────────────────────────────────────────────
   getPref: (key: string): Promise<string | null> => ipcRenderer.invoke(IPC.GET_PREF, { key }),
@@ -294,6 +296,9 @@ const api = {
 
   unarchiveSessions: (paths: string[]): Promise<void> =>
     ipcRenderer.invoke(IPC.UNARCHIVE_SESSIONS, { paths }),
+
+  deleteSessions: (paths: string[]): Promise<DeleteSessionsResult> =>
+    ipcRenderer.invoke(IPC.DELETE_SESSIONS, { paths }),
 
   listSkills: (): Promise<SkillItem[]> => ipcRenderer.invoke(IPC.LIST_SKILLS),
 

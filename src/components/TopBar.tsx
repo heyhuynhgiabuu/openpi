@@ -1,26 +1,26 @@
 /**
  * TopBar — SolidJS version.
- * Three-zone header: LEFT sidebar toggle · CENTER session name · RIGHT panel toggles.
+ * Three-zone header: macOS traffic-light spacer · session identity · settings.
  */
 import logoUrl from '@icons/icon.svg'
-import { GitBranch, MonitorCog, PanelLeft, PanelRight, SquareTerminal } from 'lucide-solid'
+import { GitBranch, MonitorCog } from 'lucide-solid'
 import { createSignal, Show } from 'solid-js'
 import type { ModelInfo } from '../lib/ipc'
 
 interface Props {
-  sidebarOpen: boolean
-  onToggleSidebar: () => void
   workspaceName: string
   gitBranch: string | null
-  gitStats?: { added: number; removed: number; untracked: number } | null
+  gitStats?: { added: number; removed: number; untracked: number; changed?: number } | null
+  /** Upstream ref label, e.g. "origin/main ↑1 ↓2" — surfaced by GitPanel. */
+  gitUpstream?: string | null
+  /** Total number of changed files (staged + unstaged + untracked). */
+  gitChangeCount?: number | null
+  /** Called when the branch chip is clicked — opens the refs picker in GitPanel. */
+  onBranchClick?: () => void
   sessionName: string
   isStreaming: boolean
   onRenameSession: (name: string) => void
   onOpenWorkspace: () => void
-  terminalOpen: boolean
-  onToggleTerminal: () => void
-  secondaryPanelOpen: boolean
-  onToggleSecondaryPanel: () => void
   onOpenSettings: () => void
   /** Optional ref callback — parent calls the returned function to trigger rename mode */
   startRenameRef?: (fn: () => void) => void
@@ -51,16 +51,7 @@ export function TopBar(props: Props) {
 
   return (
     <header class="topbar drag">
-      <div class="topbar-left-zone">
-        <button
-          type="button"
-          class={`topbar-icon-btn no-drag${props.sidebarOpen ? ' is-active' : ''}`}
-          onClick={props.onToggleSidebar}
-          title="Toggle sidebar (⌘B)"
-        >
-          <PanelLeft size={15} />
-        </button>
-      </div>
+      <div class="topbar-left-zone" aria-hidden="true" />
 
       <div class="topbar-center no-drag">
         <span class="topbar-brand-icon" aria-hidden="true">
@@ -108,30 +99,45 @@ export function TopBar(props: Props) {
 
         <Show when={props.gitBranch}>
           {(getBranch) => (
-            <span class="topbar-branch">
-              <GitBranch size={11} class="topbar-branch-icon" />
-              {getBranch()}
-              <Show
-                when={
-                  props.gitStats &&
-                  (props.gitStats.added > 0 ||
-                    props.gitStats.removed > 0 ||
-                    props.gitStats.untracked > 0)
-                }
+            <>
+              <button
+                type="button"
+                class="topbar-branch no-drag"
+                onClick={props.onBranchClick}
+                title={props.onBranchClick ? 'Switch branch' : undefined}
               >
-                <span class="topbar-branch-stats">
-                  <Show when={props.gitStats!.added > 0}>
-                    <span class="topbar-stat-add">+{props.gitStats!.added}</span>
-                  </Show>
-                  <Show when={props.gitStats!.removed > 0}>
-                    <span class="topbar-stat-rem">-{props.gitStats!.removed}</span>
-                  </Show>
-                  <Show when={props.gitStats!.untracked > 0}>
-                    <span class="topbar-stat-unt">?{props.gitStats!.untracked}</span>
-                  </Show>
+                <GitBranch size={11} class="topbar-branch-icon" />
+                {getBranch()}
+                <Show
+                  when={
+                    props.gitStats &&
+                    (props.gitStats.added > 0 ||
+                      props.gitStats.removed > 0 ||
+                      props.gitStats.untracked > 0)
+                  }
+                >
+                  <span class="topbar-branch-stats">
+                    <Show when={props.gitStats!.added > 0}>
+                      <span class="topbar-stat-add">+{props.gitStats!.added}</span>
+                    </Show>
+                    <Show when={props.gitStats!.removed > 0}>
+                      <span class="topbar-stat-rem">-{props.gitStats!.removed}</span>
+                    </Show>
+                    <Show when={props.gitStats!.untracked > 0}>
+                      <span class="topbar-stat-unt">?{props.gitStats!.untracked}</span>
+                    </Show>
+                  </span>
+                </Show>
+              </button>
+              <Show when={props.gitUpstream}>
+                <span class="topbar-upstream-chip">{props.gitUpstream}</span>
+              </Show>
+              <Show when={props.gitChangeCount && props.gitChangeCount > 0}>
+                <span class="topbar-change-count" title="Changed files">
+                  {props.gitChangeCount}
                 </span>
               </Show>
-            </span>
+            </>
           )}
         </Show>
 
@@ -141,22 +147,6 @@ export function TopBar(props: Props) {
       </div>
 
       <div class="topbar-right-zone">
-        <button
-          type="button"
-          class={`topbar-icon-btn no-drag${props.terminalOpen ? ' is-active' : ''}`}
-          onClick={props.onToggleTerminal}
-          title="Toggle terminal (⌘J)"
-        >
-          <SquareTerminal size={15} />
-        </button>
-        <button
-          type="button"
-          class={`topbar-icon-btn no-drag${props.secondaryPanelOpen ? ' is-active' : ''}`}
-          onClick={props.onToggleSecondaryPanel}
-          title="Toggle source control panel"
-        >
-          <PanelRight size={15} />
-        </button>
         <button
           type="button"
           class="topbar-icon-btn no-drag"

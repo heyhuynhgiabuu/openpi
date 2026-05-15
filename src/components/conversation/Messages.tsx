@@ -89,10 +89,12 @@ type Segment =
   | { kind: 'text'; content: string; streaming?: boolean; id: string }
 
 function ThinkingBlock(props: { text: string; streaming?: boolean; show: boolean }) {
-  const [open, setOpen] = createSignal(props.show || !!props.streaming)
+  // Start open and force-open during streaming. User can collapse after.
+  const [open, setOpen] = createSignal(true)
 
+  // Re-open automatically whenever streaming resumes (e.g. fork / new turn).
   createEffect(() => {
-    setOpen(props.show || !!props.streaming)
+    if (props.streaming) setOpen(true)
   })
 
   return (
@@ -108,11 +110,17 @@ function ThinkingBlock(props: { text: string; streaming?: boolean; show: boolean
             <span class="thinking-state">streaming</span>
           </Show>
         </summary>
-        <Show when={open()}>
-          <div class="thinking-body">
-            <MarkdownContent text={props.text} streaming={props.streaming} />
-          </div>
-        </Show>
+        {/*
+         * IMPORTANT: do NOT wrap with <Show when={open()}> here.
+         * Using <Show> would unmount MarkdownContent every time the user
+         * collapses the block, destroying the rendered html() signal and
+         * forcing a full re-render (plain flash) on next open.
+         * The browser's native <details> already hides non-summary content
+         * when closed — no extra Show needed.
+         */}
+        <div class="thinking-body">
+          <MarkdownContent text={props.text} streaming={props.streaming} />
+        </div>
       </details>
     </Show>
   )

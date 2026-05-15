@@ -577,7 +577,7 @@ function SettingRow(props: RowProps) {
 
   return (
     <div
-      class={`osp-row${props.isLast ? ' osp-row-last' : ''}${isOverride() ? ' osp-row-override' : ''}`}
+      class={`osp-row${props.isLast ? ' osp-row-last' : ''}${isOverride() ? ' osp-row-override' : ''}${props.field.type === 'string-array' ? ' osp-row--stacked' : ''}`}
     >
       <div class="osp-row-left">
         <div class="osp-row-name">

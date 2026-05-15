@@ -17,7 +17,7 @@ export function Welcome(props: WelcomeProps) {
         <span class="welcome-logo-scan" aria-hidden="true" />
       </div>
       <div class="eyebrow">{props.appName}</div>
-      <h1>Native workbench for Pi coding agent</h1>
+      <h1>A desktop workbench for Pi coding agent</h1>
       <p>Local-first sessions, model controls, and recoverable agent state.</p>
       <button type="button" class="button-primary" onClick={props.onOpen}>
         <FolderOpen size={15} /> Open workspace

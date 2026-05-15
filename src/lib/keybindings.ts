@@ -35,6 +35,8 @@ export const KEYBINDING_ACTION_IDS = [
   'goForward',
   'addFiles',
   'openFile',
+  'closeFileTab',
+  'searchInFile',
   'toggleTerminal',
   'newTerminal',
   'focusComposer',
@@ -252,6 +254,18 @@ export const KEYBINDING_CONFIG = {
     description: 'Quick-open a file from the workspace',
     category: 'navigation',
     defaultKeys: 'Cmd+K',
+  },
+  closeFileTab: {
+    label: 'Close File Tab',
+    description: 'Close the active file tab in the file pane',
+    category: 'navigation',
+    defaultKeys: 'Cmd+W',
+  },
+  searchInFile: {
+    label: 'Search in File',
+    description: 'Open find bar in the active file pane',
+    category: 'navigation',
+    defaultKeys: 'Cmd+F',
   },
   toggleTerminal: {
     label: 'Toggle Terminal',
