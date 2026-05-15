@@ -3,7 +3,14 @@
   "appId": "dev.openpi.app",
   "productName": "OpenPi",
   "asar": true,
-  "asarUnpack": ["node_modules/@ff-labs/**", "node_modules/ffi-rs/**", "node_modules/@yuuang/**"],
+  "asarUnpack": [
+    "node_modules/@ff-labs/**",
+    "node_modules/ffi-rs/**",
+    "node_modules/@yuuang/**",
+    "node_modules/@lydell/**",
+    "node_modules/koffi/**"
+  ],
+  "npmRebuild": false,
   "directories": {
     "output": "release/${version}"
   },
