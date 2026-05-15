@@ -343,10 +343,14 @@ function collectExtensionPath(
     scope: options.scope,
     origin: options.origin,
     source: options.source,
-    enabled: options.workspaceTrusted,
-    warning: !options.workspaceTrusted
-      ? 'Extensions have full system permissions and require workspace trust before OpenPi loads them.'
-      : undefined,
+    // Global user-scope extensions (~/.pi/agent/extensions) are the user's own
+    // trusted code and are always enabled. Only project-local extensions need
+    // explicit workspace trust before they load.
+    enabled: options.scope === 'user' ? true : options.workspaceTrusted,
+    warning:
+      options.scope !== 'user' && !options.workspaceTrusted
+        ? 'Project extensions have full system permissions and require workspace trust before OpenPi loads them.'
+        : undefined,
     riskLevel: 'high' as const,
     lastModifiedAt: mtimeIso(filePath),
   }))

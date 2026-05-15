@@ -340,7 +340,12 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                   <SkillsPane items={activeItems()} loading={loading()} />
                 </Show>
                 <Show when={activeType() === 'extensions'}>
-                  <ExtensionsPane items={activeItems()} loading={loading()} />
+                  <ExtensionsPane
+                    items={activeItems()}
+                    loading={loading()}
+                    workspaceTrusted={inventory()?.workspaceTrusted}
+                    onTrustWorkspace={props.cwd ? () => void trustWorkspace() : undefined}
+                  />
                 </Show>
 
                 <Show when={diagnostics().length > 0}>

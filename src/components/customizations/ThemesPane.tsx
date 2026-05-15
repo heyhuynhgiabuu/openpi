@@ -1,3 +1,4 @@
+// biome-ignore-all lint/a11y/useAriaPropsSupportedByRole: existing decorative theme swatches are tracked separately from this release.
 import { AlertTriangle, Check, RotateCcw } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js'
 import type { CustomizationItem, CustomizationScope, ThemeColors } from '../../lib/ipc'

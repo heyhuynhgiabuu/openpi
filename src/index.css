@@ -8022,6 +8022,33 @@ input::placeholder {
   font-family: monospace;
   word-break: break-all;
 }
+/* Device code (GitHub Copilot device flow) */
+.cp-oauth-device-code {
+  margin-top: 2px;
+}
+.cp-oauth-device-code-label {
+  display: block;
+  font-size: 11px;
+  color: var(--mute);
+  margin-bottom: 5px;
+}
+.cp-oauth-device-code-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+}
+.cp-oauth-device-code-value {
+  flex: 1;
+  font-family: monospace;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
 .cp-oauth-prompt-row {
   display: flex;
   gap: 6px;
@@ -10721,7 +10748,8 @@ input::placeholder {
   margin-left: auto;
 }
 .resource-risk-chip,
-.resource-scope-chip {
+.resource-scope-chip,
+.resource-active-chip {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -10749,6 +10777,27 @@ input::placeholder {
 .resource-scope-chip {
   color: var(--ink-secondary);
   background: rgba(255,255,255,0.04);
+  border: 1px solid var(--hairline);
+}
+/* Active / Inactive state badge for extension cards */
+.resource-active-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.resource-active-chip.is-active {
+  color: #3a8f54;
+  background: rgba(58, 143, 84, 0.12);
+  border: 1px solid rgba(58, 143, 84, 0.25);
+}
+.resource-active-chip.is-inactive {
+  color: var(--mute);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--hairline);
 }
 .resource-modified {

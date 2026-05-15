@@ -225,11 +225,25 @@ async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
   const settingsManager = workspaceTrusted
     ? fileSettingsManager
     : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
+  // When the workspace is not yet trusted, project-local extensions (.pi/extensions)
+  // are blocked by noExtensions=true — they're unknown third-party code.
+  // Global extensions (~/.pi/agent/extensions) are the user's own trusted code and
+  // MUST always load regardless of workspace trust (e.g. copilot-provider.ts registers
+  // the github-copilot provider; blocking it causes "No API key found" errors).
+  //
+  // We pass agentDir (not agentDir/extensions) as the additional path. The SDK's
+  // collectPackageResources treats the path as a "package root" and scans for an
+  // extensions/ subdirectory inside it — exactly what we need. If we passed
+  // agentDir/extensions directly it would look for extensions/extensions/ (wrong),
+  // fall back to adding the directory itself, and loadExtension would fail trying
+  // to jiti.import() a directory.
+  const noExtensions = !workspaceTrusted
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir,
     settingsManager,
-    noExtensions: !workspaceTrusted,
+    noExtensions,
+    additionalExtensionPaths: noExtensions ? [agentDir] : [],
   })
   try {
     await loader.reload()
@@ -499,9 +513,41 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
 
     case 'fork_session': {
       if (!state) return
+
+      // Resolve the fork entry ID.
+      //
+      // During live streaming, sessionEvents.ts assigns synthetic display IDs
+      // ("u-{timestampMs}" for user messages, "a-{timestampMs}" for assistant)
+      // because the Pi SDK's message_start event does not include the real
+      // session entry ID. These synthetic IDs are NOT valid Pi session entry IDs
+      // and cause "Entry not found" errors inside createBranchedSession().
+      //
+      // Resolution strategy: extract the encoded Unix timestamp from the synthetic
+      // ID and find the matching session entry via sessionManager.getEntries().
+      // By the time the user can click Fork, message_end has fired and
+      // sessionManager.appendMessage() has persisted the entry — so getEntries()
+      // will contain the real entry with the correct timestamp.
+      let forkEntryId = cmd.entryId
+      const syntheticMatch = /^[ua]-(-?\d+)$/.exec(cmd.entryId)
+      if (syntheticMatch) {
+        const timestampMs = Number(syntheticMatch[1])
+        const entries = state.session.sessionManager.getEntries()
+        const match = entries.find((e) => {
+          if (e.type !== 'message') return false
+          const msg = e.message as { timestamp?: number }
+          return typeof msg.timestamp === 'number' && msg.timestamp === timestampMs
+        })
+        if (!match) {
+          throw new Error(
+            `Cannot fork: no session entry found with timestamp ${timestampMs} (id: ${cmd.entryId}). The message may still be streaming.`
+          )
+        }
+        forkEntryId = match.id
+      }
+
       await startSession(state.cwd, {
         sessionFile: state.session.sessionFile ?? undefined,
-        forkEntryId: cmd.entryId,
+        forkEntryId,
         requestId: cmd.requestId,
       })
       break

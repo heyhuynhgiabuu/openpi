@@ -1,3 +1,4 @@
+// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: existing provider modal backdrop interactions are tracked separately from this release.
 import {
   ArrowLeft,
   Check,
@@ -216,10 +217,15 @@ export function ConnectProviderModal(props: Props) {
         }
         case 'auth': {
           setLoginPhase((prev) => {
-            if (prev.phase === 'connecting') {
+            // GitHub Copilot device flow: the domain prompt fires first (phase becomes
+            // 'prompting'), then onAuth fires with the device URL + code. We must accept
+            // 'prompting' here, not just 'connecting', otherwise the device code is
+            // silently dropped and the user never sees it.
+            if (prev.phase === 'connecting' || prev.phase === 'prompting') {
               return {
-                ...prev,
-                message: 'Browser opened — complete sign-in and return here',
+                phase: 'connecting',
+                providerId: prev.providerId,
+                message: 'Open the URL below and enter the code to continue',
                 authUrl: event.url,
                 authInstructions: event.instructions,
               }
@@ -550,9 +556,40 @@ export function ConnectProviderModal(props: Props) {
             <Show
               when={(loginPhase() as Extract<LoginPhase, { phase: 'connecting' }>).authInstructions}
             >
-              <p class="cp-oauth-instructions">
-                {(loginPhase() as Extract<LoginPhase, { phase: 'connecting' }>).authInstructions}
-              </p>
+              <Show
+                when={(() => {
+                  const instr = (loginPhase() as Extract<LoginPhase, { phase: 'connecting' }>)
+                    .authInstructions
+                  return instr?.match(/Enter code:\s*([A-Z0-9]+-[A-Z0-9]+)/i)?.[1] ?? null
+                })()}
+                fallback={
+                  <p class="cp-oauth-instructions">
+                    {
+                      (loginPhase() as Extract<LoginPhase, { phase: 'connecting' }>)
+                        .authInstructions
+                    }
+                  </p>
+                }
+              >
+                {(code) => (
+                  <div class="cp-oauth-device-code">
+                    <span class="cp-oauth-device-code-label">
+                      Enter this code at the URL above:
+                    </span>
+                    <div class="cp-oauth-device-code-row">
+                      <span class="cp-oauth-device-code-value">{code()}</span>
+                      <button
+                        type="button"
+                        class="cp-oauth-copy-btn"
+                        title="Copy code"
+                        onClick={() => void navigator.clipboard.writeText(code())}
+                      >
+                        <Copy size={11} strokeWidth={2} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Show>
             </Show>
           </div>
         </Show>

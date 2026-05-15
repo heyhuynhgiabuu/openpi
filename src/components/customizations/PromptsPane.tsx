@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: docs intentionally display literal prompt-template placeholders.
 import { Check, Copy, FolderOpen, Search } from 'lucide-solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { CustomizationItem } from '../../lib/ipc'

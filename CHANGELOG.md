@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-05-15
+
+OpenPi v0.1.12 fixes fork-from-message crashes, the GitHub Copilot device-code login flow, and a silent extension-loading failure that caused global Pi extensions (e.g. `copilot-provider.ts`) to be bypassed even when shown as Active. Also fixes slash prompt/skill expansion and refreshes icon assets.
+
+### Fixed
+
+- **Fork from message** — forking a conversation from a streamed assistant message no longer throws `Entry u-<timestamp> not found`. Streamed messages carry synthetic `u-`/`a-`-prefixed IDs; the sidecar now resolves these back to real 8-char hex entry IDs by matching timestamps against the Pi session tree before calling `createBranchedSession`.
+- **GitHub Copilot device-code login** — the OAuth `auth` event (carrying the device verification URL and user code) was silently dropped when it fired while the modal was in the `prompting` phase (the enterprise-domain prompt precedes the device-code step). The `auth` handler now also accepts `phase === 'prompting'`, and the user code is extracted from the `instructions` string and shown with a copy button instead of as raw text.
+- **Global extensions not loading when workspace is untrusted** — `additionalExtensionPaths` was passed `agentDir/extensions/` (the extensions folder itself). The Pi SDK treats that argument as a package root and looks for an `extensions/extensions/` subdirectory inside it; finding none, it falls back to adding the directory path as a file, which `jiti.import` then fails to load silently. The extension never registers its OAuth provider, so Pi falls back to built-in Copilot auth. Fixed by passing `agentDir` instead so the SDK correctly scans `agentDir/extensions/` for `.ts` files.
+- **Slash prompt expansion** — selecting `/review` now sends exactly one leading slash, so Pi expands prompt templates from `.pi/prompts`, `~/.pi/agent/prompts`, settings, and packages instead of sending `//review` or plain text (`1baa166`).
+- **Slash prompt context handling** — attached files, line comments, and loaded context are now combined after prompt-template expansion, so `/review` still applies the Markdown template when context is attached (`1baa166`).
+- **Slash skill expansion** — `/skill:name` autocomplete and typed skill commands now use Pi's sidecar `DefaultResourceLoader` and expand before attached context is prepended, matching Pi SDK behavior (`1baa166`).
+
+### Added
+
+- **Extension Active/Inactive status chips** — each extension card in the Customizations panel now shows an Active or Inactive chip. User-scope global extensions (`~/.pi/agent/extensions/`) are always Active; project-local extensions show Inactive with an inline trust banner when the workspace is not yet trusted.
+
+### Changed
+
+- **App icon refresh** — replaced packaged icon assets across macOS, Windows, Linux, and multi-size PNG outputs for the 0.1.12 beta.
+
 ## [0.1.11] - 2026-05-15
 
 OpenPi v0.1.11 ships Phase 6: Trust, Policy, and Release Hardening — putting explicit security boundaries around Pi extensions, packages, file mutations, secrets, and release artifacts.

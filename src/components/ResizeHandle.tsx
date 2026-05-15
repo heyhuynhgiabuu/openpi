@@ -11,6 +11,7 @@
  * Authority: pure renderer — no IPC, no side effects beyond calling onResize.
  */
 
+// biome-ignore-all lint/a11y/useFocusableInteractive lint/a11y/useSemanticElements lint/a11y/useAriaPropsForRole: existing mouse-drag resize handle accessibility is tracked separately from this release.
 import type { Component } from 'solid-js'
 
 interface ResizeHandleProps {

@@ -1,10 +1,12 @@
-import { Check, Copy, FolderOpen, Search, ShieldAlert } from 'lucide-solid'
+import { Check, Copy, FolderOpen, Search, ShieldAlert, Wrench } from 'lucide-solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { CustomizationItem } from '../../lib/ipc'
 
 type ExtensionsPaneProps = {
   items: CustomizationItem[]
   loading: boolean
+  workspaceTrusted?: boolean
+  onTrustWorkspace?: () => void
 }
 
 type ExtensionFilter = 'all' | 'project' | 'user' | 'package'
@@ -91,6 +93,16 @@ function ExtensionCard(props: { item: CustomizationItem }) {
         <div class="extension-card-title-row">
           <h3>{props.item.name}</h3>
           <div class="resource-provenance-chips">
+            <span
+              class={`resource-active-chip${props.item.enabled ? ' is-active' : ' is-inactive'}`}
+              title={
+                props.item.enabled
+                  ? 'Loaded by Pi'
+                  : 'Not loaded — enable workspace trust to activate'
+              }
+            >
+              {props.item.enabled ? 'Active' : 'Inactive'}
+            </span>
             <span class={`resource-risk-chip risk-${props.item.riskLevel ?? 'low'}`}>
               {props.item.riskLevel ?? 'low'} risk
             </span>
@@ -137,6 +149,13 @@ export function ExtensionsPane(props: ExtensionsPaneProps) {
     user: props.items.filter((item) => item.scope === 'user' && item.origin !== 'package').length,
     package: props.items.filter((item) => item.origin === 'package').length,
   }))
+
+  // Project-scope extensions that are inactive because the workspace is not yet trusted
+  const untrustedProjectItems = createMemo(() =>
+    props.items.filter(
+      (item) => item.type === 'extensions' && item.scope === 'project' && !item.enabled
+    )
+  )
 
   const filteredItems = createMemo(() => {
     let next = props.items
@@ -205,6 +224,26 @@ export function ExtensionsPane(props: ExtensionsPaneProps) {
           integration requires an extension or Pi package — Pi does not natively embed MCP.
         </p>
       </section>
+
+      {/* Inline trust banner — only shown when there are untrusted project extensions */}
+      <Show when={untrustedProjectItems().length > 0 && props.workspaceTrusted === false}>
+        <div class="trust-banner">
+          <Wrench size={16} />
+          <div>
+            <strong>Project extensions are inactive</strong>
+            <span>
+              {untrustedProjectItems().length} project extension
+              {untrustedProjectItems().length === 1 ? '' : 's'} found in .pi/extensions but not
+              loaded — they require explicit workspace trust.
+            </span>
+          </div>
+          <Show when={props.onTrustWorkspace}>
+            <button type="button" class="trust-banner-action" onClick={props.onTrustWorkspace}>
+              Trust workspace
+            </button>
+          </Show>
+        </div>
+      </Show>
 
       <div class="extension-toolbar">
         <div class="extension-filter-tabs" role="tablist" aria-label="Extension scope filter">

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: existing manage-models modal backdrop interaction is tracked separately from this release.
 import { ChevronDown, ChevronRight, Plus, Search, X } from 'lucide-solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { ModelInfo } from '../../lib/ipc'

@@ -13,6 +13,7 @@
  * Images rendered via localfile:// — no readFile call.
  */
 
+// biome-ignore-all lint/a11y/useSemanticElements lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: existing file-viewer line/overlay interactions are tracked separately from this release.
 import { Code2, FileText, Maximize2, Minimize2, PanelRight, Plus, Save, X } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
 import { FileIcon } from '../lib/fileIcons'

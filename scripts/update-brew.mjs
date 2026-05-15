@@ -16,7 +16,6 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -25,7 +24,6 @@ import { pipeline } from 'node:stream/promises'
 const OWNER = 'heyhuynhgiabuu'
 const TAP_REPO = 'homebrew-openpi'
 const CASK_PATH = 'Casks/openpi.rb'
-const DMG_ARTIFACT_GLOB = /OpenPi-[\d.]+-arm64\.dmg$/
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 

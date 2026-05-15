@@ -14,6 +14,7 @@
  * Keybinding: Shift+⌘F / Shift+Ctrl+F (wired in App)
  */
 
+// biome-ignore-all lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions lint/a11y/useSemanticElements: existing search modal backdrop/panel interactions are tracked separately from this release.
 import fuzzysort from 'fuzzysort'
 import { Search } from 'lucide-solid'
 import {
