@@ -23,7 +23,11 @@ jobs:
           - name: macOS
             os: macos-latest
           - name: Windows
-            os: windows-latest
+            # Pinned to windows-2022 (VS2022): windows-latest is being redirected to
+            # windows-2025-vs2026 (VS2026) which node-gyp ≤12.3 does not recognise,
+            # causing electron-builder's internal npmRebuild to fail on better-sqlite3.
+            # Revisit when node-gyp ships VS2026 support (upstream PR #3240).
+            os: windows-2022
           - name: Linux
             os: ubuntu-latest
     env:
@@ -55,6 +59,18 @@ jobs:
 
       - name: Build app
         run: npm run build
+
+      - name: Cache electron-builder tools
+        uses: actions/cache@v4
+        with:
+          # electron-builder downloads NSIS, 7zip, and other tools to a platform cache dir.
+          # Caching prevents re-downloads on every run and avoids transient network failures.
+          path: |
+            ~/.cache/electron-builder
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-builder-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-builder-
 
       - name: Package installers
         # Unsigned beta build. To enable macOS notarization, add repository secrets:

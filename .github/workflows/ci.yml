@@ -43,7 +43,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        # windows-latest redirects to windows-2025-vs2026 (VS2026) which node-gyp ≤12.3
+        # does not support; pin to windows-2022 until upstream PR #3240 ships.
+        os: [macos-latest, ubuntu-latest, windows-2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
