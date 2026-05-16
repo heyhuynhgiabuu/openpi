@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Paperclip,
   Plus,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Square,
@@ -940,6 +941,22 @@ export const Composer: Component<ComposerProps> = (props) => {
           }
         }
       }
+      // Interrupt mode (Alt+Up) — only while agent is running.
+      if (eventMatchesBinding(event, binding('steerMode')) && props.isStreaming) {
+        event.preventDefault()
+        // Toggle: pressing again while already in steer resets to prompt.
+        props.onQueueMode((m) => (m === 'steer' ? 'prompt' : 'steer'))
+        requestAnimationFrame(() => textareaEl?.focus())
+        return
+      }
+      // Follow-up mode (Alt+Down) — only while agent is running.
+      if (eventMatchesBinding(event, binding('followupMode')) && props.isStreaming) {
+        event.preventDefault()
+        // Toggle: pressing again while already in followup resets to prompt.
+        props.onQueueMode((m) => (m === 'followup' ? 'prompt' : 'followup'))
+        requestAnimationFrame(() => textareaEl?.focus())
+        return
+      }
     }
 
     window.addEventListener('keydown', handler)
@@ -1533,6 +1550,22 @@ export const Composer: Component<ComposerProps> = (props) => {
                     <span>Queue</span>
                   </button>
                 </div>
+
+                {/* Reset to normal prompt mode — shown when a delivery mode is active */}
+                <Show when={props.queueMode !== 'prompt'}>
+                  <button
+                    type="button"
+                    class={`delivery-reset-btn${
+                      props.queueMode === 'steer' ? ' is-steer' : ' is-followup'
+                    }`}
+                    onClick={() => props.onQueueMode('prompt')}
+                    title={`Reset to normal prompt mode (${props.queueMode === 'steer' ? 'Alt+↑' : 'Alt+↓'} to re-activate)`}
+                    aria-label="Reset delivery mode to normal"
+                  >
+                    <RotateCcw size={11} strokeWidth={2} />
+                  </button>
+                </Show>
+
                 <span class="composer-toolbar-divider" aria-hidden />
               </Show>
 

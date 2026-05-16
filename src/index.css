@@ -2684,8 +2684,8 @@ body.panel-dragging {
 }
 .system-message {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 0;
   margin: 6px 0;
   padding: 6px 12px;
   border-radius: 3px;
@@ -2701,12 +2701,99 @@ body.panel-dragging {
 .system-message.is-done {
   color: var(--graphite);
 }
+/* Header row — icon + text + optional toggle */
+.system-msg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
 .system-msg-icon {
   flex-shrink: 0;
   font-size: 14px;
 }
 .system-msg-text {
   flex: 1;
+}
+/* File count badge + expand/collapse button */
+.system-msg-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface-2, rgba(255,255,255,0.04));
+  color: var(--graphite);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.system-msg-toggle:hover {
+  background: var(--surface-card);
+  color: var(--ink-soft);
+}
+.system-msg-toggle svg {
+  transition: transform 0.15s;
+}
+.system-msg-toggle.is-open svg {
+  transform: rotate(180deg);
+}
+.system-msg-file-count {
+  font-weight: 500;
+}
+/* Files & changes panel */
+.system-msg-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+.system-msg-file-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.system-msg-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--graphite);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.system-msg-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding-left: 2px;
+}
+.system-msg-file-item {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.system-msg-file-item--modified {
+  background: color-mix(in srgb, var(--amber, #d97706) 10%, transparent);
+  color: color-mix(in srgb, var(--amber, #d97706) 80%, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--amber, #d97706) 20%, transparent);
+}
+.system-msg-file-item--read {
+  background: var(--surface-2, rgba(255,255,255,0.04));
+  color: var(--graphite);
+  border: 1px solid var(--hairline);
 }
 
 /* Tools */
@@ -3058,6 +3145,46 @@ body.panel-dragging {
 }
 /* Queue / follow-up active (overrides steer colours) */
 .delivery-btn.is-queue-variant.is-on {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+/* Reset-to-prompt button — appears when a delivery mode is active */
+.delivery-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: var(--r-xs);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--stone);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 0.1s,
+    background 0.1s,
+    border-color 0.1s;
+}
+.delivery-reset-btn:hover {
+  color: var(--graphite);
+  background: var(--surface-raised);
+}
+/* Tint the icon to match the currently active mode */
+.delivery-reset-btn.is-steer {
+  color: color-mix(in srgb, var(--warning) 60%, var(--stone));
+}
+.delivery-reset-btn.is-steer:hover {
+  color: var(--warning);
+  background: rgba(234, 215, 177, 0.08);
+  border-color: rgba(234, 215, 177, 0.22);
+}
+.delivery-reset-btn.is-followup {
+  color: color-mix(in srgb, var(--accent) 60%, var(--stone));
+}
+.delivery-reset-btn.is-followup:hover {
   color: var(--accent);
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.22);

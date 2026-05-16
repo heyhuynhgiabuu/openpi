@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Rich compaction card** — compaction events now surface the full file context that Pi's TUI shows. After auto-compact, a collapsible "files" badge appears inline with the `Compacted from N tokens` pill. Expanding it shows `Modified` and `Read` file lists (pill-tagged with amber/neutral colours) extracted from the SDK `CompactionResult.details`. The `reason` field (`manual`/`threshold`/`overflow`) is also reflected in the card text (e.g. "Manually compacted from N tokens").
+
 ### Fixed
 
 - **Add context file picker invisible** — `overflow: hidden` on `.composer-toolbar` and `.composer-toolbar-left` was clipping the absolutely-positioned `.ctx-picker` before it could extend above the toolbar. Changed both to `overflow: visible`; per-label text truncation (`.composer-tool-label`) is unaffected since it has its own `max-width`/`overflow: hidden`/`text-overflow: ellipsis`.

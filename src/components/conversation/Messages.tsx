@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch } from 'lucide-solid'
+import { Check, ChevronDown, Copy, FileCode, FilePen, GitBranch } from 'lucide-solid'
 import {
   type Component,
   createEffect,
@@ -8,6 +8,7 @@ import {
   onCleanup,
   Show,
 } from 'solid-js'
+import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage } from '../../lib/ipc'
 import type { Message, SystemMessage, ToolCard } from '../../types/session'
@@ -16,7 +17,8 @@ import { ToolCardView } from './ToolCardView'
 
 type MessageActionsProps = {
   messageId: string
-  text: string
+  /** Thunk: called only at copy-click time, never during streaming. */
+  getText: () => string
   streaming?: boolean
   onFork?: (id: string) => void
 }
@@ -30,7 +32,7 @@ function MessageActions(props: MessageActionsProps) {
   })
 
   const handleCopy = () => {
-    void navigator.clipboard.writeText(props.text)
+    void navigator.clipboard.writeText(props.getText())
     setCopied(true)
     if (copiedTimer) clearTimeout(copiedTimer)
     copiedTimer = setTimeout(() => setCopied(false), 1800)
@@ -74,7 +76,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
         </div>
         <MessageActions
           messageId={props.message.id}
-          text={props.message.text}
+          getText={() => props.message.text}
           streaming={props.message.streaming}
           onFork={props.onFork}
         />
@@ -84,7 +86,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
 }
 
 type Segment =
-  | { kind: 'rail'; cards: ToolCard[] }
+  | { kind: 'rail'; cards: ToolCard[]; id: string }
   | { kind: 'thinking'; content: string; streaming?: boolean; id: string }
   | { kind: 'text'; content: string; streaming?: boolean; id: string }
 
@@ -129,12 +131,15 @@ function ThinkingBlock(props: { text: string; streaming?: boolean; show: boolean
 function buildSegments(messages: SessionHistoryMessage[]): Segment[] {
   const segs: Segment[] = []
   let rail: ToolCard[] = []
+  // Stable rail id: first toolCallId in the group so reconcile can match it.
+  let railAnchorId: string | undefined
 
   for (const msg of messages) {
     if (msg.thinking) {
       if (rail.length > 0) {
-        segs.push({ kind: 'rail', cards: [...rail] })
+        segs.push({ kind: 'rail', cards: [...rail], id: `rail-${railAnchorId}` })
         rail = []
+        railAnchorId = undefined
       }
       segs.push({
         kind: 'thinking',
@@ -144,18 +149,20 @@ function buildSegments(messages: SessionHistoryMessage[]): Segment[] {
       })
     }
     if (msg.toolCards.length > 0) {
+      if (railAnchorId === undefined) railAnchorId = msg.toolCards[0].toolCallId
       rail.push(...msg.toolCards)
     }
     if (msg.text) {
       if (rail.length > 0) {
-        segs.push({ kind: 'rail', cards: [...rail] })
+        segs.push({ kind: 'rail', cards: [...rail], id: `rail-${railAnchorId}` })
         rail = []
+        railAnchorId = undefined
       }
       segs.push({ kind: 'text', content: msg.text, streaming: msg.streaming, id: msg.id })
     }
   }
 
-  if (rail.length > 0) segs.push({ kind: 'rail', cards: rail })
+  if (rail.length > 0) segs.push({ kind: 'rail', cards: rail, id: `rail-${railAnchorId}` })
 
   return segs
 }
@@ -238,20 +245,39 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
   const lastMsg = createMemo(() => props.messages[props.messages.length - 1])
   const usage = createMemo(() => aggregateUsage(props.messages))
 
-  const segments = createMemo(() => buildSegments(props.messages))
-  const hasContent = createMemo(() => segments().length > 0)
-  const allText = createMemo(() =>
+  /*
+   * Stable segment store — prevents ThinkingBlock and MarkdownContent from
+   * being unmounted/remounted on every streaming delta.
+   *
+   * Problem: buildSegments() creates new object references on every call.
+   * <For> uses reference equality, so it destroys and recreates every segment
+   * component on every delta. MarkdownContent.html() resets to '' → phase-1
+   * plain-flash fires → visible flicker.
+   *
+   * Fix: reconcile({ key: 'id', merge: true }) matches segments by their stable
+   * id and updates fields in-place on the same store proxy. <For> sees the same
+   * proxy reference → no unmount → MarkdownContent keeps its html() state.
+   */
+  const [segments, setSegments] = createStore<Segment[]>([])
+  createEffect(() => {
+    setSegments(reconcile(buildSegments(props.messages), { key: 'id', merge: true }))
+  })
+
+  const hasContent = createMemo(() => segments.length > 0)
+
+  // Lazy: only computed when the copy button is clicked, not on every delta.
+  const getAllText = () =>
     props.messages
       .map((msg) => msg.text)
       .filter(Boolean)
       .join('\n\n')
-  )
+
   const modelName = createMemo(() => props.messages.find((msg) => msg.modelName)?.modelName)
 
   return (
     <div class="message-row assistant-message-row">
       <div class="assistant-body">
-        <For each={segments()}>
+        <For each={segments}>
           {(segment) => {
             if (segment.kind === 'rail') {
               return (
@@ -301,7 +327,7 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
 
         <MessageActions
           messageId={lastMsg()?.id ?? ''}
-          text={allText()}
+          getText={getAllText}
           streaming={lastMsg()?.streaming}
           onFork={props.onFork}
         />
@@ -373,7 +399,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
 
         <MessageActions
           messageId={props.message.id}
-          text={props.message.text}
+          getText={() => props.message.text}
           streaming={props.message.streaming}
           onFork={props.onFork}
         />
@@ -386,11 +412,88 @@ type SystemMsgProps = {
   message: SystemMessage
 }
 
+/** Compact path display: keep the last N segments of a path */
+function shortPath(p: string, segments = 3): string {
+  const parts = p.replace(/\\/g, '/').split('/')
+  return parts.length <= segments ? p : `…/${parts.slice(-segments).join('/')}`
+}
+
 export const SystemMsg: Component<SystemMsgProps> = (props) => {
+  const [expanded, setExpanded] = createSignal(false)
+
+  const isCompaction = () => props.message.kind === 'compaction'
+  const modifiedFiles = () => props.message.modifiedFiles ?? []
+  const readFiles = () => props.message.readFiles ?? []
+  const hasFiles = () => modifiedFiles().length > 0 || readFiles().length > 0
+  const fileCount = () => modifiedFiles().length + readFiles().length
+
   return (
-    <div class={`system-message ${props.message.done ? 'is-done' : 'is-pending'}`}>
-      <span class="system-msg-icon">{props.message.kind === 'compaction' ? '⟳' : '↺'}</span>
-      <span class="system-msg-text">{props.message.text}</span>
+    <div
+      class={`system-message${
+        isCompaction() && props.message.done && hasFiles() ? ' system-message--expandable' : ''
+      } ${props.message.done ? 'is-done' : 'is-pending'}`}
+    >
+      {/* ── Header row ────────────────────────────────────────────────────── */}
+      <div class="system-msg-row">
+        <span class="system-msg-icon">{isCompaction() ? '⟳' : '↺'}</span>
+        <span class="system-msg-text">{props.message.text}</span>
+
+        {/* File count badge + toggle */}
+        <Show when={isCompaction() && props.message.done && hasFiles()}>
+          <button
+            type="button"
+            class={`system-msg-toggle${expanded() ? ' is-open' : ''}`}
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded()}
+            title={expanded() ? 'Hide files' : 'Show files & changes'}
+          >
+            <span class="system-msg-file-count">
+              {fileCount()} {fileCount() === 1 ? 'file' : 'files'}
+            </span>
+            <ChevronDown size={11} strokeWidth={2} />
+          </button>
+        </Show>
+      </div>
+
+      {/* ── Files & changes section ───────────────────────────────────────── */}
+      <Show when={expanded() && hasFiles()}>
+        <div class="system-msg-files">
+          <Show when={modifiedFiles().length > 0}>
+            <div class="system-msg-file-group">
+              <span class="system-msg-file-label">
+                <FilePen size={11} strokeWidth={2} />
+                Modified
+              </span>
+              <div class="system-msg-file-list">
+                <For each={modifiedFiles()}>
+                  {(f) => (
+                    <span class="system-msg-file-item system-msg-file-item--modified" title={f}>
+                      {shortPath(f)}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+          <Show when={readFiles().length > 0}>
+            <div class="system-msg-file-group">
+              <span class="system-msg-file-label">
+                <FileCode size={11} strokeWidth={2} />
+                Read
+              </span>
+              <div class="system-msg-file-list">
+                <For each={readFiles()}>
+                  {(f) => (
+                    <span class="system-msg-file-item system-msg-file-item--read" title={f}>
+                      {shortPath(f)}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>
   )
 }

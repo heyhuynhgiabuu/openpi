@@ -45,6 +45,8 @@ export const KEYBINDING_ACTION_IDS = [
   'newlineInPrompt',
   'toggleShellMode',
   'clearInput',
+  'steerMode',
+  'followupMode',
 ] as const
 
 export type KeybindingActionId = (typeof KEYBINDING_ACTION_IDS)[number]
@@ -314,6 +316,20 @@ export const KEYBINDING_CONFIG = {
     description: 'Clear the composer input without submitting',
     category: 'prompt',
     defaultKeys: 'Ctrl+C',
+  },
+  steerMode: {
+    label: 'Interrupt Mode',
+    description:
+      'Switch to interrupt (steer) mode while the agent is running — message is injected after current tool calls, before the next LLM call',
+    category: 'prompt',
+    defaultKeys: 'Alt+Up',
+  },
+  followupMode: {
+    label: 'Follow-up Mode',
+    description:
+      'Switch to follow-up (queue) mode while the agent is running — message is delivered only when the agent fully stops',
+    category: 'prompt',
+    defaultKeys: 'Alt+Down',
   },
 } satisfies Record<KeybindingActionId, Omit<KeybindingDef, 'id'>>
 

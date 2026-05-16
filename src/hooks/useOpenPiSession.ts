@@ -13,7 +13,7 @@
  * `session.ready` (same as before) while still getting fine-grained reactivity
  * tracking when accessed from JSX or createEffect.
  */
-import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
+import { batch, createEffect, createSignal, on, onCleanup, onMount } from 'solid-js'
 import {
   type AskState,
   AskTracker,
@@ -100,7 +100,7 @@ export function useOpenPiSession() {
   let currentTurnStartMs: number | null = null
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const contextPercentValue = createMemo(() => contextPercent())
+  // (contextPercent is already a signal — no memo wrapper needed)
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const selectedWorkspaceForQuery = () => selectedWorkspacePath() ?? ready()?.cwd ?? null
@@ -645,7 +645,7 @@ export function useOpenPiSession() {
       return sessionName()
     },
     get contextPercent() {
-      return contextPercentValue()
+      return contextPercent()
     },
     get thinkingLevel() {
       return thinkingLevel()

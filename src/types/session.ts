@@ -12,6 +12,12 @@ export type SystemMessage = {
   kind: 'compaction' | 'retry'
   text: string
   done: boolean
+  // Compaction-specific — populated when kind === 'compaction' && done === true
+  tokensBefore?: number
+  reason?: 'manual' | 'threshold' | 'overflow'
+  summary?: string
+  readFiles?: string[]
+  modifiedFiles?: string[]
 }
 
 export type Message = SessionHistoryMessage | SystemMessage

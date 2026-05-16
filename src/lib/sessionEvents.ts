@@ -151,18 +151,26 @@ export function applySessionEvent(
             !(m as SystemMessage).done
         )
       const text = formatCompactionEndText(e)
+      const compactionData: Partial<SystemMessage> = {
+        text,
+        done: true,
+        tokensBefore: numeric(e.result?.tokensBefore),
+        reason: (e.reason as SystemMessage['reason']) ?? undefined,
+        summary: e.result?.summary ?? undefined,
+        readFiles: e.result?.details?.readFiles ?? undefined,
+        modifiedFiles: e.result?.details?.modifiedFiles ?? undefined,
+      }
       if (idx !== -1) {
         const realIdx = next.length - 1 - idx
-        next[realIdx] = { ...(next[realIdx] as SystemMessage), text, done: true }
+        next[realIdx] = { ...(next[realIdx] as SystemMessage), ...compactionData }
       } else {
         // No matching start — still show the result
         next.push({
           id: `compact-end-${Date.now()}`,
           role: 'system',
           kind: 'compaction',
-          text,
-          done: true,
-        })
+          ...compactionData,
+        } as SystemMessage)
       }
       return next
     }
@@ -237,11 +245,18 @@ function resultText(result: unknown): string {
 }
 
 type CompactionEndEvent = {
+  reason?: string
   aborted?: boolean
   willRetry?: boolean
   errorMessage?: string
   result?: {
     tokensBefore?: unknown
+    summary?: string
+    firstKeptEntryId?: string
+    details?: {
+      readFiles?: string[]
+      modifiedFiles?: string[]
+    }
   }
 }
 
@@ -255,8 +270,15 @@ export function formatCompactionEndText(event: CompactionEndEvent): string {
   }
 
   const tokensBefore = numeric(event.result?.tokensBefore)
+  const prefix =
+    event.reason === 'manual'
+      ? 'Manually compacted'
+      : event.reason === 'overflow'
+        ? 'Compacted on overflow'
+        : 'Compacted'
+
   if (tokensBefore > 0) {
-    return `Context compacted — ${tokensBefore.toLocaleString()} tokens before compaction`
+    return `${prefix} from ${tokensBefore.toLocaleString()} tokens`
   }
 
   return 'Context compacted'
