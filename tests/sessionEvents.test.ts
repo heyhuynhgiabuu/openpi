@@ -4,7 +4,7 @@ import { applySessionEvent, formatCompactionEndText } from '../src/lib/sessionEv
 describe('compaction event rendering', () => {
   it('describes tokensBefore as the pre-compaction context size', () => {
     expect(formatCompactionEndText({ result: { tokensBefore: 272_792 } })).toBe(
-      'Context compacted — 272,792 tokens before compaction'
+      'Compacted from 272,792 tokens'
     )
   })
 
@@ -23,7 +23,7 @@ describe('compaction event rendering', () => {
       role: 'system',
       kind: 'compaction',
       done: true,
-      text: 'Context compacted — 272,792 tokens before compaction',
+      text: 'Compacted from 272,792 tokens',
     })
   })
 
