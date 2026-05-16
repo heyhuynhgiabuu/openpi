@@ -134,16 +134,53 @@ export function activeShikiTheme(): 'github-dark-dimmed' | 'github-light' {
 export function highlightCode(code: string, filename: string): string {
   const lang = extToLang(filename)
   if (!_highlighter || !lang) return `<pre>${escHtml(code)}</pre>`
-  try {
-    return _highlighter.codeToHtml(code, {
-      lang,
-      theme: activeShikiTheme(),
-    })
-  } catch {
-    return `<pre>${escHtml(code)}</pre>`
-  }
+  const theme = activeShikiTheme()
+  return cachedCodeToHtml(code, lang, theme, _highlighter)
 }
 
 export function getHighlighter(): HighlighterInstance | null {
   return _highlighter
+}
+
+// ── Code-block highlight cache ────────────────────────────────────────────
+// Bounded LRU Map shared across all MarkdownContent and FilePreviewPane
+// instances. Key: `theme:lang:code` — correctness requires full code in key.
+// Trade-off: O(n) Map key hash on first lookup, O(1) thereafter (V8 caches
+// the hash on the string object). Far cheaper than re-running Shiki.
+const CODE_CACHE_MAX = 400
+const _codeCache = new Map<string, string>()
+
+export function cachedCodeToHtml(
+  code: string,
+  lang: string,
+  theme: string,
+  h: HighlighterInstance
+): string {
+  const key = `${theme}\x00${lang}\x00${code}`
+  const cached = _codeCache.get(key)
+  if (cached !== undefined) return cached
+
+  let result: string
+  try {
+    result = h.codeToHtml(code, { lang, theme })
+  } catch {
+    try {
+      result = h.codeToHtml(code, { lang: 'plaintext', theme })
+    } catch {
+      result = `<pre>${escHtml(code)}</pre>`
+    }
+  }
+
+  if (_codeCache.size >= CODE_CACHE_MAX) {
+    // Evict the oldest entry (Map preserves insertion order).
+    const oldest = _codeCache.keys().next().value
+    if (oldest !== undefined) _codeCache.delete(oldest)
+  }
+  _codeCache.set(key, result)
+  return result
+}
+
+/** Invalidate the code cache (e.g. on theme change). */
+export function invalidateCodeCache(): void {
+  _codeCache.clear()
 }

@@ -250,6 +250,22 @@ input::placeholder {
   background: var(--canvas);
   color: var(--ink);
 }
+/*
+ * GPU layer budget — idle animation control.
+ *
+ * Infinite CSS animations promote elements to compositor layers, keeping GPU
+ * texture memory live even when nothing is visually changing. When the agent
+ * is NOT streaming, pause all decorative pulse/blink animations so the GPU
+ * can reclaim those layers. Animations restart the moment streaming begins
+ * (agent-streaming class added to app-shell).
+ *
+ * Animations NOT paused here: blink-cursor (composer UX), update-pulse
+ * (app update badge — intentionally persistent), kbd-pulse-dot (rare).
+ */
+.app-shell:not(.agent-streaming) .pulse,
+.app-shell:not(.agent-streaming) .bottom-bar-git-pulse {
+  animation-play-state: paused;
+}
 /* ── Topbar — three-zone header ─────────────────────────────────────── */
 .topbar {
   height: 48px;

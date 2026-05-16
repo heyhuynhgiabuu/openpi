@@ -13,7 +13,7 @@ import DOMPurify from 'dompurify'
 import { Marked } from 'marked'
 import markedShiki from 'marked-shiki'
 import { type Component, createEffect, createSignal, onCleanup } from 'solid-js'
-import { activeShikiTheme, ensureHighlighter, LANG_MAP } from '../../lib/shiki'
+import { activeShikiTheme, cachedCodeToHtml, ensureHighlighter, LANG_MAP } from '../../lib/shiki'
 
 type Props = { text: string; streaming?: boolean }
 
@@ -103,18 +103,9 @@ function getHighlightedParser(): Promise<Marked> {
         markedShiki({
           highlight(code, rawLang) {
             const lang = resolveLang(rawLang)
-            // Read theme at highlight-time so dark↔light changes are reflected
-            // without rebuilding the parser.
             const theme = activeShikiTheme()
-            try {
-              return wrapCodeBlock(h.codeToHtml(code, { lang, theme }), rawLang)
-            } catch {
-              try {
-                return wrapCodeBlock(h.codeToHtml(code, { lang: 'plaintext', theme }), rawLang)
-              } catch {
-                return wrapCodeBlock(`<pre><code>${escapeHtml(code)}</code></pre>`, rawLang)
-              }
-            }
+            // cachedCodeToHtml handles error fallbacks + the bounded LRU cache.
+            return wrapCodeBlock(cachedCodeToHtml(code, lang, theme, h), rawLang)
           },
         })
       )
@@ -129,6 +120,28 @@ function getHighlightedParser(): Promise<Marked> {
   return _parserPromise
 }
 
+// ── Full-markdown result cache ────────────────────────────────────────────────
+// Caches the sanitized final HTML for completed (non-streaming) renders.
+// On VList remount (scroll away then back), the cached HTML is restored
+// immediately without re-parsing or triggering a Phase-1 plain-text flash.
+// Key: `theme\x00text` (\x00 separator is never in theme names).
+// Bounded to 150 entries (~4–10 KB per entry ≈ 600 KB–1.5 MB footprint).
+const MD_CACHE_MAX = 150
+const _mdCache = new Map<string, string>()
+
+function mdCacheGet(text: string, theme: string): string | undefined {
+  return _mdCache.get(`${theme}\x00${text}`)
+}
+
+function mdCachePut(text: string, theme: string, html: string): void {
+  const key = `${theme}\x00${text}`
+  if (_mdCache.size >= MD_CACHE_MAX) {
+    const oldest = _mdCache.keys().next().value
+    if (oldest !== undefined) _mdCache.delete(oldest)
+  }
+  _mdCache.set(key, html)
+}
+
 export const MarkdownContent: Component<Props> = (props) => {
   const [html, setHtml] = createSignal('')
   // Timer lives on the component instance, not inside the effect closure,
@@ -140,6 +153,17 @@ export const MarkdownContent: Component<Props> = (props) => {
     const text = props.text
     const isStreaming = props.streaming
     let cancelled = false
+
+    // Fast path: completed render already cached (e.g. VList remount after scroll).
+    // Bypasses both phases — no Phase-1 plain flash, no re-parse cost.
+    if (!isStreaming) {
+      const theme = activeShikiTheme()
+      const cached = mdCacheGet(text, theme)
+      if (cached !== undefined) {
+        setHtml(cached)
+        return
+      }
+    }
 
     // Phase 1: instant plain render — ONLY on first render (html is empty).
     // Skipping it on subsequent updates prevents the highlighted→plain→highlighted
@@ -163,7 +187,16 @@ export const MarkdownContent: Component<Props> = (props) => {
         void getHighlightedParser()
           .then((parser) => parser.parse(text))
           .then((enhanced) => {
-            if (!cancelled) setHtml(sanitizeMarkdownHtml(wrapTables(enhanced)))
+            if (!cancelled) {
+              const finalHtml = sanitizeMarkdownHtml(wrapTables(enhanced))
+              setHtml(finalHtml)
+              // Populate markdown cache only for completed (non-streaming) renders.
+              // Theme is read at write-time: dark↔light switches invalidate naturally
+              // (different key → cache miss → re-render with correct colours).
+              if (!isStreaming) {
+                mdCachePut(text, activeShikiTheme(), finalHtml)
+              }
+            }
           })
           .catch(() => {
             /* keep whatever is already shown */

@@ -676,7 +676,7 @@ export default function App() {
           session.models.filter((m) => !hiddenModels().has(`${m.provider}/${m.id}`))
 
         return (
-          <div class="app-shell">
+          <div class={`app-shell${session.isStreaming ? ' agent-streaming' : ''}`}>
             {/* RefsPickerPanel: always mounted so TopBar branch click works
                 even when the git panel is closed */}
             <RefsPickerPanel

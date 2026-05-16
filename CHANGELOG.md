@@ -20,6 +20,8 @@
 - **`allText` deferred to copy-click** — the full-text string join across all assistant messages was running on every streaming delta but was only needed when the user clicks the copy button. Changed `MessageActions` to accept a `getText` thunk called only at click time.
 - **`keybindingEntries` memoised** — `buildKeybindingEntries()` was rebuilt on every `keydown` event via a plain lambda. Changed to `createMemo` so the result map is rebuilt only when keybinding preferences actually change.
 - **Removed no-op `contextPercentValue` memo** — `createMemo(() => contextPercent())` wrapping a plain signal adds an unnecessary reactive layer. Replaced with direct `contextPercent()` access.
+- **Two-level Shiki/markdown render cache** — added a bounded LRU code-block cache (400 entries, shared across all `MarkdownContent` and `FilePreviewPane` instances) in `shiki.ts`, and a bounded LRU full-markdown HTML cache (150 entries) in `MarkdownContent`. When VList scrolls a completed message out of view and back, the final highlighted HTML is restored instantly from cache — no Phase-1 plain flash, no re-parse. The code-block cache also eliminates redundant Shiki grammar runs for repeated snippets across a long session. Both caches are keyed by theme so dark↔light switches naturally invalidate and re-render.
+- **Idle animation GPU budget** — added `agent-streaming` class to `app-shell` during agent runs and used it to pause `.pulse` (typing dots) and `.bottom-bar-git-pulse` (git sync indicator) animations when the agent is idle. Infinite CSS animations promote elements to GPU compositor layers even when nothing visually changes; pausing them when not needed reduces GPU texture memory and compositor work.
 
  - 2026-05-16
 
