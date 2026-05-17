@@ -330,6 +330,33 @@ async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
 
 // ─── Session management ────────────────────────────────────────────────────────
 
+/**
+ * Emit session_shutdown to extensions before disposing a session.
+ * This lets extensions (e.g. pi-sub-bar) clean up timers and release
+ * captured ctx references. Without this, timers fire with stale ctx
+ * and crash the sidecar.
+ */
+async function emitSessionShutdown(
+  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
+  reason: string
+): Promise<void> {
+  try {
+    const runner = (
+      session as unknown as {
+        extensionRunner?: {
+          hasHandlers?: (t: string) => boolean
+          emit?: (e: unknown) => Promise<unknown>
+        }
+      }
+    ).extensionRunner
+    if (runner?.hasHandlers?.('session_shutdown')) {
+      await runner.emit?.({ type: 'session_shutdown', reason })
+    }
+  } catch {
+    // Never let extension errors block session disposal
+  }
+}
+
 async function startSession(
   cwd: string,
   opts: {
@@ -339,9 +366,11 @@ async function startSession(
     workspaceTrusted?: boolean
   } = {}
 ): Promise<void> {
-  // Dispose previous session
+  // Dispose previous session — emit session_shutdown first so extensions
+  // (e.g. pi-sub-bar) can clean up timers before the ctx becomes stale.
   if (state) {
     state.unsubscribe()
+    await emitSessionShutdown(state.session, 'session_replaced')
     state.session.dispose()
     state = null
   }
@@ -867,6 +896,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     case 'stop': {
       if (state) {
         state.unsubscribe()
+        await emitSessionShutdown(state.session, 'quit')
         state.session.dispose()
         state = null
       }
