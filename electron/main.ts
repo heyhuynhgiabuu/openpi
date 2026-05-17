@@ -101,6 +101,7 @@ import {
   sessionListOptionsSchema,
   sessionMessagesRequestSchema,
   sessionPromptSchema,
+  setExtensionEnabledRequestSchema,
   setModelSchema,
   setPrefSchema,
   setProviderKeySchema,
@@ -1207,6 +1208,12 @@ function registerHandlers(): void {
       workspaceTrusted: cwd ? (sessionIndex?.isWorkspaceTrusted(cwd) ?? false) : false,
     })
     return customizationsInventorySchema.parse(inventory)
+  })
+
+  ipcMain.handle(IPC.SET_EXTENSION_ENABLED, async (_event, raw: unknown): Promise<void> => {
+    const { id, enabled } = setExtensionEnabledRequestSchema.parse(raw)
+    const { setExtensionEnabled } = await getCustomizationsHost()
+    setExtensionEnabled(getAgentDir(), id, enabled)
   })
 
   ipcMain.handle(

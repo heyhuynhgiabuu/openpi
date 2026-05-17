@@ -74,6 +74,7 @@ export const IPC = {
   READ_FILE: 'openpi:read-file',
   WRITE_FILE: 'openpi:write-file',
   FORMAT_FILE: 'openpi:format-file',
+  SET_EXTENSION_ENABLED: 'openpi:set-extension-enabled',
   SEARCH_FILE_CONTENTS: 'openpi:search-file-contents',
   LIST_PROMPT_TEMPLATES: 'openpi:list-prompt-templates',
   FFF_FILE_SEARCH: 'openpi:fff-file-search',
@@ -358,6 +359,14 @@ export const customizationDiagnosticSchema = z.object({
   scope: customizationScopeSchema.optional(),
 })
 export type CustomizationDiagnostic = z.infer<typeof customizationDiagnosticSchema>
+
+export const setExtensionEnabledRequestSchema = z.object({
+  /** Unique extension ID (matching CustomizationItem.id) */
+  id: z.string().min(1),
+  /** Whether the extension should be enabled */
+  enabled: z.boolean(),
+})
+export type SetExtensionEnabledRequest = z.infer<typeof setExtensionEnabledRequestSchema>
 
 export const customizationsInventorySchema = z.object({
   cwd: z.string().nullable(),

@@ -132,6 +132,8 @@ const api = {
   // ── Customizations ────────────────────────────────────────────────────────
   getCustomizations: (): Promise<CustomizationsInventory> =>
     ipcRenderer.invoke(IPC.GET_CUSTOMIZATIONS),
+  setExtensionEnabled: (id: string, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC.SET_EXTENSION_ENABLED, { id, enabled }),
 
   installPackage: (payload: PackageOperationRequest): Promise<PackageOperationResult> =>
     ipcRenderer.invoke(IPC.INSTALL_PACKAGE, payload),

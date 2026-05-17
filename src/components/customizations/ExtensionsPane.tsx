@@ -7,6 +7,8 @@ type ExtensionsPaneProps = {
   loading: boolean
   workspaceTrusted?: boolean
   onTrustWorkspace?: () => void
+  onToggleExtension?: (id: string, enabled: boolean) => void
+  onReload?: () => void
 }
 
 type ExtensionFilter = 'all' | 'project' | 'user' | 'package'
@@ -74,7 +76,22 @@ function formatModifiedAt(value: string | null | undefined): string | null {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function ExtensionCard(props: { item: CustomizationItem }) {
+function ExtensionCard(props: {
+  item: CustomizationItem
+  onToggle?: (id: string, enabled: boolean) => void
+}) {
+  const [busy, setBusy] = createSignal(false)
+  const [needsRestart, setNeedsRestart] = createSignal(false)
+
+  const handleToggle = () => {
+    if (busy()) return
+    const nextEnabled = !props.item.enabled
+    setBusy(true)
+    setNeedsRestart(true)
+    props.onToggle?.(props.item.id, nextEnabled)
+    // Simulate brief toggle feedback; real state syncs on next reload
+    setTimeout(() => setBusy(false), 300)
+  }
   const [copied, setCopied] = createSignal(false)
   const displayPath = () => copyTarget(props.item)
 
@@ -301,7 +318,9 @@ export function ExtensionsPane(props: ExtensionsPaneProps) {
                     <span class="extension-group-count">{group.items.length}</span>
                   </div>
                   <div class="extension-group-list">
-                    <For each={group.items}>{(item) => <ExtensionCard item={item} />}</For>
+                    <For each={group.items}>
+                      {(item) => <ExtensionCard item={item} onToggle={props.onToggleExtension} />}
+                    </For>
                   </div>
                 </section>
               )}

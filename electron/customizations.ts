@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
   DefaultPackageManager,
@@ -102,6 +102,52 @@ async function runPackageOperation(options: {
       output: [...messages, message].filter(Boolean).join('\n'),
     })
   }
+}
+
+const EXTENSION_PREFERENCES_FILE = 'openpi-extension-preferences.json'
+
+/**
+ * Read saved extension enable/disable preferences from a JSON file.
+ * Returns a map of extension id → enabled boolean.
+ */
+function readExtensionPreferences(agentDir: string): Map<string, boolean> {
+  const prefsPath = path.join(agentDir, EXTENSION_PREFERENCES_FILE)
+  try {
+    const raw = readFileSync(prefsPath, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return new Map()
+    const map = new Map<string, boolean>()
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'boolean') map.set(key, value)
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+/**
+ * Save extension enable/disable preferences for a single extension.
+ */
+export function setExtensionEnabled(agentDir: string, id: string, enabled: boolean): void {
+  const prefsPath = path.join(agentDir, EXTENSION_PREFERENCES_FILE)
+  const prefs = readExtensionPreferences(agentDir)
+  prefs.set(id, enabled)
+  mkdirSync(agentDir, { recursive: true })
+  const obj: Record<string, boolean> = {}
+  for (const [key, value] of prefs) obj[key] = value
+  writeFileSync(prefsPath, JSON.stringify(obj, null, 2), 'utf-8')
+}
+
+/** Merge saved extension preferences into a discovered customization item. */
+function applyExtensionPreference(
+  item: CustomizationItem,
+  prefs: Map<string, boolean>
+): CustomizationItem {
+  if (item.type !== 'extensions') return item
+  const saved = prefs.get(item.id)
+  if (saved !== undefined) return { ...item, enabled: saved }
+  return item
 }
 
 export async function discoverCustomizations(options: {
@@ -237,10 +283,14 @@ export async function discoverCustomizations(options: {
 
   const dedupedItems = dedupeItems(items)
 
+  // Merge saved extension enable/disable preferences
+  const prefs = readExtensionPreferences(agentDir)
+  const itemsWithPrefs = dedupedItems.map((item) => applyExtensionPreference(item, prefs))
+
   return {
     cwd,
     workspaceTrusted,
-    items: dedupedItems,
+    items: itemsWithPrefs,
     diagnostics,
   }
 }

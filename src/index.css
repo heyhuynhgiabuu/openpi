@@ -5319,6 +5319,89 @@ body.panel-dragging {
   color: #4ade80;
   background: rgba(74, 222, 128, 0.08);
 }
+
+/* Extension enable/disable toggle switch */
+.ext-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+.ext-toggle:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ext-toggle-track {
+  display: inline-flex;
+  width: 22px;
+  height: 12px;
+  border-radius: 6px;
+  padding: 1px;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+.ext-toggle.is-on .ext-toggle-track {
+  background: #4ade80;
+}
+.ext-toggle.is-off .ext-toggle-track {
+  background: var(--hairline-strong);
+}
+.ext-toggle-thumb {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.ext-toggle.is-on .ext-toggle-thumb {
+  transform: translateX(10px);
+}
+.ext-toggle-label {
+  color: var(--ash);
+  font-weight: 500;
+}
+.ext-toggle.is-on .ext-toggle-label {
+  color: #4ade80;
+}
+
+/* Restart hint badge */
+.ext-toggle-hint {
+  font-size: 10px;
+  color: var(--graphite);
+  background: rgba(234, 179, 8, 0.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+/* Reload button */
+.ext-reload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.ext-reload-btn:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
 .extension-empty {
   padding: 34px 16px;
   border: 1px dashed var(--hairline-strong);

@@ -345,6 +345,12 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                     loading={loading()}
                     workspaceTrusted={inventory()?.workspaceTrusted}
                     onTrustWorkspace={props.cwd ? () => void trustWorkspace() : undefined}
+                    onToggleExtension={(id, enabled) => {
+                      void window.openpi.setExtensionEnabled(id, enabled)
+                    }}
+                    onReload={() => {
+                      void loadInventory()
+                    }}
                   />
                 </Show>
                 <Show when={diagnostics().length > 0}>
