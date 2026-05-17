@@ -72,7 +72,7 @@ export const UserMessage: Component<UserMessageProps> = (props) => {
     <div class="message-row user-message-row">
       <div class="user-msg-stack">
         <div class="user-bubble">
-          <p>{props.message.text}</p>
+          <MarkdownContent text={props.message.text} />
         </div>
         <MessageActions
           messageId={props.message.id}

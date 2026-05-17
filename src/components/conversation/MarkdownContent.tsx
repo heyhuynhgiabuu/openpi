@@ -65,12 +65,12 @@ function wrapCodeBlock(shikiHtml: string, rawLang: string): string {
     }
   )
   return [
-    '<div class="code-block">',
+    '<div class="code-block show-line-numbers">',
     '<div class="code-block-header">',
     display
       ? `<span class="code-lang-badge">${display}</span>`
       : '<span class="code-lang-badge"></span>',
-    '<button class="code-line-toggle" type="button" aria-label="Toggle line numbers">Ln</button>',
+    '<button class="code-line-toggle" type="button" aria-label="Toggle line numbers" aria-pressed="true">Ln✓</button>',
     '<button class="code-copy-btn" type="button" aria-label="Copy code">Copy</button>',
     '</div>',
     htmlWithLineNums,

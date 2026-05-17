@@ -2241,6 +2241,17 @@ body.panel-dragging {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.user-bubble .md-content {
+  margin-top: 0;
+}
+.user-bubble .md-content p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.user-bubble .md-content p:last-child {
+  margin-bottom: 0;
+}
 
 /* ── Assistant message ─────────────────────────────────────────────── */
 .assistant-message-row {
