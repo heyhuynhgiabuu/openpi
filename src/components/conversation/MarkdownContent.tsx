@@ -55,12 +55,12 @@ function wrapCodeBlock(shikiHtml: string, rawLang: string): string {
   // Add line numbers to Shiki-generated <span class="line"> elements
   let lineNum = 0
   const htmlWithLineNums = shikiHtml.replace(
-    /<span\s+class="(?:[^"]*\s)?line(?:\s[^"]*)?"/gi,
-    (match) => {
+    /<span\s+class="([^"]*\bline\b[^"]*)"([^>]*)>/gi,
+    (_match, classes: string, attrs: string) => {
       lineNum++
-      // Preserve the original class attributes and inject line-num span
-      const classes = match.match(/class="([^"]*)"/)?.[1] ?? ''
-      return `<span class="${classes}" data-ln="${lineNum}"><span class="line-num">${lineNum}</span>`
+      // Consume the full opening tag so the original trailing `>` is not left
+      // behind as visible code text after the inserted line number.
+      return `<span class="${classes}" data-ln="${lineNum}"${attrs}><span class="line-num">${lineNum}</span>`
     }
   )
   return [
