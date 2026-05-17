@@ -1093,7 +1093,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   }
 
   /** Run Biome format on the current file (does not save). */
-  const handleFormat = async () => {
+  const _handleFormat = async () => {
     if (isImage() || content() === null) return
 
     try {
@@ -1123,7 +1123,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
-        void handleFormat()
+        openFindBar(true) // Cmd+Shift+F → find with replace (like VS Code/Zed)
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault()

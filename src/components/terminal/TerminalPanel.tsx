@@ -81,7 +81,7 @@ export function TerminalPanel(props: Props) {
     setTermTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: true } : t)))
   }
 
-  const startRename = (tab: TermTab) => {
+  const _startRename = (tab: TermTab) => {
     setRenamingTabId(tab.id)
     setRenameValue(tab.label)
     requestAnimationFrame(() => {
@@ -90,7 +90,7 @@ export function TerminalPanel(props: Props) {
     })
   }
 
-  const commitRename = () => {
+  const _commitRename = () => {
     const id = renamingTabId()
     const label = renameValue().trim()
     if (id && label) {
