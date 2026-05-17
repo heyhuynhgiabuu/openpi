@@ -2246,7 +2246,20 @@ body.panel-dragging {
 .assistant-message-row {
   flex-direction: column;
   gap: 0;
+  animation: msg-fade-in 0.08s ease-out both;
 }
+
+@keyframes msg-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .assistant-header {
   display: flex;
   align-items: center;
@@ -2408,6 +2421,19 @@ body.panel-dragging {
   content: "·";
   margin-right: 8px;
   color: var(--hairline-strong);
+}
+/* Streaming mode — live estimate replaces static usage */
+.message-usage--streaming {
+  opacity: 0.7;
+}
+.message-usage-live {
+  color: var(--accent);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* The separator ::before should not fire for the first child in streaming mode */
+.message-usage--streaming .message-usage-live:first-child::before {
+  content: none;
 }
 .typing-dots {
   display: flex;
@@ -2632,6 +2658,53 @@ body.panel-dragging {
   background: transparent;
 }
 
+/* ── Code block line numbers ────────────────────────────────────── */
+.code-line-toggle {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+  font-family: var(--font-code);
+  line-height: 1.5;
+  transition: color 0.12s ease, border-color 0.12s ease;
+  flex-shrink: 0;
+  order: -1;
+}
+.code-line-toggle:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+.code-line-toggle[aria-pressed="true"] {
+  color: #4ade80;
+  border-color: #4ade80;
+}
+
+/* Line number element — hidden by default */
+.line-num {
+  display: none;
+  user-select: none;
+  text-align: right;
+  padding-right: 1.2em;
+  min-width: 2.4em;
+  color: var(--mute);
+  opacity: 0.5;
+  font-size: 0.9em;
+}
+
+/* Show line numbers when toggled */
+.code-block.show-line-numbers .line-num {
+  display: inline-block;
+}
+
+/* Adjust Shiki <pre> padding when line numbers are shown */
+.code-block.show-line-numbers > .shiki,
+.code-block.show-line-numbers > pre {
+  padding-left: 4px;
+}
+
 /* Bare <pre> blocks (plain-markdown fallback, no .code-block wrapper) */
 .md-content > pre,
 .md-content p + pre {
@@ -2782,14 +2855,25 @@ body.panel-dragging {
   margin-right: 6px;
   accent-color: var(--ink);
 }
-/* Streaming cursor when text is still being written */
-.md-content.is-streaming p:last-of-type::after {
+/* Responsive images in markdown */
+.md-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.75em 0;
+  display: block;
+}
+/* Streaming cursor when text is still being written.
+   Uses ::after on .md-content directly so it works regardless of whether
+   the last child is a <p>, <pre>, <ul>, or any other element. */
+.md-content.is-streaming::after {
   content: "▍";
   animation: blink-cursor 1s step-end infinite;
   color: var(--graphite);
   font-size: 0.8em;
   vertical-align: middle;
-  margin-left: 2px;
+  margin-left: 3px;
+  display: inline-block;
 }
 @keyframes blink-cursor {
   0%,

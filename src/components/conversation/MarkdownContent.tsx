@@ -29,7 +29,7 @@ function escapeHtml(value: string): string {
 function sanitizeMarkdownHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ['button'],
-    ADD_ATTR: ['class', 'type', 'aria-label'],
+    ADD_ATTR: ['class', 'type', 'aria-label', 'aria-pressed', 'data-ln'],
   })
 }
 
@@ -45,23 +45,35 @@ function resolveLang(raw: string): string {
 
 /**
  * Wrap shiki HTML output in a code block container with header.
- * The copy button reads textContent from the inner <code> element at
- * click-time via event delegation (no data-attribute encoding needed).
+ * Line numbers are injected into each <span class="line"> via regex.
+ * The line-number toggle button uses event delegation.
  */
 function wrapCodeBlock(shikiHtml: string, rawLang: string): string {
   const display =
     rawLang && rawLang !== 'plaintext' && rawLang !== 'text'
       ? escapeHtml(rawLang.toLowerCase())
       : ''
+  // Add line numbers to Shiki-generated <span class="line"> elements
+  let lineNum = 0
+  const htmlWithLineNums = shikiHtml.replace(
+    /<span\s+class="(?:[^"]*\s)?line(?:\s[^"]*)?"/gi,
+    (match) => {
+      lineNum++
+      // Preserve the original class attributes and inject line-num span
+      const classes = match.match(/class="([^"]*)"/)?.[1] ?? ''
+      return `<span class="${classes}" data-ln="${lineNum}"><span class="line-num">${lineNum}</span>`
+    }
+  )
   return [
     '<div class="code-block">',
     '<div class="code-block-header">',
     display
       ? `<span class="code-lang-badge">${display}</span>`
       : '<span class="code-lang-badge"></span>',
+    '<button class="code-line-toggle" type="button" aria-label="Toggle line numbers">Ln</button>',
     '<button class="code-copy-btn" type="button" aria-label="Copy code">Copy</button>',
     '</div>',
-    shikiHtml,
+    htmlWithLineNums,
     '</div>',
   ].join('')
 }
@@ -211,11 +223,26 @@ export const MarkdownContent: Component<Props> = (props) => {
   })
 
   /**
-   * Event delegation for copy buttons injected into code block headers.
-   * Reads textContent from the sibling <code> element — no encoding tricks needed.
+   * Event delegation for code-block header buttons:
+   * - .code-copy-btn: copies code content to clipboard
+   * - .code-line-toggle: toggles line numbers on the .code-block
    */
   const handleClick = (e: MouseEvent) => {
-    const btn = (e.target as Element).closest<HTMLButtonElement>('.code-copy-btn')
+    const target = e.target as Element
+
+    // ── Line-number toggle ────────────────────────────────────────────
+    const lnBtn = target.closest<HTMLButtonElement>('.code-line-toggle')
+    if (lnBtn) {
+      const block = lnBtn.closest('.code-block')
+      if (!block) return
+      const isActive = block.classList.toggle('show-line-numbers')
+      lnBtn.setAttribute('aria-pressed', String(isActive))
+      lnBtn.textContent = isActive ? 'Ln✓' : 'Ln'
+      return
+    }
+
+    // ── Copy button ───────────────────────────────────────────────────
+    const btn = target.closest<HTMLButtonElement>('.code-copy-btn')
     if (!btn) return
 
     const block = btn.closest('.code-block')

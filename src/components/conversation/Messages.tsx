@@ -234,6 +234,33 @@ function UsageRow(props: { modelName?: string; metrics: UsageMetrics }) {
   )
 }
 
+/**
+ * Estimate output tokens from text length (~4 chars per token on average
+ * for mixed English + code). Used during streaming before actual token
+ * counts arrive from the agent session event.
+ */
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.round(text.length / 4))
+}
+
+/**
+ * LiveUsageRow — shown during streaming before actual token counts arrive.
+ * Shows estimated output tokens accumulating in real time.
+ */
+function LiveUsageRow(props: { text: string; modelName?: string }) {
+  const estTokens = createMemo(() => estimateTokens(props.text))
+  return (
+    <div class="message-usage message-usage--streaming">
+      <Show when={props.modelName}>
+        <span class="message-usage-model">{props.modelName}</span>
+      </Show>
+      <span class="message-usage-live">
+        generating&nbsp;~{estTokens().toLocaleString()}&nbsp;tok
+      </span>
+    </div>
+  )
+}
+
 type AssistantMessageGroupProps = {
   messages: SessionHistoryMessage[]
   onFork?: (id: string) => void
@@ -324,6 +351,13 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
         <Show when={usage().input > 0 || usage().output > 0 || usage().total > 0}>
           <UsageRow modelName={modelName()} metrics={usage()} />
         </Show>
+        <Show
+          when={
+            !(usage().input > 0 || usage().output > 0 || usage().total > 0) && lastMsg()?.streaming
+          }
+        >
+          <LiveUsageRow text={props.messages.map((m) => m.text).join('')} modelName={modelName()} />
+        </Show>
 
         <MessageActions
           messageId={lastMsg()?.id ?? ''}
@@ -395,6 +429,10 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           }
         >
           <UsageRow modelName={props.message.modelName} metrics={aggregateUsage([props.message])} />
+        </Show>
+
+        <Show when={props.message.streaming && props.message.text}>
+          <LiveUsageRow text={props.message.text} modelName={props.message.modelName} />
         </Show>
 
         <MessageActions
