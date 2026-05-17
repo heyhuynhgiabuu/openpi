@@ -43,6 +43,7 @@ import {
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from '../lib/keybindings'
+import { GoalBanner } from './GoalBanner'
 
 type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -102,6 +103,10 @@ type ComposerProps = {
   onSend: () => void
   onShellSend: () => void
   onAbort: () => void
+  // Goal state
+  activeGoalText: string | null
+  activeGoalStep: 'running' | 'idle' | null
+  onSetActiveGoal: (text: string | null) => void
   /** 0-100 percentage of context window consumed. Null when unknown. */
   contextPercent?: number | null
 }
@@ -655,8 +660,20 @@ export const Composer: Component<ComposerProps> = (props) => {
       })
   })
 
+  // Built-in slash commands (merged with prompt templates)
+  const BUILT_IN_SLASH_COMMANDS: SlashCommand[] = [
+    {
+      name: '/goal',
+      description: 'Set or continue a goal/harness loop',
+      argHint: '<objective, status, pause, resume, or clear>',
+    },
+  ]
+
   // All commands: built-ins first, then prompts sorted alphabetically
-  const allCommands = createMemo<SlashCommand[]>(() => promptCommands())
+  const allCommands = createMemo<SlashCommand[]>(() => [
+    ...BUILT_IN_SLASH_COMMANDS,
+    ...promptCommands(),
+  ])
 
   const filteredCmds = createMemo<SlashCommand[]>(() => {
     const q = slashQuery()
@@ -1066,6 +1083,13 @@ export const Composer: Component<ComposerProps> = (props) => {
             </For>
           </div>
         </Show>
+
+        {/* ── Goal banner ─────────────────────────────────────────────── */}
+        <GoalBanner
+          text={props.activeGoalText}
+          step={props.activeGoalStep}
+          onDismiss={() => props.onSetActiveGoal(null)}
+        />
 
         {/* ── Composer box ─────────────────────────────────────────────── */}
         <div

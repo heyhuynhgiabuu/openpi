@@ -364,3 +364,19 @@ Before tagging, pushing, or claiming any version release:
 - Do not fork Warp or OpenWarp as the app base.
 - Do not ship `nodeIntegration: true` or disable `contextIsolation` as a convenience shortcut.
 - Do not use OpenCode/Copilot terminology for Pi's resources (Instructions → Prompts, Agents → Extensions, Hooks → Extension events, Plugins → Packages).
+
+---
+
+## Durable Product Documentation
+
+This project uses `docs/` as the durable product truth surface. See:
+
+- **docs/HARNESS.md** — goal/harness loop operating rules and tool taxonomy.
+- **docs/FEATURE_INTAKE.md** — feature intake checklist (classify input, risk flags, hard gates).
+- **docs/TEST_MATRIX.md** — product behavior → proof mapping.
+- **docs/product/** — product-level docs (goal/harness system, process model).
+- **docs/stories/** — story packets with acceptance criteria and validation.
+- **docs/decisions/** — architecture decision records (ADRs).
+- **docs/templates/** — reusable templates for stories and spec intake.
+
+These docs are the canonical reference. This AGENTS.md remains the operational rules surface for agents; `docs/` holds the durable product truth.

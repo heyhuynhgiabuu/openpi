@@ -26,6 +26,34 @@ export const TOOL_LABEL: Record<string, string> = {
   grep: 'grep',
   find: 'find',
   ls: 'ls',
+  // Pi Subagents
+  Agent: 'agent',
+  get_subagent_result: 'agent',
+  steer_subagent: 'agent',
+  // Pi Tasks
+  TaskCreate: 'task',
+  TaskList: 'tasks',
+  TaskGet: 'task',
+  TaskUpdate: 'task',
+  TaskExecute: 'exec',
+  TaskOutput: 'task',
+  TaskStop: 'stop',
+  // Harness extension tools
+  harness_status: 'harness',
+  harness_intake: 'harness',
+  harness_init: 'harness',
+  harness_lint: 'harness',
+  story_create: 'story',
+  decision_record: 'decision',
+  test_matrix_update: 'matrix',
+  // Legacy spec compatibility tools
+  spec_create: 'legacy',
+  spec_next_phase: 'legacy',
+  spec_run_task: 'legacy',
+  spec_run_all: 'legacy',
+  spec_status: 'legacy',
+  spec_analyze: 'legacy',
+  spec_sync_tasks: 'legacy',
 }
 
 export function labelForTool(name: string): string {

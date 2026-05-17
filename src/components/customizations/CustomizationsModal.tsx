@@ -347,7 +347,6 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
                     onTrustWorkspace={props.cwd ? () => void trustWorkspace() : undefined}
                   />
                 </Show>
-
                 <Show when={diagnostics().length > 0}>
                   <section class="diagnostics-panel">
                     <h3>Diagnostics</h3>

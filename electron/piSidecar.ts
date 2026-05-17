@@ -20,7 +20,7 @@ import {
   SessionManager,
   SettingsManager,
 } from '@earendil-works/pi-coding-agent'
-import { buildPromptTextWithContext } from '../src/lib/sessionPrompt'
+import { expandPromptTemplateText } from '../src/lib/sessionPrompt'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,6 +183,53 @@ function stripFrontmatter(content: string): string {
   return afterOpen.slice(closeIdx + 4).trimStart()
 }
 
+function buildGoalHarnessPrompt(intent: string): string {
+  const normalizedIntent =
+    intent.trim() || 'Inspect the active goal/harness state and recommend the next safe action.'
+  return `Run the Pi/OpenPi goal-harness while-loop for this user intent:
+
+${normalizedIntent}
+
+Goal contract:
+- Treat this as a durable objective with a verifiable stopping condition, not a one-off prompt.
+- Preserve the full objective. If it cannot be finished now, make concrete progress toward the real requested end state and leave the next step explicit.
+- Work from current-state evidence: inspect files, docs, specs, command output, tests, or runtime state before claiming progress.
+- Completion is unproven until every explicit requirement has authoritative evidence. Do not redefine success around easier partial work.
+
+Ground truth and compatibility:
+- Repo-local docs are the preferred durable harness surface when present: docs/HARNESS.md, docs/FEATURE_INTAKE.md, docs/TEST_MATRIX.md, docs/product/, docs/stories/, docs/decisions/, docs/templates/.
+- Harness v2 tools are the primary interface: harness_status, harness_intake, harness_init, harness_lint, story_create, decision_record, test_matrix_update.
+- Legacy .pi/specs state may exist for old compatibility flows, but it is not the product source of truth and must not be the default path for new work.
+- If repo-local docs exist, read and preserve them before changing or running any compatibility execution state.
+
+Loop contract:
+1. Inspect state first: use harness_status unless exact state is already visible in this turn.
+2. Classify the intent with harness_intake unless the classification is already obvious and low-risk.
+3. Classify risk before acting: tiny, normal, or high-risk. Mention hard gates such as auth, authorization, data model, audit/security, external providers, public contracts, cross-platform, weak proof, or multi-domain.
+4. If required inputs are missing or ambiguous, ask one targeted clarification question instead of guessing.
+5. Choose exactly one next safe action at a time: one harness tool call, one repo-local docs update via file tools, or one narrow compatibility adapter only when already working inside old .pi/specs state. Do not chain broad changes unless the prior result proves the next step.
+6. Prefer the smallest safe step. Never run broad legacy task waves from /goal; ask for explicit confirmation and current status first if the user requests compatibility execution.
+7. For create/intake requests, prefer harness_init, harness_intake, story_create, decision_record, test_matrix_update, and repo-local harness/product/story/decision/test-matrix artifacts; use old .pi/specs creation only when the user explicitly asks for legacy Pi spec execution.
+8. For implementation/task execution, read the relevant docs/story first and finish with test_matrix_update, harness_lint, harness_status, or a concise validation-evidence summary.
+9. Preserve OpenPi authority boundaries: do not perform destructive filesystem/Git actions without explicit confirmation.
+10. Final response must be concise: classification, action taken, files/tools touched, current status/evidence, and next suggested /goal intent.`
+}
+
+/** Expand /goal into a single controller command for the goal/harness loop. */
+function expandGoalCommand(text: string): { text: string; expanded: boolean } {
+  if (text !== '/goal' && !text.startsWith('/goal ')) {
+    return { text, expanded: false }
+  }
+
+  const spaceIndex = text.indexOf(' ')
+  const argsString = spaceIndex === -1 ? '' : text.slice(spaceIndex + 1).trim()
+
+  return {
+    text: buildGoalHarnessPrompt(argsString),
+    expanded: true,
+  }
+}
+
 function expandSkillCommandForContext(
   text: string,
   session: Awaited<ReturnType<typeof createAgentSession>>['session']
@@ -200,15 +247,38 @@ function expandSkillCommandForContext(
   return { text: args ? `${skillBlock}\n\n${args}` : skillBlock, expanded: true }
 }
 
+/**
+ * Build the final prompt text sent to Pi SDK.
+ * Always runs expansion (goal commands, then prompt templates) regardless of contextPrefix.
+ */
 function buildSidecarPromptText(
   text: string,
   contextPrefix: string | undefined,
   session: Awaited<ReturnType<typeof createAgentSession>>['session']
 ): string {
-  if (!contextPrefix) return text
-  const expandedSkill = expandSkillCommandForContext(text.trim(), session)
-  if (expandedSkill.expanded) return `${contextPrefix.trim()}\n\n${expandedSkill.text}`
-  return buildPromptTextWithContext(text, contextPrefix, session.promptTemplates).text
+  const trimmed = text.trim()
+  const prefix = contextPrefix?.trim()
+
+  // 1. Try goal/harness command expansion first (built-in, no template files needed)
+  const goalExpanded = expandGoalCommand(trimmed)
+  if (goalExpanded.expanded) {
+    return prefix ? `${prefix}\n\n${goalExpanded.text}` : goalExpanded.text
+  }
+
+  // 2. Try skill command expansion
+  const skillExpanded = expandSkillCommandForContext(trimmed, session)
+  if (skillExpanded.expanded) {
+    return prefix ? `${prefix}\n\n${skillExpanded.text}` : skillExpanded.text
+  }
+
+  // 3. Try prompt template expansion (user-installed .md templates)
+  const templateExpanded = expandPromptTemplateText(trimmed, session.promptTemplates)
+  if (templateExpanded.expanded) {
+    return prefix ? `${prefix}\n\n${templateExpanded.text}` : templateExpanded.text
+  }
+
+  // 4. Fall through: wrap raw text with context prefix if present
+  return prefix ? `${prefix}\n\n${trimmed}` : trimmed
 }
 
 async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {

@@ -23,6 +23,7 @@ import type {
   GitStatusResult,
   GitSyncAction,
   GitSyncResult,
+  ListDirectoryResult,
   ModelInfo,
   OpenSession,
   OutputLine,
@@ -304,6 +305,8 @@ const api = {
 
   readSkillFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.READ_SKILL_FILE, { path: filePath }),
+  listDirectory: (relPath: string): Promise<ListDirectoryResult> =>
+    ipcRenderer.invoke(IPC.LIST_DIRECTORY, { path: relPath }),
 
   // ── Provider management ──────────────────────────────────────────────
   getProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke(IPC.GET_PROVIDERS),
@@ -334,6 +337,8 @@ const api = {
     ipcRenderer.invoke(IPC.REMOVE_CUSTOM_PROVIDER, { id }),
 
   // ── Events (main → renderer) ──────────────────────────────────────────────
+  sendPrompt: (text: string): Promise<void> => ipcRenderer.invoke(IPC.SEND_PROMPT, { text }),
+
   onSessionReady: (cb: (payload: SessionReady) => void) => {
     const handler = (_: Electron.IpcRendererEvent, payload: SessionReady) => cb(payload)
     ipcRenderer.on(IPC.SESSION_READY, handler)

@@ -84,6 +84,9 @@ export function useOpenPiSession() {
   const [historyBeforeEntryId, setHistoryBeforeEntryId] = createSignal<string | null>(null)
   const [isLoadingOlderHistory, setIsLoadingOlderHistory] = createSignal(false)
 
+  // ── Goal state ────────────────────────────────────────────────────────────
+  const [activeGoalText, setActiveGoalText] = createSignal<string | null>(null)
+
   // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
   const _taskTracker = new TaskTracker()
   const _askTracker = new AskTracker()
@@ -424,6 +427,18 @@ export function useOpenPiSession() {
     const promptPayload = buildSessionPromptPayload(input(), contextPrefix)
     const r = ready()
     if (!promptPayload.text || !r) return
+
+    // Detect /goal command from the raw input text and sync goal state
+    const rawText = input().trim()
+    if (rawText.startsWith('/goal')) {
+      const afterSlash = rawText.slice(5).trim()
+      if (afterSlash && afterSlash.toLowerCase() !== 'clear') {
+        setActiveGoalText(afterSlash)
+      } else {
+        setActiveGoalText(null)
+      }
+    }
+
     setInput('')
     if (textareaEl) textareaEl.style.height = 'auto'
     try {
@@ -572,6 +587,14 @@ export function useOpenPiSession() {
     setAskState(null)
   }
 
+  // ── Goal actions ──────────────────────────────────────────────────────────
+  const setActiveGoal = (text: string | null) => {
+    setActiveGoalText(text)
+  }
+  const clearActiveGoal = () => {
+    setActiveGoalText(null)
+  }
+
   // ── Return — getter-based object so callers use session.ready (not session.ready()) ──
   return {
     // Signals exposed as getters (transparent to callers, reactive in JSX/createEffect)
@@ -634,6 +657,14 @@ export function useOpenPiSession() {
     },
     get gitStats() {
       return gitStats()
+    },
+    get activeGoalText() {
+      return activeGoalText()
+    },
+    get activeGoalStep() {
+      const goal = activeGoalText()
+      if (!goal) return null
+      return isStreaming() ? 'running' : 'idle'
     },
     get steeringQueue() {
       return steeringQueue()
@@ -703,5 +734,11 @@ export function useOpenPiSession() {
     forkFromMessage,
     submitAsk,
     dismissAsk,
+    setActiveGoal,
+    clearActiveGoal,
+    clearTasks: () => {
+      _taskTracker.clear()
+      setTasks([])
+    },
   }
 }

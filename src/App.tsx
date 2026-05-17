@@ -28,6 +28,7 @@ import { ResizeHandle } from './components/ResizeHandle'
 import { SubagentWidget } from './components/SubagentWidget'
 import { ArchiveConfirmModal } from './components/sidebar/ArchiveConfirmModal'
 import { SessionSidebar } from './components/sidebar/SessionSidebar'
+import { StoryBrowser } from './components/sidebar/StoryBrowser'
 import { WorkspacePane } from './components/sidebar/WorkspacePane'
 import { TaskWidget } from './components/TaskWidget'
 import { TopBar } from './components/TopBar'
@@ -81,7 +82,7 @@ export default function App() {
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [sidebarOpen, setSidebarOpen] = createSignal(true)
   const [leftDrawerMode, setLeftDrawerMode] = createSignal<LeftDrawerMode>('threads')
-  const [secondaryPanelOpen, setSecondaryPanelOpen] = createSignal(false)
+  const [gitPanelOpen, setGitPanelOpen] = createSignal(false)
 
   const toggleLeftDrawerMode = (mode: LeftDrawerMode) => {
     if (sidebarOpen() && leftDrawerMode() === mode) {
@@ -91,6 +92,7 @@ export default function App() {
     setLeftDrawerMode(mode)
     setSidebarOpen(true)
   }
+  const onToggleStories = () => toggleLeftDrawerMode('stories')
 
   // ── Git panel side (left or right of main pane) ───────────────────────────
   // Sessions sidebar is always fixed on the left and is not draggable.
@@ -105,7 +107,7 @@ export default function App() {
    * Drag the git panel to the left or right of the main conversation pane.
    * Cursor position relative to the workbench midpoint determines the target side.
    */
-  const startGitDrag = (e: MouseEvent) => {
+  const _startGitDrag = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDraggingGit(true)
@@ -373,7 +375,7 @@ export default function App() {
       }
       if (eventMatchesBinding(event, binding('toggleGitPanel'))) {
         event.preventDefault()
-        setSecondaryPanelOpen((prev) => !prev)
+        setGitPanelOpen((prev) => !prev)
         return
       }
       if (eventMatchesBinding(event, binding('toggleFileTree'))) {
@@ -627,13 +629,23 @@ export default function App() {
       command('openProject', () => void session.openWorkspace()),
       command('renameSession', () => triggerRename?.()),
       command('toggleSidebar', () => toggleLeftDrawerMode('threads')),
-      command('toggleGitPanel', () => setSecondaryPanelOpen((prev) => !prev)),
+      command('toggleGitPanel', () => setGitPanelOpen((prev) => !prev)),
       command('toggleFileTree', () => setFilePanelOpen((prev) => !prev)),
       command('toggleTerminal', () => setTerminalOpen((prev) => !prev)),
       command('newTerminal', () => {
         setTerminalOpen(true)
         setNewTerminalRequest((prev) => prev + 1)
       }),
+      // ── Pi extension commands (forwarded to sidecar) ───────────
+      {
+        id: 'goalLoop' as KeybindingActionId,
+        label: 'Goal / Harness Loop',
+        description: 'Set or continue a goal: inspect, classify, act, verify, and report next step',
+        keys: '',
+        run: () => {
+          window.openpi.sendPrompt('/goal ')
+        },
+      } satisfies PaletteCommand,
     ].filter((item): item is PaletteCommand => item != null)
   })
 
@@ -729,49 +741,9 @@ export default function App() {
                 </div>
               </Show>
 
-              {/* Left drawer — fixed left, switches between Threads and Workspace */}
+              {/* Left drawer — fixed left, switches between Threads, Workspace, and Stories */}
               <Show when={sidebarOpen()}>
-                <Show
-                  when={leftDrawerMode() === 'workspace'}
-                  fallback={
-                    <SessionSidebar
-                      style={{ width: `${sidebarWidth()}px` }}
-                      sessions={session.sessions}
-                      workspaces={session.workspaces}
-                      selectedWorkspacePath={session.selectedWorkspacePath}
-                      activePath={activeSessionPath()}
-                      query={session.sessionQuery}
-                      sortBy={session.sortBy}
-                      groupBy={session.groupBy}
-                      showRecent={session.showRecent}
-                      collapsedGroups={session.collapsedGroups}
-                      onQuery={session.setSessionQuery}
-                      onSort={session.setSortBy}
-                      onGroup={session.setGroupBy}
-                      onShowRecent={session.setShowRecent}
-                      onCollapseAll={session.collapseAllGroups}
-                      onToggleGroup={session.toggleGroup}
-                      onNewSession={session.createNewSession}
-                      onNewSessionIn={handleNewSessionIn}
-                      onArchiveGroup={handleArchiveGroup}
-                      onArchiveSession={(path) => {
-                        void handleArchiveSession(path)
-                      }}
-                      onPinSession={togglePinSession}
-                      pinnedSessions={pinnedSessions()}
-                      showArchived={showArchived()}
-                      archivedSessions={archivedSessions()}
-                      onToggleArchived={handleToggleArchived}
-                      onUnarchiveSession={(p) => {
-                        void handleUnarchiveSession(p)
-                      }}
-                      onDeleteArchivedSession={(p) => {
-                        void handleDeleteArchivedSession(p)
-                      }}
-                      onOpenSession={session.openExistingSession}
-                    />
-                  }
-                >
+                <Show when={leftDrawerMode() === 'workspace'}>
                   <WorkspacePane
                     style={{ width: `${sidebarWidth()}px` }}
                     workspaces={session.workspaces}
@@ -785,33 +757,94 @@ export default function App() {
                     onNewSessionIn={handleNewSessionIn}
                   />
                 </Show>
+                <Show when={leftDrawerMode() === 'stories'}>
+                  <StoryBrowser cwd={cwd()} onOpenFile={(relPath) => openFile(relPath)} />
+                </Show>
+                <Show when={leftDrawerMode() === 'threads'}>
+                  <SessionSidebar
+                    style={{ width: `${sidebarWidth()}px` }}
+                    sessions={session.sessions}
+                    workspaces={session.workspaces}
+                    selectedWorkspacePath={session.selectedWorkspacePath}
+                    activePath={activeSessionPath()}
+                    query={session.sessionQuery}
+                    sortBy={session.sortBy}
+                    groupBy={session.groupBy}
+                    showRecent={session.showRecent}
+                    collapsedGroups={session.collapsedGroups}
+                    onQuery={session.setSessionQuery}
+                    onSort={session.setSortBy}
+                    onGroup={session.setGroupBy}
+                    onShowRecent={session.setShowRecent}
+                    onCollapseAll={session.collapseAllGroups}
+                    onToggleGroup={session.toggleGroup}
+                    onNewSession={session.createNewSession}
+                    onNewSessionIn={handleNewSessionIn}
+                    onArchiveGroup={handleArchiveGroup}
+                    onArchiveSession={(path) => {
+                      void handleArchiveSession(path)
+                    }}
+                    onPinSession={togglePinSession}
+                    pinnedSessions={pinnedSessions()}
+                    showArchived={showArchived()}
+                    archivedSessions={archivedSessions()}
+                    onToggleArchived={handleToggleArchived}
+                    onUnarchiveSession={(p) => {
+                      void handleUnarchiveSession(p)
+                    }}
+                    onDeleteArchivedSession={(p) => {
+                      void handleDeleteArchivedSession(p)
+                    }}
+                    onOpenSession={session.openExistingSession}
+                  />
+                </Show>
                 <ResizeHandle direction="horizontal" onResize={resizeSidebar} />
               </Show>
 
-              {/* Git panel LEFT of main — [git-panel][resize] */}
-              <Show when={secondaryPanelOpen() && gitPanelSide() === 'left'}>
-                <GitPanel
-                  style={{ width: `${gitPanelWidth()}px` }}
-                  side="left"
-                  cwd={cwd()}
-                  activeTab={gitPanelTab()}
-                  onActiveTabChange={setGitPanelTab}
-                  onRequestFileSearch={() => {
-                    setFileSearchOpen(true)
+              {/* Git panel LEFT of main — [drag handle][git][resize] */}
+              <Show when={gitPanelOpen() && gitPanelSide() === 'left'}>
+                <div class="secondary-panel-drag-handle">
+                  <button
+                    type="button"
+                    class="panel-drag-grip"
+                    title="Drag to move panel to the other side"
+                    aria-label="Drag panel"
+                    onMouseDown={_startGitDrag}
+                  >
+                    ⋮⋮
+                  </button>
+                </div>
+                <div
+                  class="secondary-panel"
+                  style={{
+                    width: `${gitPanelWidth()}px`,
+                    display: 'flex',
+                    'flex-direction': 'column',
+                    'min-width': '0',
                   }}
-                  onDiffOpen={(diff, files, idx) => {
-                    batch(() => {
-                      setActiveDiff(diff)
-                      setDiffFiles(files)
-                      setDiffIndex(idx)
-                    })
-                  }}
-                  onFileClick={(relPath) => openFile(relPath)}
-                  onDragHandleMouseDown={startGitDrag}
-                  onSyncLabelChange={setGitSyncLabel}
-                  onSyncActionChange={(a) => setGitSyncAction(a)}
-                  onSyncMessageChange={(m) => setGitSyncMessage(m)}
-                />
+                >
+                  <GitPanel
+                    style={{ width: '100%', height: '100%' }}
+                    side="left"
+                    cwd={cwd()}
+                    activeTab={gitPanelTab()}
+                    onActiveTabChange={setGitPanelTab}
+                    onRequestFileSearch={() => {
+                      setFileSearchOpen(true)
+                    }}
+                    onDiffOpen={(diff, files, idx) => {
+                      batch(() => {
+                        setActiveDiff(diff)
+                        setDiffFiles(files)
+                        setDiffIndex(idx)
+                      })
+                    }}
+                    onFileClick={(relPath) => openFile(relPath)}
+                    onSyncLabelChange={setGitSyncLabel}
+                    onSyncActionChange={(a) => setGitSyncAction(a)}
+                    onSyncMessageChange={(m) => setGitSyncMessage(m)}
+                  />
+                </div>
                 <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
               </Show>
 
@@ -836,9 +869,11 @@ export default function App() {
                       onLoadOlderHistory={session.loadOlderSessionMessages}
                     />
 
-                    {/* Extension widgets */}
-                    <SubagentWidget agents={session.agents} />
-                    <TaskWidget tasks={session.tasks} />
+                    {/* Extension widgets — anchored to composer width, animate in from below */}
+                    <div class="widget-tray">
+                      <SubagentWidget agents={session.agents} />
+                      <TaskWidget tasks={session.tasks} onDismiss={() => session.clearTasks()} />
+                    </div>
 
                     <Show when={session.askState}>
                       {(state) => (
@@ -899,6 +934,9 @@ export default function App() {
                       onAbort={() => {
                         void window.openpi.abort()
                       }}
+                      activeGoalText={session.activeGoalText}
+                      activeGoalStep={session.activeGoalStep}
+                      onSetActiveGoal={session.setActiveGoal}
                       contextPercent={session.contextPercent}
                     />
                   </div>
@@ -936,32 +974,52 @@ export default function App() {
                 />
               </div>
 
-              {/* Git panel RIGHT of main (default) — [resize][git-panel] */}
-              <Show when={secondaryPanelOpen() && gitPanelSide() === 'right'}>
+              {/* Git panel RIGHT of main (default) — [resize][drag handle][git] */}
+              <Show when={gitPanelOpen() && gitPanelSide() === 'right'}>
+                <div class="secondary-panel-drag-handle">
+                  <button
+                    type="button"
+                    class="panel-drag-grip"
+                    title="Drag to move panel to the other side"
+                    aria-label="Drag panel"
+                    onMouseDown={_startGitDrag}
+                  >
+                    ⋮⋮
+                  </button>
+                </div>
                 <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
-                <GitPanel
-                  style={{ width: `${gitPanelWidth()}px` }}
-                  side="right"
-                  cwd={cwd()}
-                  activeTab={gitPanelTab()}
-                  onActiveTabChange={setGitPanelTab}
-                  onRequestFileSearch={() => {
-                    setFilePanelOpen(true)
-                    setFileSearchOpen(true)
+                <div
+                  class="secondary-panel"
+                  style={{
+                    width: `${gitPanelWidth()}px`,
+                    display: 'flex',
+                    'flex-direction': 'column',
+                    'min-width': '0',
                   }}
-                  onDiffOpen={(diff, files, idx) => {
-                    batch(() => {
-                      setActiveDiff(diff)
-                      setDiffFiles(files)
-                      setDiffIndex(idx)
-                    })
-                  }}
-                  onFileClick={(relPath) => openFile(relPath)}
-                  onDragHandleMouseDown={startGitDrag}
-                  onSyncLabelChange={setGitSyncLabel}
-                  onSyncActionChange={(a) => setGitSyncAction(a)}
-                  onSyncMessageChange={(m) => setGitSyncMessage(m)}
-                />
+                >
+                  <GitPanel
+                    style={{ width: '100%', height: '100%' }}
+                    side="right"
+                    cwd={cwd()}
+                    activeTab={gitPanelTab()}
+                    onActiveTabChange={setGitPanelTab}
+                    onRequestFileSearch={() => {
+                      setFilePanelOpen(true)
+                      setFileSearchOpen(true)
+                    }}
+                    onDiffOpen={(diff, files, idx) => {
+                      batch(() => {
+                        setActiveDiff(diff)
+                        setDiffFiles(files)
+                        setDiffIndex(idx)
+                      })
+                    }}
+                    onFileClick={(relPath) => openFile(relPath)}
+                    onSyncLabelChange={setGitSyncLabel}
+                    onSyncActionChange={(a) => setGitSyncAction(a)}
+                    onSyncMessageChange={(m) => setGitSyncMessage(m)}
+                  />
+                </div>
               </Show>
               {/* File tree panel — separate from git panel */}
               <Show when={filePanelOpen()}>
@@ -981,8 +1039,9 @@ export default function App() {
               leftDrawerMode={leftDrawerMode()}
               onToggleThreads={() => toggleLeftDrawerMode('threads')}
               onToggleWorkspace={() => toggleLeftDrawerMode('workspace')}
-              gitPanelOpen={secondaryPanelOpen()}
-              onToggleGitPanel={() => setSecondaryPanelOpen((prev) => !prev)}
+              onToggleStories={onToggleStories}
+              gitPanelOpen={gitPanelOpen()}
+              onToggleGitPanel={() => setGitPanelOpen((prev) => !prev)}
               filePanelOpen={filePanelOpen()}
               onToggleFilePanel={() => setFilePanelOpen((prev) => !prev)}
               terminalOpen={terminalOpen()}

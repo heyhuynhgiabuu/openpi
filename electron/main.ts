@@ -26,6 +26,7 @@ import type {
   GitRefsResult,
   GitStatusResult,
   GitSyncResult,
+  ListDirectoryResult,
   ModelInfo,
   OutputLine,
   PackageOperationResult,
@@ -71,6 +72,7 @@ import {
   gitSyncSchema,
   gitUnstageSchema,
   IPC,
+  listDirectoryRequestSchema,
   loginProviderSchema,
   logoutProviderSchema,
   newSessionSchema,
@@ -750,6 +752,7 @@ function handleSidecarMessage(msg: SidecarMessage): void {
         showSystemNotification('notifyErrors', 'OpenPi error', event.errorMessage)
         playSoundEffect('soundErrors')
       }
+
       return
     }
 
@@ -845,6 +848,8 @@ async function startSession(cwd: string, options: StartSessionOptions = {}): Pro
     }
     emitOutputLine(line)
   })
+  // Initialize engines for the active workspace
+
   await refreshSessionIndex()
 }
 
@@ -945,6 +950,13 @@ function writeModelsJson(agentDir: string, data: ModelsJson): void {
 
 function registerHandlers(): void {
   ipcMain.handle(IPC.GET_APP_INFO, async (): Promise<AppInfo> => getAppInfo())
+
+  ipcMain.handle(IPC.SEND_PROMPT, async (_event, raw: unknown): Promise<void> => {
+    const r = raw as { text?: string }
+    if (r.text) {
+      ensurePiSidecarStarted().send({ type: 'prompt', text: r.text })
+    }
+  })
 
   // Return the current ring-buffer contents so the Output pane can pre-populate
   // on mount with lines that arrived before it was opened.
@@ -1651,6 +1663,28 @@ function registerHandlers(): void {
       workspaceTrusted: cwd ? (sessionIndex?.isWorkspaceTrusted(cwd) ?? false) : false,
     })
     return response.content
+  })
+
+  // ── Directory listing (safe, workspace-rooted) ────────────────────────────
+  ipcMain.handle(IPC.LIST_DIRECTORY, (_event, raw: unknown): ListDirectoryResult => {
+    if (!state?.cwd) return []
+    const { path: relPath } = listDirectoryRequestSchema.parse(raw)
+    // Validate path stays inside workspace (no directory traversal)
+    const full = path.resolve(state.cwd, relPath)
+    const sep = path.sep
+    if (full !== state.cwd && !full.startsWith(state.cwd + sep)) return []
+    try {
+      const entries = fs.readdirSync(full, { withFileTypes: true })
+      return entries
+        .filter((entry) => entry.name.endsWith('.md') || entry.isDirectory())
+        .map((entry) => ({
+          name: entry.name,
+          path: path.join(relPath, entry.name),
+          isDirectory: entry.isDirectory(),
+        }))
+    } catch {
+      return []
+    }
   })
 
   ipcMain.handle(IPC.LIST_ARCHIVED_SESSIONS, (): ArchivedSessionItem[] => {

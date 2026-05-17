@@ -89,6 +89,7 @@ export const IPC = {
   DELETE_SESSIONS: 'openpi:delete-sessions',
   LIST_SKILLS: 'openpi:list-skills',
   READ_SKILL_FILE: 'openpi:read-skill-file',
+  LIST_DIRECTORY: 'openpi:list-directory',
 
   GET_PROVIDERS: 'openpi:get-providers',
   SET_PROVIDER_KEY: 'openpi:set-provider-key',
@@ -106,6 +107,7 @@ export const IPC = {
   SESSION_READY: 'openpi:session-ready',
   SESSION_ERROR: 'openpi:session-error',
   SESSION_INDEX_UPDATED: 'openpi:session-index-updated',
+  SEND_PROMPT: 'openpi:send-prompt',
   PTY_DATA: 'openpi:pty-data',
   PTY_EXIT: 'openpi:pty-exit',
   OUTPUT_APPEND: 'openpi:output-append',
@@ -964,6 +966,24 @@ export type SkillItem = z.infer<typeof skillItemSchema>
 export const readSkillFileRequestSchema = z.object({
   path: z.string().min(1),
 })
+export type ReadSkillFileRequest = z.infer<typeof readSkillFileRequestSchema>
+
+// ─── Directory listing ─────────────────────────────────────────────────────
+
+export const listDirectoryRequestSchema = z.object({
+  /** Path relative to workspace cwd */
+  path: z.string().min(1),
+})
+export type ListDirectoryRequest = z.infer<typeof listDirectoryRequestSchema>
+
+export const directoryEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  isDirectory: z.boolean(),
+})
+export type DirectoryEntry = z.infer<typeof directoryEntrySchema>
+export const listDirectoryResultSchema = z.array(directoryEntrySchema)
+export type ListDirectoryResult = z.infer<typeof listDirectoryResultSchema>
 
 export const unarchiveSessionsRequestSchema = z.object({
   paths: z.array(z.string().min(1)).min(1),
