@@ -134,6 +134,7 @@ const api = {
     ipcRenderer.invoke(IPC.GET_CUSTOMIZATIONS),
   setExtensionEnabled: (id: string, enabled: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC.SET_EXTENSION_ENABLED, { id, enabled }),
+  getFirstRun: (): Promise<boolean> => ipcRenderer.invoke(IPC.GET_FIRST_RUN),
 
   installPackage: (payload: PackageOperationRequest): Promise<PackageOperationResult> =>
     ipcRenderer.invoke(IPC.INSTALL_PACKAGE, payload),

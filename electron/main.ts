@@ -1210,6 +1210,21 @@ function registerHandlers(): void {
     return customizationsInventorySchema.parse(inventory)
   })
 
+  ipcMain.handle(IPC.GET_FIRST_RUN, async (): Promise<boolean> => {
+    // First run = no archived sessions and no session index entries
+    const agentDir = getAgentDir()
+    const sessionsDir = path.join(agentDir, 'sessions')
+    try {
+      const entries = fs.readdirSync(sessionsDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.jsonl')) return false
+      }
+    } catch {
+      // sessions dir doesn't exist yet — definitely first run
+    }
+    return true
+  })
+
   ipcMain.handle(IPC.SET_EXTENSION_ENABLED, async (_event, raw: unknown): Promise<void> => {
     const { id, enabled } = setExtensionEnabledRequestSchema.parse(raw)
     const { setExtensionEnabled } = await getCustomizationsHost()

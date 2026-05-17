@@ -4382,6 +4382,80 @@ body.panel-dragging {
   font-size: 13px;
 }
 
+.welcome-onboarding {
+  max-width: 460px;
+  margin: 0 auto 28px;
+  text-align: left;
+}
+.welcome-onboarding-intro {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--graphite);
+  margin-bottom: 20px !important;
+}
+.welcome-onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.welcome-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.welcome-step-num {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--ash);
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 1px;
+}
+.welcome-step kbd {
+  display: inline-block;
+  padding: 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  background: var(--surface-soft);
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--graphite);
+}
+.welcome-onboarding-links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.welcome-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.welcome-link:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-soft);
+}
+.welcome-actions {
+  margin-top: 8px;
+}
+
 @keyframes logo-enter {
   from {
     opacity: 0;
