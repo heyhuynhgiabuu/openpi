@@ -204,6 +204,7 @@ export default function App() {
   }
   const [diffFiles, setDiffFiles] = createSignal<GitChangedFile[]>([])
   const [diffIndex, setDiffIndex] = createSignal(0)
+  const [commitDiffHash, setCommitDiffHash] = createSignal<string | null>(null)
   const [archivePending, setArchivePending] = createSignal<{
     label: string
     paths: string[]
@@ -870,6 +871,26 @@ export default function App() {
                         setDiffIndex(idx)
                       })
                     }}
+                    onCommitFileClick={(hash, path, allFiles) => {
+                      void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
+                        if (diff) {
+                          const filesArray: GitChangedFile[] = allFiles.map((f) => ({
+                            path: f,
+                            status: 'M' as const,
+                            staged: false,
+                            added: 0,
+                            removed: 0,
+                          }))
+                          const idx = allFiles.indexOf(path)
+                          batch(() => {
+                            setCommitDiffHash(hash)
+                            setActiveDiff(diff)
+                            setDiffFiles(filesArray)
+                            setDiffIndex(Math.max(0, idx))
+                          })
+                        }
+                      })
+                    }}
                     onFileClick={(relPath) => openFile(relPath)}
                     onSyncLabelChange={setGitSyncLabel}
                     onSyncActionChange={(a) => setGitSyncAction(a)}
@@ -1044,6 +1065,26 @@ export default function App() {
                         setDiffIndex(idx)
                       })
                     }}
+                    onCommitFileClick={(hash, path, allFiles) => {
+                      void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
+                        if (diff) {
+                          const filesArray: GitChangedFile[] = allFiles.map((f) => ({
+                            path: f,
+                            status: 'M' as const,
+                            staged: false,
+                            added: 0,
+                            removed: 0,
+                          }))
+                          const idx = allFiles.indexOf(path)
+                          batch(() => {
+                            setCommitDiffHash(hash)
+                            setActiveDiff(diff)
+                            setDiffFiles(filesArray)
+                            setDiffIndex(Math.max(0, idx))
+                          })
+                        }
+                      })
+                    }}
                     onFileClick={(relPath) => openFile(relPath)}
                     onSyncLabelChange={setGitSyncLabel}
                     onSyncActionChange={(a) => setGitSyncAction(a)}
@@ -1112,11 +1153,17 @@ export default function App() {
                     setDiffIndex(idx)
                     const file = diffFiles()[idx]
                     if (file) {
-                      const d = await window.openpi.git.getDiff(file.path)
+                      const hash = commitDiffHash()
+                      const d = hash
+                        ? await window.openpi.git.getCommitDiff(hash, file.path)
+                        : await window.openpi.git.getDiff(file.path)
                       if (d) setActiveDiff(d)
                     }
                   }}
-                  onClose={() => setActiveDiff(null)}
+                  onClose={() => {
+                    setActiveDiff(null)
+                    setCommitDiffHash(null)
+                  }}
                 />
               )}
             </Show>

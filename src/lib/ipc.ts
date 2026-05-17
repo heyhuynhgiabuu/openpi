@@ -66,7 +66,13 @@ export const IPC = {
   GIT_SYNC: 'openpi:git-sync',
   GIT_REFS: 'openpi:git-refs',
   GIT_CHECKOUT_BRANCH: 'openpi:git-checkout-branch',
+  GIT_CREATE_BRANCH: 'openpi:git-create-branch',
+  GIT_STASH_APPLY: 'openpi:git-stash-apply',
+  GIT_STASH_POP: 'openpi:git-stash-pop',
+  GIT_STASH_DROP: 'openpi:git-stash-drop',
   GIT_HISTORY: 'openpi:git-history',
+  GIT_COMMIT_DIFF: 'openpi:git-commit-diff',
+  GIT_REMOTE_URL: 'openpi:git-remote-url',
   GIT_FILE_TREE: 'openpi:git-file-tree',
   GIT_PANEL_MOUNTED: 'openpi:git-panel-mounted',
   GIT_GENERATE_COMMIT_MSG: 'openpi:git-generate-commit-msg',
@@ -826,18 +832,61 @@ export const gitCheckoutBranchResultSchema = z.object({
 })
 export type GitCheckoutBranchResult = z.infer<typeof gitCheckoutBranchResultSchema>
 
+export const gitCreateBranchSchema = z.object({
+  name: z.string().min(1).max(200),
+})
+export type GitCreateBranchRequest = z.infer<typeof gitCreateBranchSchema>
+
+export const gitStashActionSchema = z.object({
+  index: z.number().int().nonnegative(),
+})
+export type GitStashActionRequest = z.infer<typeof gitStashActionSchema>
+
+export const gitCreateBranchResultSchema = z.object({
+  ok: z.boolean(),
+  name: z.string(),
+  output: z.string(),
+})
+export type GitCreateBranchResult = z.infer<typeof gitCreateBranchResultSchema>
+
+export const gitStashActionResultSchema = z.object({
+  ok: z.boolean(),
+  output: z.string(),
+})
+export type GitStashActionResult = z.infer<typeof gitStashActionResultSchema>
+
 export const gitHistoryCommitSchema = z.object({
   hash: z.string(),
   shortHash: z.string(),
+  parentHashes: z.array(z.string()),
   message: z.string(),
   date: z.string(),
   authorName: z.string(),
   authorEmail: z.string(),
   refs: z.string(),
-  graph: z.string(), // ASCII graph line from git log --graph
+  graph: z.string(), // ASCII graph line from git log --graph (kept for backwards compat)
   stats: z.string(), // File change stats from git show --stat
 })
 export type GitHistoryCommit = z.infer<typeof gitHistoryCommitSchema>
+
+/**
+ * A single cell in the commit graph at a column position.
+ */
+export const gitGraphColumnSchema = z.object({
+  col: z.number(),
+  char: z.string(), // '*', '|', '/', '\\', ' ', '.', '-', '_'
+})
+export type GitGraphColumn = z.infer<typeof gitGraphColumnSchema>
+
+/**
+ * A row in the commit graph — corresponds to one output line from `git log --graph`.
+ * commitHash is present for commit rows, absent for graph-only continuation rows.
+ */
+export const gitGraphRowSchema = z.object({
+  columns: z.array(gitGraphColumnSchema),
+  commitHash: z.string().optional(),
+})
+export type GitGraphRow = z.infer<typeof gitGraphRowSchema>
 
 export const gitHistoryRequestSchema = z
   .object({
@@ -850,8 +899,15 @@ export type GitHistoryRequest = z.infer<typeof gitHistoryRequestSchema>
 
 export const gitHistoryResultSchema = z.object({
   commits: z.array(gitHistoryCommitSchema),
+  graphRows: z.array(gitGraphRowSchema),
 })
 export type GitHistoryResult = z.infer<typeof gitHistoryResultSchema>
+
+export const gitCommitDiffRequestSchema = z.object({
+  hash: z.string().min(1),
+  path: z.string().optional(),
+})
+export type GitCommitDiffRequest = z.infer<typeof gitCommitDiffRequestSchema>
 
 export const generateCommitMessageResultSchema = z.object({
   message: z.string(),

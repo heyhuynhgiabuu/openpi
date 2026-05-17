@@ -11,6 +11,7 @@ import { Portal } from 'solid-js/web'
 import type {
   GitChangedFile,
   GitFileDiff,
+  GitGraphColumn,
   GitHistoryCommit,
   GitHistoryResult,
   GitStatusResult,
@@ -23,6 +24,7 @@ import {
   TooltipRoot,
   TooltipTrigger,
 } from '../ui/tooltip'
+import { CommitGraph } from './CommitGraph'
 import { ConflictResolverModal } from './ConflictResolverModal'
 
 type GitPanelTab = 'changes' | 'history'
@@ -34,6 +36,11 @@ interface GitPanelProps {
   onActiveTabChange?: (tab: GitPanelTab) => void
   onRequestFileSearch?: () => void
   onDiffOpen: (diff: GitFileDiff, files: GitChangedFile[], index: number) => void
+  /**
+   * Called when a changed file in a commit's details pane is clicked.
+   * Opens the commit-version diff for that file in the DiffViewer.
+   */
+  onCommitFileClick?: (commitHash: string, filePath: string, allFilePaths: string[]) => void
   onFileClick?: (relPath: string) => void
   /** Called on mousedown of the drag grip; parent handles the drag lifecycle. */
   onDragHandleMouseDown?: (e: MouseEvent) => void
@@ -65,6 +72,92 @@ const STATUS_CLASS: Record<string, string> = {
   R: 'git-badge-r',
   '?': 'git-badge-u',
   U: 'git-badge-conflict',
+}
+
+// ─── Ref badge types and parser ────────────────────────────────────────────
+
+interface RefBadge {
+  type: 'head' | 'branch' | 'remote' | 'tag'
+  name: string
+}
+
+/**
+ * Parse a git remote URL into a GitHub base URL, or null if not a GitHub remote.
+ * Supports both HTTPS and SSH formats:
+ *   https://github.com/owner/repo.git
+ *   git@github.com:owner/repo.git
+ */
+function parseGitHubUrl(remoteUrl: string): string | null {
+  if (!remoteUrl) return null
+
+  let owner: string | undefined
+  let repo: string | undefined
+
+  // HTTPS: https://github.com/owner/repo.git or https://github.com/owner/repo/
+  const httpsMatch = remoteUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/.]+)/)
+  if (httpsMatch) {
+    owner = httpsMatch[1]
+    repo = httpsMatch[2]
+  } else {
+    // SSH: git@github.com:owner/repo.git
+    const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+)\/([^/.]+)/)
+    if (sshMatch) {
+      owner = sshMatch[1]
+      repo = sshMatch[2]
+    }
+  }
+
+  if (owner && repo) {
+    return `https://github.com/${owner}/${repo}`
+  }
+  return null
+}
+
+/**
+ * Parse a `%D` refs string (e.g. "HEAD -> main, origin/main, tag: v0.1.15")
+ * into structured RefBadge objects for rendering as styled badges.
+ */
+function parseRefBadges(refs: string): RefBadge[] {
+  if (!refs) return []
+  const badges: RefBadge[] = []
+  const parts = refs
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  for (const part of parts) {
+    // HEAD -> main
+    const headMatch = part.match(/^HEAD -> (.+)$/)
+    if (headMatch) {
+      // HEAD pointing to a branch — show as HEAD badge
+      // The branch it points to is shown separately if it appears as its own ref
+      badges.push({ type: 'head', name: `HEAD → ${headMatch[1]}` })
+      continue
+    }
+    // tag: v1.0 or tag: refs/tags/v1.0
+    const tagMatch = part.match(/^tag: (?:refs\/tags\/)?(.+)$/)
+    if (tagMatch) {
+      badges.push({ type: 'tag', name: tagMatch[1] })
+      continue
+    }
+    // HEAD (standalone)
+    if (part === 'HEAD') {
+      badges.push({ type: 'head', name: 'HEAD' })
+      continue
+    }
+    // origin/NAME or upstream/NAME — remote tracking branch
+    if (part.startsWith('origin/') || part.startsWith('upstream/')) {
+      badges.push({ type: 'remote', name: part })
+      continue
+    }
+    // remotes/... — remote branch
+    if (part.startsWith('remotes/')) {
+      badges.push({ type: 'remote', name: part.replace(/^remotes\//, '') })
+      continue
+    }
+    // Local branch
+    badges.push({ type: 'branch', name: part })
+  }
+  return badges
 }
 
 export function GitPanel(props: GitPanelProps) {
@@ -162,6 +255,29 @@ export function GitPanel(props: GitPanelProps) {
 
   createEffect(() => {
     if (activeTab() === 'history' && props.cwd) void loadHistory()
+  })
+
+  // Computed graph data for SVG rendering
+  const graphColumnsByHash = createMemo(() => {
+    const rows = history()?.graphRows ?? []
+    const map = new Map<string, GitGraphColumn[]>()
+    for (const row of rows) {
+      if (row.commitHash) {
+        map.set(row.commitHash, row.columns)
+      }
+    }
+    return map
+  })
+
+  const maxGraphColumns = createMemo(() => {
+    const rows = history()?.graphRows ?? []
+    let max = 0
+    for (const row of rows) {
+      for (const col of row.columns) {
+        if (col.col >= max) max = col.col + 1
+      }
+    }
+    return Math.max(max, 1)
   })
 
   const handleFileClick = async (file: GitChangedFile) => {
@@ -807,12 +923,19 @@ export function GitPanel(props: GitPanelProps) {
                       commit={commit}
                       isSelected={selectedCommit()?.hash === commit.hash}
                       onSelect={setSelectedCommit}
+                      graphColumns={graphColumnsByHash().get(commit.hash) ?? []}
+                      maxGraphColumns={maxGraphColumns()}
                     />
                   )}
                 </For>
               </div>
               <Show when={selectedCommit()}>
-                {(commit) => <GitHistoryDetailsPane commit={commit()} />}
+                {(commit) => (
+                  <GitHistoryDetailsPane
+                    commit={commit()}
+                    onCommitFileClick={props.onCommitFileClick}
+                  />
+                )}
               </Show>
             </Show>
           </div>
@@ -839,6 +962,9 @@ type GitHistoryRowProps = {
   commit: GitHistoryCommit
   isSelected: boolean
   onSelect: (commit: GitHistoryCommit) => void
+  graphColumns: GitGraphColumn[]
+  maxGraphColumns: number
+  onCommitFileClick?: (commitHash: string, filePath: string, allFilePaths: string[]) => void
 }
 
 function GitHistoryRow(props: GitHistoryRowProps) {
@@ -858,12 +984,20 @@ function GitHistoryRow(props: GitHistoryRowProps) {
       onClick={() => props.onSelect(props.commit)}
     >
       <div class="git-history-graph-cell">
-        <pre>{props.commit.graph}</pre>
+        <CommitGraph columns={props.graphColumns} maxColumns={props.maxGraphColumns} />
       </div>
       <div class="git-history-message">
         <span>{props.commit.message}</span>
         <Show when={props.commit.refs}>
-          <span class="git-history-refs">{props.commit.refs}</span>
+          <span class="git-history-refs">
+            <For each={parseRefBadges(props.commit.refs)}>
+              {(badge) => (
+                <span class={`git-ref-badge git-ref-badge--${badge.type}`} title={badge.name}>
+                  {badge.name}
+                </span>
+              )}
+            </For>
+          </span>
         </Show>
       </div>
       <div class="git-history-meta">
@@ -877,6 +1011,7 @@ function GitHistoryRow(props: GitHistoryRowProps) {
 
 type GitHistoryDetailsPaneProps = {
   commit: GitHistoryCommit
+  onCommitFileClick?: (commitHash: string, filePath: string, allFilePaths: string[]) => void
 }
 
 function parseFileStats(statsStr: string): {
@@ -918,6 +1053,32 @@ function GitHistoryDetailsPane(props: GitHistoryDetailsPaneProps) {
   })
 
   const statsData = createMemo(() => parseFileStats(props.commit.stats))
+  const [gitHubBaseUrl, setGitHubBaseUrl] = createSignal<string | null>(null)
+  const [remoteLoaded, setRemoteLoaded] = createSignal(false)
+
+  // Fetch remote URL once when the pane mounts
+  createEffect(() => {
+    if (!remoteLoaded()) {
+      void window.openpi.getGitRemoteUrl().then((url) => {
+        if (url) setGitHubBaseUrl(parseGitHubUrl(url))
+        setRemoteLoaded(true)
+      })
+    }
+  })
+
+  const handleFileClick = (filePath: string) => {
+    const files = statsData().files
+    if (props.onCommitFileClick && files.length > 0) {
+      props.onCommitFileClick(props.commit.hash, filePath, files)
+    }
+  }
+
+  const handleOpenOnGitHub = () => {
+    const base = gitHubBaseUrl()
+    if (base) {
+      void window.openpi.openExternal(`${base}/commit/${props.commit.hash}`)
+    }
+  }
 
   return (
     <div class="git-history-details-pane">
@@ -926,6 +1087,17 @@ function GitHistoryDetailsPane(props: GitHistoryDetailsPaneProps) {
           <span class="label">Commit</span>
           <code>{props.commit.hash}</code>
         </div>
+        <Show when={gitHubBaseUrl()}>
+          <button
+            type="button"
+            class="git-history-open-gh-btn"
+            onClick={handleOpenOnGitHub}
+            title="Open on GitHub"
+            aria-label="Open on GitHub"
+          >
+            Open on GitHub
+          </button>
+        </Show>
       </div>
       <div class="git-history-details-row">
         <span class="label">Author</span>
@@ -959,9 +1131,14 @@ function GitHistoryDetailsPane(props: GitHistoryDetailsPaneProps) {
           <div class="git-history-files-list">
             <For each={statsData().files}>
               {(file) => (
-                <div class="git-history-file-item">
+                <button
+                  type="button"
+                  class="git-history-file-item git-history-file-btn"
+                  onClick={() => handleFileClick(file)}
+                  title={`View diff for ${file}`}
+                >
                   <span class="git-history-file-name">{file}</span>
-                </div>
+                </button>
               )}
             </For>
           </div>

@@ -266,7 +266,19 @@ describe('getGitHistory', () => {
     })
     expect(history.commits[0]?.shortHash).toHaveLength(7)
     expect(history.commits[0]?.graph).toBeDefined()
+    expect(history.commits[0]?.parentHashes).toEqual(expect.any(Array))
     expect(typeof history.commits[0]?.stats).toBe('string')
+
+    // graphRows should have all commit rows plus any graph-only rows
+    expect(history.graphRows.length).toBeGreaterThanOrEqual(history.commits.length)
+    // Every commit row in graphRows should reference a valid commit hash
+    for (const row of history.graphRows) {
+      if (row.commitHash) {
+        expect(history.commits.some((c) => c.hash === row.commitHash)).toBe(true)
+      }
+    }
+    // First graph row should have a commit dot (column with char '*')
+    expect(history.graphRows[0]?.columns.some((c) => c.char === '*')).toBe(true)
   })
 
   it('filters commits by query in the Git host', async () => {

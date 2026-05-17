@@ -21,9 +21,11 @@ import type {
   FileContentHit,
   GitBranchInfo,
   GitCheckoutBranchResult,
+  GitCreateBranchResult,
   GitFileDiff,
   GitHistoryResult,
   GitRefsResult,
+  GitStashActionResult,
   GitStatusResult,
   GitSyncResult,
   ListDirectoryResult,
@@ -63,13 +65,19 @@ import {
   gitBranchSchema,
   gitCheckoutBranchResultSchema,
   gitCheckoutBranchSchema,
+  gitCommitDiffRequestSchema,
   gitCommitSchema,
+  gitCreateBranchResultSchema,
+  gitCreateBranchSchema,
   gitDiffRequestSchema,
   gitDiscardSchema,
+  gitFileDiffSchema,
   gitHistoryRequestSchema,
   gitHistoryResultSchema,
   gitRefsResultSchema,
   gitStageSchema,
+  gitStashActionResultSchema,
+  gitStashActionSchema,
   gitSyncResultSchema,
   gitSyncSchema,
   gitUnstageSchema,
@@ -1483,6 +1491,68 @@ function registerHandlers(): void {
       const { query, limit } = gitHistoryRequestSchema.parse(raw)
       const git = await getGitHost()
       return gitHistoryResultSchema.parse(await git.getGitHistory(state.cwd, query, limit))
+    }
+  )
+
+  ipcMain.handle(IPC.GIT_COMMIT_DIFF, async (_event, raw: unknown): Promise<GitFileDiff | null> => {
+    if (!state?.cwd) return null
+    const { hash, path: filePath } = gitCommitDiffRequestSchema.parse(raw)
+    const git = await getGitHost()
+    try {
+      const diff = await git.getGitCommitDiff(state.cwd, hash, filePath)
+      return gitFileDiffSchema.parse(diff)
+    } catch {
+      return null
+    }
+  })
+
+  ipcMain.handle(IPC.GIT_REMOTE_URL, async (): Promise<string | null> => {
+    if (!state?.cwd) return null
+    const git = await getGitHost()
+    return git.getGitRemoteUrl(state.cwd)
+  })
+
+  ipcMain.handle(
+    IPC.GIT_CREATE_BRANCH,
+    async (_event, raw: unknown): Promise<GitCreateBranchResult | null> => {
+      if (!state?.cwd) return null
+      const { name } = gitCreateBranchSchema.parse(raw)
+      const git = await getGitHost()
+      const result = await git.createBranch(state.cwd, name)
+      return gitCreateBranchResultSchema.parse(result)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_STASH_APPLY,
+    async (_event, raw: unknown): Promise<GitStashActionResult | null> => {
+      if (!state?.cwd) return null
+      const { index } = gitStashActionSchema.parse(raw)
+      const git = await getGitHost()
+      const result = await git.stashApply(state.cwd, index)
+      return gitStashActionResultSchema.parse(result)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_STASH_POP,
+    async (_event, raw: unknown): Promise<GitStashActionResult | null> => {
+      if (!state?.cwd) return null
+      const { index } = gitStashActionSchema.parse(raw)
+      const git = await getGitHost()
+      const result = await git.stashPop(state.cwd, index)
+      return gitStashActionResultSchema.parse(result)
+    }
+  )
+
+  ipcMain.handle(
+    IPC.GIT_STASH_DROP,
+    async (_event, raw: unknown): Promise<GitStashActionResult | null> => {
+      if (!state?.cwd) return null
+      const { index } = gitStashActionSchema.parse(raw)
+      const git = await getGitHost()
+      const result = await git.stashDrop(state.cwd, index)
+      return gitStashActionResultSchema.parse(result)
     }
   )
 

@@ -18,9 +18,11 @@ import type {
   GitBranchInfo,
   GitChangedFile,
   GitCheckoutBranchResult,
+  GitCreateBranchResult,
   GitFileDiff,
   GitHistoryResult,
   GitRefsResult,
+  GitStashActionResult,
   GitStatusResult,
   GitSyncAction,
   GitSyncResult,
@@ -229,8 +231,18 @@ const api = {
     getRefs: (): Promise<GitRefsResult | null> => ipcRenderer.invoke(IPC.GIT_REFS),
     getHistory: (query = '', limit = 100): Promise<GitHistoryResult | null> =>
       ipcRenderer.invoke(IPC.GIT_HISTORY, { query, limit }),
+    getCommitDiff: (hash: string, path?: string): Promise<GitFileDiff | null> =>
+      ipcRenderer.invoke(IPC.GIT_COMMIT_DIFF, { hash, path }),
     checkoutBranch: (branch: string): Promise<GitCheckoutBranchResult | null> =>
       ipcRenderer.invoke(IPC.GIT_CHECKOUT_BRANCH, { branch }),
+    createBranch: (name: string): Promise<GitCreateBranchResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_CREATE_BRANCH, { name }),
+    stashApply: (index: number): Promise<GitStashActionResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_STASH_APPLY, { index }),
+    stashPop: (index: number): Promise<GitStashActionResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_STASH_POP, { index }),
+    stashDrop: (index: number): Promise<GitStashActionResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_STASH_DROP, { index }),
     onStatusChanged: (cb: (status: GitStatusResult) => void) => {
       const handler = (_: Electron.IpcRendererEvent, s: GitStatusResult) => cb(s)
       ipcRenderer.on(IPC.GIT_STATUS_CHANGED, handler)
@@ -270,6 +282,8 @@ const api = {
     ipcRenderer.invoke(IPC.FORMAT_FILE, { path: relPath }),
   listPromptTemplates: (): Promise<PromptTemplate[]> =>
     ipcRenderer.invoke(IPC.LIST_PROMPT_TEMPLATES),
+
+  getGitRemoteUrl: (): Promise<string | null> => ipcRenderer.invoke(IPC.GIT_REMOTE_URL),
 
   // fff-powered file search and content grep
   fff: {

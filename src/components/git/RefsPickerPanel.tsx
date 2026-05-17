@@ -7,7 +7,7 @@
  */
 import { createMemo, createSignal, For, onMount, Show } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import type { GitBranchRef, GitRefsResult } from '../../lib/ipc'
+import type { GitBranchRef, GitRefsResult, GitStashEntry } from '../../lib/ipc'
 
 interface RefsPickerPanelProps {
   cwd: string | null
@@ -26,6 +26,8 @@ export function RefsPickerPanel(props: RefsPickerPanelProps) {
   const [loading, setLoading] = createSignal(false)
   const [refs, setRefs] = createSignal<GitRefsResult | null>(null)
   const [message, setMessage] = createSignal<string | null>(null)
+  const [newBranchName, setNewBranchName] = createSignal('')
+  const [busyAction, setBusyAction] = createSignal<string | null>(null)
 
   onMount(() => {
     props.registerToggle(() => void togglePicker())
@@ -63,6 +65,51 @@ export function RefsPickerPanel(props: RefsPickerPanelProps) {
       setOpen(false)
       props.onBranchCheckedOut?.()
       await loadRefs()
+    }
+  }
+
+  const handleCreateBranch = async () => {
+    const name = newBranchName().trim()
+    if (!name) return
+    setBusyAction('creating')
+    setMessage(null)
+    try {
+      const result = await window.openpi.git.createBranch(name)
+      if (!mounted) return
+      if (result?.ok) {
+        setNewBranchName('')
+        setMessage(result.output)
+        await loadRefs()
+      } else {
+        setMessage(result?.output ?? 'Failed to create branch.')
+      }
+    } catch (err) {
+      if (mounted) setMessage(String(err))
+    } finally {
+      if (mounted) setBusyAction(null)
+    }
+  }
+
+  const handleStashAction = async (action: 'apply' | 'pop' | 'drop', stash: GitStashEntry) => {
+    setBusyAction(`${action}:${stash.index}`)
+    setMessage(null)
+    try {
+      let result: Awaited<ReturnType<typeof window.openpi.git.stashApply>>
+      if (action === 'apply') result = await window.openpi.git.stashApply(stash.index)
+      else if (action === 'pop') result = await window.openpi.git.stashPop(stash.index)
+      else result = await window.openpi.git.stashDrop(stash.index)
+
+      if (!mounted) return
+      if (result?.ok) {
+        setMessage(result.output)
+        await loadRefs()
+      } else {
+        setMessage(result?.output ?? `Failed to ${action} stash.`)
+      }
+    } catch (err) {
+      if (mounted) setMessage(String(err))
+    } finally {
+      if (mounted) setBusyAction(null)
     }
   }
 
@@ -152,6 +199,26 @@ export function RefsPickerPanel(props: RefsPickerPanelProps) {
                   )}
                 </For>
               </Show>
+              <div class="git-create-branch-row">
+                <input
+                  class="git-create-branch-input"
+                  value={newBranchName()}
+                  onInput={(e) => setNewBranchName(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !busyAction()) void handleCreateBranch()
+                  }}
+                  placeholder="New branch name…"
+                  disabled={busyAction() === 'creating'}
+                />
+                <button
+                  type="button"
+                  class="git-create-branch-btn"
+                  onClick={() => void handleCreateBranch()}
+                  disabled={busyAction() === 'creating' || !newBranchName().trim()}
+                >
+                  {busyAction() === 'creating' ? '…' : '+'}
+                </button>
+              </div>
             </div>
           </Show>
           <Show when={!loading() && tab() === 'stash'}>
@@ -160,12 +227,52 @@ export function RefsPickerPanel(props: RefsPickerPanelProps) {
                 <div class="git-refs-empty">No stashes found</div>
               </Show>
               <For each={visibleStashes()}>
-                {(stash) => (
-                  <div class="git-stash-row">
-                    <span>{`stash@{${stash.index}}`}</span>
-                    <span>{stash.message}</span>
-                  </div>
-                )}
+                {(stash) => {
+                  const busy = () =>
+                    busyAction() === `apply:${stash.index}` ||
+                    busyAction() === `pop:${stash.index}` ||
+                    busyAction() === `drop:${stash.index}`
+                  return (
+                    <div class="git-stash-row">
+                      <div class="git-stash-info">
+                        <span class="git-stash-ref">{`stash@{${stash.index}}`}</span>
+                        <span class="git-stash-message">{stash.message}</span>
+                      </div>
+                      <div class="git-stash-actions">
+                        <button
+                          type="button"
+                          class="git-stash-action-btn git-stash-action-btn--apply"
+                          onClick={() => void handleStashAction('apply', stash)}
+                          disabled={busy()}
+                          title="Apply stash"
+                          aria-label="Apply stash"
+                        >
+                          Apply
+                        </button>
+                        <button
+                          type="button"
+                          class="git-stash-action-btn git-stash-action-btn--pop"
+                          onClick={() => void handleStashAction('pop', stash)}
+                          disabled={busy()}
+                          title="Pop stash"
+                          aria-label="Pop stash"
+                        >
+                          Pop
+                        </button>
+                        <button
+                          type="button"
+                          class="git-stash-action-btn git-stash-action-btn--drop"
+                          onClick={() => void handleStashAction('drop', stash)}
+                          disabled={busy()}
+                          title="Drop stash"
+                          aria-label="Drop stash"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }}
               </For>
             </div>
           </Show>
