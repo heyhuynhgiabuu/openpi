@@ -40,8 +40,18 @@ Implemented slices currently include:
 - Customizations modal for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings, including the `⇧⌘P` Command Palette binding.
 - OpenCode-style command palette (`⇧⌘P`) searching commands, workspace files via `fff`, and historical sessions.
 - Main-owned Git source control panel, file tree/search, file viewer, and split diff viewer; renderer never runs Git directly.
-- Bottom terminal/output panel backed by main-owned PTY lifecycle.
+- Bottom terminal/output panel with multi-terminal tabs (renameable, add/close/switch), process exit indicators, and resizable panel backed by main-owned PTY lifecycle.
 - Dynamic app metadata exposed from Electron main for Welcome/customizations branding, OpenPi runtime icons, and tag-triggered beta CI/release workflows.
+- **Goal/harness v2 loop** — `/goal` controller replaces `/specs`, powered by 7 harness v2 tools (harness_status, harness_intake, harness_init, harness_lint, story_create, decision_record, test_matrix_update). Legacy spec adapters removed; extension code split into modules.
+- **Conversation polish** — live token counter during streaming, code block line numbers (toggle with Ln button), streaming cursor after all element types, responsive images, entry animation.
+- **File editor improvements** — format-on-save (Biome), word wrap toggle, Cmd+Shift+F opens find-with-replace, FORMAT_FILE IPC.
+- **Extensions UI** — enable/disable toggle switch per extension, preference persistence, reload button.
+- **Onboarding flow** — first-run detection, enhanced welcome screen with getting-started guide and external links.
+- **Goal status indicator** — persistent banner in composer header showing objective and running/idle step badge.
+- **Story browser** — left-drawer panel listing docs/stories/ with status badges.
+- **Harness lint pre-commit hook** — scripts/harness-lint.sh checks docs, test matrix, legacy migration.
+- **Pi subagent and task tool cards** — rendering for Agent/TaskCreate/TaskExecute, subagent and task widgets.
+- **Product docs** — full docs/ directory with HARNESS.md, FEATURE_INTAKE.md, TEST_MATRIX.md, 3 ADRs, 6 stories, templates.
 
 ---
 

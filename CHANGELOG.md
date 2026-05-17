@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.15] - 2026-05-17
+
+### Added
+
+- **Conversation polish** — live token counter during streaming (`generating ~X tok`), code block line numbers (toggle via `Ln` button), streaming cursor that works after any element type, subtle fade-in for new message groups, responsive image rendering.
+- **File editor improvements** — format-on-save toggle (Biome formats after each save, content updates to formatted version), word wrap toggle (pre-wrap/break-word), `Cmd+Shift+F` opens find-with-replace (VS Code convention).
+- **Terminal tabs polish** — double-click tab label to rename inline, green/gray dot indicator for running/exited process, exited tabs dimmed.
+- **Extensions UI** — each extension card now has an enable/disable toggle switch (role="switch", aria-checked), preferences persisted to `~/.pi/agent/openpi-extension-preferences.json`, reload button in the extensions toolbar.
+- **Onboarding flow** — first-run detection via `GET_FIRST_RUN` IPC (checks for existing sessions), enhanced welcome screen with 3-step getting-started guide, links to Pi repo and OpenPi source.
+- **Goal status indicator** — persistent banner in the composer header when `/goal` is active, showing the objective text and running/idle step badge, dismissible.
+- **Story browser** — sidebar panel listing all `docs/stories/` entries with status badges (planned/in_progress/implemented/changed/retired), search via `listDirectory` IPC.
+- **Harness lint pre-commit hook** — `scripts/harness-lint.sh` checks for missing harness docs, test matrix gaps, and legacy migration state before commits.
+- **Pi subagent and task tool support** — tool card rendering for `Agent`, `TaskCreate`, `TaskExecute` with rich arg previews; tool labels for subagent, task, harness, and legacy tools.
+
+### Changed
+
+- **Harness v2 tools** — `/goal` controller replaced `/specs` as the public command, powered by 7 v2 harness tools (`harness_status`, `harness_intake`, `harness_init`, `harness_lint`, `story_create`, `decision_record`, `test_matrix_update`). Legacy `spec_*` adapters removed from the extension; tool card rendering in the UI preserved for old transcripts.
+- **Extension code quality** — split monolithic `index.ts` (984 lines) into `index.ts` (entry + tool registrations), `harness-tools.ts` (execute implementations), and `templates.ts` (doc template strings). Deleted `specs-core.ts` (422 lines of legacy adapter helpers).
+- **Product docs** — full `docs/` directory with `HARNESS.md`, `FEATURE_INTAKE.md`, `TEST_MATRIX.md`, 3 ADRs, 6 story packets, and templates.
+- **Harness lint warning** — the pre-commit check now also verifies test matrix evidence columns and optional harness directories.
+
+### Fixed
+
+- **Welcome screen alignment** — removed `max-width: 460px` from `.welcome-onboarding` so the "Getting started" section aligns flush-left with the main header.
+- **OpenPi repo URL** — corrected from `github.com/huynhgiabuu/openpi` to `github.com/heyhuynhgiabuu/openpi`.
+- **Cmd+Shift+F conflict** — assigned to open find-with-replace (matching VS Code/Zed) instead of format; format remains button-only in the editor toolbar.
+- **!important in onboarding CSS** — replaced with specific selector `.welcome-onboarding .welcome-onboarding-intro`.
+
 ## [0.1.14] - 2026-05-16
 
 ### Added

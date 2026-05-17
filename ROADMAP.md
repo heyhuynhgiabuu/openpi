@@ -6,15 +6,22 @@ OpenPi is a native desktop workbench for the Pi coding agent. The goal: make Pi 
 
 ---
 
-## Current Status (May 2026 beta)
+## Current Status (May 2026 beta) — v0.1.15
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
-- SolidJS workbench UI with session sidebar, workspace rail, conversation pane, model controls, steering/follow-up queues, command palette, customizations modal, terminal/output panel, Git panel, file tree/search, file viewer, and split diff viewer.
+- SolidJS workbench UI with session sidebar, workspace rail, conversation pane, model controls, steering/follow-up queues, command palette, customizations modal, terminal/output panel (multi-tab), Git panel, file tree/search, file viewer, and split diff viewer.
 - Session/workspace read model in SQLite, last-workspace restore, session search/sort/group controls, pinned/archive flows, and new-session hero metadata (workspace path, Git branch, last modified).
-- Customizations inventory for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings; command palette is now a first-class keybinding (`Shift+Cmd+P`).
-- Runtime OpenPi branding: app name/version comes from Electron main (`app.getVersion()`), Welcome/customizations surfaces share the same metadata, and Electron runtime/build icons point at the OpenPi icon set.
-- CI/CD baseline: PR/main verification workflow and tag-triggered beta release workflow that packages macOS, Windows, and Linux installers as draft prereleases.
+- Customizations inventory for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings; command palette (`⇧⌘P`).
+- **Goal/harness v2 loop**: `/goal` controller with 7 harness tools, product docs, story browser, decision records, test matrix.
+- **Conversation polish**: live token counter, code line numbers, streaming cursor fix, entry animation, responsive images.
+- **File editor improvements**: format-on-save (Biome), word wrap toggle, FORMAT_FILE IPC, find-with-replace.
+- **Extensions UI**: enable/disable toggle per extension, preference persistence, reload button.
+- **Terminal tabs**: renameable tabs, add/close/switch, process exit indicators.
+- **Onboarding flow**: first-run detection, enhanced welcome screen with setup guide.
+- **Harness lint pre-commit hook** and full docs/ product documentation directory.
+- Runtime OpenPi branding: app name/version from Electron main, shared metadata, OpenPi icon set.
+- CI/CD baseline: PR/main verification, tag-triggered beta release across macOS/Windows/Linux.
 
 Still beta-blocking:
 - macOS signing/notarization secrets and verified Windows signing are not configured yet.
@@ -63,15 +70,15 @@ Still beta-blocking:
 | Layer | Choice |
 |---|---|
 | Shell | Electron + electron-vite + electron-builder |
-| Renderer | React + TypeScript + Vite |
-| Styling | Tailwind CSS + Radix UI/shadcn/ui + Lucide |
-| State | TanStack Query (server state) + Zustand (UI state) |
-| Validation | Zod at every IPC boundary |
+| Renderer | SolidJS + TypeScript + Vite |
+| Styling | Tailwind CSS + Kobalte/Radix-style primitives + Lucide Icons |
+| State | Solid signals/memos plus Electron-main read models |
+| Validation | Zod at every IPC/JSON boundary |
 | Terminal | xterm.js + node-pty in main |
 | Diff | @pierre/diffs (replaceable renderer only) |
 | Pi integration | @earendil-works/pi-coding-agent SDK (direct import in main) |
 | Persistence | SQLite via better-sqlite3 in main process |
-| Secrets | OS keychain via keytar / safeStorage |
+| Secrets | OS keychain via Electron safeStorage |
 
 ---
 
