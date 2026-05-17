@@ -11,6 +11,7 @@ import {
   Info,
   List,
   ListChecks,
+  MessageCircle,
   Play,
   RefreshCw,
   Search,
@@ -44,6 +45,7 @@ const SPEC_TOOLS = new Set([
   'spec_analyze',
   'spec_sync_tasks',
 ])
+const ASK_TOOLS = new Set(['ask_user_question'])
 const MAX_CMD = 72
 
 const ICON_PROPS = { size: 13, strokeWidth: 2 } as const
@@ -113,6 +115,8 @@ function ToolIcon(props: ToolIconProps) {
       return <Search {...ICON_PROPS} />
     case 'spec_sync_tasks':
       return <RefreshCw {...ICON_PROPS} />
+    case 'ask_user_question':
+      return <MessageCircle {...ICON_PROPS} />
     default:
       return <Wrench {...ICON_PROPS} />
   }
@@ -168,6 +172,17 @@ function extractCommand(card: ToolCard): string {
   // TaskOutput: show task id
   if (card.toolName === 'TaskOutput' && typeof card.args.task_id === 'string')
     return `#${card.args.task_id}`
+  // ask_user_question: show the question text
+  if (card.toolName === 'ask_user_question') {
+    const qs = card.args.questions
+    if (Array.isArray(qs) && qs.length > 0) {
+      const first = qs[0] as Record<string, unknown>
+      const q = typeof first.question === 'string' ? first.question : ''
+      const header = typeof first.header === 'string' ? first.header : ''
+      return `✻ ${header || q.slice(0, 60)}`
+    }
+    return 'question'
+  }
   // get_subagent_result: show agent id
   if (card.toolName === 'get_subagent_result' && typeof card.args.agent_id === 'string')
     return `#${card.args.agent_id}`
@@ -829,6 +844,68 @@ const HarnessToolRow: Component<HarnessToolRowProps> = (props) => {
   )
 }
 
+// ─── Ask tool row ──────────────────────────────────────────────────────────
+
+interface AskQuestion {
+  question: string
+  header: string
+  options: { label: string; description?: string }[]
+  multiSelect: boolean
+}
+
+function parseAskQuestions(args: Record<string, unknown>): AskQuestion[] {
+  const raw = args.questions
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((q) => {
+      const r = q as Record<string, unknown>
+      const question = String(r.question ?? '')
+      const header = String(r.header ?? '')
+      const multiSelect = Boolean(r.multiSelect)
+      const options = Array.isArray(r.options)
+        ? r.options.map((o: unknown) => {
+            const opt = o as Record<string, unknown>
+            return {
+              label: String(opt.label ?? ''),
+              description: opt.description ? String(opt.description) : undefined,
+            }
+          })
+        : []
+      return { question, header, options, multiSelect }
+    })
+    .filter((q) => q.question && q.options.length >= 1)
+}
+
+type AskToolRowProps = {
+  card: ToolCard
+}
+
+const AskToolRow: Component<AskToolRowProps> = (props) => {
+  const questions = () => parseAskQuestions(props.card.args)
+  const questionCount = () => questions().length
+  const isMulti = () => questions().some((q) => q.multiSelect)
+
+  return (
+    <div class="tool-row">
+      <div class="tool-ran-header ask-tool-compact-header">
+        <ToolTypeIcon
+          toolName={props.card.toolName}
+          streaming={props.card.streaming}
+          isError={props.card.isError}
+        />
+        <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
+        <span class="ask-question-badge">{isMulti() ? 'choose' : 'pick'}</span>
+        <span class="ask-tool-compact-note">
+          {questionCount()} question{questionCount() === 1 ? '' : 's'} shown in widget tray
+        </span>
+        <Show when={props.card.streaming}>
+          <span class="tool-streaming-dot">·</span>
+        </Show>
+      </div>
+    </div>
+  )
+}
+
 export interface ToolCardViewProps {
   card: ToolCard
   onFileClick?: (relativePath: string) => void
@@ -852,6 +929,9 @@ export const ToolCardView: Component<ToolCardViewProps> = (props) => {
   }
   if (HARNESS_TOOLS.has(props.card.toolName) || SPEC_TOOLS.has(props.card.toolName)) {
     return <HarnessToolRow card={props.card} />
+  }
+  if (ASK_TOOLS.has(props.card.toolName)) {
+    return <AskToolRow card={props.card} />
   }
   return <GenericToolRow card={props.card} />
 }

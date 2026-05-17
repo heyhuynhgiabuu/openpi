@@ -46,6 +46,8 @@ export const TOOL_LABEL: Record<string, string> = {
   story_create: 'story',
   decision_record: 'decision',
   test_matrix_update: 'matrix',
+  // Ask / question tool
+  ask_user_question: 'ask',
   // Legacy spec compatibility tools
   spec_create: 'legacy',
   spec_next_phase: 'legacy',

@@ -198,7 +198,7 @@ export function useOpenPiSession() {
       const isError = Boolean(e.isError)
       let changed = false
       changed = _taskTracker.onToolEnd(id, name, result) || changed
-      changed = _askTracker.onToolEnd(id, name) || changed
+      changed = _askTracker.onToolEnd(id, name, isError) || changed
       changed = _subagentTracker.onToolEnd(id, name, result, isError) || changed
       if (changed) {
         batch(() => {
@@ -575,7 +575,8 @@ export function useOpenPiSession() {
       if (isStreaming()) {
         await window.openpi.steer(formatted)
       } else {
-        await window.openpi.followUp(formatted)
+        _justSentPrompt = true
+        await window.openpi.prompt(formatted)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

@@ -9,7 +9,7 @@
  *   - className  → class in SolidJS JSX
  */
 import { batch, createMemo, createSignal, onMount, Show } from 'solid-js'
-import { AskUserQuestionModal } from './components/AskUserQuestionModal'
+import { AskWidget } from './components/AskWidget'
 import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { Composer } from './components/Composer'
@@ -873,18 +873,16 @@ export default function App() {
                     <div class="widget-tray">
                       <SubagentWidget agents={session.agents} />
                       <TaskWidget tasks={session.tasks} onDismiss={() => session.clearTasks()} />
+                      <Show when={session.askState}>
+                        {(state) => (
+                          <AskWidget
+                            state={state()}
+                            onAnswer={(formatted) => void session.submitAsk(formatted)}
+                            onDismiss={() => session.dismissAsk()}
+                          />
+                        )}
+                      </Show>
                     </div>
-
-                    <Show when={session.askState}>
-                      {(state) => (
-                        <AskUserQuestionModal
-                          state={state()}
-                          isStreaming={session.isStreaming}
-                          onSubmit={(formatted) => void session.submitAsk(formatted)}
-                          onDismiss={() => session.dismissAsk()}
-                        />
-                      )}
-                    </Show>
 
                     <Show when={session.error}>
                       {(getErr) => (

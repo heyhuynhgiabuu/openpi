@@ -158,10 +158,11 @@ export class AskTracker {
     return true
   }
 
-  onToolEnd(toolCallId: string, toolName: string): boolean {
+  onToolEnd(_toolCallId: string, toolName: string, _isError = false): boolean {
     if (toolName !== 'ask_user_question') return false
-    // Tool completed (either returned answers or self-disabled) — dismiss modal
-    if (this.state?.toolCallId === toolCallId) this.state = null
+    // Keep the tray prompt visible until the user explicitly submits or dismisses it.
+    // Pi may end disabled/stale ask_user_question executions as non-error tool results,
+    // but OpenPi still has enough args to render the local widget.
     return true
   }
 
