@@ -11,8 +11,11 @@ import {
 import 'nerdfonts-web/nf.css'
 
 interface Props {
+  id: string
   cwd: string
   isVisible: boolean
+  /** Called when the PTY process exits */
+  onExit?: (id: string) => void
 }
 
 const NERD_SYMBOL_FONT = 'NerdFontsSymbols Nerd Font'

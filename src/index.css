@@ -6091,6 +6091,47 @@ body.panel-dragging {
   background: var(--hairline);
 }
 
+/* Terminal tab status indicator (running/exited dot) */
+.terminal-tab-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.terminal-tab-status.is-running {
+  background: #4ade80;
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
+}
+.terminal-tab-status.is-exited {
+  background: var(--mute);
+}
+
+/* Exited tab — dimmed */
+.terminal-tab.is-exited {
+  opacity: 0.6;
+}
+.terminal-tab.is-exited:hover {
+  opacity: 0.8;
+}
+
+/* Inline rename input on terminal tab */
+.terminal-tab-rename-input {
+  background: var(--surface-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 1px 4px;
+  outline: none;
+  width: 80px;
+}
+.terminal-tab-rename-input:focus {
+  border-color: var(--accent);
+}
+
 .terminal-panel-close {
   display: inline-flex;
   align-items: center;

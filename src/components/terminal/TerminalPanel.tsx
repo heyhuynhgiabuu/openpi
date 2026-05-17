@@ -10,6 +10,7 @@ const PREF_KEY = 'terminalHeight'
 interface TermTab {
   id: string
   label: string
+  exited?: boolean
 }
 
 interface Props {
@@ -23,8 +24,11 @@ export function TerminalPanel(props: Props) {
   const [activeTab, setActiveTab] = createSignal<'output' | string>('output')
   const [termTabs, setTermTabs] = createSignal<TermTab[]>([])
   const [height, setHeight] = createSignal(DEFAULT_HEIGHT)
+  const [renamingTabId, setRenamingTabId] = createSignal<string | null>(null)
+  const [renameValue, setRenameValue] = createSignal('')
   let dragState: { startY: number; startHeight: number } | null = null
   let tabCount = 0
+  let renameInputRef: HTMLInputElement | undefined
 
   onMount(() => {
     void window.openpi.getPref(PREF_KEY).then((v) => {
@@ -72,6 +76,29 @@ export function TerminalPanel(props: Props) {
   createEffect(() => {
     if (props.newTerminalRequest > 0) addTerminal()
   })
+
+  const onTerminalExit = (id: string) => {
+    setTermTabs((prev) => prev.map((t) => (t.id === id ? { ...t, exited: true } : t)))
+  }
+
+  const startRename = (tab: TermTab) => {
+    setRenamingTabId(tab.id)
+    setRenameValue(tab.label)
+    requestAnimationFrame(() => {
+      renameInputRef?.focus()
+      renameInputRef?.select()
+    })
+  }
+
+  const commitRename = () => {
+    const id = renamingTabId()
+    const label = renameValue().trim()
+    if (id && label) {
+      setTermTabs((prev) => prev.map((t) => (t.id === id ? { ...t, label } : t)))
+    }
+    setRenamingTabId(null)
+    setRenameValue('')
+  }
 
   const closeTerminal = (id: string) => {
     setTermTabs((prev) => prev.filter((t) => t.id !== id))
@@ -154,7 +181,12 @@ export function TerminalPanel(props: Props) {
                   overflow: 'hidden',
                 }}
               >
-                <TerminalPane cwd={props.cwd} isVisible={activeTab() === tab.id && props.isOpen} />
+                <TerminalPane
+                  id={tab.id}
+                  cwd={props.cwd}
+                  isVisible={activeTab() === tab.id && props.isOpen}
+                  onExit={onTerminalExit}
+                />
               </div>
             )}
           </For>
