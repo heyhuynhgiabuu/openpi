@@ -816,6 +816,9 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const [mode, setMode] = createSignal<ViewMode>('edit')
   const [saving, setSaving] = createSignal(false)
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saved' | 'error'>('idle')
+  const [formatLoading, setFormatLoading] = createSignal(false)
+  const [formatOnSave, setFormatOnSave] = createSignal(false)
+  const [wordWrap, setWordWrap] = createSignal(false)
   const [saveError, setSaveError] = createSignal<string | null>(null)
 
   let textareaRef: HTMLTextAreaElement | undefined
@@ -1066,6 +1069,18 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     try {
       await window.openpi.writeFile(normalizedPath(), editBuffer())
       setContent(editBuffer())
+
+      // Auto-format after save if format-on-save is enabled
+      if (formatOnSave()) {
+        try {
+          const formatted = await window.openpi.formatFile(normalizedPath())
+          setEditBuffer(formatted)
+          setContent(formatted)
+        } catch {
+          // format failure is non-fatal — file was already saved
+        }
+      }
+
       setSaveStatus('saved')
       if (saveStatusTimer) clearTimeout(saveStatusTimer)
       saveStatusTimer = setTimeout(() => setSaveStatus('idle'), 1400)
@@ -1074,6 +1089,22 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
       setSaveError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** Run Biome format on the current file (does not save). */
+  const handleFormat = async () => {
+    if (isImage() || content() === null) return
+    setFormatLoading(true)
+    try {
+      const formatted = await window.openpi.formatFile(normalizedPath())
+      setEditBuffer(formatted)
+      setContent(formatted)
+    } catch (err) {
+      setSaveStatus('error')
+      setSaveError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFormatLoading(false)
     }
   }
 
@@ -1090,6 +1121,10 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         void handleSave()
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        void handleFormat()
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault()
@@ -1160,6 +1195,36 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           </div>
 
           <div class="fv-topbar-actions">
+            <Show when={!isImage()}>
+              <button
+                type="button"
+                class={`fv-tb-btn${formatOnSave() ? ' fv-tb-btn--active' : ''}`}
+                title={
+                  formatOnSave()
+                    ? 'Format on save enabled (⌘⇧F to format now)'
+                    : 'Format on save disabled'
+                }
+                onClick={() => setFormatOnSave((v) => !v)}
+              >
+                <Code2 size={14} strokeWidth={1.8} />
+              </button>
+            </Show>
+
+            <Show when={!isImage()}>
+              <button
+                type="button"
+                class={`fv-tb-btn${wordWrap() ? ' fv-tb-btn--active' : ''}`}
+                title={wordWrap() ? 'Disable word wrap' : 'Enable word wrap'}
+                onClick={() => setWordWrap((v) => !v)}
+              >
+                <FileText size={14} strokeWidth={1.8} />
+              </button>
+            </Show>
+
+            <Show when={!isImage()}>
+              <span class="fv-tb-divider" />
+            </Show>
+
             <Show when={!isImage()}>
               <button
                 type="button"

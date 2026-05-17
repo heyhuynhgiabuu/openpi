@@ -73,6 +73,7 @@ export const IPC = {
   AGENT_CHANGED_FILES: 'openpi:agent-changed-files',
   READ_FILE: 'openpi:read-file',
   WRITE_FILE: 'openpi:write-file',
+  FORMAT_FILE: 'openpi:format-file',
   SEARCH_FILE_CONTENTS: 'openpi:search-file-contents',
   LIST_PROMPT_TEMPLATES: 'openpi:list-prompt-templates',
   FFF_FILE_SEARCH: 'openpi:fff-file-search',
@@ -854,6 +855,14 @@ export const fileContentSchema = z.object({
   truncated: z.boolean(),
 })
 export type FileContent = z.infer<typeof fileContentSchema>
+
+// ─── Format file (Biome) ───────────────────────────────────────────────────────
+
+export const formatFileRequestSchema = z.object({
+  /** Path relative to workspace cwd */
+  path: z.string().min(1),
+})
+export type FormatFileRequest = z.infer<typeof formatFileRequestSchema>
 
 // ─── Theme colors (for swatch rendering) ──────────────────────────────────────
 

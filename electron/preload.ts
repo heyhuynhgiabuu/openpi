@@ -256,6 +256,8 @@ const api = {
     ipcRenderer.invoke(IPC.READ_FILE, { path: relPath }),
   writeFile: (relPath: string, content: string): Promise<void> =>
     ipcRenderer.invoke(IPC.WRITE_FILE, { path: relPath, content }),
+  formatFile: (relPath: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.FORMAT_FILE, { path: relPath }),
   listPromptTemplates: (): Promise<PromptTemplate[]> =>
     ipcRenderer.invoke(IPC.LIST_PROMPT_TEMPLATES),
 

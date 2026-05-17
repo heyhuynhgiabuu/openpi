@@ -57,6 +57,7 @@ import {
   fffGrepRequestSchema,
   fileTreeResultSchema,
   forkSessionSchema,
+  formatFileRequestSchema,
   getPrefSchema,
   gitBranchSchema,
   gitCheckoutBranchResultSchema,
@@ -1529,6 +1530,30 @@ function registerHandlers(): void {
       if (!approved) return
     }
     fs.writeFileSync(full, content, 'utf-8')
+  })
+
+  // ── Format file with Biome ───────────────────────────────────────────────────
+  ipcMain.handle(IPC.FORMAT_FILE, async (_event, raw: unknown): Promise<string> => {
+    if (!state?.cwd) throw new Error('No active workspace')
+    const { path: relPath } = formatFileRequestSchema.parse(raw)
+    const full = path.resolve(state.cwd, relPath)
+    const sep = path.sep
+    if (full !== state.cwd && !full.startsWith(state.cwd + sep)) {
+      throw new Error('Refusing to format outside workspace')
+    }
+    const { execSync } = await import('child_process')
+    try {
+      execSync(`npx biome format --write "${full}"`, {
+        cwd: state.cwd,
+        timeout: 15_000,
+        stdio: 'pipe',
+      })
+      const formatted = fs.readFileSync(full, 'utf-8')
+      return formatted
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(`Format failed: ${msg}`)
+    }
   })
 
   // ── Prompt template listing (slash command completions) ────────────────────

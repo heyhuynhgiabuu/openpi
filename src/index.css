@@ -9492,6 +9492,13 @@ body.panel-dragging {
   cursor: default;
 }
 
+/* Word wrap for long lines in the editor */
+.fv-le-textarea--wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+
 /* ─── Code / markdown preview ──────────────────────────────────────────────── */
 .fv-code-preview {
   flex: 1;
