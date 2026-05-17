@@ -195,14 +195,16 @@ jobs:
           node-version: 22
 
       - name: Publish prerelease
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.1
         with:
           name: OpenPi ${{ github.ref_name }}
           body_path: release-notes.generated.md
           draft: false
           prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: false
           files: |
-            dist-artifacts/**/*
+            dist-artifacts/**
             dist-artifacts/checksums.txt
 
       - name: Update Homebrew tap
