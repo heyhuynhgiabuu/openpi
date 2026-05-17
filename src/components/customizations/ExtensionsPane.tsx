@@ -81,9 +81,9 @@ function ExtensionCard(props: {
   onToggle?: (id: string, enabled: boolean) => void
 }) {
   const [busy, setBusy] = createSignal(false)
-  const [needsRestart, setNeedsRestart] = createSignal(false)
+  const [_needsRestart, setNeedsRestart] = createSignal(false)
 
-  const handleToggle = () => {
+  const _handleToggle = () => {
     if (busy()) return
     const nextEnabled = !props.item.enabled
     setBusy(true)
