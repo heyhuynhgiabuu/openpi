@@ -6,7 +6,7 @@ OpenPi is a native desktop workbench for the Pi coding agent. The goal: make Pi 
 
 ---
 
-## Current Status (May 2026 beta) — v0.1.15
+## Current Status (May 2026 beta) — v0.1.16
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
@@ -15,7 +15,7 @@ Done so far:
 - Customizations inventory for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings; command palette (`⇧⌘P`).
 - **Goal/harness v2 loop**: `/goal` controller with 7 harness tools, product docs, story browser, decision records, test matrix.
 - **Conversation polish**: live token counter, code line numbers, streaming cursor fix, entry animation, responsive images.
-- **File editor improvements**: format-on-save (Biome), word wrap toggle, FORMAT_FILE IPC, find-with-replace.
+- **File editor improvements**: CodeMirror 6 editor, format-on-save (Biome), word wrap toggle, FORMAT_FILE IPC, find-with-replace.
 - **Extensions UI**: enable/disable toggle per extension, preference persistence, reload button.
 - **Terminal tabs**: renameable tabs, add/close/switch, process exit indicators.
 - **Onboarding flow**: first-run detection, enhanced welcome screen with setup guide.
@@ -75,10 +75,32 @@ Still beta-blocking:
 | State | Solid signals/memos plus Electron-main read models |
 | Validation | Zod at every IPC/JSON boundary |
 | Terminal | xterm.js + node-pty in main |
+| Editor | CodeMirror 6 |
 | Diff | @pierre/diffs (replaceable renderer only) |
 | Pi integration | @earendil-works/pi-coding-agent SDK (direct import in main) |
 | Persistence | SQLite via better-sqlite3 in main process |
 | Secrets | OS keychain via Electron safeStorage |
+
+---
+
+## Reference Study — Terax AI
+
+Source: [`crynta/terax-ai`](https://github.com/crynta/terax-ai), reviewed at commit `4f5dbe452ae193f0aa152f421b8dccd2a322f11a`.
+
+What is worth learning:
+- **Feature-module architecture:** Terax groups major workbench surfaces under `src/modules/` (`ai`, `editor`, `explorer`, `terminal`, `preview`, `source-control`, `git-history`, `tabs`, `settings`). OpenPi should keep using feature slices for large surfaces instead of growing a monolithic app component.
+- **Native authority boundary:** Terax registers PTY, filesystem, search, Git, shell, secrets, networking, and workspace authorization as native commands in `src-tauri/src/lib.rs`. OpenPi's equivalent remains Electron main + typed preload IPC; renderer stays intent-only.
+- **Workbench surfaces stay alive:** Terax keeps terminals/editors/previews/diffs mounted and hides inactive panes so long-running state keeps streaming. OpenPi should apply the same rule to terminal tabs, diff/file preview surfaces, and agent conversation state.
+- **Capability-tiered agent approvals:** Terax auto-runs read-only tools behind secret-path guards, while mutating tools require explicit approval and edits require prior `read_file`. OpenPi should express this at the Electron-main permission gate, not inside the renderer.
+- **Scoped read-only subagents:** Terax's subagents are role-based and tool-whitelisted. OpenPi should treat Pi subagents/task widgets as first-class UI, with read-only defaults and explicit escalation for mutation-capable work.
+- **Pragmatic package ideas:** Terax validates CodeMirror 6 as the editor base and uses optional editor add-ons (`@codemirror/merge`, `@codemirror/lint`, `@replit/codemirror-vim`, multiple `@uiw` themes), xterm.js add-ons, OS keychain storage, and explicit workspace authorization. Adopt only where they support OpenPi's Pi-first product boundary.
+
+Roadmap implications:
+- Add a documented privileged-command registry for Electron main/preload IPC, with each command classified as read, write, shell, Git, secret, or extension/package mutation.
+- Keep long-lived workbench surfaces mounted when switching center surfaces or tabs; hide instead of remounting when preserving streaming/process state matters.
+- Add read-before-edit and protected-path enforcement to any OpenPi-owned mutation flow, including Git hunk application, file saves, terminal shell actions, and future Pi resource generators.
+- Represent agent-proposed edits as reviewable diff cards/tabs before apply, rather than burying patch intent inside generic tool output.
+- Consider a later editor-enhancement slice for CM6 merge/lint/Vim/theme-pack support; do not let this turn OpenPi into a full IDE.
 
 ---
 
