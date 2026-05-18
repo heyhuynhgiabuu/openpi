@@ -12,6 +12,8 @@
  */
 
 // biome-ignore-all lint/a11y/useSemanticElements lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: existing file-preview line interactions are tracked separately from this release.
+import type { EditorView } from '@codemirror/view'
+
 import {
   ChevronDown,
   ChevronUp,
@@ -19,18 +21,17 @@ import {
   FileText,
   PanelBottomOpen,
   PanelRight,
-  Plus,
   Replace,
   ReplaceAll,
   Save,
   Search,
   X,
 } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
 import { FileIcon } from '../lib/fileIcons'
 import type { NewFileLineComment } from '../lib/fileLineComments'
-import { formatLineRange } from '../lib/fileLineComments'
 import { ensureHighlighter, highlightCode } from '../lib/shiki'
+import { CodeMirrorEditor } from './CodeMirrorEditor'
 import { MarkdownContent } from './conversation/MarkdownContent'
 
 function escapeHtml(value: string): string {
@@ -38,7 +39,7 @@ function escapeHtml(value: string): string {
 }
 
 /** Strip Shiki's inline background-color so the editor background shows through */
-function stripShikiBackground(html: string): string {
+function _stripShikiBackground(html: string): string {
   return html.replace(/background-color:[^;"'}]+;?\s*/g, '').replace(/\stabindex="0"/g, '')
 }
 
@@ -86,695 +87,7 @@ function localFileUrl(absPath: string): string {
     .join('/')}`
 }
 
-const LINE_HEIGHT_PX = 20
-const PADDING_TOP_PX = 14
-
-interface HeadingEntry {
-  lineIndex: number
-  level: number
-  raw: string
-}
-
-function parseHeadings(lines: string[]): HeadingEntry[] {
-  const out: HeadingEntry[] = []
-  for (let i = 0; i < lines.length; i += 1) {
-    const m = lines[i]?.match(/^(#{1,6})\s/)
-    if (m) out.push({ lineIndex: i, level: m[1].length, raw: lines[i] })
-  }
-  return out
-}
-
-function getStickyHeadings(headings: HeadingEntry[], scrollTop: number, maxN = 3): HeadingEntry[] {
-  const levelMap = new Map<number, HeadingEntry>()
-  for (const heading of headings) {
-    const lineBottom = PADDING_TOP_PX + heading.lineIndex * LINE_HEIGHT_PX + LINE_HEIGHT_PX
-    if (lineBottom > scrollTop) break
-    levelMap.set(heading.level, heading)
-    for (const lvl of levelMap.keys()) {
-      if (lvl > heading.level) levelMap.delete(lvl)
-    }
-  }
-  return [...levelMap.values()].sort((a, b) => a.level - b.level).slice(0, maxN)
-}
-
-function computeFoldRanges(headings: HeadingEntry[], totalLines: number): Map<number, number> {
-  const ranges = new Map<number, number>()
-  for (let i = 0; i < headings.length; i += 1) {
-    const heading = headings[i]
-    let end = totalLines - 1
-    for (let j = i + 1; j < headings.length; j += 1) {
-      if (headings[j].level <= heading.level) {
-        end = headings[j].lineIndex - 1
-        break
-      }
-    }
-    if (end > heading.lineIndex) ranges.set(heading.lineIndex, end)
-  }
-  return ranges
-}
-
-interface LineRange {
-  startLine: number
-  endLine: number
-}
-
-function lineNumberForOffset(value: string, offset: number): number {
-  return value.slice(0, Math.max(0, offset)).split('\n').length
-}
-
-function selectedLineRange(
-  value: string,
-  selectionStart: number,
-  selectionEnd: number
-): LineRange | null {
-  if (selectionStart === selectionEnd) return null
-  const start = Math.min(selectionStart, selectionEnd)
-  const end = Math.max(selectionStart, selectionEnd)
-  const adjustedEnd = Math.max(start, end - 1)
-  return {
-    startLine: lineNumberForOffset(value, start),
-    endLine: lineNumberForOffset(value, adjustedEnd),
-  }
-}
-
-function snippetForRange(lines: string[], range: LineRange): string {
-  return lines.slice(range.startLine - 1, range.endLine).join('\n')
-}
-
-type DisplayItem =
-  | { type: 'line'; sourceIdx: number }
-  | { type: 'fold'; headingIdx: number; count: number }
-
-interface LineEditorProps {
-  value: string
-  originalContent: string | null
-  relativePath: string
-  onChange: (v: string) => void
-  setTextareaRef: (el: HTMLTextAreaElement) => void
-  onAddLineComment?: (comment: NewFileLineComment) => void
-  onExtraScroll?: () => void
-  /** Search highlight props — when provided, match positions are highlighted */
-  findQuery?: string
-  findMatches?: Array<{ index: number; length: number }>
-  findCurrentIndex?: number
-  findMatchLines?: number[] // 0-indexed line numbers containing any match
-  currentMatchLine?: number // 0-indexed line of the active match
-}
-
-// ─── Minimap ─────────────────────────────────────────────────────────────────
-
-interface MiniMapProps {
-  value: string
-  scrollTop: number
-  scrollHeight: number
-  clientHeight: number
-  onScrollTo: (top: number) => void
-  findMatchLines?: number[] // draw amber stripes on matching lines
-  currentMatchLine?: number // draw bright-orange stripe on active match line
-}
-
-const MINI_W = 80
-const MINI_LINE = 2 // px per line on canvas
-
-function MiniMap(props: MiniMapProps) {
-  let canvasRef: HTMLCanvasElement | undefined
-  let containerRef: HTMLDivElement | undefined
-  let dragging = false
-
-  /** Re-draw canvas whenever content changes */
-  createEffect(() => {
-    const canvas = canvasRef
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const lines = props.value.split('\n')
-    const totalLines = lines.length
-    const cH = totalLines * MINI_LINE
-    canvas.width = MINI_W
-    canvas.height = Math.max(cH, 1)
-
-    ctx.clearRect(0, 0, MINI_W, cH)
-    for (let i = 0; i < totalLines; i++) {
-      const line = lines[i]
-      if (!line?.trim()) continue
-      const y = i * MINI_LINE
-      const indent = line.search(/\S|$/)
-      const x = Math.min(indent * 1.2, 12)
-      const rawLen = line.trimEnd().length - indent
-      const w = Math.min((rawLen / 100) * (MINI_W - x - 2), MINI_W - x - 2)
-      if (w <= 0) continue
-
-      const trimmed = line.trimStart()
-      if (trimmed.startsWith('# ')) ctx.fillStyle = 'rgba(96,165,250,0.9)'
-      else if (trimmed.startsWith('## ')) ctx.fillStyle = 'rgba(96,165,250,0.7)'
-      else if (trimmed.startsWith('### ') || trimmed.startsWith('#### '))
-        ctx.fillStyle = 'rgba(167,139,250,0.7)'
-      else if (trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*'))
-        ctx.fillStyle = 'rgba(160,160,160,0.35)'
-      else ctx.fillStyle = 'rgba(200,200,200,0.5)'
-
-      ctx.fillRect(x, y + 0.5, Math.max(w, 1), MINI_LINE - 0.5)
-    }
-
-    // ─── Search match indicators (right-edge 4px stripes) ───────────────────
-    if (props.findMatchLines?.length) {
-      for (const lineIdx of props.findMatchLines) {
-        const y = lineIdx * MINI_LINE
-        const isCurrent = lineIdx === props.currentMatchLine
-        ctx.fillStyle = isCurrent
-          ? 'rgba(255, 148, 30, 0.95)' // bright orange — active match
-          : 'rgba(255, 210, 60, 0.55)' // amber — other matches
-        ctx.fillRect(MINI_W - 4, y, 4, MINI_LINE)
-      }
-    }
-  })
-
-  const totalLines = createMemo(() => props.value.split('\n').length)
-
-  /** Viewport indicator: maps scroll position into the minimap canvas coordinate space */
-  const viewport = createMemo(() => {
-    const cH = totalLines() * MINI_LINE
-    const sh = props.scrollHeight
-    if (sh <= 0 || cH <= 0) return null
-    const ratio = cH / sh
-    return {
-      top: props.scrollTop * ratio,
-      height: Math.max(props.clientHeight * ratio, 20),
-    }
-  })
-
-  const scrollToY = (clientY: number) => {
-    const el = containerRef
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const relY = clientY - rect.top + el.scrollTop
-    const cH = totalLines() * MINI_LINE
-    const fraction = Math.max(0, Math.min(1, relY / cH))
-    props.onScrollTo(fraction * props.scrollHeight)
-  }
-
-  /** Keep minimap scrolled so viewport indicator is always in view */
-  createEffect(() => {
-    const v = viewport()
-    const el = containerRef
-    if (!v || !el) return
-    const mid = v.top + v.height / 2
-    const elH = el.clientHeight
-    el.scrollTop = Math.max(0, mid - elH / 2)
-  })
-
-  return (
-    <div
-      ref={(el) => {
-        containerRef = el
-      }}
-      class="fv-minimap"
-      onMouseDown={(e) => {
-        e.preventDefault()
-        dragging = true
-        scrollToY(e.clientY)
-      }}
-      onMouseMove={(e) => {
-        if (dragging) scrollToY(e.clientY)
-      }}
-      onMouseUp={() => {
-        dragging = false
-      }}
-    >
-      <canvas
-        ref={(el) => {
-          canvasRef = el
-        }}
-        class="fv-minimap-canvas"
-      />
-      <Show when={viewport()}>
-        {(vp) => (
-          <div
-            class="fv-minimap-viewport"
-            style={{ top: `${vp().top}px`, height: `${vp().height}px` }}
-          />
-        )}
-      </Show>
-    </div>
-  )
-}
-
-function LineNumberedEditor(props: LineEditorProps) {
-  let gutterRef!: HTMLDivElement
-  let textareaRef!: HTMLTextAreaElement
-  let commentInputRef: HTMLTextAreaElement | undefined
-  const [scrollTop, setScrollTop] = createSignal(0)
-  const [scrollHeight, setScrollHeight] = createSignal(0)
-  const [clientHeight, setClientHeight] = createSignal(0)
-  const [syntaxHtml, setSyntaxHtml] = createSignal('')
-  const [syntaxReady, setSyntaxReady] = createSignal(false)
-  const [hoverLine, setHoverLine] = createSignal<number | null>(null)
-  const [selectedRange, setSelectedRange] = createSignal<LineRange | null>(null)
-  const [commentRange, setCommentRange] = createSignal<LineRange | null>(null)
-  const [commentText, setCommentText] = createSignal('')
-
-  const lines = createMemo(() => props.value.split('\n'))
-  const headings = createMemo(() => parseHeadings(lines()))
-  const stickyHeadings = createMemo(() => getStickyHeadings(headings(), scrollTop()))
-
-  const headingLineMap = createMemo(() => {
-    const m = new Map<number, number>()
-    for (const heading of headings()) m.set(heading.lineIndex, heading.level)
-    return m
-  })
-
-  const [collapsedSections, setCollapsedSections] = createSignal<Set<number>>(new Set())
-
-  const foldRanges = createMemo(() => computeFoldRanges(headings(), lines().length))
-
-  const toggleFold = (headingLineIdx: number) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(headingLineIdx)) next.delete(headingLineIdx)
-      else next.add(headingLineIdx)
-      return next
-    })
-  }
-
-  const displayItems = createMemo<DisplayItem[]>(() => {
-    const items: DisplayItem[] = []
-    let i = 0
-    while (i < lines().length) {
-      const foldEnd = foldRanges().get(i)
-      if (collapsedSections().has(i) && foldEnd !== undefined) {
-        items.push({ type: 'line', sourceIdx: i })
-        items.push({ type: 'fold', headingIdx: i, count: foldEnd - i })
-        i = foldEnd + 1
-      } else {
-        items.push({ type: 'line', sourceIdx: i })
-        i += 1
-      }
-    }
-    return items
-  })
-
-  const hasCollapsed = createMemo(() => collapsedSections().size > 0)
-
-  // Syntax highlighting is active when Shiki has rendered and no folds are open
-  const showSyntax = createMemo(() => syntaxReady() && !hasCollapsed())
-
-  // Search highlight overlay HTML — builds marked-up text matching the textarea exactly.
-  // color:transparent on the <pre> text, <mark> backgrounds show through.
-  const searchOverlayHtml = createMemo(() => {
-    const matches = props.findMatches
-    if (!matches || matches.length === 0) return ''
-    const text = hasCollapsed() ? displayValue() : props.value
-    const currentIdx = props.findCurrentIndex ?? 0
-    let html = ''
-    let pos = 0
-    for (let i = 0; i < matches.length; i++) {
-      const m = matches[i]
-      if (!m || m.index < pos) continue
-      html += escapeHtml(text.slice(pos, m.index))
-      const isCurrent = i === currentIdx
-      html += `<mark class="fv-search-mark${isCurrent ? ' fv-search-mark--current' : ''}">${escapeHtml(text.slice(m.index, m.index + m.length))}</mark>`
-      pos = m.index + m.length
-    }
-    html += escapeHtml(text.slice(pos))
-    return html
-  })
-
-  // Syntax highlighting — mirrors SyntaxPreview's known-good pattern.
-  // Sets plain escaped HTML immediately so the overlay + transparent textarea
-  // activate on mount; Shiki swaps in real token colours once loaded.
-  createEffect(() => {
-    const value = props.value
-    const filename = props.relativePath
-    let cancelled = false
-
-    setSyntaxHtml(`<pre>${escapeHtml(value)}</pre>`)
-    setSyntaxReady(true)
-
-    void ensureHighlighter()
-      .then(() => {
-        if (!cancelled) setSyntaxHtml(stripShikiBackground(highlightCode(value, filename)))
-      })
-      .catch(() => {}) // plain fallback stays visible on error
-
-    onCleanup(() => {
-      cancelled = true
-    })
-  })
-
-  const displayValue = createMemo(() => {
-    if (!hasCollapsed()) return props.value
-    return displayItems()
-      .map((item) => (item.type === 'fold' ? `··· ${item.count} lines` : lines()[item.sourceIdx]))
-      .join('\n')
-  })
-
-  const handleContentClick = (e: MouseEvent) => {
-    if (!hasCollapsed() || !textareaRef) return
-    const rect = textareaRef.getBoundingClientRect()
-    const y = e.clientY - rect.top + textareaRef.scrollTop - PADDING_TOP_PX
-    const clickedRow = Math.floor(y / LINE_HEIGHT_PX)
-    if (clickedRow >= 0 && clickedRow < displayItems().length) {
-      const item = displayItems()[clickedRow]
-      if (item.type === 'fold') toggleFold(item.headingIdx)
-    }
-  }
-
-  const handleScroll = () => {
-    if (gutterRef && textareaRef) gutterRef.scrollTop = textareaRef.scrollTop
-    if (textareaRef) {
-      setScrollTop(textareaRef.scrollTop)
-      setScrollHeight(textareaRef.scrollHeight)
-      setClientHeight(textareaRef.clientHeight)
-    }
-    props.onExtraScroll?.()
-  }
-
-  const scrollToLine = (lineIndex: number) => {
-    if (!textareaRef) return
-    textareaRef.scrollTop = Math.max(0, lineIndex * LINE_HEIGHT_PX)
-  }
-
-  const scrollToTop = (top: number) => {
-    if (!textareaRef) return
-    textareaRef.scrollTop = top
-    handleScroll()
-  }
-
-  const rangeTop = (range: LineRange) =>
-    PADDING_TOP_PX + (range.startLine - 1) * LINE_HEIGHT_PX - scrollTop()
-
-  const hoverRange = createMemo<LineRange | null>(() => {
-    const line = hoverLine()
-    if (line === null) return null
-    return { startLine: line, endLine: line }
-  })
-
-  const actionableRange = createMemo(() => commentRange() ?? selectedRange() ?? hoverRange())
-  const commentButtonRange = createMemo(() => {
-    if (!props.onAddLineComment || hasCollapsed()) return null
-    return actionableRange()
-  })
-
-  const updateSelectionRange = () => {
-    if (!textareaRef || hasCollapsed()) return
-    setSelectedRange(
-      selectedLineRange(props.value, textareaRef.selectionStart, textareaRef.selectionEnd)
-    )
-  }
-
-  const updateHoverLine = (event: MouseEvent) => {
-    if (!textareaRef || hasCollapsed() || commentRange()) return
-    const rect = textareaRef.getBoundingClientRect()
-    const y = event.clientY - rect.top + textareaRef.scrollTop - PADDING_TOP_PX
-    const row = Math.floor(y / LINE_HEIGHT_PX)
-    if (row < 0 || row >= lines().length) {
-      setHoverLine(null)
-      return
-    }
-    setHoverLine(row + 1)
-  }
-
-  const isLineInActiveRange = (line: number) => {
-    const range = actionableRange()
-    return Boolean(range && line >= range.startLine && line <= range.endLine)
-  }
-
-  const activeRangeStyle = (range: LineRange) => ({
-    top: `${rangeTop(range)}px`,
-    height: `${(range.endLine - range.startLine + 1) * LINE_HEIGHT_PX}px`,
-  })
-
-  const openCommentPopover = (range: LineRange) => {
-    setCommentRange(range)
-    setCommentText('')
-    requestAnimationFrame(() => commentInputRef?.focus())
-  }
-
-  const saveComment = () => {
-    const range = commentRange()
-    const comment = commentText().trim()
-    if (!range || !comment) return
-
-    props.onAddLineComment?.({
-      path: props.relativePath,
-      startLine: range.startLine,
-      endLine: range.endLine,
-      comment,
-      snippet: snippetForRange(lines(), range),
-    })
-    setCommentRange(null)
-    setSelectedRange(null)
-    setHoverLine(null)
-    setCommentText('')
-    textareaRef?.focus()
-  }
-
-  const origLines = createMemo(() =>
-    props.originalContent !== null ? props.originalContent.split('\n') : null
-  )
-
-  return (
-    <div class="fv-le-wrap">
-      <Show when={stickyHeadings().length > 0}>
-        <div class="fv-le-sticky" role="navigation" aria-label="Sticky context">
-          <For each={stickyHeadings()}>
-            {(heading) => (
-              <div
-                class="fv-le-sticky-line"
-                data-level={heading.level}
-                onClick={() => scrollToLine(heading.lineIndex)}
-                title={`Jump to line ${heading.lineIndex + 1}`}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') scrollToLine(heading.lineIndex)
-                }}
-              >
-                <span class="fv-le-sticky-ln">{heading.lineIndex + 1}</span>
-                <span class="fv-le-sticky-text">{heading.raw}</span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <div class="fv-le-row">
-        <div
-          ref={(el) => {
-            gutterRef = el
-          }}
-          class="fv-le-gutter"
-          aria-hidden="true"
-        >
-          <div class="fv-le-gutter-inner">
-            <For each={displayItems()}>
-              {(item) => {
-                if (item.type === 'fold') {
-                  return (
-                    <div
-                      class="fv-le-ln fv-le-fold-placeholder-ln"
-                      role="button"
-                      tabIndex={0}
-                      title={`Expand ${item.count} lines`}
-                      onClick={() => toggleFold(item.headingIdx)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') toggleFold(item.headingIdx)
-                      }}
-                    >
-                      <span class="fv-le-fold-dots">···</span>
-                    </div>
-                  )
-                }
-
-                const i = item.sourceIdx
-                const originalLine = origLines()?.[i]
-                const isModified =
-                  origLines() !== null &&
-                  i < (origLines()?.length ?? 0) &&
-                  lines()[i] !== originalLine
-                const isAdded = origLines() !== null && i >= (origLines()?.length ?? 0)
-                const headingLevel = headingLineMap().get(i)
-                const isFoldable = foldRanges().has(i)
-                const isCollapsed = collapsedSections().has(i)
-
-                return (
-                  <div
-                    class={[
-                      'fv-le-ln',
-                      isModified ? 'is-modified' : '',
-                      isAdded ? 'is-added' : '',
-                      headingLevel ? `is-h${headingLevel}` : '',
-                      isFoldable ? 'is-foldable' : '',
-                      isLineInActiveRange(i + 1) ? 'is-comment-target' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    <Show when={isFoldable}>
-                      <button
-                        type="button"
-                        class={`fv-le-fold-btn${isCollapsed ? ' is-collapsed' : ''}`}
-                        title={isCollapsed ? 'Expand section' : 'Collapse section'}
-                        tabIndex={-1}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleFold(i)
-                        }}
-                        aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-                      >
-                        {isCollapsed ? '▶' : '▼'}
-                      </button>
-                    </Show>
-                    {i + 1}
-                  </div>
-                )
-              }}
-            </For>
-          </div>
-        </div>
-
-        <div class="fv-le-content-wrap" onClick={(e) => handleContentClick(e)}>
-          {/* Syntax highlight overlay — Shiki tokens behind transparent textarea */}
-          <Show when={showSyntax()}>
-            <div class="fv-le-highlight">
-              <div
-                class="fv-le-highlight-inner"
-                style={{ transform: `translateY(-${scrollTop()}px)` }}
-                innerHTML={syntaxHtml()}
-              />
-            </div>
-          </Show>
-
-          {/* Search match overlay — above syntax, pointer-events:none, marks float over text */}
-          <Show when={searchOverlayHtml()}>
-            <div class="fv-le-search-overlay">
-              <pre
-                class="fv-le-search-pre"
-                style={{ transform: `translateY(-${scrollTop()}px)` }}
-                innerHTML={searchOverlayHtml()}
-              />
-            </div>
-          </Show>
-          <Show when={commentButtonRange()}>
-            {(getRange) => (
-              <div class="fv-line-comment-highlight" style={activeRangeStyle(getRange())} />
-            )}
-          </Show>
-
-          <Show when={commentButtonRange()}>
-            {(getRange) => (
-              <button
-                type="button"
-                class="fv-line-comment-btn"
-                style={{ top: `${rangeTop(getRange())}px` }}
-                title={`Add comment on ${formatLineRange(getRange().startLine, getRange().endLine)}`}
-                aria-label={`Add comment on ${formatLineRange(getRange().startLine, getRange().endLine)}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  openCommentPopover(getRange())
-                }}
-              >
-                <Plus size={13} strokeWidth={2.4} />
-              </button>
-            )}
-          </Show>
-
-          <Show when={commentRange()}>
-            {(getRange) => (
-              <div
-                class="fv-line-comment-popover"
-                style={{ top: `${rangeTop(getRange()) + LINE_HEIGHT_PX + 8}px` }}
-              >
-                <textarea
-                  ref={(el) => {
-                    commentInputRef = el
-                  }}
-                  class="fv-line-comment-input"
-                  placeholder="Add comment"
-                  rows={3}
-                  value={commentText()}
-                  onInput={(event) => setCommentText(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                      event.preventDefault()
-                      saveComment()
-                    }
-                    if (event.key === 'Escape') {
-                      event.preventDefault()
-                      setCommentRange(null)
-                    }
-                  }}
-                />
-                <div class="fv-line-comment-footer">
-                  <span>{`Commenting on ${formatLineRange(getRange().startLine, getRange().endLine)}`}</span>
-                  <div class="fv-line-comment-actions">
-                    <button
-                      type="button"
-                      class="fv-line-comment-secondary"
-                      onClick={() => setCommentRange(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      class="fv-line-comment-primary"
-                      disabled={commentText().trim().length === 0}
-                      onClick={saveComment}
-                    >
-                      Comment
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Show>
-
-          <textarea
-            ref={(el) => {
-              textareaRef = el
-              props.setTextareaRef(el)
-              // initialise minimap dimensions once mounted
-              requestAnimationFrame(() => {
-                if (!el) return
-                setScrollHeight(el.scrollHeight)
-                setClientHeight(el.clientHeight)
-              })
-            }}
-            class={`fv-le-textarea${hasCollapsed() ? ' fv-le-textarea--folded' : ''}`}
-            style={showSyntax() ? { color: 'transparent' } : undefined}
-            value={hasCollapsed() ? displayValue() : props.value}
-            onInput={hasCollapsed() ? undefined : (e) => props.onChange(e.currentTarget.value)}
-            readOnly={hasCollapsed()}
-            onMouseMove={updateHoverLine}
-            onMouseLeave={() => setHoverLine(null)}
-            onMouseUp={() => requestAnimationFrame(updateSelectionRange)}
-            onKeyUp={updateSelectionRange}
-            onSelect={updateSelectionRange}
-            onScroll={handleScroll}
-            spellcheck={false}
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-          />
-        </div>
-
-        {/* Minimap — right edge quick-scroll */}
-        <MiniMap
-          value={props.value}
-          scrollTop={scrollTop()}
-          scrollHeight={scrollHeight()}
-          clientHeight={clientHeight()}
-          onScrollTo={scrollToTop}
-          findMatchLines={props.findMatchLines}
-          currentMatchLine={props.currentMatchLine}
-        />
-      </div>
-    </div>
-  )
-}
+/* LINE_HEIGHT_PX and PADDING_TOP_PX removed with LineNumberedEditor */
 
 type ViewMode = 'edit' | 'preview' | 'split'
 
@@ -821,7 +134,8 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const [wordWrap, setWordWrap] = createSignal(false)
   const [saveError, setSaveError] = createSignal<string | null>(null)
 
-  let textareaRef: HTMLTextAreaElement | undefined
+  let editorViewRef: EditorView | undefined
+  const editorEl = (): HTMLElement | undefined => editorViewRef?.dom ?? undefined
   let previewScrollRef: HTMLDivElement | undefined
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
   let isSyncingScroll = false
@@ -879,7 +193,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   )
 
   // 0-indexed line numbers containing any match — drives minimap indicators
-  const findMatchLines = createMemo(() => {
+  const _findMatchLines = createMemo(() => {
     const matches = findMatches()
     const text = editBuffer()
     if (!matches.length || !text) return []
@@ -891,7 +205,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   })
 
   // Line of the currently-active match
-  const currentMatchLine = createMemo(() => {
+  const _currentMatchLine = createMemo(() => {
     const matches = findMatches()
     const text = editBuffer()
     const m = matches[safeMatchIndex()]
@@ -950,14 +264,8 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
 
   // Select all match spans in the textarea (first→last range; best we can do without multi-cursor)
   const selectAllMatches = () => {
-    const matches = findMatches()
-    if (!textareaRef || !matches.length) return
-    const first = matches[0]
-    const last = matches[matches.length - 1]
-    if (first && last) {
-      textareaRef.focus()
-      textareaRef.setSelectionRange(first.index, last.index + last.length)
-    }
+    const _matches = findMatches()
+    // CM6 handles search internally — textarea find disabled
   }
 
   // Capture current textarea selection as the search scope
@@ -967,8 +275,9 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
       setFindMatchIndex(0)
       return
     }
-    if (!textareaRef) return
-    const { selectionStart: start, selectionEnd: end } = textareaRef
+    if (!editorEl()) return
+    const start = 0
+    const end = 0 // cm6
     if (start === end) return // nothing selected — no-op
     setFindSelStart(start)
     setFindSelEnd(end)
@@ -980,13 +289,15 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   createEffect(() => {
     const matches = findMatches()
     const idx = safeMatchIndex()
-    if (!textareaRef || matches.length === 0 || !findOpen()) return
+    if (matches.length === 0 || !findOpen()) return
     const m = matches[idx]
     if (!m) return
     const lines = editBuffer().substring(0, m.index).split('\n')
     const lineNumber = lines.length - 1
-    const lineHeight = textareaRef.scrollHeight / Math.max(editBuffer().split('\n').length, 1)
-    textareaRef.scrollTop = Math.max(0, lineNumber * lineHeight - textareaRef.clientHeight / 2)
+    const lineHeight =
+      (editorEl()?.scrollHeight ?? 0) / Math.max(editBuffer().split('\n').length, 1)
+    const el = editorEl()
+    if (el) el.scrollTop = Math.max(0, lineNumber * lineHeight - (el.clientHeight ?? 0) / 2)
   })
 
   // Open find bar when findOpen prop changes to true
@@ -1006,10 +317,11 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   })
 
   const syncEditorToPreview = () => {
-    if (!textareaRef || !previewScrollRef || isSyncingScroll) return
-    const maxA = textareaRef.scrollHeight - textareaRef.clientHeight
+    const el = editorViewRef?.dom
+    if (!el || !previewScrollRef || isSyncingScroll) return
+    const maxA = el.scrollHeight - el.clientHeight
     if (maxA <= 0) return
-    const pct = textareaRef.scrollTop / maxA
+    const pct = el.scrollTop / maxA
     isSyncingScroll = true
     previewScrollRef.scrollTop =
       pct * (previewScrollRef.scrollHeight - previewScrollRef.clientHeight)
@@ -1019,12 +331,13 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   }
 
   const syncPreviewToEditor = () => {
-    if (!textareaRef || !previewScrollRef || isSyncingScroll) return
+    const el = editorViewRef?.dom
+    if (!el || !previewScrollRef || isSyncingScroll) return
     const maxB = previewScrollRef.scrollHeight - previewScrollRef.clientHeight
     if (maxB <= 0) return
     const pct = previewScrollRef.scrollTop / maxB
     isSyncingScroll = true
-    textareaRef.scrollTop = pct * (textareaRef.scrollHeight - textareaRef.clientHeight)
+    el.scrollTop = pct * (el.scrollHeight - el.clientHeight)
     requestAnimationFrame(() => {
       isSyncingScroll = false
     })
@@ -1056,8 +369,8 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   })
 
   createEffect(() => {
-    if (!props.background && mode() === 'edit' && !loading() && textareaRef) {
-      setTimeout(() => textareaRef?.focus(), 30)
+    if (!props.background && mode() === 'edit' && !loading() && editorEl()) {
+      setTimeout(() => editorEl()?.focus(), 30)
     }
   })
 
@@ -1500,20 +813,14 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           </Show>
 
           <Show when={!isImage() && !loading() && content() !== null && mode() === 'edit'}>
-            <LineNumberedEditor
+            <CodeMirrorEditor
               value={editBuffer()}
-              originalContent={content()}
-              relativePath={normalizedPath()}
+              filename={filename()}
               onChange={setEditBuffer}
-              setTextareaRef={(el) => {
-                textareaRef = el
+              onViewInit={(v) => {
+                editorViewRef = v
               }}
-              onAddLineComment={props.onAddLineComment}
-              findQuery={findQuery()}
-              findMatches={findOpen() ? findMatches() : undefined}
-              findCurrentIndex={safeMatchIndex()}
-              findMatchLines={findOpen() ? findMatchLines() : undefined}
-              currentMatchLine={findOpen() ? currentMatchLine() : undefined}
+              onExtraScroll={syncEditorToPreview}
             />
           </Show>
 
@@ -1531,20 +838,14 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           <Show when={!isImage() && !loading() && content() !== null && mode() === 'split'}>
             <div class="fv-split-wrap">
               <div class="fv-split-editor">
-                <LineNumberedEditor
+                <CodeMirrorEditor
                   value={editBuffer()}
-                  originalContent={content()}
-                  relativePath={normalizedPath()}
+                  filename={filename()}
                   onChange={setEditBuffer}
-                  setTextareaRef={(el) => {
-                    textareaRef = el
+                  onViewInit={(v) => {
+                    editorViewRef = v
                   }}
                   onExtraScroll={syncEditorToPreview}
-                  findQuery={findQuery()}
-                  findMatches={findOpen() ? findMatches() : undefined}
-                  findCurrentIndex={safeMatchIndex()}
-                  findMatchLines={findOpen() ? findMatchLines() : undefined}
-                  currentMatchLine={findOpen() ? currentMatchLine() : undefined}
                 />
               </div>
 
