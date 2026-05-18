@@ -194,7 +194,8 @@ function aggregateUsage(messages: SessionHistoryMessage[]): UsageMetrics {
   const cacheRead = messages.reduce((sum, msg) => sum + (msg.cacheReadTokens ?? 0), 0)
   const cacheWrite = messages.reduce((sum, msg) => sum + (msg.cacheWriteTokens ?? 0), 0)
   const total = messages.reduce((sum, msg) => sum + usageTotal(msg), 0)
-  const durationMs = Math.max(0, ...messages.map((msg) => msg.durationMs ?? 0))
+  // Sum per-message durations across turns (improvement over Math.max)
+  const durationMs = messages.reduce((sum, msg) => sum + (msg.durationMs ?? 0), 0)
   const tps = durationMs > 0 && output > 0 ? output / (durationMs / 1000) : null
   const cost = messages.reduce((sum, msg) => sum + (msg.cost ?? 0), 0)
   return { input, output, cacheRead, cacheWrite, total, durationMs, tps, cost }
@@ -214,9 +215,6 @@ function UsageRow(props: { modelName?: string; metrics: UsageMetrics }) {
     <div class="message-usage">
       <Show when={props.modelName}>
         <span class="message-usage-model">{props.modelName}</span>
-      </Show>
-      <Show when={props.metrics.tps !== null}>
-        <span>TPS {props.metrics.tps!.toFixed(1)} tok/s</span>
       </Show>
       <span>out {props.metrics.output.toLocaleString()}</span>
       <span>in {props.metrics.input.toLocaleString()}</span>
