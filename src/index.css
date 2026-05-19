@@ -4331,6 +4331,18 @@ body.panel-dragging {
   background: var(--surface-3);
   color: var(--mute);
 }
+.goal-badge--paused {
+  background: rgba(245, 158, 11, 0.14);
+  color: rgb(245, 158, 11);
+}
+.goal-badge--budget_limited {
+  background: rgba(239, 68, 68, 0.14);
+  color: rgb(239, 68, 68);
+}
+.goal-badge--complete {
+  background: rgba(56, 189, 248, 0.14);
+  color: rgb(56, 189, 248);
+}
 .goal-banner-dismiss {
   flex-shrink: 0;
   display: inline-flex;

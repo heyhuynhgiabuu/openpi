@@ -97,6 +97,7 @@ import {
   pathProtectionResultSchema,
   piUpdateCheckResultSchema,
   piUpdateInstallResultSchema,
+  planUpdateSchema,
   playSoundEffectSchema,
   promptTemplateSchema,
   ptyCloseSchema,
@@ -2475,10 +2476,33 @@ app.whenReady().then(() => {
   const goalWatchTimer = setInterval(checkGoalFile, 1_000)
   setTimeout(checkGoalFile, 600)
 
+  // ── Plan state file watcher ────────────────────────────────────────────
+  // Monitors the plan state file written by the harness extension and
+  // forwards updates to the renderer for any global plan surfaces.
+  const planFile = path.join(os.homedir(), '.pi', 'agent', '.openpi-plan.json')
+  let lastPlanChecksum = ''
+
+  function checkPlanFile() {
+    try {
+      const raw = fs.readFileSync(planFile, 'utf-8')
+      if (raw === lastPlanChecksum) return
+      lastPlanChecksum = raw
+      const parsed = JSON.parse(raw)
+      const update = planUpdateSchema.parse(parsed)
+      mainWindow?.webContents.send(IPC.PLAN_UPDATE, update)
+    } catch {
+      // file doesn't exist or parse error — ignore
+    }
+  }
+
+  const planWatchTimer = setInterval(checkPlanFile, 1_000)
+  setTimeout(checkPlanFile, 650)
+
   // Cleanup on app quit
   const stopSyncWatch = () => {
     clearInterval(syncWatchTimer)
     clearInterval(goalWatchTimer)
+    clearInterval(planWatchTimer)
     remoteRunning = false
     remoteSessionFile = null
   }

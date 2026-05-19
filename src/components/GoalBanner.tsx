@@ -1,7 +1,7 @@
 import { Square, X } from 'lucide-solid'
 import { type Component, Show } from 'solid-js'
 
-export type GoalStep = 'running' | 'idle' | null
+export type GoalStep = 'running' | 'idle' | 'paused' | 'budget_limited' | 'complete' | null
 
 export type GoalProgress = {
   tokensUsed: number
@@ -39,6 +39,7 @@ function formatTokens(n: number): string {
 
 export const GoalBanner: Component<GoalBannerProps> = (props) => {
   const isRunning = () => props.step === 'running'
+  const badgeLabel = () => (props.step === 'budget_limited' ? 'budget limited' : props.step)
 
   return (
     <Show when={props.text}>
@@ -77,7 +78,7 @@ export const GoalBanner: Component<GoalBannerProps> = (props) => {
 
         {/* ── Step badge ───────────────────────────── */}
         <Show when={props.step}>
-          <span class={`goal-badge goal-badge--${props.step}`}>{props.step}</span>
+          <span class={`goal-badge goal-badge--${props.step}`}>{badgeLabel()}</span>
         </Show>
 
         {/* ── Abort button (only while running) ───── */}
@@ -98,7 +99,8 @@ export const GoalBanner: Component<GoalBannerProps> = (props) => {
           type="button"
           class="goal-banner-dismiss"
           onClick={props.onDismiss}
-          aria-label="Dismiss goal"
+          aria-label="Clear goal"
+          title="Clear goal"
         >
           <X size={12} strokeWidth={2.5} />
         </button>

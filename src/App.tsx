@@ -29,7 +29,6 @@ import { SubagentWidget } from './components/SubagentWidget'
 import { ArchiveConfirmModal } from './components/sidebar/ArchiveConfirmModal'
 import { SessionSidebar } from './components/sidebar/SessionSidebar'
 import { SessionTreePanel } from './components/sidebar/SessionTreePanel'
-import { StoryBrowser } from './components/sidebar/StoryBrowser'
 import { WorkspacePane } from './components/sidebar/WorkspacePane'
 import { TaskWidget } from './components/TaskWidget'
 import { TopBar } from './components/TopBar'
@@ -110,7 +109,6 @@ export default function App() {
     )
   )
 
-  const onToggleStories = () => toggleLeftDrawerMode('stories')
   const onToggleTree = () => toggleLeftDrawerMode('tree')
 
   // ── Git panel side (left or right of main pane) ───────────────────────────
@@ -821,7 +819,7 @@ export default function App() {
                 </div>
               </Show>
 
-              {/* Left drawer — fixed left, switches between Threads, Workspace, and Stories */}
+              {/* Left drawer — fixed left, switches between Threads, Workspace, and Session Map */}
               <Show when={sidebarOpen()}>
                 <Show when={leftDrawerMode() === 'workspace'}>
                   <WorkspacePane
@@ -836,9 +834,6 @@ export default function App() {
                     onOpenWorkspace={session.openWorkspace}
                     onNewSessionIn={handleNewSessionIn}
                   />
-                </Show>
-                <Show when={leftDrawerMode() === 'stories'}>
-                  <StoryBrowser cwd={cwd()} onOpenFile={(relPath) => openFile(relPath)} />
                 </Show>
                 <Show when={leftDrawerMode() === 'tree'}>
                   <SessionTreePanel
@@ -1191,7 +1186,6 @@ export default function App() {
               leftDrawerMode={leftDrawerMode()}
               onToggleThreads={() => toggleLeftDrawerMode('threads')}
               onToggleWorkspace={() => toggleLeftDrawerMode('workspace')}
-              onToggleStories={onToggleStories}
               onToggleTree={onToggleTree}
               gitPanelOpen={gitPanelOpen()}
               onToggleGitPanel={() => setGitPanelOpen((prev) => !prev)}

@@ -22,6 +22,7 @@ import {
   pathProtectionRequestSchema,
   pathProtectionResultSchema,
   pickWorkspaceResultSchema,
+  planUpdateSchema,
   sessionBashSchema,
   sessionListOptionsSchema,
   sessionMessagesRequestSchema,
@@ -555,6 +556,38 @@ describe('customizationItemSchema', () => {
   it('accepts null path', () => {
     const result = customizationItemSchema.parse({ ...valid, path: null })
     expect(result.path).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// planUpdateSchema
+// ---------------------------------------------------------------------------
+describe('planUpdateSchema', () => {
+  it('parses plan updates', () => {
+    const result = planUpdateSchema.parse({
+      plan: [
+        { step: 'Inspect harness state', status: 'completed' },
+        { step: 'Wire plan sync', status: 'in_progress' },
+        { step: 'Verify', status: 'pending' },
+      ],
+      timestamp: Date.now(),
+    })
+    expect(result.plan).toHaveLength(3)
+    expect(result.plan[1]?.status).toBe('in_progress')
+  })
+
+  it('rejects empty plan steps', () => {
+    expect(() =>
+      planUpdateSchema.parse({
+        plan: [{ step: '', status: 'pending' }],
+        timestamp: Date.now(),
+      })
+    ).toThrow()
+  })
+
+  it('accepts cleared plans', () => {
+    const result = planUpdateSchema.parse({ plan: [], timestamp: Date.now() })
+    expect(result.plan).toEqual([])
   })
 })
 

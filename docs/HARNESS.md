@@ -8,8 +8,9 @@ The goal system runs as a Pi extension (`.pi/extensions/harness/index.ts`) and i
 
 ### Extension Layer (Pi SDK)
 
-- **4 LLM tools**: `get_goal`, `create_goal`, `update_goal`, `update_plan`
+- **5 LLM tools**: `get_goal`, `create_goal`, `update_goal`, `clear_goal`, `update_plan`
 - **Context injection**: `<goal_context>`, `<budget_limit>`, `<objective_updated>` fragments
+- **Ephemeral plan state**: `update_plan` tracks the current short-lived execution plan only
 - **Plan approval**: `<proposed_plan>` streaming detection + overlay
 - **`/goal` slash command**: set, edit, pause, resume, clear, budget
 
@@ -27,7 +28,7 @@ The goal system runs as a Pi extension (`.pi/extensions/harness/index.ts`) and i
 | `/goal edit` | Edit goal objective inline |
 | `/goal pause` | Pause active goal |
 | `/goal resume` | Resume paused goal |
-| `/goal clear` | Mark goal complete |
+| `/goal clear` | Clear the goal and ephemeral plan |
 | `/goal budget N` | Set token budget |
 
 ## Agent Tools
@@ -37,7 +38,14 @@ The goal system runs as a Pi extension (`.pi/extensions/harness/index.ts`) and i
 | `get_goal` | Read current goal status + remaining budget |
 | `create_goal` | Create new goal (fails if one exists) |
 | `update_goal` | Mark goal complete |
-| `update_plan` | Track task progress with steps |
+| `clear_goal` | Clear current goal and ephemeral plan |
+| `update_plan` | Track the current ephemeral execution plan with steps |
+
+## Plan vs Tasks
+
+`update_plan` is intentionally **not** a task manager. It is the current agent execution plan: short-lived, overwritten freely, no IDs, no dependencies, no ownership, no subagent execution.
+
+Durable work belongs to `@tintinweb/pi-tasks`: use `TaskCreate`, `TaskUpdate`, and `TaskExecute` for tracked tasks, dependency graphs, ownership, and subagent-backed execution.
 
 ## Goal Lifecycle
 

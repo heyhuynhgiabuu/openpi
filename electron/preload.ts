@@ -37,6 +37,7 @@ import type {
   PiSettings,
   PiUpdateCheckResult,
   PiUpdateInstallResult,
+  PlanUpdate,
   PromptTemplate,
   ProviderInfo,
   ProviderLoginEvent,
@@ -443,6 +444,12 @@ const api = {
       cb(payload)
     ipcRenderer.on(IPC.GOAL_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.GOAL_UPDATE, handler)
+  },
+
+  onPlanUpdate: (cb: (payload: PlanUpdate) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: PlanUpdate) => cb(payload)
+    ipcRenderer.on(IPC.PLAN_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.PLAN_UPDATE, handler)
   },
 } as const
 

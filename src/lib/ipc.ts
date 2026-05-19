@@ -131,6 +131,7 @@ export const IPC = {
   REMOTE_SESSION_STATUS: 'openpi:remote-session-status',
   REMOTE_SESSION_UPDATE: 'openpi:remote-session-update',
   GOAL_UPDATE: 'openpi:goal-update',
+  PLAN_UPDATE: 'openpi:plan-update',
 } as const
 
 // ─── Invoke payloads ────────────────────────────────────────────────────────
@@ -462,6 +463,17 @@ export const goalUpdateSchema = z.object({
   timestamp: z.number(),
 })
 export type GoalUpdate = z.infer<typeof goalUpdateSchema>
+
+export const planItemStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
+export const planItemSchema = z.object({
+  step: z.string().min(1),
+  status: planItemStatusSchema,
+})
+export const planUpdateSchema = z.object({
+  plan: z.array(planItemSchema),
+  timestamp: z.number(),
+})
+export type PlanUpdate = z.infer<typeof planUpdateSchema>
 
 // ─── Provider info ───────────────────────────────────────────────────────────
 

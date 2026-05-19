@@ -1,7 +1,8 @@
 # ── Pi / Beads agent artifacts ─────────────────────────────────────────────
 .beads/
 .bv/
-.pi/
+.pi/tasks/
+.pi/tasks-config.json
 
 # ── Dependencies ───────────────────────────────────────────────────────────
 node_modules/

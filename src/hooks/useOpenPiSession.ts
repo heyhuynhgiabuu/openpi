@@ -26,6 +26,7 @@ import type {
   BashExecutionResult,
   GoalUpdate,
   ModelInfo,
+  PlanUpdate,
   RemoteSessionUpdate,
   SessionEvent,
   SessionListItem,
@@ -114,6 +115,7 @@ export function useOpenPiSession() {
     null
   )
   const [goalUpdate, setGoalUpdate] = createSignal<GoalUpdate | null>(null)
+  const [planUpdate, setPlanUpdate] = createSignal<PlanUpdate | null>(null)
 
   // Live elapsed offset: ticks up every second while the agent is streaming
   const [goalElapsedOffset, setGoalElapsedOffset] = createSignal(0)
@@ -362,10 +364,15 @@ export function useOpenPiSession() {
     unsubs.push(
       window.openpi.onGoalUpdate((payload) => {
         setGoalUpdate(payload)
-        // Persistence: sync objective → activeGoalText on first arrival or restart
-        if (payload.objective && !activeGoalText()) {
-          setActiveGoalText(payload.objective)
-        }
+        // Treat the harness file as authoritative: create/edit replaces the text;
+        // clear writes objective:null and must clear the banner.
+        setActiveGoalText(payload.objective)
+      })
+    )
+
+    unsubs.push(
+      window.openpi.onPlanUpdate((payload) => {
+        setPlanUpdate(payload)
       })
     )
 
@@ -694,6 +701,11 @@ export function useOpenPiSession() {
   // ── Goal actions ──────────────────────────────────────────────────────────
   const setActiveGoal = (text: string | null) => {
     setActiveGoalText(text)
+    if (text === null && ready()) {
+      void window.openpi.prompt('/goal clear').catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+    }
   }
   const clearActiveGoal = () => {
     setActiveGoalText(null)
@@ -771,6 +783,8 @@ export function useOpenPiSession() {
     get activeGoalStep() {
       const goal = activeGoalText()
       if (!goal) return null
+      const status = goalUpdate()?.status
+      if (status === 'complete' || status === 'paused' || status === 'budget_limited') return status
       return isStreaming() ? 'running' : 'idle'
     },
     get activeGoalElapsed() {
@@ -803,6 +817,9 @@ export function useOpenPiSession() {
     },
     get goalUpdate() {
       return goalUpdate()
+    },
+    get planUpdate() {
+      return planUpdate()
     },
 
     get localActivityAt() {

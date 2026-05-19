@@ -43,7 +43,7 @@ import {
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from '../lib/keybindings'
-import { GoalBanner, type GoalProgress } from './GoalBanner'
+import { GoalBanner, type GoalProgress, type GoalStep } from './GoalBanner'
 
 type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -105,7 +105,7 @@ type ComposerProps = {
   onAbort: () => void
   // Goal state
   activeGoalText: string | null
-  activeGoalStep: 'running' | 'idle' | null
+  activeGoalStep: GoalStep
   activeGoalElapsed: number | null
   activeGoalProgress: GoalProgress | null
   onSetActiveGoal: (text: string | null) => void
