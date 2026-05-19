@@ -37,3 +37,11 @@ Map product behavior to proof. Statuses: `planned`, `in_progress`, `implemented`
 | Tool Cards | `update_plan` tool card renders | implemented | `harnessActionForTool` in ToolCardView.tsx | |
 | Composer | `/goal` slash command is surfaced | implemented | Slash commands in Composer.tsx | |
 | Extension | Extension typechecks with bundler resolution | implemented | CI verification command | |
+| Tests | IPC Zod schemas roundtrip correctly | implemented | `tests/ipcRoundtrip.test.ts` | 56 tests |
+| Tests | PTY host lifecycle (create/resize/close) | implemented | `tests/ptyHost.test.ts` | 8 tests |
+| Tests | Session index SQLite upsert and query | implemented | `tests/sessionIndex.test.ts` | 7 tests |
+| Tests | Permission gates block sensitive paths | implemented | `tests/protectedPaths.test.ts` | 13 tests |
+| Tests | Session events compaction rendering | implemented | `tests/sessionEvents.test.ts` | 3 tests |
+| Tests | Git host file tree and status | implemented | `tests/gitHostFileTree.test.ts` | 17 tests |
+| Tests | Secret redaction on paths | implemented | `tests/secretRedact.test.ts` | 10 tests |
+| Tests | Session prompt parsing | implemented | `tests/sessionPrompt.test.ts` | 7 tests |
