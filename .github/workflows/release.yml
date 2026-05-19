@@ -205,7 +205,6 @@ jobs:
           fail_on_unmatched_files: false
           files: |
             dist-artifacts/**
-            dist-artifacts/checksums.txt
 
       - name: Update Homebrew tap
         if: ${{ env.BREW_TAP_TOKEN != '' }}
