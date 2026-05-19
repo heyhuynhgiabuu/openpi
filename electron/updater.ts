@@ -1,91 +1,153 @@
 /**
- * updater — GitHub Releases-based app self-update checker.
+ * updater — Electron autoUpdater integration.
  *
- * Strategy: fetch the latest published GitHub release, compare its semver tag
- * against the running app.getVersion(), and push an AppUpdateStatus event to
- * the renderer.  For unsigned beta builds we open the browser to the release
- * page; once the app is notarized/signed this can be upgraded to
- * electron-updater for silent download + auto-restart.
+ * Uses electron-updater to check for, download, and install app updates
+ * from GitHub Releases.  Silent download with auto-install on quit.
+ *
+ * Exposes the same API surface as the previous manual GitHub fetch so the
+ * IPC handlers and renderer code continue to work unchanged.
+ *
+ * The autoUpdater setup is lazy: call initAutoUpdater() once during app
+ * startup, then use checkForAppUpdate() on demand.
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
+import type { BrowserWindow } from 'electron'
 import { app, shell } from 'electron'
+import log from 'electron-log'
+import { autoUpdater } from 'electron-updater'
 import type { AppUpdateStatus } from '../src/lib/ipc'
 
-const OWNER = 'heyhuynhgiabuu'
-const REPO = 'openpi'
-const RELEASES_API = `https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`
+// ─── Logging ─────────────────────────────────────────────────────────────────
 
-// ─── semver compare ───────────────────────────────────────────────────────────
+autoUpdater.logger = log
+// electron-log transports typed as indexer; configure after assignment
+;(autoUpdater.logger as typeof log).transports.file.level = 'info'
 
-function parseSemver(v: string): [number, number, number] {
-  const clean = v.replace(/^v/, '')
-  const [major = 0, minor = 0, patch = 0] = clean.split('.').map(Number)
-  return [major, minor, patch]
+// ─── State ────────────────────────────────────────────────────────────────────
+
+type StatusListener = (status: AppUpdateStatus) => void
+
+let initCalled = false
+const listeners = new Set<StatusListener>()
+let currentStatus: AppUpdateStatus = {
+  state: 'idle',
+  currentVersion: app.getVersion(),
+  latestVersion: null,
+  releaseUrl: null,
+  checkedAt: null,
+  error: null,
 }
 
-function isNewer(latest: string, current: string): boolean {
-  const [lMaj, lMin, lPat] = parseSemver(latest)
-  const [cMaj, cMin, cPat] = parseSemver(current)
-  if (lMaj !== cMaj) return lMaj > cMaj
-  if (lMin !== cMin) return lMin > cMin
-  return lPat > cPat
+function emitStatus(partial: Partial<AppUpdateStatus>): void {
+  currentStatus = { ...currentStatus, ...partial, currentVersion: app.getVersion() }
+  for (const fn of listeners) fn(currentStatus)
 }
 
-// ─── public API ───────────────────────────────────────────────────────────────
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the latest GitHub release and return an AppUpdateStatus.
- * Never throws — errors are captured in the status object.
+ * Wire up electron-updater event handlers.  Call once during app startup.
+ * The autoUpdater is configured via electron-builder.json `publish` config.
+ */
+export function initAutoUpdater(mainWindow: BrowserWindow | null): void {
+  if (initCalled) return
+  initCalled = true
+
+  // Only enable auto-download for packaged builds
+  autoUpdater.autoDownload = app.isPackaged
+  autoUpdater.autoInstallOnAppQuit = app.isPackaged
+
+  // Register as a listener that forwards to the main window
+  subscribe((status) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('openpi:app-update-status', status)
+    }
+  })
+
+  // ── Event handlers ─────────────────────────────────────────────────────
+
+  autoUpdater.on('checking-for-update', () => {
+    log.info('[updater] checking for update')
+    emitStatus({ state: 'checking', error: null })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    log.info(`[updater] update available: ${info.version}`)
+    const releaseUrl = `https://github.com/heyhuynhgiabuu/openpi/releases/tag/v${info.version}`
+    emitStatus({
+      state: 'available',
+      latestVersion: info.version,
+      releaseUrl,
+      error: null,
+    })
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    log.info(`[updater] up to date (${info.version})`)
+    emitStatus({
+      state: 'up-to-date',
+      latestVersion: info.version,
+      releaseUrl: null,
+      error: null,
+    })
+  })
+
+  autoUpdater.on('error', (err) => {
+    log.error(`[updater] error: ${err.message}`)
+    // Don't swallow the current latestVersion on transient errors
+    emitStatus({
+      state: 'error',
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    log.info(
+      `[updater] download progress: ${progress.percent.toFixed(1)}% ` +
+        `(${(progress.transferred / 1_000_000).toFixed(1)}/${(progress.total / 1_000_000).toFixed(1)} MB)`
+    )
+    // Could emit a custom download progress event here, but keep it simple for now.
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info(`[updater] update downloaded: ${info.version}`)
+    // Update remains in 'available' state; caller can call quitAndInstall().
+  })
+}
+
+// ─── Subscribe / unsubscribe ──────────────────────────────────────────────────
+
+export function subscribe(fn: StatusListener): () => void {
+  listeners.add(fn)
+  // Immediately deliver current state
+  fn(currentStatus)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Trigger an update check and wait for the result.
+ * Returns the status reflecting the check outcome.
  */
 export async function checkForAppUpdate(): Promise<AppUpdateStatus> {
-  const currentVersion = app.getVersion()
-  const checkedAt = new Date().toISOString()
-
   try {
-    const res = await fetch(RELEASES_API, {
-      headers: {
-        'user-agent': `openpi/${currentVersion}`,
-        accept: 'application/vnd.github+json',
-      },
-    })
-
-    if (!res.ok) {
-      throw new Error(`GitHub API returned HTTP ${res.status}`)
-    }
-
-    const data = (await res.json()) as {
-      tag_name?: unknown
-      html_url?: unknown
-    }
-
-    const latestVersion = typeof data.tag_name === 'string' ? data.tag_name : null
-    const releaseUrl = typeof data.html_url === 'string' ? data.html_url : null
-
-    if (!latestVersion) {
-      throw new Error('GitHub release response did not include tag_name.')
-    }
-
-    const available = isNewer(latestVersion, currentVersion)
-    return {
-      state: available ? 'available' : 'up-to-date',
-      currentVersion,
-      latestVersion,
-      releaseUrl,
-      checkedAt,
-      error: null,
-    }
+    await autoUpdater.checkForUpdates()
   } catch (err) {
-    return {
-      state: 'error',
-      currentVersion,
-      latestVersion: null,
-      releaseUrl: null,
-      checkedAt,
-      error: err instanceof Error ? err.message : String(err),
+    log.error(`[updater] checkForUpdates threw: ${err}`)
+    // If no event was emitted for this error, emit one now
+    if (currentStatus.state !== 'error') {
+      emitStatus({
+        state: 'error',
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
+  return currentStatus
 }
 
 /**
@@ -95,7 +157,14 @@ export function openReleasePage(releaseUrl: string): void {
   void shell.openExternal(releaseUrl)
 }
 
-// ─── changelog reader ─────────────────────────────────────────────────────────
+/**
+ * Quit and install the downloaded update.
+ */
+export function quitAndInstall(): void {
+  autoUpdater.quitAndInstall()
+}
+
+// ─── Changelog reader ─────────────────────────────────────────────────────────
 
 /**
  * Read CHANGELOG.md from the app bundle.

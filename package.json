@@ -58,6 +58,7 @@
     "dompurify": "^3.3.1",
     "electron-context-menu": "^4.1.2",
     "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "electron-window-state": "^5.0.3",
     "fuzzysort": "^3.1.0",
     "lucide-solid": "^1.14.0",

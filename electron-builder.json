@@ -38,5 +38,11 @@
   "win": {
     "icon": "icons/icon.ico",
     "target": ["nsis"]
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "heyhuynhgiabuu",
+    "repo": "openpi",
+    "releaseType": "release"
   }
 }
