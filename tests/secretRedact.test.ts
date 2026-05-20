@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { redact, redactLines, redactObject } from '../electron/secretRedact'
+import { redact, redactLines, redactObject } from '../electron/services/secretRedact'
 
 describe('redact', () => {
   it('redacts GitHub tokens', () => {

@@ -12,7 +12,7 @@ import {
   getGitRefs,
   getGitStatus,
   syncRemote,
-} from '../electron/gitHost'
+} from '../electron/git/gitHost'
 import {
   gitCheckoutBranchResultSchema,
   gitHistoryResultSchema,

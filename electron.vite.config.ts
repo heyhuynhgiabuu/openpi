@@ -12,7 +12,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: path.resolve(rootDir, 'electron/main.ts'),
-          piSidecar: path.resolve(rootDir, 'electron/piSidecar.ts'),
+          piSidecar: path.resolve(rootDir, 'electron/pi/sidecar.ts'),
         },
         external: [
           '@lydell/node-pty',

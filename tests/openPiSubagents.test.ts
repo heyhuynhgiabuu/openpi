@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assistantText } from '../electron/openPiSubagents'
+import { assistantText } from '../electron/subagent/manager'
 import { SubagentTracker } from '../src/lib/extensionTrackers'
 
 describe('assistantText', () => {

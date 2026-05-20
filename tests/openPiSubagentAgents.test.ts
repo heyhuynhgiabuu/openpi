@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseFrontmatter } from '../electron/openPiSubagentAgents'
+import { parseFrontmatter } from '../electron/subagent/agents'
 
 describe('parseFrontmatter', () => {
   it('parses string values', () => {

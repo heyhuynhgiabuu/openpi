@@ -11,7 +11,7 @@
 
 import * as pty from '@lydell/node-pty'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildShellLaunchConfig, PtyHost } from '../electron/ptyHost'
+import { buildShellLaunchConfig, PtyHost } from '../electron/services/ptyHost'
 
 const ptyMock = vi.hoisted(() => {
   const handlers: Record<string, (...args: unknown[]) => void> = {}
