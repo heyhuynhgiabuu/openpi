@@ -103,6 +103,15 @@ export function useOpenPiSession() {
     tps: number
   } | null>(null)
 
+  // ── Subagent completion notification ─────────────────────────────────────
+  const [subagentNotification, setSubagentNotification] = createSignal<{
+    id: string
+    description: string
+    status: 'completed' | 'failed'
+    result?: string
+  } | null>(null)
+  const _notifiedAgentIds = new Set<string>()
+
   // ── Remote agent status (Pi TUI sync bridge) ─────────────────────────────
   const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<{
     app: string
@@ -243,6 +252,34 @@ export function useOpenPiSession() {
     }
 
     // ── Extension tracker dispatch ───────────────────────────────────────────
+    if (event.type === 'openpi_subagent_update') {
+      if (_subagentTracker.onSubagentUpdate(event)) setAgents(_subagentTracker.snapshot())
+      // Proactive notification when a background agent completes or fails
+      const subEvent = event as {
+        agent_id?: string
+        status?: string
+        background?: boolean
+        description?: string
+        result?: string
+      }
+      const agentStatus = subEvent.status
+      if (
+        subEvent.agent_id &&
+        !_notifiedAgentIds.has(subEvent.agent_id) &&
+        (agentStatus === 'completed' || agentStatus === 'failed')
+      ) {
+        _notifiedAgentIds.add(subEvent.agent_id)
+        setSubagentNotification({
+          id: subEvent.agent_id,
+          description: String(subEvent.description ?? 'Agent task'),
+          status: agentStatus,
+          result: subEvent.result,
+        })
+        // Auto-dismiss after 8 seconds
+        setTimeout(() => setSubagentNotification(null), 8000)
+      }
+      return
+    }
     if (event.type === 'tool_execution_start') {
       const e = event as { toolCallId?: string; toolName?: string; args?: Record<string, unknown> }
       const id = e.toolCallId ?? ''
@@ -392,6 +429,8 @@ export function useOpenPiSession() {
           _taskTracker.clear()
           _askTracker.clear()
           _subagentTracker.clear()
+          _notifiedAgentIds.clear()
+          setSubagentNotification(null)
           setTasks([])
           setAskState(null)
           setAgents([])
@@ -851,6 +890,10 @@ export function useOpenPiSession() {
     get agents() {
       return agents()
     },
+    get subagentNotification() {
+      return subagentNotification()
+    },
+    dismissSubagentNotification: () => setSubagentNotification(null),
 
     // Ref setters — pass as `ref={session.setBottomRef}` in JSX
     setBottomRef: (el: HTMLDivElement) => {

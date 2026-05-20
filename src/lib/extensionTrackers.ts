@@ -184,8 +184,38 @@ export interface TrackedAgent {
   subagentType: string
   status: AgentRunStatus
   startedAt: number
+  completedAt?: number
+  updatedAt?: number
   background: boolean
+  turns?: number
+  toolCalls?: number
+  activity?: string
+  error?: string
   result?: string
+}
+
+type SubagentUpdateEvent = {
+  type?: string
+  tool_call_id?: string
+  agent_id?: string
+  status?: string
+  description?: string
+  subagent_type?: string
+  background?: boolean
+  created_at?: number
+  started_at?: number
+  completed_at?: number
+  turns?: number
+  tool_calls?: number
+  activity?: string
+  error?: string
+  result?: string
+}
+
+function isAgentRunStatus(status: string): status is AgentRunStatus {
+  return (
+    status === 'queued' || status === 'running' || status === 'completed' || status === 'failed'
+  )
 }
 
 export class SubagentTracker {
@@ -198,7 +228,7 @@ export class SubagentTracker {
   onToolStart(toolCallId: string, toolName: string, args: Record<string, unknown>): boolean {
     if (toolName !== 'Agent') return false
     const description = String(args.description ?? 'Agent task')
-    const subagentType = String(args.subagent_type ?? 'general-purpose')
+    const subagentType = String(args.subagent_type ?? 'worker')
     const background = Boolean(args.run_in_background)
     this.agents.push({
       tempId: toolCallId,
@@ -217,34 +247,97 @@ export class SubagentTracker {
       if (idx === -1) return false
       const agent = this.agents[idx]
       if (isError) {
-        this.agents[idx] = { ...agent, status: 'failed', result }
+        this.agents[idx] = { ...agent, status: 'failed', result, updatedAt: Date.now() }
         return true
       }
-      // Background: result contains "Agent ID: <id>" or similar
       const idMatch = result.match(/[Aa]gent\s+[Ii][Dd][:：]\s*([a-zA-Z0-9_-]+)/)?.[1]
+      // Background agents: status/result managed by onSubagentUpdate events.
+      // The tool result text is just the spawn confirmation, not the agent's actual
+      // output. Don't overwrite status to avoid a race where onToolEnd fires after
+      // onSubagentUpdate has correctly set 'completed' or 'failed'.
+      if (agent.background) {
+        this.agents[idx] = {
+          ...agent,
+          agentId: idMatch ?? agent.agentId,
+          updatedAt: Date.now(),
+        }
+        return true
+      }
+      // Foreground agent: the tool result IS the agent's output
       this.agents[idx] = {
         ...agent,
-        agentId: idMatch ?? undefined,
-        status: agent.background ? 'queued' : 'completed',
-        result: agent.background ? undefined : result.slice(0, 200),
+        agentId: idMatch ?? agent.agentId,
+        status: 'completed',
+        result: result.slice(0, 2000),
+        updatedAt: Date.now(),
       }
       return true
     }
     if (toolName === 'get_subagent_result') {
-      // Parse agent_id from args (set during onToolStart) — match by result containing agent id
-      // Simple heuristic: mark any 'queued' agent as completed
-      const queued = this.agents.find((a) => a.background && a.status === 'queued')
-      if (queued && !isError) {
-        const idx = this.agents.indexOf(queued)
-        this.agents[idx] = { ...queued, status: 'completed', result: result.slice(0, 200) }
+      const idMatch = result.match(/[Aa]gent\s+[Ii][Dd][:：]\s*([a-zA-Z0-9_-]+)/)?.[1]
+      const statusMatch = result.match(/[Ss]tatus[:：]\s*([a-zA-Z_-]+)/)?.[1]
+      const status = statusMatch && isAgentRunStatus(statusMatch) ? statusMatch : undefined
+      const idx = this.agents.findIndex((a) => a.agentId === idMatch)
+      if (idx !== -1 && !isError) {
+        const agent = this.agents[idx]
+        this.agents[idx] = {
+          ...agent,
+          status: status ?? agent.status,
+          result: result.slice(0, 2000),
+          updatedAt: Date.now(),
+        }
         return true
       }
     }
     return false
   }
 
+  onSubagentUpdate(event: SubagentUpdateEvent): boolean {
+    if (event.type !== 'openpi_subagent_update' || !event.agent_id) return false
+    const status = event.status && isAgentRunStatus(event.status) ? event.status : 'running'
+    const idx = this.findUpdateTarget(event)
+    const next: TrackedAgent = {
+      tempId: event.tool_call_id ?? event.agent_id,
+      agentId: event.agent_id,
+      description: String(event.description ?? 'Agent task'),
+      subagentType: String(event.subagent_type ?? 'worker'),
+      status,
+      startedAt: event.started_at ?? event.created_at ?? Date.now(),
+      completedAt: event.completed_at,
+      updatedAt: Date.now(),
+      background: Boolean(event.background),
+      turns: event.turns,
+      toolCalls: event.tool_calls,
+      activity: event.activity,
+      error: event.error,
+      result: event.result,
+    }
+    if (idx === -1) {
+      this.agents.push(next)
+      return true
+    }
+    this.agents[idx] = { ...this.agents[idx], ...next }
+    return true
+  }
+
+  private findUpdateTarget(event: SubagentUpdateEvent): number {
+    if (event.tool_call_id) {
+      const byToolCall = this.agents.findIndex((a) => a.tempId === event.tool_call_id)
+      if (byToolCall !== -1) return byToolCall
+    }
+    if (event.agent_id) {
+      const byAgentId = this.agents.findIndex((a) => a.agentId === event.agent_id)
+      if (byAgentId !== -1) return byAgentId
+    }
+    return -1
+  }
+
   clearFinished() {
-    this.agents = this.agents.filter((a) => a.status === 'running' || a.status === 'queued')
+    // Keep background agents (user-initiated — persist until explicit dismiss via
+    // get_subagent_result or clear()) and running/queued foreground agents.
+    this.agents = this.agents.filter(
+      (a) => a.background || a.status === 'running' || a.status === 'queued'
+    )
   }
 
   clear() {

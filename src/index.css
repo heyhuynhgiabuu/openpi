@@ -39,6 +39,8 @@
   --error: var(--danger);
   --error-soft: #211615;
   --error-line: #5a3936;
+  --success-soft: #1c2a18;
+  --success-line: #3d6a3a;
 
   /* Accent — default blue; overridden by theme application */
   --accent: #3b82f6;
@@ -115,6 +117,8 @@
   --error: var(--danger);
   --error-soft: #f8e7e5;
   --error-line: #e6b8b3;
+  --success-soft: #eaf5e5;
+  --success-line: #b8d9b0;
   --accent: #2563eb;
   --focus-ring: #171513;
   --shiki-color-background: #ebe6dd;
@@ -4984,7 +4988,28 @@ body.panel-dragging {
   border-radius: 999px;
   background: var(--surface-raised);
   color: var(--mute);
-  font-size: 9.5px;
+}
+
+.mention-section-header {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mute);
+  background: transparent;
+  line-height: 1;
+}
+
+.mention-icon-agent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: white;
 }
 
 /* ─── Context file chips (attached files row) ─────────────────────────────── */
@@ -5234,6 +5259,50 @@ body.panel-dragging {
   cursor: pointer;
   font-size: 18px;
   line-height: 1;
+}
+
+.subagent-notification {
+  margin: 0 18px 10px;
+  padding: 10px 13px;
+  border-radius: var(--r-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  animation: subagent-notification-in 0.25s ease-out both;
+}
+.subagent-notification--completed {
+  background: var(--success-soft);
+  border: 1px solid var(--success-line);
+  color: var(--success);
+}
+.subagent-notification--failed {
+  background: var(--error-soft);
+  border: 1px solid var(--error-line);
+  color: var(--danger);
+}
+.subagent-notification-dismiss {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.6;
+}
+.subagent-notification-dismiss:hover {
+  opacity: 1;
+}
+@keyframes subagent-notification-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Welcome */
@@ -13725,6 +13794,21 @@ body.panel-dragging {
   color: #f59e0b;
 }
 
+.ctx-chip--agent {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.ctx-chip-icon--agent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: white;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    Keybindings Pane  (kbd-*) — Keyboard shortcuts editor
    ══════════════════════════════════════════════════════════════════════════ */
@@ -14869,12 +14953,24 @@ body.panel-dragging {
   border-top: 1px solid var(--hairline);
 }
 .subagent-card {
+  display: block;
+  font-size: 12px;
+  animation: row-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.subagent-card-main {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   padding: 5px 10px;
-  font-size: 12px;
-  animation: row-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.subagent-card-main:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.04));
 }
 .subagent-status-icon {
   width: 14px;
@@ -14925,11 +15021,18 @@ body.panel-dragging {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
+  max-width: 45%;
 }
+.subagent-activity,
 .subagent-elapsed {
   font-size: 11px;
   color: var(--mute);
   font-variant-numeric: tabular-nums;
+}
+.subagent-activity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .subagent-bg-badge {
   font-size: 10px;
@@ -14937,6 +15040,42 @@ body.panel-dragging {
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.07);
   color: var(--mute);
+}
+.subagent-details {
+  margin: 0 10px 7px 32px;
+  padding: 7px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--mute);
+}
+.subagent-detail-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 10px;
+  font-size: 11px;
+}
+.subagent-detail-grid code,
+.subagent-detail-hint code {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+.subagent-result-preview {
+  max-height: 140px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 7px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.subagent-detail-hint {
+  margin: 7px 0 0;
+  font-size: 11px;
 }
 
 /* ── Ask User Question Modal ─────────────────────────────────────────────── */

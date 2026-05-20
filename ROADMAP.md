@@ -22,6 +22,11 @@ Done so far:
 - **Harness lint pre-commit hook** and full docs/ product documentation directory.
 - Runtime OpenPi branding: app name/version from Electron main, shared metadata, OpenPi icon set.
 - CI/CD baseline: PR/main verification, tag-triggered beta release across macOS/Windows/Linux.
+- **Built-in subagents**: three Pi SDK-native tools (`Agent`, `get_subagent_result`, `steer_subagent`) registered as `customTools` in the sidecar session. 5 built-in agent profiles: Worker, Explorer, Scout, Planner, Reviewer with dedicated prompt files and explicit tool allowlists (srcwalk, webclaw, pi-search per agent role). Background queueing (4 max concurrent) with real-time status streaming to the renderer.
+- **Custom agent discovery**: `.pi/agents/*.md` + `~/.pi/agent/agents/*.md` files with full frontmatter support (display_name, tools, disallowed_tools, model, thinking, max_turns, prompt_mode, isolated, enabled). Project > global > builtin priority with workspace-trust gating for project agents.
+- **Subagent widget**: live status tray with Bot icon, elapsed timer, expandable detail panel (ID/status/turns/tools/4K result preview), background completion notification banner. Status bugfixes: onToolEnd no longer overwrites background status; clearFinished preserves background agents.
+- **@mention autocomplete**: `@` in composer shows subagents + files with section headers, Bot icon in accent box, capital-case display, keyboard navigation across combined list. Agent chip replaces raw text; `@name` prepended invisibly on send.
+- **Agent prompt tuning**: tool description tells Pi to delegate on `@agent_name` patterns. All 5 agent prompts have explicit subagent identity headers. Structured termination contract (Result/Verification/Summary/Blockers) enforced via buildPrompt.
 
 Still beta-blocking:
 - macOS signing/notarization secrets and verified Windows signing are not configured yet.

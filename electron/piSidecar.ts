@@ -21,6 +21,7 @@ import {
   SettingsManager,
 } from '@earendil-works/pi-coding-agent'
 import { expandPromptTemplateText } from '../src/lib/sessionPrompt'
+import { createOpenPiSubagentTools } from './openPiSubagents'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ type SessionReadyPayload = {
 type SessionState = {
   session: Awaited<ReturnType<typeof createAgentSession>>['session']
   cwd: string
+  workspaceTrusted: boolean
   unsubscribe: () => void
 }
 
@@ -197,10 +199,9 @@ Goal contract:
 - Completion is unproven until every explicit requirement has authoritative evidence. Do not redefine success around easier partial work.
 
 Ground truth and compatibility:
-- Repo-local docs are the preferred durable harness surface when present: docs/HARNESS.md, docs/FEATURE_INTAKE.md, docs/TEST_MATRIX.md, docs/product/, docs/stories/, docs/decisions/, docs/templates/.
+- ADRs in docs/decisions/ are the durable architectural record.
 - Harness v2 tools are the primary interface: harness_status, harness_intake, harness_init, harness_lint, story_create, decision_record, test_matrix_update.
 - Legacy .pi/specs state may exist for old compatibility flows, but it is not the product source of truth and must not be the default path for new work.
-- If repo-local docs exist, read and preserve them before changing or running any compatibility execution state.
 
 Loop contract:
 1. Inspect state first: use harness_status unless exact state is already visible in this turn.
@@ -404,6 +405,13 @@ async function startSession(
     modelRegistry,
     settingsManager,
     resourceLoader,
+    customTools: createOpenPiSubagentTools({
+      getAgentDir,
+      isWorkspaceTrusted: () => state?.workspaceTrusted ?? workspaceTrusted,
+      onSubagentUpdate: (event) => {
+        send({ type: 'session_event', event })
+      },
+    }),
   })
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
@@ -434,7 +442,7 @@ async function startSession(
     }
   })
 
-  state = { session, cwd, unsubscribe }
+  state = { session, cwd, workspaceTrusted, unsubscribe }
 
   const model = session.model as
     | { id: string; name: string; provider: string; reasoning?: boolean; contextWindow?: number }

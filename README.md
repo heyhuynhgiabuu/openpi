@@ -23,10 +23,14 @@ OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session t
 ## Current beta surface
 
 - **Pi sessions in a desktop shell** — session sidebar, workspace grouping, model selector, conversation stream, tool cards, and token/cost metadata.
-- **Command palette** — `Shift+Cmd+P` searches commands, files, and sessions in an OpenCode-style overlay.
+- **Command palette** — `Shift+Cmd+P` searches commands, files, and sessions.
 - **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About.
 - **Source control** — persistent Git panel, file tree, search, split diff viewer, and file viewer, with mutations owned by Electron main.
 - **Terminal/output panel** — local PTY lifecycle through Electron main, not the renderer.
+- **Built-in subagents** — three Pi SDK-native tools (`Agent`, `get_subagent_result`, `steer_subagent`) with 5 built-in agent types: Worker (surgical implementer), Explorer (codebase cartographer), Scout (external research), Planner (architecture), Reviewer (code review). Custom agents via `.pi/agents/*.md` files with full frontmatter support.
+- **Subagent widget** — live status tray with elapsed timer, expandable detail panel, real-time activity stream, and completion notification banner.
+- **@mention autocomplete** — `@` in composer shows subagents and files with visual chips, capital-case display, and keyboard navigation.
+- **Agent prompt tuning** — tool description tells Pi to delegate on `@agent_name` patterns; prompts with explicit subagent identity headers.
 - **OpenPi branding and release automation** — app icon, dynamic app version, CI, and tag-triggered beta builds.
 
 ## Architecture boundaries

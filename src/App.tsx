@@ -1020,6 +1020,35 @@ export default function App() {
                       )}
                     </Show>
 
+                    <Show when={session.subagentNotification}>
+                      {(notif) => (
+                        <div
+                          classList={{
+                            'subagent-notification': true,
+                            'subagent-notification--completed': notif().status === 'completed',
+                            'subagent-notification--failed': notif().status === 'failed',
+                          }}
+                        >
+                          <span>
+                            <span class="subagent-notification-icon">
+                              {notif().status === 'completed' ? '✓' : '✗'}
+                            </span>
+                            {notif().status === 'completed'
+                              ? 'Subagent complete'
+                              : 'Subagent failed'}
+                            : {notif().description}
+                          </span>
+                          <button
+                            type="button"
+                            class="subagent-notification-dismiss"
+                            onClick={() => session.dismissSubagentNotification()}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </Show>
+
                     <Composer
                       input={session.input}
                       isStreaming={session.isStreaming}
@@ -1064,6 +1093,13 @@ export default function App() {
                       onSetActiveGoal={session.setActiveGoal}
                       contextPercent={session.contextPercent}
                       agentTps={session.agentRunMetrics?.tps ?? null}
+                      availableAgentTypes={[
+                        { name: 'worker', description: 'Surgical implementer' },
+                        { name: 'explorer', description: 'Read-only codebase cartographer' },
+                        { name: 'scout', description: 'External research specialist' },
+                        { name: 'planner', description: 'Architecture and implementation plans' },
+                        { name: 'reviewer', description: 'Code review and debugging' },
+                      ]}
                     />
                   </div>
 

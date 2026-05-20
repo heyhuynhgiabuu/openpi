@@ -3,6 +3,7 @@ import fuzzysort from 'fuzzysort'
 import {
   ArrowUp,
   BookOpen,
+  Bot,
   ChevronDown,
   Clock,
   MessageSquare,
@@ -113,6 +114,8 @@ type ComposerProps = {
   contextPercent?: number | null
   /** Last completed agent run tokens-per-second, Pi-compatible wall-clock TPS. */
   agentTps?: number | null
+  /** Available subagent types for @mention autocomplete. */
+  availableAgentTypes?: { name: string; description: string }[]
 }
 
 function truncate(s: string, max = 36): string {
@@ -278,16 +281,22 @@ const ContextPicker: Component<ContextPickerProps> = (props) => {
   )
 }
 
-interface FileMentionPickerProps {
+interface MentionPickerProps {
   query: string
-  results: FffFileResult[]
+  fileResults: FffFileResult[]
+  agentResults: { name: string; description: string }[]
   activeIdx: number
   attachedPaths: Set<string>
-  onSelect: (file: FffFileResult) => void
+  onSelectFile: (file: FffFileResult) => void
+  onSelectAgent: (name: string) => void
   onSetActiveIdx: (idx: number) => void
 }
 
-const FileMentionPicker: Component<FileMentionPickerProps> = (props) => {
+function countItems(props: MentionPickerProps): number {
+  return props.agentResults.length + props.fileResults.length
+}
+
+const MentionPicker: Component<MentionPickerProps> = (props) => {
   let listRef: HTMLDivElement | undefined
 
   createEffect(() => {
@@ -296,9 +305,9 @@ const FileMentionPicker: Component<FileMentionPickerProps> = (props) => {
   })
 
   return (
-    <div class="file-mention-picker" role="listbox" aria-label="Attach file suggestions">
+    <div class="file-mention-picker" role="listbox" aria-label="Suggestions">
       <div class="file-mention-header">
-        <span class="file-mention-kicker">Attach file</span>
+        <span class="file-mention-kicker">Suggestions</span>
         <span class="file-mention-query">@{props.query}</span>
       </div>
       <div
@@ -308,48 +317,83 @@ const FileMentionPicker: Component<FileMentionPickerProps> = (props) => {
         class="file-mention-list"
       >
         <Show
-          when={props.results.length > 0}
-          fallback={<div class="file-mention-empty">No files match</div>}
+          when={countItems(props) > 0}
+          fallback={<div class="file-mention-empty">No matches</div>}
         >
-          <For each={props.results}>
-            {(f, idx) => {
-              const already = () => props.attachedPaths.has(f.relativePath)
-              const isActive = () => idx() === props.activeIdx
+          <Show when={props.agentResults.length > 0}>
+            <div class="mention-section-header">Subagents</div>
+            <For each={props.agentResults}>
+              {(agent, idx) => {
+                const globalIdx = idx()
+                const isActive = () => globalIdx === props.activeIdx
 
-              return (
-                <button
-                  type="button"
-                  data-idx={idx()}
-                  class={`file-mention-item${isActive() ? ' is-active' : ''}${already() ? ' is-attached' : ''}`}
-                  role="option"
-                  aria-selected={isActive()}
-                  disabled={already()}
-                  onClick={() => {
-                    if (!already()) props.onSelect(f)
-                  }}
-                  onMouseEnter={() => props.onSetActiveIdx(idx())}
-                >
-                  <span class="file-mention-icon">
-                    <FileIcon name={f.fileName} size={13} />
-                  </span>
-                  <span class="file-mention-main">
-                    <span class="file-mention-name">{f.fileName}</span>
-                    <Show when={f.dir}>
-                      <span class="file-mention-dir">{f.dir}</span>
+                return (
+                  <button
+                    type="button"
+                    data-idx={globalIdx}
+                    class={`file-mention-item${isActive() ? ' is-active' : ''}`}
+                    role="option"
+                    aria-selected={isActive()}
+                    onClick={() => props.onSelectAgent(agent.name)}
+                    onMouseEnter={() => props.onSetActiveIdx(globalIdx)}
+                  >
+                    <span class="file-mention-icon mention-icon-agent">
+                      <Bot size={12} strokeWidth={2.5} />
+                    </span>
+                    <span class="file-mention-main">
+                      <span class="file-mention-name">
+                        {agent.name.charAt(0).toUpperCase() + agent.name.slice(1)}
+                      </span>
+                      <span class="file-mention-dir">{agent.description}</span>
+                    </span>
+                  </button>
+                )
+              }}
+            </For>
+          </Show>
+          <Show when={props.fileResults.length > 0}>
+            <div class="mention-section-header">Files</div>
+            <For each={props.fileResults}>
+              {(f, idx) => {
+                const globalIdx = props.agentResults.length + idx()
+                const already = () => props.attachedPaths.has(f.relativePath)
+                const isActive = () => globalIdx === props.activeIdx
+
+                return (
+                  <button
+                    type="button"
+                    data-idx={globalIdx}
+                    class={`file-mention-item${isActive() ? ' is-active' : ''}${already() ? ' is-attached' : ''}`}
+                    role="option"
+                    aria-selected={isActive()}
+                    disabled={already()}
+                    onClick={() => {
+                      if (!already()) props.onSelectFile(f)
+                    }}
+                    onMouseEnter={() => props.onSetActiveIdx(globalIdx)}
+                  >
+                    <span class="file-mention-icon">
+                      <FileIcon name={f.fileName} size={13} />
+                    </span>
+                    <span class="file-mention-main">
+                      <span class="file-mention-name">{f.fileName}</span>
+                      <Show when={f.dir}>
+                        <span class="file-mention-dir">{f.dir}</span>
+                      </Show>
+                    </span>
+                    <Show when={already()}>
+                      <span class="file-mention-badge">added</span>
                     </Show>
-                  </span>
-                  <Show when={already()}>
-                    <span class="file-mention-badge">added</span>
-                  </Show>
-                </button>
-              )
-            }}
-          </For>
+                  </button>
+                )
+              }}
+            </For>
+          </Show>
         </Show>
       </div>
       <div class="file-mention-footer">
         <span>↑↓ navigate</span>
-        <span>↵ attach</span>
+        <span>↵ select</span>
         <span>esc close</span>
       </div>
     </div>
@@ -537,6 +581,30 @@ const SkillPicker: Component<SkillPickerProps> = (props) => {
   )
 }
 
+// ─── Agent mention chip ─────────────────────────────────────────────
+
+type AgentChipProps = { name: string; description: string; onRemove: () => void }
+
+const AgentChip: Component<AgentChipProps> = (props) => {
+  return (
+    <span class="ctx-chip ctx-chip--agent" title={props.description}>
+      <span class="ctx-chip-icon ctx-chip-icon--agent">
+        <Bot size={10} strokeWidth={2.5} />
+      </span>
+      <span class="ctx-chip-name">{props.name.charAt(0).toUpperCase() + props.name.slice(1)}</span>
+      <button
+        type="button"
+        class="ctx-chip-remove"
+        onClick={props.onRemove}
+        tabIndex={-1}
+        aria-label={`Remove @${props.name}`}
+      >
+        ×
+      </button>
+    </span>
+  )
+}
+
 // ─── Skill chip ────────────────────────────────────────────────────────────
 
 type SkillChipProps = { skill: SkillItem; onRemove: () => void }
@@ -639,6 +707,23 @@ export const Composer: Component<ComposerProps> = (props) => {
   const [fileMentionResults, setFileMentionResults] = createSignal<FffFileResult[]>([])
   const [fileMentionActiveIdx, setFileMentionActiveIdx] = createSignal(0)
   let fileMentionDebounceRef: ReturnType<typeof setTimeout> | null = null
+
+  // Agent mention chips (local state — encodes @mentions visible in the input text)
+  const [agentMentions, setAgentMentions] = createSignal<{ name: string; description: string }[]>(
+    []
+  )
+
+  // Filtered agent types for @mention autocomplete
+  const filteredAgents = createMemo(() => {
+    const types = props.availableAgentTypes
+    if (!types || types.length === 0) return []
+    const trigger = fileMentionTrigger()
+    const query = (trigger?.query ?? '').toLowerCase()
+    if (!query) return types
+    return types.filter(
+      (a) => a.name.toLowerCase().includes(query) || a.description.toLowerCase().includes(query)
+    )
+  })
 
   let textareaEl: HTMLTextAreaElement | undefined
 
@@ -797,6 +882,45 @@ export const Composer: Component<ComposerProps> = (props) => {
       textareaEl.setSelectionRange(next.cursor, next.cursor)
       textareaEl.focus()
     })
+  }
+
+  const applyAgentMention = (name: string) => {
+    const trigger = fileMentionTrigger()
+    if (!trigger) return
+
+    // Add chip state — do NOT insert @name into the input text; the chip IS the visual
+    const agentType = props.availableAgentTypes?.find((a) => a.name === name)
+    const description = agentType?.description ?? `${name} subagent`
+    setAgentMentions((prev) => {
+      if (prev.some((a) => a.name === name)) return prev
+      return [...prev, { name, description }]
+    })
+
+    const next = removeFileMentionToken(props.input, trigger)
+    props.onInput(next.text)
+    closeFileMentionPicker()
+    requestAnimationFrame(() => {
+      if (!textareaEl) return
+      textareaEl.style.height = 'auto'
+      textareaEl.style.height = `${Math.min(textareaEl.scrollHeight, 200)}px`
+      textareaEl.setSelectionRange(next.cursor, next.cursor)
+      textareaEl.focus()
+    })
+  }
+
+  const removeAgentMention = (name: string) => {
+    setAgentMentions((prev) => prev.filter((a) => a.name !== name))
+  }
+
+  // Wrap onSend to prepend agent mention tokens, then clear chips
+  const handleSend = () => {
+    const mentions = agentMentions()
+    if (mentions.length > 0) {
+      const prefix = mentions.map((a) => `@${a.name}`).join(' ')
+      props.onInput(`${prefix} ${props.input}`)
+    }
+    setAgentMentions([])
+    props.onSend()
   }
 
   // ─ Skill picker state ─────────────────────────────────────────────────────
@@ -1023,12 +1147,14 @@ export const Composer: Component<ComposerProps> = (props) => {
       <div class="composer-inner">
         {/* ── Inline @ file mention picker — floats above composer box ───── */}
         <Show when={fileMentionOpen()}>
-          <FileMentionPicker
+          <MentionPicker
             query={fileMentionTrigger()?.query ?? ''}
-            results={fileMentionResults()}
+            fileResults={fileMentionResults()}
+            agentResults={filteredAgents()}
             activeIdx={fileMentionActiveIdx()}
             attachedPaths={attachedSet()}
-            onSelect={applyFileMention}
+            onSelectFile={applyFileMention}
+            onSelectAgent={applyAgentMention}
             onSetActiveIdx={(idx) => setFileMentionActiveIdx(idx)}
           />
         </Show>
@@ -1121,10 +1247,20 @@ export const Composer: Component<ComposerProps> = (props) => {
             when={
               props.attachedFiles.length > 0 ||
               props.lineComments.length > 0 ||
-              props.loadedSkills.length > 0
+              props.loadedSkills.length > 0 ||
+              agentMentions().length > 0
             }
           >
             <div class="ctx-chips-row">
+              <For each={agentMentions()}>
+                {(agent) => (
+                  <AgentChip
+                    name={agent.name}
+                    description={agent.description}
+                    onRemove={() => removeAgentMention(agent.name)}
+                  />
+                )}
+              </For>
               <For each={props.loadedSkills}>
                 {(s) => <SkillChip skill={s} onRemove={() => props.onRemoveSkill(s.name)} />}
               </For>
@@ -1238,22 +1374,31 @@ export const Composer: Component<ComposerProps> = (props) => {
                 }
               }
 
-              // Inline @ file picker intercepts navigation keys first
+              // Inline @ mention picker intercepts navigation keys first
               if (fileMentionOpen()) {
-                if (event.key === 'ArrowDown' && currentMentionResults.length > 0) {
+                const agentResults = filteredAgents()
+                const totalItems = agentResults.length + currentMentionResults.length
+                const activeIdx = fileMentionActiveIdx()
+                if (event.key === 'ArrowDown' && totalItems > 0) {
                   event.preventDefault()
-                  setFileMentionActiveIdx((i) => Math.min(i + 1, currentMentionResults.length - 1))
+                  setFileMentionActiveIdx((i) => Math.min(i + 1, totalItems - 1))
                   return
                 }
-                if (event.key === 'ArrowUp' && currentMentionResults.length > 0) {
+                if (event.key === 'ArrowUp' && totalItems > 0) {
                   event.preventDefault()
                   setFileMentionActiveIdx((i) => Math.max(i - 1, 0))
                   return
                 }
                 if (event.key === 'Enter' || event.key === 'Tab') {
                   event.preventDefault()
-                  const file = currentMentionResults[fileMentionActiveIdx()]
-                  if (file) applyFileMention(file)
+                  if (activeIdx < agentResults.length) {
+                    const agent = agentResults[activeIdx]
+                    if (agent) applyAgentMention(agent.name)
+                  } else {
+                    const fileIdx = activeIdx - agentResults.length
+                    const file = currentMentionResults[fileIdx]
+                    if (file) applyFileMention(file)
+                  }
                   return
                 }
                 if (event.key === 'Escape') {
@@ -1370,7 +1515,7 @@ export const Composer: Component<ComposerProps> = (props) => {
                 // Reset history cursor so next Up starts at most-recent message again
                 setHistoryIndex(-1)
                 setSavedDraft('')
-                props.onSend()
+                handleSend()
               }
 
               if (event.key === 'Enter' && event.altKey && props.isStreaming) {
@@ -1618,7 +1763,7 @@ export const Composer: Component<ComposerProps> = (props) => {
                   <button
                     type="button"
                     class="composer-send-btn"
-                    onClick={() => (shellMode() ? props.onShellSend() : props.onSend())}
+                    onClick={() => (shellMode() ? props.onShellSend() : handleSend())}
                     disabled={
                       shellMode()
                         ? !props.input.trim() || props.isShellRunning

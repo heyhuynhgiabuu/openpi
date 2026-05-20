@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, X } from 'lucide-solid'
 import { animate } from 'motion'
-import { createEffect, createSignal, For, on, Show } from 'solid-js'
+import { createEffect, createSignal, For, on, onCleanup, Show } from 'solid-js'
 import type { TrackedAgent } from '../lib/extensionTrackers'
 
 interface Props {
@@ -9,8 +9,8 @@ interface Props {
 
 const LINGER_MS = 4000
 
-function elapsed(startedAt: number): string {
-  const s = Math.floor((Date.now() - startedAt) / 1000)
+function elapsed(startedAt: number, now: number): string {
+  const s = Math.floor((now - startedAt) / 1000)
   if (s < 60) return `${s}s`
   return `${Math.floor(s / 60)}m ${s % 60}s`
 }
@@ -28,12 +28,23 @@ function statusIcon(status: TrackedAgent['status']): string {
   }
 }
 
+function agentKey(agent: TrackedAgent): string {
+  return agent.agentId ?? agent.tempId
+}
+
+function resultPreview(agent: TrackedAgent): string | undefined {
+  return agent.error ?? agent.result
+}
+
 export function SubagentWidget(props: Props) {
   let widgetRef!: HTMLDivElement
   const [collapsed, setCollapsed] = createSignal(false)
+  const [expanded, setExpanded] = createSignal<Set<string>>(new Set())
   // Local snapshot — keeps the last non-empty list visible during linger
   const [display, setDisplay] = createSignal<TrackedAgent[]>([])
+  const [now, setNow] = createSignal(Date.now())
   let lingerTimer: ReturnType<typeof setTimeout> | null = null
+  let tickTimer: ReturnType<typeof setInterval> | null = null
 
   const running = () =>
     display().filter((a) => a.status === 'running' || a.status === 'queued').length
@@ -52,6 +63,31 @@ export function SubagentWidget(props: Props) {
     }
     startExit()
   }
+
+  function toggleAgent(agent: TrackedAgent) {
+    const key = agentKey(agent)
+    setExpanded((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // Live elapsed ticker while any agent is running
+  createEffect(() => {
+    const hasRunning = display().some((a) => a.status === 'running' || a.status === 'queued')
+    if (hasRunning && !tickTimer) {
+      tickTimer = setInterval(() => setNow(Date.now()), 1000)
+      onCleanup(() => {
+        if (tickTimer) clearInterval(tickTimer)
+        tickTimer = null
+      })
+    } else if (!hasRunning && tickTimer) {
+      clearInterval(tickTimer)
+      tickTimer = null
+    }
+  })
 
   // Track changes from props.agents
   createEffect(
@@ -121,28 +157,74 @@ export function SubagentWidget(props: Props) {
         <Show when={!collapsed()}>
           <ul class="subagent-list">
             <For each={display()}>
-              {(agent, i) => (
-                <li
-                  class={`subagent-card subagent-card--${agent.status}`}
-                  style={{ 'animation-delay': `${i() * 35}ms` }}
-                >
-                  <span class={`subagent-status-icon subagent-status-icon--${agent.status}`}>
-                    {statusIcon(agent.status)}
-                  </span>
-                  <span class="subagent-info">
-                    <span class="subagent-type">{agent.subagentType}</span>
-                    <span class="subagent-desc">{agent.description}</span>
-                  </span>
-                  <span class="subagent-meta">
-                    <Show when={agent.status === 'running'}>
-                      <span class="subagent-elapsed">{elapsed(agent.startedAt)}</span>
+              {(agent, i) => {
+                const key = () => agentKey(agent)
+                const open = () => expanded().has(key())
+                const preview = () => resultPreview(agent)
+                return (
+                  <li
+                    class={`subagent-card subagent-card--${agent.status}`}
+                    style={{ 'animation-delay': `${i() * 35}ms` }}
+                  >
+                    <button
+                      type="button"
+                      class="subagent-card-main"
+                      onClick={() => toggleAgent(agent)}
+                      title="Inspect subagent details"
+                    >
+                      <span class={`subagent-status-icon subagent-status-icon--${agent.status}`}>
+                        {statusIcon(agent.status)}
+                      </span>
+                      <span class="subagent-info">
+                        <span class="subagent-type">{agent.subagentType}</span>
+                        <span class="subagent-desc">{agent.description}</span>
+                      </span>
+                      <span class="subagent-meta">
+                        <Show when={agent.activity}>
+                          <span class="subagent-activity">{agent.activity}</span>
+                        </Show>
+                        <Show when={agent.status === 'running'}>
+                          <span class="subagent-elapsed">{elapsed(agent.startedAt, now())}</span>
+                        </Show>
+                        <Show when={agent.background}>
+                          <span class="subagent-bg-badge">bg</span>
+                        </Show>
+                        <Show
+                          when={open()}
+                          fallback={
+                            <ChevronRight size={11} strokeWidth={2} class="subagent-chevron" />
+                          }
+                        >
+                          <ChevronDown size={11} strokeWidth={2} class="subagent-chevron" />
+                        </Show>
+                      </span>
+                    </button>
+                    <Show when={open()}>
+                      <div class="subagent-details">
+                        <div class="subagent-detail-grid">
+                          <span>ID</span>
+                          <code>{agent.agentId ?? 'pending'}</code>
+                          <span>Status</span>
+                          <code>{agent.status}</code>
+                          <span>Turns</span>
+                          <code>{agent.turns ?? 0}</code>
+                          <span>Tools</span>
+                          <code>{agent.toolCalls ?? 0}</code>
+                        </div>
+                        <Show when={preview()}>
+                          {(text) => <pre class="subagent-result-preview">{text()}</pre>}
+                        </Show>
+                        <Show when={agent.agentId}>
+                          <p class="subagent-detail-hint">
+                            Inspect full output with <code>get_subagent_result</code> id{' '}
+                            <code>{agent.agentId}</code>.
+                          </p>
+                        </Show>
+                      </div>
                     </Show>
-                    <Show when={agent.background}>
-                      <span class="subagent-bg-badge">bg</span>
-                    </Show>
-                  </span>
-                </li>
-              )}
+                  </li>
+                )
+              }}
             </For>
           </ul>
         </Show>
