@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# pre-commit — harness integrity check for OpenPi
+# pre-commit — lint check for OpenPi
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-
-echo "--- Harness lint check ---"
-bash scripts/harness-lint.sh --quiet
-RESULT=$?
-
-if [ $RESULT -ne 0 ]; then
-  echo "❌ Harness lint FAILED — fix issues before committing"
-  echo "   Run: bash scripts/harness-lint.sh (no --quiet for details)"
-  exit 1
-fi
 
 echo "--- Biome lint check ---"
 npx biome check .

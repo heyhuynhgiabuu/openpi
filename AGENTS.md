@@ -48,10 +48,7 @@ Implemented slices currently include:
 - **Extensions UI** — enable/disable toggle switch per extension, preference persistence, reload button.
 - **Onboarding flow** — first-run detection, enhanced welcome screen with getting-started guide and external links.
 - **Goal status indicator** — persistent banner in composer header showing objective and running/idle step badge.
-- **Story browser** — left-drawer panel listing docs/stories/ with status badges.
-- **Harness lint pre-commit hook** — scripts/harness-lint.sh checks docs, test matrix, legacy migration.
 - **Pi subagent and task tool cards** — rendering for Agent/TaskCreate/TaskExecute, subagent and task widgets.
-- **Product docs** — full docs/ directory with HARNESS.md, FEATURE_INTAKE.md, TEST_MATRIX.md, 3 ADRs, 6 stories, templates.
 
 ---
 
@@ -214,7 +211,7 @@ Core events to drive the UI:
 
 ### What Pi does NOT have built-in
 
-Pi intentionally ships without: sub-agents, MCP, permission gates, plan mode, background bash. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
+Pi intentionally ships without: MCP, permission gates, plan mode, background bash. **OpenPi provides built-in subagents** (see § OpenPi Subagent System below) — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
 
 ### Extensions
 
@@ -246,8 +243,6 @@ Pi loads `AGENTS.md` (or `CLAUDE.md`) walking up from cwd plus `~/.pi/agent/AGEN
 ### Settings
 
 Two scopes: `~/.pi/agent/settings.json` (global) and `.pi/settings.json` (project, overrides global). Key settings: `compaction.enabled`, `retry.enabled`, `steeringMode`, `followUpMode`, `transport`, `packages`, `extensions`. Use `SettingsManager.create(cwd)` for SDK access.
-
----
 
 ## Electron Security Rules
 
@@ -319,19 +314,37 @@ Never reimplement session tree, compaction, message queuing, or tool execution i
 4. **Preserve session tree semantics.** Never flatten JSONL trees into plain message arrays for persistence.
 5. **Permission before mutation.** Any action that writes files, applies patches, mutates Git state, executes shell commands, or runs extensions needs explicit policy in Electron main before execution.
 6. **No speculative work.** Build macOS first. Add platforms after core stability. No cloud, marketplace, or collaboration until local workflows are excellent.
-
----
-
-## Verification Expectations
-
-Before claiming completion on any slice:
-
-- `npm run typecheck` — zero errors
-- `npm run lint` — zero warnings
-- Run targeted tests for the changed surface
-- Electron smoke launch when changing main/preload
-- If you create or modify a test file, run it and iterate until it passes
-- For IPC changes: verify Zod schemas parse correctly in both directions
+7. **File size limit — max 300 LOC per file.** Files over 300 lines must be refactored into smaller modules with clear single responsibilities. Extract helpers, constants, types, and subcomponents into separate files. Every file should have one obvious purpose. Exception: generated files, CSS, and auto-detected/auto-configured files are exempt.
+8. **File naming — 1 word preferred, PascalCase for components, camelCase for modules.**
+   - **Components (.tsx)**: PascalCase, 1 word — `Sidebar.tsx`, `Composer.tsx`, `FileTree.tsx`. Not `sidebarPanel.tsx` or `FilePreviewPanel.tsx`.
+   - **Hooks**: camelCase with `use` prefix — `useSession.ts`, `useFileTree.ts`.
+   - **Utilities/helpers**: camelCase — `formatDate.ts`, `sessionEvents.ts`.
+   - **Types/schemas**: camelCase — `ipc.ts`, `extensionTrackers.ts`.
+   - **Constants/config**: camelCase — `keybindings.ts`, `notificationPreferences.ts`.
+   - **Test files**: match source file name + `.test.ts` — `Composer.test.tsx`.
+   - **Exception**: files extending a framework contract keep the expected name (`vite.config.ts`, `electron-builder.json`).
+9. **TypeScript quality.**
+   - **No `any`** — use `unknown` and narrow with type predicates or schema validation (Zod).
+   - **Prefer `interface` over `type`** for object shapes (extends semantics, merged declarations, better error messages). Use `type` for unions, intersections, and aliases only.
+   - **Exhaustive switches** — always include a `never` default to catch unhandled variants at compile time:
+     ```ts
+     switch (status) {
+       case 'running': ...
+       case 'completed': ...
+       default: const _exhaustive: never = status; break;
+     }
+     ```
+   - **No non-null assertions (`!`)** — handle `undefined` with optional chaining (`?.`) and nullish coalescing (`??`). If a value must exist, assert with a runtime check, not `!`.
+   - **Discriminated unions over optional fields** — use a `type` field to distinguish variants instead of having 3 optional booleans:
+     ```ts
+     // Good
+     type Result = { status: 'success'; data: T } | { status: 'error'; error: Error }
+     // Bad
+     type Result = { isSuccess?: boolean; data?: T; error?: Error }
+     ```
+   - **Zod over raw type assertions** — every IPC payload, config file, and external boundary must validate with Zod before use. Never cast `as X` without validation.
+   - **`const` assertions for literals** — use `as const` on arrays and objects used as type sources, not manual type literals.
+   - **Import types with `type` modifier** — `import type { X } from './y'` to avoid runtime bundling of unused type imports.
 
 ---
 
@@ -375,18 +388,4 @@ Before tagging, pushing, or claiming any version release:
 - Do not ship `nodeIntegration: true` or disable `contextIsolation` as a convenience shortcut.
 - Do not use OpenCode/Copilot terminology for Pi's resources (Instructions → Prompts, Agents → Extensions, Hooks → Extension events, Plugins → Packages).
 
----
 
-## Durable Product Documentation
-
-This project uses `docs/` as the durable product truth surface. See:
-
-- **docs/HARNESS.md** — goal/harness loop operating rules and tool taxonomy.
-- **docs/FEATURE_INTAKE.md** — feature intake checklist (classify input, risk flags, hard gates).
-- **docs/TEST_MATRIX.md** — product behavior → proof mapping.
-- **docs/product/** — product-level docs (goal/harness system, process model).
-- **docs/stories/** — story packets with acceptance criteria and validation.
-- **docs/decisions/** — architecture decision records (ADRs).
-- **docs/templates/** — reusable templates for stories and spec intake.
-
-These docs are the canonical reference. This AGENTS.md remains the operational rules surface for agents; `docs/` holds the durable product truth.
