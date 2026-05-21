@@ -24,22 +24,12 @@ import { GitSidePanel } from './components/workbench/GitSidePanel'
 import { useAppArchive } from './hooks/useAppArchive'
 import { useAppFileManager } from './hooks/useAppFileManager'
 import { useAppKeybindings } from './hooks/useAppKeybindings'
+import { useAppPrefs } from './hooks/useAppPrefs'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
-import { applyAppearancePreferences, loadAppearancePreferences } from './lib/appearancePreferences'
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  DISPLAY_PREFERENCES_CHANGED_EVENT,
-  type DisplayPreferences,
-  loadDisplayPreferences,
-} from './lib/displayPreferences'
+import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from './lib/displayPreferences'
 import type { AppInfo, GitSyncAction } from './lib/ipc'
-import {
-  KEYBINDINGS_CHANGED_EVENT,
-  type KeybindingOverrides,
-  loadCustomKeybindings,
-} from './lib/keybindings'
-import { restoreThemeFromStorage } from './lib/themeApply'
+import type { KeybindingOverrides } from './lib/keybindings'
 
 export default function App() {
   const session = useOpenPiSession()
@@ -169,6 +159,7 @@ export default function App() {
     openWorkspace: () => session.openWorkspace(),
   })
   const [appInfo, setAppInfo] = createSignal<AppInfo | null>(null)
+  const appPrefs = useAppPrefs({ setAppInfo, setDisplayPreferences, setCustomKeybindings })
   const appName = createMemo(() => appInfo()?.name ?? 'OpenPi')
   const appVersionLabel = createMemo(() => {
     const info = appInfo()
@@ -199,15 +190,6 @@ export default function App() {
   })
 
   onMount(() => {
-    restoreThemeFromStorage()
-    window.openpi
-      .getAppInfo()
-      .then(setAppInfo)
-      .catch(() => {})
-    loadAppearancePreferences()
-      .then(applyAppearancePreferences)
-      .catch(() => {})
-
     // Load persisted prefs
     archive.loadPersistedPrefs()
     window.openpi
@@ -223,27 +205,11 @@ export default function App() {
       })
       .catch(() => {})
 
-    loadDisplayPreferences()
-      .then(setDisplayPreferences)
-      .catch(() => {})
-    loadCustomKeybindings()
-      .then(setCustomKeybindings)
-      .catch(() => {})
-
-    const onDisplayPreferencesChanged = (event: Event) => {
-      setDisplayPreferences((event as CustomEvent<DisplayPreferences>).detail)
-    }
-    window.addEventListener(DISPLAY_PREFERENCES_CHANGED_EVENT, onDisplayPreferencesChanged)
-
-    const onKeybindingsChanged = (event: Event) => {
-      setCustomKeybindings((event as CustomEvent<KeybindingOverrides>).detail)
-    }
-    window.addEventListener(KEYBINDINGS_CHANGED_EVENT, onKeybindingsChanged)
+    const removePrefs = appPrefs.setupOnMount()
     const removeKeydown = keybindings.setupKeydownHandler()
     return () => {
+      removePrefs()
       removeKeydown()
-      window.removeEventListener(DISPLAY_PREFERENCES_CHANGED_EVENT, onDisplayPreferencesChanged)
-      window.removeEventListener(KEYBINDINGS_CHANGED_EVENT, onKeybindingsChanged)
     }
   })
 
