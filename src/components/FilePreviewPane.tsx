@@ -34,13 +34,9 @@ import { collectCodeSearchMatches, isValidCodeSearchQuery } from '../lib/codeSea
 import { FileIcon } from '../lib/fileIcons'
 import type { NewFileLineComment } from '../lib/fileLineComments'
 import { ensureHighlighter, highlightCode } from '../lib/shiki'
-import {
-  CodeMirrorEditor,
-  EDITOR_THEMES,
-  type EditorThemeId,
-  isEditorThemeId,
-} from './CodeMirrorEditor'
-import { MarkdownContent } from './conversation/MarkdownContent'
+import { EDITOR_THEMES, type EditorThemeId, isEditorThemeId } from './CodeMirrorEditor'
+import type { ViewMode } from './FilePreviewBody'
+import { FilePreviewBody } from './FilePreviewBody'
 
 const EDITOR_THEME_STORAGE_KEY = 'openpi:file-preview-editor-theme'
 
@@ -58,7 +54,7 @@ function _stripShikiBackground(html: string): string {
   return html.replace(/background-color:[^;"'}]+;?\s*/g, '').replace(/\stabindex="0"/g, '')
 }
 
-function SyntaxPreview(props: { name: string; contents: string }) {
+export function SyntaxPreview(props: { name: string; contents: string }) {
   const [html, setHtml] = createSignal('')
 
   createEffect(() => {
@@ -103,8 +99,6 @@ function localFileUrl(absPath: string): string {
 }
 
 /* LINE_HEIGHT_PX and PADDING_TOP_PX removed with LineNumberedEditor */
-
-type ViewMode = 'edit' | 'preview' | 'split'
 
 interface FilePreviewPaneProps {
   relativePath: string
@@ -859,120 +853,35 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           </Show>
         </Show>
 
-        <div class="fv-body">
-          <Show when={saveError()}>
-            <div class="fv-state-msg fv-state-msg--error">{saveError()}</div>
-          </Show>
-
-          <Show when={isImage()}>
-            <div class="fv-image-body">
-              <img src={imgSrc()} alt={filename()} class="fv-image" />
-            </div>
-          </Show>
-
-          <Show when={!isImage() && loading()}>
-            <div class="fv-state-msg">Loading…</div>
-          </Show>
-
-          <Show when={!isImage() && !loading() && content() === null}>
-            <div class="fv-state-msg fv-state-msg--error">
-              Could not read file — it may be binary or outside the workspace.
-            </div>
-          </Show>
-
-          <Show when={!isImage() && !loading() && content() !== null && mode() === 'edit'}>
-            <CodeMirrorEditor
-              value={editBuffer()}
-              filename={filename()}
-              onChange={setEditBuffer}
-              onViewInit={(v) => {
-                editorViewRef = v
-              }}
-              onExtraScroll={syncEditorToPreview}
-              onFindRequest={() => openFindBar()}
-              onReplaceRequest={() => openFindBar(true)}
-              wordWrap={wordWrap()}
-              vimMode={vimMode()}
-              editorTheme={editorTheme()}
-              searchQuery={findOpen() ? findQuery() : ''}
-              searchCaseSensitive={findCaseSensitive()}
-              searchWholeWord={findWholeWord()}
-              searchRegex={findRegex()}
-              searchCurrentIndex={safeMatchIndex()}
-            />
-          </Show>
-
-          <Show when={!isImage() && !loading() && content() !== null && mode() === 'preview'}>
-            <Show
-              when={isMarkdown()}
-              fallback={<SyntaxPreview name={filename()} contents={editBuffer()} />}
-            >
-              <div class="fv-md-preview">
-                <MarkdownContent text={editBuffer()} />
-              </div>
-            </Show>
-          </Show>
-
-          <Show when={!isImage() && !loading() && content() !== null && mode() === 'split'}>
-            <div class="fv-split-wrap">
-              <div class="fv-split-editor">
-                <CodeMirrorEditor
-                  value={editBuffer()}
-                  filename={filename()}
-                  onChange={setEditBuffer}
-                  onViewInit={(v) => {
-                    editorViewRef = v
-                  }}
-                  onExtraScroll={syncEditorToPreview}
-                  onFindRequest={() => openFindBar()}
-                  onReplaceRequest={() => openFindBar(true)}
-                  wordWrap={wordWrap()}
-                  vimMode={vimMode()}
-                  editorTheme={editorTheme()}
-                  searchQuery={findOpen() ? findQuery() : ''}
-                  searchCaseSensitive={findCaseSensitive()}
-                  searchWholeWord={findWholeWord()}
-                  searchRegex={findRegex()}
-                  searchCurrentIndex={safeMatchIndex()}
-                />
-              </div>
-
-              <div class="fv-split-divider" />
-
-              <div class="fv-split-preview">
-                <div class="fv-split-preview-header">
-                  <FileIcon name={filename()} size={13} />
-                  <span class="fv-split-preview-title">Preview {filename()}</span>
-                  <button
-                    type="button"
-                    class="fv-tb-btn"
-                    title="Close preview"
-                    onClick={() => setMode('edit')}
-                  >
-                    <X size={12} strokeWidth={2} />
-                  </button>
-                </div>
-
-                <div
-                  ref={(el) => {
-                    previewScrollRef = el
-                  }}
-                  class="fv-split-preview-content"
-                  onScroll={syncPreviewToEditor}
-                >
-                  <Show
-                    when={isMarkdown()}
-                    fallback={<SyntaxPreview name={filename()} contents={editBuffer()} />}
-                  >
-                    <div class="fv-md-preview">
-                      <MarkdownContent text={editBuffer()} />
-                    </div>
-                  </Show>
-                </div>
-              </div>
-            </div>
-          </Show>
-        </div>
+        <FilePreviewBody
+          saveError={saveError()}
+          isImage={isImage()}
+          imgSrc={imgSrc()}
+          filename={filename()}
+          loading={loading()}
+          content={content()}
+          mode={mode()}
+          editBuffer={editBuffer()}
+          isMarkdown={isMarkdown()}
+          wordWrap={wordWrap()}
+          vimMode={vimMode()}
+          editorTheme={editorTheme()}
+          findOpen={findOpen()}
+          findQuery={findQuery()}
+          findCaseSensitive={findCaseSensitive()}
+          findWholeWord={findWholeWord()}
+          findRegex={findRegex()}
+          safeMatchIndex={safeMatchIndex()}
+          previewScrollRef={previewScrollRef}
+          onEditBufferChange={setEditBuffer}
+          onSetMode={setMode}
+          onSyncEditorToPreview={syncEditorToPreview}
+          onSyncPreviewToEditor={syncPreviewToEditor}
+          onOpenFindBar={openFindBar}
+          onEditorViewInit={(v) => {
+            editorViewRef = v
+          }}
+        />
       </div>
     </section>
   )
