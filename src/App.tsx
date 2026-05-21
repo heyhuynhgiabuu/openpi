@@ -10,7 +10,6 @@
  */
 import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
 import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
-import type { PaletteCommand } from './components/CommandPalette'
 import { FileTree } from './components/git/FileTree'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -23,6 +22,7 @@ import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
 import { useAppFileManager } from './hooks/useAppFileManager'
+import { useAppKeybindings } from './hooks/useAppKeybindings'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { applyAppearancePreferences, loadAppearancePreferences } from './lib/appearancePreferences'
@@ -34,11 +34,7 @@ import {
 } from './lib/displayPreferences'
 import type { AppInfo, GitSyncAction } from './lib/ipc'
 import {
-  buildKeybindingEntries,
-  eventMatchesBinding,
-  findBinding,
   KEYBINDINGS_CHANGED_EVENT,
-  type KeybindingActionId,
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from './lib/keybindings'
@@ -159,6 +155,27 @@ export default function App() {
     ...DEFAULT_DISPLAY_PREFERENCES,
   })
   const [customKeybindings, setCustomKeybindings] = createSignal<KeybindingOverrides>({})
+  // Rename trigger — TopBar sets this when it mounts so App can call it from a keybinding
+  let triggerRename: (() => void) | undefined
+  const keybindings = useAppKeybindings({
+    customKeybindings,
+    setCommandPaletteOpen,
+    setTerminalOpen,
+    setNewTerminalRequest,
+    setGitPanelOpen,
+    setFilePanelOpen,
+    setFileSearchOpen,
+    setFileFindOpen,
+    setCustomizationsOpen,
+    toggleLeftDrawerMode,
+    openFiles,
+    activeFileIdx,
+    closeFile,
+    triggerRename,
+    isStreaming: () => session.isStreaming,
+    createNewSession: () => session.createNewSession(),
+    openWorkspace: () => session.openWorkspace(),
+  })
   const [appInfo, setAppInfo] = createSignal<AppInfo | null>(null)
   const appName = createMemo(() => appInfo()?.name ?? 'OpenPi')
   const appVersionLabel = createMemo(() => {
@@ -166,8 +183,6 @@ export default function App() {
     if (!info) return null
     return `v${info.version}${info.releaseChannel ? ` · ${info.releaseChannel}` : ''}`
   })
-  // Rename trigger — TopBar sets this when it mounts so App can call it from a keybinding
-  let triggerRename: (() => void) | undefined
 
   // ── Workbench context bridge — report visible file to main ──────────
   createEffect(() => {
@@ -251,100 +266,9 @@ export default function App() {
       setCustomKeybindings((event as CustomEvent<KeybindingOverrides>).detail)
     }
     window.addEventListener(KEYBINDINGS_CHANGED_EVENT, onKeybindingsChanged)
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      const activeBindings = buildKeybindingEntries(customKeybindings())
-      const binding = (actionId: KeybindingActionId) => findBinding(activeBindings, actionId)
-      const target = event.target as HTMLElement | null
-      const inDialog = Boolean(target?.closest('[role="dialog"], .customizations-modal'))
-      const inTextInput = Boolean(
-        target?.closest('input, textarea, select, [contenteditable="true"]')
-      )
-      const allowFromInput = event.metaKey || event.ctrlKey || event.altKey
-
-      if (eventMatchesBinding(event, binding('openCommandPalette'))) {
-        event.preventDefault()
-        setCommandPaletteOpen(true)
-        return
-      }
-      if (inDialog) return
-      if (inTextInput && !allowFromInput && !eventMatchesBinding(event, binding('interruptAgent')))
-        return
-
-      if (eventMatchesBinding(event, binding('interruptAgent')) && session.isStreaming) {
-        event.preventDefault()
-        void window.openpi.abort()
-        return
-      }
-      if (eventMatchesBinding(event, binding('newSession'))) {
-        event.preventDefault()
-        void session.createNewSession()
-        return
-      }
-      if (eventMatchesBinding(event, binding('toggleTerminal'))) {
-        event.preventDefault()
-        setTerminalOpen((prev) => !prev)
-        return
-      }
-      if (eventMatchesBinding(event, binding('newTerminal'))) {
-        event.preventDefault()
-        setTerminalOpen(true)
-        setNewTerminalRequest((prev) => prev + 1)
-        return
-      }
-      if (eventMatchesBinding(event, binding('toggleSidebar'))) {
-        event.preventDefault()
-        toggleLeftDrawerMode('threads')
-        return
-      }
-      if (eventMatchesBinding(event, binding('toggleGitPanel'))) {
-        event.preventDefault()
-        setGitPanelOpen((prev) => !prev)
-        return
-      }
-      if (eventMatchesBinding(event, binding('toggleFileTree'))) {
-        event.preventDefault()
-        setFilePanelOpen((prev) => !prev)
-        return
-      }
-      if (eventMatchesBinding(event, binding('openFileSearch'))) {
-        event.preventDefault()
-        setFilePanelOpen(true)
-        setFileSearchOpen(true)
-        return
-      }
-      if (eventMatchesBinding(event, binding('closeFileTab'))) {
-        if (openFiles().length > 0) {
-          event.preventDefault()
-          closeFile(activeFileIdx())
-        }
-        return
-      }
-      if (eventMatchesBinding(event, binding('searchInFile'))) {
-        if (openFiles().length > 0) {
-          event.preventDefault()
-          setFileFindOpen(true)
-        }
-        return
-      }
-      if (eventMatchesBinding(event, binding('openCustomizations'))) {
-        event.preventDefault()
-        setCustomizationsOpen(true)
-        return
-      }
-      if (eventMatchesBinding(event, binding('openProject'))) {
-        event.preventDefault()
-        void session.openWorkspace()
-        return
-      }
-      if (eventMatchesBinding(event, binding('renameSession'))) {
-        event.preventDefault()
-        triggerRename?.()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
+    const removeKeydown = keybindings.setupKeydownHandler()
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
+      removeKeydown()
       window.removeEventListener(DISPLAY_PREFERENCES_CHANGED_EVENT, onDisplayPreferencesChanged)
       window.removeEventListener(KEYBINDINGS_CHANGED_EVENT, onKeybindingsChanged)
     }
@@ -429,58 +353,6 @@ export default function App() {
   const handleNewSessionIn = (workspacePath: string) => {
     void window.openpi.newSession(workspacePath)
   }
-
-  const paletteCommands = createMemo<PaletteCommand[]>(() => {
-    const entries = new Map(
-      buildKeybindingEntries(customKeybindings()).map((entry) => [entry.id, entry])
-    )
-    const command = (id: KeybindingActionId, run: () => void): PaletteCommand | null => {
-      const entry = entries.get(id)
-      if (!entry) return null
-      return {
-        id,
-        label: entry.label,
-        description: entry.description,
-        keys: entry.keys,
-        run,
-      }
-    }
-
-    return [
-      command('newSession', () => void session.createNewSession()),
-      command('openFileSearch', () => {
-        setFilePanelOpen(true)
-        setFileSearchOpen(true)
-      }),
-      command('closeFileTab', () => {
-        if (openFiles().length > 0) closeFile(activeFileIdx())
-      }),
-      command('searchInFile', () => {
-        if (openFiles().length > 0) setFileFindOpen(true)
-      }),
-      command('openCustomizations', () => setCustomizationsOpen(true)),
-      command('openProject', () => void session.openWorkspace()),
-      command('renameSession', () => triggerRename?.()),
-      command('toggleSidebar', () => toggleLeftDrawerMode('threads')),
-      command('toggleGitPanel', () => setGitPanelOpen((prev) => !prev)),
-      command('toggleFileTree', () => setFilePanelOpen((prev) => !prev)),
-      command('toggleTerminal', () => setTerminalOpen((prev) => !prev)),
-      command('newTerminal', () => {
-        setTerminalOpen(true)
-        setNewTerminalRequest((prev) => prev + 1)
-      }),
-      // ── Pi extension commands (forwarded to sidecar) ───────────
-      {
-        id: 'goalLoop' as KeybindingActionId,
-        label: 'Goal / Harness Loop',
-        description: 'Set or continue a goal: inspect, classify, act, verify, and report next step',
-        keys: '',
-        run: () => {
-          window.openpi.sendPrompt('/goal ')
-        },
-      } satisfies PaletteCommand,
-    ].filter((item): item is PaletteCommand => item != null)
-  })
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -784,7 +656,7 @@ export default function App() {
               connectProviderOpen={connectProviderOpen()}
               manageModelsOpen={manageModelsOpen()}
               archivePending={archivePending()}
-              commands={paletteCommands()}
+              commands={keybindings.paletteCommands()}
               sessions={session.sessions}
               appName={appName()}
               appVersionLabel={appVersionLabel()}
