@@ -3895,7 +3895,7 @@ body.panel-dragging {
 }
 
 .plan-dock.is-active {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline-strong));
+  border-color: color-mix(in srgb, white 72%, var(--hairline-strong));
 }
 
 .plan-dock-header {
@@ -3905,25 +3905,10 @@ body.panel-dragging {
   min-width: 0;
 }
 
-.plan-dock-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.plan-dock.is-active .plan-dock-icon {
-  animation: plan-icon-breathe 1.4s ease-in-out infinite;
-}
-
-.plan-dock.is-complete .plan-dock-icon {
-  color: var(--success, #22c55e);
-  background: color-mix(in srgb, var(--success, #22c55e) 12%, transparent);
+.plan-dock.is-collapsed {
+  max-height: none;
+  gap: 0;
+  padding-block: 8px;
 }
 
 .plan-dock-title-group {
@@ -3958,6 +3943,36 @@ body.panel-dragging {
   background: var(--surface-soft);
   font-size: 11px;
   font-weight: 600;
+}
+
+.plan-dock-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--graphite-muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.plan-dock-toggle:hover {
+  color: var(--ink);
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.plan-dock-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
 }
 
 .plan-dock-explanation {
@@ -4032,18 +4047,6 @@ body.panel-dragging {
 
 .plan-dock-item--in_progress .plan-dock-status {
   color: var(--accent);
-}
-
-@keyframes plan-icon-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 26%, transparent);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 5px transparent;
-  }
 }
 
 @keyframes plan-marker-spin {

@@ -1,5 +1,5 @@
-import { Check, ListChecks, Sparkle } from 'lucide-solid'
-import { type Component, For, Show } from 'solid-js'
+import { Check, ChevronDown, ChevronUp, Sparkle } from 'lucide-solid'
+import { type Component, createEffect, createSignal, For, Show } from 'solid-js'
 import type { ToolCard } from '../../types/session'
 
 const PLAN_TOOL = 'update_plan'
@@ -16,6 +16,7 @@ interface PlanSummary {
   explanation: string
   completed: number
   active: PlanItem | null
+  complete: boolean
 }
 
 export function isPlanToolCard(card: unknown): card is ToolCard {
@@ -62,11 +63,13 @@ function parsePlanItems(card: ToolCard): PlanItem[] {
 function planSummary(card: ToolCard): PlanSummary {
   const items = parsePlanItems(card)
   const explanation = typeof card.args.explanation === 'string' ? card.args.explanation.trim() : ''
+  const completed = items.filter((item) => item.status === 'completed').length
   return {
     items,
     explanation,
-    completed: items.filter((item) => item.status === 'completed').length,
+    completed,
     active: items.find((item) => item.status === 'in_progress') ?? null,
+    complete: items.length > 0 && completed === items.length,
   }
 }
 
@@ -92,25 +95,29 @@ interface PlanDockProps {
 }
 
 export const PlanDock: Component<PlanDockProps> = (props) => {
-  const summary = () => (props.card ? planSummary(props.card) : null)
-  const isActive = () => Boolean(props.card?.streaming || summary()?.active)
-  const isComplete = () => {
-    const value = summary()
-    return Boolean(value && value.items.length > 0 && value.completed === value.items.length)
+  const [expanded, setExpanded] = createSignal(true)
+  const summary = () => {
+    if (!props.card) return null
+    const value = planSummary(props.card)
+    if (value.items.length === 0 || value.complete) return null
+    return value
   }
+  const isActive = () => Boolean(props.card?.streaming || summary()?.active)
+
+  createEffect(() => {
+    props.card?.toolCallId
+    setExpanded(true)
+  })
 
   return (
-    <Show when={props.card && summary()}>
+    <Show when={summary()}>
       {(value) => (
         <aside
-          class={`plan-dock${isActive() ? ' is-active' : ''}${isComplete() ? ' is-complete' : ''}`}
+          class={`plan-dock${isActive() ? ' is-active' : ''}${expanded() ? '' : ' is-collapsed'}`}
           aria-label="Current plan"
           aria-live="polite"
         >
           <div class="plan-dock-header">
-            <span class="plan-dock-icon" aria-hidden="true">
-              <ListChecks size={14} strokeWidth={2.2} />
-            </span>
             <div class="plan-dock-title-group">
               <span class="plan-dock-title">Plan</span>
               <Show
@@ -127,25 +134,38 @@ export const PlanDock: Component<PlanDockProps> = (props) => {
             <span class="plan-dock-count">
               {value().completed}/{value().items.length}
             </span>
+            <button
+              type="button"
+              class="plan-dock-toggle"
+              aria-label={expanded() ? 'Collapse plan dock' : 'Expand plan dock'}
+              aria-expanded={expanded()}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              <Show when={expanded()} fallback={<ChevronUp size={13} strokeWidth={2.2} />}>
+                <ChevronDown size={13} strokeWidth={2.2} />
+              </Show>
+            </button>
           </div>
 
-          <Show when={value().explanation}>
-            <div class="plan-dock-explanation">{value().explanation}</div>
-          </Show>
+          <Show when={expanded()}>
+            <Show when={value().explanation}>
+              <div class="plan-dock-explanation">{value().explanation}</div>
+            </Show>
 
-          <ol class="plan-dock-list">
-            <For each={value().items}>
-              {(item) => (
-                <li class={`plan-dock-item plan-dock-item--${item.status}`}>
-                  <span class="plan-dock-marker" aria-hidden="true">
-                    {statusIcon(item.status)}
-                  </span>
-                  <span class="plan-dock-step">{item.step}</span>
-                  <span class="plan-dock-status">{statusLabel(item.status)}</span>
-                </li>
-              )}
-            </For>
-          </ol>
+            <ol class="plan-dock-list">
+              <For each={value().items}>
+                {(item) => (
+                  <li class={`plan-dock-item plan-dock-item--${item.status}`}>
+                    <span class="plan-dock-marker" aria-hidden="true">
+                      {statusIcon(item.status)}
+                    </span>
+                    <span class="plan-dock-step">{item.step}</span>
+                    <span class="plan-dock-status">{statusLabel(item.status)}</span>
+                  </li>
+                )}
+              </For>
+            </ol>
+          </Show>
         </aside>
       )}
     </Show>

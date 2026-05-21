@@ -220,10 +220,15 @@ const PLAN_SPINNER_FRAMES = ['✳', '✽', '✶', '✷'] as const
 
 interface TextToolResult {
   content: Array<{ type: string; text?: string }>
+  details?: { plan?: PlanStep[] }
 }
 
 function hasActivePlanStep(plan: PlanStep[] | null): boolean {
   return Boolean(plan?.some((item) => item.status === 'in_progress'))
+}
+
+function isPlanComplete(plan: PlanStep[] | null): boolean {
+  return Boolean(plan && plan.length > 0 && plan.every((item) => item.status === 'completed'))
 }
 
 function completedPlanSteps(plan: PlanStep[] | null): number {
@@ -355,13 +360,14 @@ function formatPlanText(plan: PlanStep[] | null): string {
 function compactPlanResultText(result: TextToolResult, isError: boolean): string {
   const text = result.content.find((item) => item.type === 'text' && item.text)?.text ?? ''
   if (isError) return text || 'Plan update failed.'
-  if (text === 'Plan cleared.') return text
+  if (text === 'Plan cleared.' || isPlanComplete(result.details?.plan ?? null))
+    return 'Plan complete.'
   return 'Plan dock updated below the editor.'
 }
 
 function showPlanWidget(ctx: ExtensionContext) {
   if (!ctx.hasUI) return
-  if (!_plan || _plan.length === 0) {
+  if (!_plan || _plan.length === 0 || isPlanComplete(_plan)) {
     ctx.ui.setWidget('plan', undefined)
     _planWidget = null
     _planWidgetRender = null
