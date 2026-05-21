@@ -21,6 +21,7 @@ import { Welcome } from './components/Welcome'
 import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
+import { useAppArchive } from './hooks/useAppArchive'
 import { useAppFileManager } from './hooks/useAppFileManager'
 import { useAppKeybindings } from './hooks/useAppKeybindings'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
@@ -141,16 +142,7 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false)
   const [connectProviderOpen, setConnectProviderOpen] = createSignal(false)
   const [manageModelsOpen, setManageModelsOpen] = createSignal(false)
-  const [showArchived, setShowArchived] = createSignal(false)
-  const [archivedSessions, setArchivedSessions] = createSignal<
-    import('./lib/ipc').ArchivedSessionItem[]
-  >([])
-  const [pinnedSessions, setPinnedSessions] = createSignal<Set<string>>(new Set())
-  const [archivePending, setArchivePending] = createSignal<{
-    label: string
-    paths: string[]
-  } | null>(null)
-  const [archiveSkipConfirm, setArchiveSkipConfirm] = createSignal(false)
+  const archive = useAppArchive()
   const [displayPreferences, setDisplayPreferences] = createSignal<DisplayPreferences>({
     ...DEFAULT_DISPLAY_PREFERENCES,
   })
@@ -217,19 +209,7 @@ export default function App() {
       .catch(() => {})
 
     // Load persisted prefs
-    window.openpi
-      .getPref('pinned_sessions')
-      .then((v) => {
-        if (v) {
-          try {
-            setPinnedSessions(new Set(JSON.parse(v) as string[]))
-          } catch {
-            /* ignore */
-          }
-        }
-      })
-      .catch(() => {})
-
+    archive.loadPersistedPrefs()
     window.openpi
       .getPref('hidden_models')
       .then((v) => {
@@ -240,13 +220,6 @@ export default function App() {
             /* ignore */
           }
         }
-      })
-      .catch(() => {})
-
-    window.openpi
-      .getPref('archive_skip_confirm')
-      .then((v) => {
-        if (v === 'true') setArchiveSkipConfirm(true)
       })
       .catch(() => {})
 
@@ -275,84 +248,6 @@ export default function App() {
   })
 
   // ── Archive / pin helpers ─────────────────────────────────────────────────
-
-  const loadArchivedSessions = async () => {
-    const items = await window.openpi.listArchivedSessions()
-    setArchivedSessions(items)
-  }
-
-  const handleToggleArchived = () => {
-    const next = !showArchived()
-    setShowArchived(next)
-    if (next) {
-      void loadArchivedSessions()
-    }
-  }
-
-  const handleUnarchiveSession = async (archivedPath: string) => {
-    await window.openpi.unarchiveSessions([archivedPath])
-    void loadArchivedSessions()
-  }
-
-  const handleDeleteArchivedSession = async (archivedPath: string) => {
-    const confirmed = window.confirm(
-      'Permanently delete this archived session?\n\nIt will be moved to the system Trash when possible.'
-    )
-    if (!confirmed) return
-
-    const result = await window.openpi.deleteSessions([archivedPath])
-    void loadArchivedSessions()
-    if (result.failed > 0) {
-      window.alert(
-        'OpenPi could not delete this archived session. It may have already moved or be protected.'
-      )
-    }
-  }
-
-  const togglePinSession = (path: string) => {
-    setPinnedSessions((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      void window.openpi.setPref('pinned_sessions', JSON.stringify([...next]))
-      return next
-    })
-  }
-
-  const handleArchiveSession = async (path: string) => {
-    if (pinnedSessions().has(path)) {
-      setPinnedSessions((prev) => {
-        const next = new Set(prev)
-        next.delete(path)
-        void window.openpi.setPref('pinned_sessions', JSON.stringify([...next]))
-        return next
-      })
-    }
-    await window.openpi.archiveSessions([path])
-  }
-
-  const handleArchiveGroup = (label: string, paths: string[]) => {
-    if (archiveSkipConfirm()) {
-      void window.openpi.archiveSessions(paths)
-      return
-    }
-    setArchivePending({ label, paths })
-  }
-
-  const handleArchiveConfirm = async (skipNext: boolean) => {
-    const pending = archivePending()
-    if (!pending) return
-    if (skipNext) {
-      setArchiveSkipConfirm(true)
-      void window.openpi.setPref('archive_skip_confirm', 'true')
-    }
-    await window.openpi.archiveSessions(pending.paths)
-    setArchivePending(null)
-  }
-
-  const handleNewSessionIn = (workspacePath: string) => {
-    void window.openpi.newSession(workspacePath)
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -480,7 +375,7 @@ export default function App() {
                       setLeftDrawerMode('threads')
                     }}
                     onOpenWorkspace={session.openWorkspace}
-                    onNewSessionIn={handleNewSessionIn}
+                    onNewSessionIn={archive.handleNewSessionIn}
                   />
                 </Show>
                 <Show when={leftDrawerMode() === 'tree'}>
@@ -514,21 +409,21 @@ export default function App() {
                     onCollapseAll={session.collapseAllGroups}
                     onToggleGroup={session.toggleGroup}
                     onNewSession={session.createNewSession}
-                    onNewSessionIn={handleNewSessionIn}
-                    onArchiveGroup={handleArchiveGroup}
+                    onNewSessionIn={archive.handleNewSessionIn}
+                    onArchiveGroup={archive.handleArchiveGroup}
                     onArchiveSession={(path) => {
-                      void handleArchiveSession(path)
+                      void archive.handleArchiveSession(path)
                     }}
-                    onPinSession={togglePinSession}
-                    pinnedSessions={pinnedSessions()}
-                    showArchived={showArchived()}
-                    archivedSessions={archivedSessions()}
-                    onToggleArchived={handleToggleArchived}
+                    onPinSession={archive.togglePinSession}
+                    pinnedSessions={archive.pinnedSessions()}
+                    showArchived={archive.showArchived()}
+                    archivedSessions={archive.archivedSessions()}
+                    onToggleArchived={archive.handleToggleArchived}
                     onUnarchiveSession={(p) => {
-                      void handleUnarchiveSession(p)
+                      void archive.handleUnarchiveSession(p)
                     }}
                     onDeleteArchivedSession={(p) => {
-                      void handleDeleteArchivedSession(p)
+                      void archive.handleDeleteArchivedSession(p)
                     }}
                     onOpenSession={session.openExistingSession}
                   />
@@ -655,7 +550,7 @@ export default function App() {
               customizationsOpen={customizationsOpen()}
               connectProviderOpen={connectProviderOpen()}
               manageModelsOpen={manageModelsOpen()}
-              archivePending={archivePending()}
+              archivePending={archive.archivePending()}
               commands={keybindings.paletteCommands()}
               sessions={session.sessions}
               appName={appName()}
@@ -677,8 +572,8 @@ export default function App() {
               onError={session.setError}
               onCloseConnectProvider={() => setConnectProviderOpen(false)}
               onProviderConnected={() => session.refreshModels()}
-              onArchiveConfirm={(skipNext) => void handleArchiveConfirm(skipNext)}
-              onArchiveCancel={() => setArchivePending(null)}
+              onArchiveConfirm={(skipNext) => void archive.handleArchiveConfirm(skipNext)}
+              onArchiveCancel={() => archive.setArchivePending(null)}
               onToggleHiddenModel={toggleHiddenModel}
               onCloseManageModels={() => setManageModelsOpen(false)}
               onConnectProviderFromModels={() => {
