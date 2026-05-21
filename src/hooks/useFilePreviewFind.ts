@@ -64,9 +64,11 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
   let replaceInputRef: HTMLInputElement | undefined
 
   const findMatches = createMemo(() => {
-    const text = getEditBuffer()
+    const view = editorViewRef()
+    const doc = view?.state.doc
     return collectCodeSearchMatches({
-      text,
+      text: doc ? '' : getEditBuffer(),
+      doc,
       query: findQuery(),
       caseSensitive: findCaseSensitive(),
       wholeWord: findWholeWord(),
@@ -80,11 +82,14 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
     findTotal() === 0 ? 0 : ((findMatchIndex() % findTotal()) + findTotal()) % findTotal()
   )
 
-  const findQueryIsInvalid = createMemo(
-    () =>
-      findQuery() !== '' &&
-      !isValidCodeSearchQuery({ text: getEditBuffer(), query: findQuery(), regex: findRegex() })
-  )
+  const findQueryIsInvalid = createMemo(() => {
+    if (findQuery() === '') return false
+    return !isValidCodeSearchQuery({
+      text: getEditBuffer(),
+      query: findQuery(),
+      regex: findRegex(),
+    })
+  })
 
   const openFindBar = (withReplace = false) => {
     setFindOpen(true)

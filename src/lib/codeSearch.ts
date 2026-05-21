@@ -22,7 +22,7 @@ function createCodeMirrorText(text: string): Text {
 
 function createSearchQuery(options: CodeSearchOptions): SearchQuery | null {
   const query = options.query ?? ''
-  if (!query || !options.text) return null
+  if (!query) return null
 
   try {
     const searchQuery = new SearchQuery({
@@ -41,11 +41,13 @@ export function isValidCodeSearchQuery(options: CodeSearchOptions): boolean {
   return createSearchQuery(options) !== null
 }
 
-export function collectCodeSearchMatches(options: CodeSearchOptions): CodeSearchMatch[] {
+export function collectCodeSearchMatches(
+  options: CodeSearchOptions & { doc?: Text }
+): CodeSearchMatch[] {
   const searchQuery = createSearchQuery(options)
   if (!searchQuery) return []
 
-  const text = createCodeMirrorText(options.text)
+  const text = options.doc ?? (options.text ? createCodeMirrorText(options.text) : Text.of(['']))
   const from = options.from ?? 0
   const to = options.to ?? text.length
   const matches: CodeSearchMatch[] = []
