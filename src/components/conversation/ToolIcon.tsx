@@ -79,3 +79,26 @@ export function ToolIcon(props: ToolIconProps) {
       return <Wrench {...ICON_PROPS} />
   }
 }
+type ToolTypeIconProps = {
+  toolName: string
+  streaming?: boolean
+  isError?: boolean
+}
+
+const _SHELL_TOOLS = new Set(['bash', 'sh', 'computer_bash', 'run_command'])
+
+export function ToolTypeIcon(props: ToolTypeIconProps) {
+  const state = () => (props.streaming ? 'pending' : props.isError ? 'error' : 'done')
+  const isShell = () => _SHELL_TOOLS.has(props.toolName)
+  const title = () => (props.streaming ? 'running…' : props.isError ? 'failed' : 'done')
+
+  return (
+    <span
+      class={`tool-type-icon tool-icon-${state()} ${isShell() ? 'is-shell' : ''}`}
+      title={title()}
+      aria-label={title()}
+    >
+      <ToolIcon name={props.toolName} />
+    </span>
+  )
+}
