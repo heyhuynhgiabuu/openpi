@@ -9,31 +9,19 @@
  *   - className  → class in SolidJS JSX
  */
 import { batch, createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
-import { AskWidget } from './components/AskWidget'
 import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
-import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
-import { Composer } from './components/Composer'
-import { ConversationPane } from './components/conversation/ConversationPane'
-import { CustomizationsModal } from './components/customizations/CustomizationsModal'
-import { FilePreviewPane } from './components/FilePreviewPane'
-import { FileTabBar } from './components/FileTabBar'
-import { DiffViewer } from './components/git/DiffViewer'
-import { FileSearchModal } from './components/git/FileSearchModal'
+import type { PaletteCommand } from './components/CommandPalette'
 import { FileTree } from './components/git/FileTree'
-import { GitPanel } from './components/git/GitPanel'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
-import { ConnectProviderModal } from './components/providers/ConnectProviderModal'
-import { ManageModelsModal } from './components/providers/ManageModelsModal'
 import { ResizeHandle } from './components/ResizeHandle'
-import { SubagentWidget } from './components/SubagentWidget'
-import { ArchiveConfirmModal } from './components/sidebar/ArchiveConfirmModal'
 import { SessionSidebar } from './components/sidebar/SessionSidebar'
 import { SessionTreePanel } from './components/sidebar/SessionTreePanel'
 import { WorkspacePane } from './components/sidebar/WorkspacePane'
-import { TaskWidget } from './components/TaskWidget'
 import { TopBar } from './components/TopBar'
-import { TerminalPanel } from './components/terminal/TerminalPanel'
 import { Welcome } from './components/Welcome'
+import { AppOverlays } from './components/workbench/AppOverlays'
+import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
+import { GitSidePanel } from './components/workbench/GitSidePanel'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { applyAppearancePreferences, loadAppearancePreferences } from './lib/appearancePreferences'
 import {
@@ -47,7 +35,7 @@ import {
   formatFileLineCommentsPrompt,
   type NewFileLineComment,
 } from './lib/fileLineComments'
-import type { AppInfo, GitChangedFile, GitFileDiff, SkillItem } from './lib/ipc'
+import type { AppInfo, GitChangedFile, GitFileDiff, GitSyncAction, SkillItem } from './lib/ipc'
 import {
   buildKeybindingEntries,
   eventMatchesBinding,
@@ -147,7 +135,7 @@ export default function App() {
   // clicking the branch chip in TopBar opens the refs picker in GitPanel.
   const [gitSyncLabel, setGitSyncLabel] = createSignal<string>('')
   let toggleRefsRef: (() => void) | undefined
-  const [gitSyncAction, setGitSyncAction] = createSignal<string | null>(null)
+  const [gitSyncAction, setGitSyncAction] = createSignal<GitSyncAction | null>(null)
   const [gitSyncMessage, setGitSyncMessage] = createSignal<string | null>(null)
   const [filePanelOpen, setFilePanelOpen] = createSignal(false)
   const [fileSearchOpen, setFileSearchOpen] = createSignal(false)
@@ -620,6 +608,37 @@ export default function App() {
     })
   }
 
+  const openCommitDiff = (hash: string, path: string, allFiles: string[]) => {
+    void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
+      if (!diff) return
+      const filesArray: GitChangedFile[] = allFiles.map((filePath) => ({
+        path: filePath,
+        status: 'M' as const,
+        staged: false,
+        added: 0,
+        removed: 0,
+      }))
+      const index = allFiles.indexOf(path)
+      batch(() => {
+        setCommitDiffHash(hash)
+        setActiveDiff(diff)
+        setDiffFiles(filesArray)
+        setDiffIndex(Math.max(0, index))
+      })
+    })
+  }
+
+  const navigateDiff = async (index: number) => {
+    setDiffIndex(index)
+    const file = diffFiles()[index]
+    if (!file) return
+    const hash = commitDiffHash()
+    const diff = hash
+      ? await window.openpi.git.getCommitDiff(hash, file.path)
+      : await window.openpi.git.getDiff(file.path)
+    if (diff) setActiveDiff(diff)
+  }
+
   const paletteCommands = createMemo<PaletteCommand[]>(() => {
     const entries = new Map(
       buildKeybindingEntries(customKeybindings()).map((entry) => [entry.id, entry])
@@ -859,321 +878,94 @@ export default function App() {
                 <ResizeHandle direction="horizontal" onResize={resizeSidebar} />
               </Show>
 
-              {/* Git panel LEFT of main — [drag handle][git][resize] */}
-              <Show when={gitPanelOpen() && gitPanelSide() === 'left'}>
-                <div class="secondary-panel-drag-handle">
-                  <button
-                    type="button"
-                    class="panel-drag-grip"
-                    title="Drag to move panel to the other side"
-                    aria-label="Drag panel"
-                    onMouseDown={_startGitDrag}
-                  >
-                    ⋮⋮
-                  </button>
-                </div>
-                <div
-                  class="secondary-panel"
-                  style={{
-                    width: `${gitPanelWidth()}px`,
-                    display: 'flex',
-                    'flex-direction': 'column',
-                    'min-width': '0',
-                  }}
-                >
-                  <GitPanel
-                    style={{ width: '100%', height: '100%' }}
-                    side="left"
-                    cwd={cwd()}
-                    activeTab={gitPanelTab()}
-                    onActiveTabChange={setGitPanelTab}
-                    onRequestFileSearch={() => {
-                      setFileSearchOpen(true)
-                    }}
-                    onDiffOpen={(diff, files, idx) => {
-                      batch(() => {
-                        setActiveDiff(diff)
-                        setDiffFiles(files)
-                        setDiffIndex(idx)
-                      })
-                    }}
-                    onCommitFileClick={(hash, path, allFiles) => {
-                      void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
-                        if (diff) {
-                          const filesArray: GitChangedFile[] = allFiles.map((f) => ({
-                            path: f,
-                            status: 'M' as const,
-                            staged: false,
-                            added: 0,
-                            removed: 0,
-                          }))
-                          const idx = allFiles.indexOf(path)
-                          batch(() => {
-                            setCommitDiffHash(hash)
-                            setActiveDiff(diff)
-                            setDiffFiles(filesArray)
-                            setDiffIndex(Math.max(0, idx))
-                          })
-                        }
-                      })
-                    }}
-                    onFileClick={(relPath) => openFile(relPath)}
-                    onSyncLabelChange={setGitSyncLabel}
-                    onSyncActionChange={(a) => setGitSyncAction(a)}
-                    onSyncMessageChange={(m) => setGitSyncMessage(m)}
-                  />
-                </div>
-                <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
-              </Show>
+              <GitSidePanel
+                visible={gitPanelOpen() && gitPanelSide() === 'left'}
+                side="left"
+                cwd={cwd()}
+                width={gitPanelWidth()}
+                activeTab={gitPanelTab()}
+                onActiveTabChange={setGitPanelTab}
+                onDragStart={_startGitDrag}
+                onResize={resizeGitPanel}
+                onRequestFileSearch={() => setFileSearchOpen(true)}
+                onDiffOpen={(diff, files, index) => {
+                  batch(() => {
+                    setActiveDiff(diff)
+                    setDiffFiles(files)
+                    setDiffIndex(index)
+                  })
+                }}
+                onCommitFileClick={openCommitDiff}
+                onFileClick={openFile}
+                onSyncLabelChange={setGitSyncLabel}
+                onSyncActionChange={setGitSyncAction}
+                onSyncMessageChange={setGitSyncMessage}
+              />
 
-              {/* Main conversation pane — always center, grows to fill */}
-              <div class="center-col">
-                <main class={`main-panel${openFiles().length > 0 ? ' main-panel--split' : ''}`}>
-                  {/* Conversation side — always mounted */}
-                  <div class="main-panel-conversation">
-                    <ConversationPane
-                      messages={conversationMessages()}
-                      workspaceName={workspaceName()}
-                      workspaceSummary={session.workspaceSummary}
-                      activeSessionPath={activeSessionPath()}
-                      setBottomRef={session.setBottomRef}
-                      onFork={session.forkFromMessage}
-                      onFileClick={(path) => openFile(path)}
-                      onOpenWorkspace={session.openWorkspace}
-                      displayPreferences={displayPreferences()}
-                      isStreaming={conversationStreaming()}
-                      hasMoreHistoryBefore={session.hasMoreHistoryBefore}
-                      isLoadingOlderHistory={session.isLoadingOlderHistory}
-                      onLoadOlderHistory={session.loadOlderSessionMessages}
-                      scrollToMessageId={scrollToMessageId()}
-                    />
-
-                    {/* Extension widgets — anchored to composer width, animate in from below */}
-                    <div class="widget-tray">
-                      <SubagentWidget agents={session.agents} />
-                      <TaskWidget tasks={session.tasks} onDismiss={() => session.clearTasks()} />
-                      <Show when={session.askState}>
-                        {(state) => (
-                          <AskWidget
-                            state={state()}
-                            onAnswer={(formatted) => void session.submitAsk(formatted)}
-                            onDismiss={() => session.dismissAsk()}
-                          />
-                        )}
-                      </Show>
-                    </div>
-
-                    <Show when={showRemoteSessionBar()}>
-                      <div class="remote-session-bar">
-                        <span class="remote-session-bar-dot" />
-                        {session.remoteSessionStatus?.status === 'running'
-                          ? 'Agent running in '
-                          : 'Mirroring session from '}
-                        <strong>
-                          {session.remoteSessionStatus?.app === 'pi-tui'
-                            ? 'Pi TUI'
-                            : (session.remoteSessionStatus?.app ?? 'another instance')}
-                        </strong>
-                        <Show when={Boolean(session.remoteSessionStatus?.workspace)}>
-                          <span> — {session.remoteSessionStatus!.workspace!}</span>
-                        </Show>
-                      </div>
-                    </Show>
-
-                    <Show when={session.error}>
-                      {(getErr) => (
-                        <div class="error-toast">
-                          <span>{getErr()}</span>
-                          <button type="button" onClick={() => session.setError(null)}>
-                            ×
-                          </button>
-                        </div>
-                      )}
-                    </Show>
-
-                    <Show when={session.subagentNotification}>
-                      {(notif) => (
-                        <div
-                          classList={{
-                            'subagent-notification': true,
-                            'subagent-notification--completed': notif().status === 'completed',
-                            'subagent-notification--failed': notif().status === 'failed',
-                          }}
-                        >
-                          <span>
-                            <span class="subagent-notification-icon">
-                              {notif().status === 'completed' ? '✓' : '✗'}
-                            </span>
-                            {notif().status === 'completed'
-                              ? 'Subagent complete'
-                              : 'Subagent failed'}
-                            : {notif().description}
-                          </span>
-                          <button
-                            type="button"
-                            class="subagent-notification-dismiss"
-                            onClick={() => session.dismissSubagentNotification()}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-                    </Show>
-
-                    <Composer
-                      input={session.input}
-                      isStreaming={session.isStreaming}
-                      isShellRunning={session.isShellRunning}
-                      queueMode={session.queueMode}
-                      workspaceName={workspaceName()}
-                      promptHistory={promptHistory()}
-                      steeringQueue={session.steeringQueue}
-                      followUpQueue={session.followUpQueue}
-                      setTextareaRef={session.setTextareaRef}
-                      cwd={cwd()}
-                      attachedFiles={attachedFiles()}
-                      onAddFile={addAttachedFile}
-                      onRemoveFile={removeAttachedFile}
-                      lineComments={lineComments()}
-                      onRemoveLineComment={removeLineComment}
-                      loadedSkills={loadedSkills()}
-                      onAddSkill={addLoadedSkill}
-                      onRemoveSkill={removeLoadedSkill}
-                      models={visibleModels()}
-                      currentModel={session.currentModel}
-                      onSelectModel={session.selectModel}
-                      thinkingLevel={session.thinkingLevel}
-                      onThinkingLevel={session.selectThinkingLevel}
-                      onConnectProvider={() => setConnectProviderOpen(true)}
-                      onManageModels={() => setManageModelsOpen(true)}
-                      onInput={session.setInput}
-                      onQueueMode={session.setQueueMode}
-                      onSend={() => {
-                        void handleSend()
-                      }}
-                      onShellSend={() => {
-                        void session.sendShell()
-                      }}
-                      onAbort={() => {
-                        void window.openpi.abort()
-                      }}
-                      activeGoalText={session.activeGoalText}
-                      activeGoalStep={session.activeGoalStep}
-                      activeGoalElapsed={session.activeGoalElapsed}
-                      activeGoalProgress={session.activeGoalProgress}
-                      onSetActiveGoal={session.setActiveGoal}
-                      contextPercent={session.contextPercent}
-                      agentTps={session.agentRunMetrics?.tps ?? null}
-                      availableAgentTypes={[
-                        { name: 'worker', description: 'Surgical implementer' },
-                        { name: 'explorer', description: 'Read-only codebase cartographer' },
-                        { name: 'scout', description: 'External research specialist' },
-                        { name: 'planner', description: 'Architecture and implementation plans' },
-                        { name: 'reviewer', description: 'Code review and debugging' },
-                      ]}
-                    />
-                  </div>
-
-                  {/* File preview side — shown alongside conversation */}
-                  {/* File preview side — shown alongside conversation */}
-                  <Show when={openFiles().length > 0}>
-                    <ResizeHandle direction="horizontal" onResize={resizePreview} />
-                    <div class="main-panel-preview" style={{ width: `${previewWidth()}px` }}>
-                      <FileTabBar
-                        files={openFiles()}
-                        activeIndex={activeFileIdx()}
-                        onSelect={setActiveFileIdx}
-                        onClose={closeFile}
-                      />
-                      <FilePreviewPane
-                        relativePath={openFiles()[activeFileIdx()] ?? ''}
-                        cwd={cwd()}
-                        workspaceName={workspaceName()}
-                        background={fileSearchOpen()}
-                        findOpen={fileFindOpen()}
-                        onFindOpened={() => setFileFindOpen(false)}
-                        onAddLineComment={addLineComment}
-                        onClose={() => closeFile(activeFileIdx())}
-                      />
-                    </div>
-                  </Show>
-                </main>
-
-                <TerminalPanel
-                  cwd={cwd()}
-                  isOpen={terminalOpen()}
-                  newTerminalRequest={newTerminalRequest()}
-                  onClose={() => setTerminalOpen(false)}
-                />
-              </div>
-
-              {/* Git panel RIGHT of main (default) — [resize][drag handle][git] */}
-              <Show when={gitPanelOpen() && gitPanelSide() === 'right'}>
-                <div class="secondary-panel-drag-handle">
-                  <button
-                    type="button"
-                    class="panel-drag-grip"
-                    title="Drag to move panel to the other side"
-                    aria-label="Drag panel"
-                    onMouseDown={_startGitDrag}
-                  >
-                    ⋮⋮
-                  </button>
-                </div>
-                <ResizeHandle direction="horizontal" onResize={resizeGitPanel} />
-                <div
-                  class="secondary-panel"
-                  style={{
-                    width: `${gitPanelWidth()}px`,
-                    display: 'flex',
-                    'flex-direction': 'column',
-                    'min-width': '0',
-                  }}
-                >
-                  <GitPanel
-                    style={{ width: '100%', height: '100%' }}
-                    side="right"
-                    cwd={cwd()}
-                    activeTab={gitPanelTab()}
-                    onActiveTabChange={setGitPanelTab}
-                    onRequestFileSearch={() => {
-                      setFilePanelOpen(true)
-                      setFileSearchOpen(true)
-                    }}
-                    onDiffOpen={(diff, files, idx) => {
-                      batch(() => {
-                        setActiveDiff(diff)
-                        setDiffFiles(files)
-                        setDiffIndex(idx)
-                      })
-                    }}
-                    onCommitFileClick={(hash, path, allFiles) => {
-                      void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
-                        if (diff) {
-                          const filesArray: GitChangedFile[] = allFiles.map((f) => ({
-                            path: f,
-                            status: 'M' as const,
-                            staged: false,
-                            added: 0,
-                            removed: 0,
-                          }))
-                          const idx = allFiles.indexOf(path)
-                          batch(() => {
-                            setCommitDiffHash(hash)
-                            setActiveDiff(diff)
-                            setDiffFiles(filesArray)
-                            setDiffIndex(Math.max(0, idx))
-                          })
-                        }
-                      })
-                    }}
-                    onFileClick={(relPath) => openFile(relPath)}
-                    onSyncLabelChange={setGitSyncLabel}
-                    onSyncActionChange={(a) => setGitSyncAction(a)}
-                    onSyncMessageChange={(m) => setGitSyncMessage(m)}
-                  />
-                </div>
-              </Show>
+              <ConversationWorkspace
+                session={session}
+                cwd={cwd()}
+                workspaceName={workspaceName()}
+                activeSessionPath={activeSessionPath()}
+                messages={conversationMessages()}
+                isStreaming={conversationStreaming()}
+                displayPreferences={displayPreferences()}
+                scrollToMessageId={scrollToMessageId()}
+                showRemoteSessionBar={showRemoteSessionBar()}
+                promptHistory={promptHistory()}
+                attachedFiles={attachedFiles()}
+                lineComments={lineComments()}
+                loadedSkills={loadedSkills()}
+                visibleModels={visibleModels()}
+                openFiles={openFiles()}
+                activeFileIdx={activeFileIdx()}
+                previewWidth={previewWidth()}
+                fileSearchOpen={fileSearchOpen()}
+                fileFindOpen={fileFindOpen()}
+                terminalOpen={terminalOpen()}
+                newTerminalRequest={newTerminalRequest()}
+                onOpenFile={openFile}
+                onAddAttachedFile={addAttachedFile}
+                onRemoveAttachedFile={removeAttachedFile}
+                onAddLineComment={addLineComment}
+                onRemoveLineComment={removeLineComment}
+                onAddSkill={addLoadedSkill}
+                onRemoveSkill={removeLoadedSkill}
+                onConnectProvider={() => setConnectProviderOpen(true)}
+                onManageModels={() => setManageModelsOpen(true)}
+                onSend={() => void handleSend()}
+                onResizePreview={resizePreview}
+                onSelectFile={setActiveFileIdx}
+                onCloseFile={closeFile}
+                onFindOpened={() => setFileFindOpen(false)}
+                onCloseTerminal={() => setTerminalOpen(false)}
+              />
+              <GitSidePanel
+                visible={gitPanelOpen() && gitPanelSide() === 'right'}
+                side="right"
+                cwd={cwd()}
+                width={gitPanelWidth()}
+                activeTab={gitPanelTab()}
+                onActiveTabChange={setGitPanelTab}
+                onDragStart={_startGitDrag}
+                onResize={resizeGitPanel}
+                onRequestFileSearch={() => {
+                  setFilePanelOpen(true)
+                  setFileSearchOpen(true)
+                }}
+                onDiffOpen={(diff, files, index) => {
+                  batch(() => {
+                    setActiveDiff(diff)
+                    setDiffFiles(files)
+                    setDiffIndex(index)
+                  })
+                }}
+                onCommitFileClick={openCommitDiff}
+                onFileClick={openFile}
+                onSyncLabelChange={setGitSyncLabel}
+                onSyncActionChange={setGitSyncAction}
+                onSyncMessageChange={setGitSyncMessage}
+              />
               {/* File tree panel — separate from git panel */}
               <Show when={filePanelOpen()}>
                 <ResizeHandle direction="horizontal" onResize={() => {}} />
@@ -1207,94 +999,47 @@ export default function App() {
               goalUpdate={session.goalUpdate}
             />
 
-            <Show when={fileSearchOpen()}>
-              <FileSearchModal
-                cwd={cwd()}
-                onClose={() => setFileSearchOpen(false)}
-                onFileClick={(path) => openFile(path)}
-              />
-            </Show>
-
-            <Show when={commandPaletteOpen()}>
-              <CommandPalette
-                cwd={cwd()}
-                commands={paletteCommands()}
-                sessions={session.sessions}
-                onClose={() => setCommandPaletteOpen(false)}
-                onOpenFile={(path) => openFile(path)}
-                onOpenSession={session.openExistingSession}
-              />
-            </Show>
-
-            <Show when={activeDiff()}>
-              {(getDiff) => (
-                <DiffViewer
-                  diff={getDiff()}
-                  allFiles={diffFiles()}
-                  currentIndex={diffIndex()}
-                  onNavigate={async (idx) => {
-                    setDiffIndex(idx)
-                    const file = diffFiles()[idx]
-                    if (file) {
-                      const hash = commitDiffHash()
-                      const d = hash
-                        ? await window.openpi.git.getCommitDiff(hash, file.path)
-                        : await window.openpi.git.getDiff(file.path)
-                      if (d) setActiveDiff(d)
-                    }
-                  }}
-                  onClose={() => {
-                    setActiveDiff(null)
-                    setCommitDiffHash(null)
-                  }}
-                />
-              )}
-            </Show>
-
-            <CustomizationsModal
-              open={customizationsOpen()}
+            <AppOverlays
+              cwd={cwd()}
+              fileSearchOpen={fileSearchOpen()}
+              commandPaletteOpen={commandPaletteOpen()}
+              activeDiff={activeDiff()}
+              diffFiles={diffFiles()}
+              diffIndex={diffIndex()}
+              customizationsOpen={customizationsOpen()}
+              connectProviderOpen={connectProviderOpen()}
+              manageModelsOpen={manageModelsOpen()}
+              archivePending={archivePending()}
+              commands={paletteCommands()}
+              sessions={session.sessions}
               appName={appName()}
               appVersionLabel={appVersionLabel()}
               models={session.models}
               currentModel={session.currentModel}
+              hiddenModels={hiddenModels()}
+              onCloseFileSearch={() => setFileSearchOpen(false)}
+              onOpenFile={openFile}
+              onCloseCommandPalette={() => setCommandPaletteOpen(false)}
+              onOpenSession={session.openExistingSession}
+              onNavigateDiff={(index) => void navigateDiff(index)}
+              onCloseDiff={() => {
+                setActiveDiff(null)
+                setCommitDiffHash(null)
+              }}
+              onCloseCustomizations={() => setCustomizationsOpen(false)}
               onSelectModel={session.selectModel}
-              onClose={() => setCustomizationsOpen(false)}
               onError={session.setError}
-              cwd={cwd()}
+              onCloseConnectProvider={() => setConnectProviderOpen(false)}
+              onProviderConnected={() => session.refreshModels()}
+              onArchiveConfirm={(skipNext) => void handleArchiveConfirm(skipNext)}
+              onArchiveCancel={() => setArchivePending(null)}
+              onToggleHiddenModel={toggleHiddenModel}
+              onCloseManageModels={() => setManageModelsOpen(false)}
+              onConnectProviderFromModels={() => {
+                setManageModelsOpen(false)
+                setConnectProviderOpen(true)
+              }}
             />
-
-            <Show when={connectProviderOpen()}>
-              <ConnectProviderModal
-                onClose={() => setConnectProviderOpen(false)}
-                onConnected={() => session.refreshModels()}
-              />
-            </Show>
-
-            <Show when={archivePending()}>
-              {(getPending) => (
-                <ArchiveConfirmModal
-                  workspaceName={getPending().label}
-                  sessionCount={getPending().paths.length}
-                  onConfirm={(skipNext) => {
-                    void handleArchiveConfirm(skipNext)
-                  }}
-                  onCancel={() => setArchivePending(null)}
-                />
-              )}
-            </Show>
-
-            <Show when={manageModelsOpen()}>
-              <ManageModelsModal
-                models={session.models}
-                hiddenModels={hiddenModels()}
-                onToggle={toggleHiddenModel}
-                onClose={() => setManageModelsOpen(false)}
-                onConnectProvider={() => {
-                  setManageModelsOpen(false)
-                  setConnectProviderOpen(true)
-                }}
-              />
-            </Show>
           </div>
         )
       }}
