@@ -8,7 +8,7 @@
  *   - Early return pattern → <Show when={session.ready}> control flow
  *   - className  → class in SolidJS JSX
  */
-import { batch, createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js'
 import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
 import type { PaletteCommand } from './components/CommandPalette'
 import { FileTree } from './components/git/FileTree'
@@ -22,6 +22,7 @@ import { Welcome } from './components/Welcome'
 import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
+import { useAppFileManager } from './hooks/useAppFileManager'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { applyAppearancePreferences, loadAppearancePreferences } from './lib/appearancePreferences'
@@ -31,12 +32,7 @@ import {
   type DisplayPreferences,
   loadDisplayPreferences,
 } from './lib/displayPreferences'
-import {
-  type FileLineComment,
-  formatFileLineCommentsPrompt,
-  type NewFileLineComment,
-} from './lib/fileLineComments'
-import type { AppInfo, GitChangedFile, GitFileDiff, GitSyncAction, SkillItem } from './lib/ipc'
+import type { AppInfo, GitSyncAction } from './lib/ipc'
 import {
   buildKeybindingEntries,
   eventMatchesBinding,
@@ -46,7 +42,6 @@ import {
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from './lib/keybindings'
-import { buildFileContextBlocks, buildSkillContextBlocks } from './lib/promptContext'
 import { restoreThemeFromStorage } from './lib/themeApply'
 
 export default function App() {
@@ -99,6 +94,45 @@ export default function App() {
     resizeGitPanel,
     resizePreview,
   } = useWorkbenchLayout()
+  const {
+    attachedFiles,
+    lineComments,
+    loadedSkills,
+    hiddenModels,
+    activeDiff,
+    openFiles,
+    activeFileIdx,
+    diffFiles,
+    diffIndex,
+    filePanelOpen,
+    fileSearchOpen,
+    fileFindOpen,
+    setFilePanelOpen,
+    setFileSearchOpen,
+    setFileFindOpen,
+    setHiddenModels,
+    setActiveFileIdx,
+    setCommitDiffHash,
+    setActiveDiff,
+    handleDiffOpen,
+    openFile,
+    closeFile,
+    closeDeletedFilePreviews,
+    addAttachedFile,
+    removeAttachedFile,
+    addLineComment,
+    removeLineComment,
+    addLoadedSkill,
+    removeLoadedSkill,
+    handleSend,
+    toggleHiddenModel,
+    openCommitDiff,
+    navigateDiff,
+  } = useAppFileManager({
+    cwd: () => session.selectedWorkspacePath ?? '',
+    input: () => session.input,
+    send: (prefix) => void session.send(prefix),
+  })
   const [gitPanelTab, setGitPanelTab] = createSignal<'changes' | 'history'>('changes')
   // ── Git panel → TopBar bridge ──────────────────────────────────────────────
   // The active GitPanel surfaces its branch/upstream labels here so TopBar can
@@ -108,9 +142,6 @@ export default function App() {
   let toggleRefsRef: (() => void) | undefined
   const [gitSyncAction, setGitSyncAction] = createSignal<GitSyncAction | null>(null)
   const [gitSyncMessage, setGitSyncMessage] = createSignal<string | null>(null)
-  const [filePanelOpen, setFilePanelOpen] = createSignal(false)
-  const [fileSearchOpen, setFileSearchOpen] = createSignal(false)
-  const [fileFindOpen, setFileFindOpen] = createSignal(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false)
   const [connectProviderOpen, setConnectProviderOpen] = createSignal(false)
   const [manageModelsOpen, setManageModelsOpen] = createSignal(false)
@@ -119,48 +150,6 @@ export default function App() {
     import('./lib/ipc').ArchivedSessionItem[]
   >([])
   const [pinnedSessions, setPinnedSessions] = createSignal<Set<string>>(new Set())
-  const [attachedFiles, setAttachedFiles] = createSignal<string[]>([])
-  const [lineComments, setLineComments] = createSignal<FileLineComment[]>([])
-  const [loadedSkills, setLoadedSkills] = createSignal<SkillItem[]>([])
-  const [hiddenModels, setHiddenModels] = createSignal<Set<string>>(new Set())
-  const [activeDiff, setActiveDiff] = createSignal<GitFileDiff | null>(null)
-  const [openFiles, setOpenFiles] = createSignal<string[]>([])
-  const [activeFileIdx, setActiveFileIdx] = createSignal(0)
-
-  const openFile = (relPath: string) => {
-    const files = openFiles()
-    const existing = files.indexOf(relPath)
-    if (existing >= 0) {
-      setActiveFileIdx(existing)
-    } else {
-      const newFiles = [...files, relPath]
-      setOpenFiles(newFiles)
-      setActiveFileIdx(newFiles.length - 1)
-    }
-  }
-
-  const closeFile = (idx: number) => {
-    const newFiles = openFiles().filter((_, i) => i !== idx)
-    setOpenFiles(newFiles)
-    if (newFiles.length > 0) {
-      setActiveFileIdx((prev) => Math.min(prev, newFiles.length - 1))
-    }
-  }
-
-  const closeDeletedFilePreviews = (relPath: string, isDir: boolean) => {
-    const prefix = `${relPath.replace(/\/+$/, '')}/`
-    const newFiles = openFiles().filter(
-      (file) => file !== relPath && !(isDir && file.startsWith(prefix))
-    )
-    if (newFiles.length === openFiles().length) return
-    setOpenFiles(newFiles)
-    if (newFiles.length > 0) {
-      setActiveFileIdx((prev) => Math.min(prev, newFiles.length - 1))
-    }
-  }
-  const [diffFiles, setDiffFiles] = createSignal<GitChangedFile[]>([])
-  const [diffIndex, setDiffIndex] = createSignal(0)
-  const [commitDiffHash, setCommitDiffHash] = createSignal<string | null>(null)
   const [archivePending, setArchivePending] = createSignal<{
     label: string
     paths: string[]
@@ -441,112 +430,6 @@ export default function App() {
     void window.openpi.newSession(workspacePath)
   }
 
-  // ── File / skill attachment ───────────────────────────────────────────────
-
-  const addAttachedFile = (relPath: string) => {
-    setAttachedFiles((prev) => (prev.includes(relPath) ? prev : [...prev, relPath]))
-  }
-
-  const removeAttachedFile = (relPath: string) => {
-    setAttachedFiles((prev) => prev.filter((p) => p !== relPath))
-  }
-
-  const addLineComment = (comment: NewFileLineComment) => {
-    const id =
-      globalThis.crypto?.randomUUID?.() ?? `${comment.path}:${comment.startLine}-${Date.now()}`
-    setLineComments((prev) => [...prev, { ...comment, id }])
-  }
-
-  const removeLineComment = (id: string) => {
-    setLineComments((prev) => prev.filter((comment) => comment.id !== id))
-  }
-
-  const addLoadedSkill = (skill: SkillItem) => {
-    setLoadedSkills((prev) => (prev.some((s) => s.name === skill.name) ? prev : [...prev, skill]))
-  }
-
-  const removeLoadedSkill = (name: string) => {
-    setLoadedSkills((prev) => prev.filter((s) => s.name !== name))
-  }
-
-  const handleSend = async () => {
-    const hasContext =
-      loadedSkills().length > 0 || attachedFiles().length > 0 || lineComments().length > 0
-    if (!session.input.trim() && !hasContext) return
-
-    let prefix = ''
-
-    const skills = loadedSkills()
-    if (skills.length > 0) {
-      const skillReads = await Promise.all(
-        skills.map((s) => window.openpi.readSkillFile(`${s.path}/SKILL.md`).catch(() => null))
-      )
-      const skillBlocks = buildSkillContextBlocks(skills, skillReads)
-      if (skillBlocks.length > 0) {
-        prefix = skillBlocks.join('\n\n')
-      }
-      setLoadedSkills([])
-    }
-
-    const files = attachedFiles()
-    if (files.length > 0) {
-      const reads = await Promise.all(files.map((p) => window.openpi.readFile(p).catch(() => null)))
-      const filePrefix = buildFileContextBlocks(files, reads).join('\n\n')
-      prefix = prefix ? `${prefix}\n\n${filePrefix}` : filePrefix
-      setAttachedFiles([])
-    }
-
-    const comments = lineComments()
-    if (comments.length > 0) {
-      const commentsPrefix = formatFileLineCommentsPrompt(comments)
-      prefix = prefix ? `${prefix}\n\n${commentsPrefix}` : commentsPrefix
-      setLineComments([])
-    }
-
-    void session.send(prefix || undefined)
-  }
-
-  const toggleHiddenModel = (key: string) => {
-    setHiddenModels((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      void window.openpi.setPref('hidden_models', JSON.stringify([...next]))
-      return next
-    })
-  }
-
-  const openCommitDiff = (hash: string, path: string, allFiles: string[]) => {
-    void window.openpi.git.getCommitDiff(hash, path).then((diff) => {
-      if (!diff) return
-      const filesArray: GitChangedFile[] = allFiles.map((filePath) => ({
-        path: filePath,
-        status: 'M' as const,
-        staged: false,
-        added: 0,
-        removed: 0,
-      }))
-      const index = allFiles.indexOf(path)
-      batch(() => {
-        setCommitDiffHash(hash)
-        setActiveDiff(diff)
-        setDiffFiles(filesArray)
-        setDiffIndex(Math.max(0, index))
-      })
-    })
-  }
-
-  const navigateDiff = async (index: number) => {
-    setDiffIndex(index)
-    const file = diffFiles()[index]
-    if (!file) return
-    const hash = commitDiffHash()
-    const diff = hash
-      ? await window.openpi.git.getCommitDiff(hash, file.path)
-      : await window.openpi.git.getDiff(file.path)
-    if (diff) setActiveDiff(diff)
-  }
-
   const paletteCommands = createMemo<PaletteCommand[]>(() => {
     const entries = new Map(
       buildKeybindingEntries(customKeybindings()).map((entry) => [entry.id, entry])
@@ -791,13 +674,7 @@ export default function App() {
                 onDragStart={startGitDrag}
                 onResize={resizeGitPanel}
                 onRequestFileSearch={() => setFileSearchOpen(true)}
-                onDiffOpen={(diff, files, index) => {
-                  batch(() => {
-                    setActiveDiff(diff)
-                    setDiffFiles(files)
-                    setDiffIndex(index)
-                  })
-                }}
+                onDiffOpen={handleDiffOpen}
                 onCommitFileClick={openCommitDiff}
                 onFileClick={openFile}
                 onSyncLabelChange={setGitSyncLabel}
@@ -856,13 +733,7 @@ export default function App() {
                   setFilePanelOpen(true)
                   setFileSearchOpen(true)
                 }}
-                onDiffOpen={(diff, files, index) => {
-                  batch(() => {
-                    setActiveDiff(diff)
-                    setDiffFiles(files)
-                    setDiffIndex(index)
-                  })
-                }}
+                onDiffOpen={handleDiffOpen}
                 onCommitFileClick={openCommitDiff}
                 onFileClick={openFile}
                 onSyncLabelChange={setGitSyncLabel}
