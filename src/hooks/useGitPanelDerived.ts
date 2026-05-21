@@ -1,5 +1,5 @@
 import { createMemo } from 'solid-js'
-import type { GitStatusResult, GitSyncAction } from '../../lib/ipc'
+import type { GitStatusResult, GitSyncAction } from '../lib/ipc'
 
 export function useGitPanelDerived(config: {
   status: () => GitStatusResult | null
