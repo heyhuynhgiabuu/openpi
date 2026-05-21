@@ -6,7 +6,7 @@
  */
 
 import { Compartment, EditorState, Prec } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { EditorView, highlightTrailingWhitespace, keymap } from '@codemirror/view'
 import { vim } from '@replit/codemirror-vim'
 import { basicSetup } from 'codemirror'
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js'
@@ -57,6 +57,7 @@ export function CodeMirrorEditor(props: CodeMirrorEditorProps) {
   const searchHighlightCompartment = new Compartment()
   const wordWrapCompartment = new Compartment()
   const vimCompartment = new Compartment()
+  const qualityCompartment = new Compartment()
 
   onMount(() => {
     view = new EditorView({
@@ -106,6 +107,7 @@ export function CodeMirrorEditor(props: CodeMirrorEditorProps) {
           ),
           languageCompartment.of(languageFor(props.filename)),
           diagnosticsCompartment.of(diagnosticsFor(props.filename)),
+          qualityCompartment.of(highlightTrailingWhitespace()),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               props.onChange(update.state.doc.toString())
@@ -175,6 +177,13 @@ export function CodeMirrorEditor(props: CodeMirrorEditorProps) {
     if (!view || !ready()) return
     view.dispatch({
       effects: vimCompartment.reconfigure(props.vimMode ? vim() : []),
+    })
+  })
+
+  createEffect(() => {
+    if (!view || !ready()) return
+    view.dispatch({
+      effects: qualityCompartment.reconfigure(highlightTrailingWhitespace()),
     })
   })
 

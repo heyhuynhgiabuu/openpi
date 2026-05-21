@@ -99,4 +99,7 @@ export const editorChromeTheme = EditorView.theme({
   '.cm-diagnostic-error': {
     borderBottom: '1px dotted var(--danger)',
   },
+  '.cm-trailingSpace': {
+    backgroundColor: 'rgba(255, 85, 85, 0.15)',
+  },
 })
