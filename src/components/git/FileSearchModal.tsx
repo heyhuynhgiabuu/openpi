@@ -15,138 +15,17 @@
  */
 
 // biome-ignore-all lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions lint/a11y/useSemanticElements: existing search modal backdrop/panel interactions are tracked separately from this release.
-import fuzzysort from 'fuzzysort'
 import { Search } from 'lucide-solid'
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  type JSX,
-  onCleanup,
-  onMount,
-  Show,
-} from 'solid-js'
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { FileIcon } from '../../lib/fileIcons'
 import type { FffGrepMatch } from '../../lib/ipc'
-
-interface FlatFile {
-  name: string
-  path: string
-  dir: string
-}
-
-interface FileHit {
-  item: FlatFile
-  nameRanges?: [number, number][]
-  pathRanges?: [number, number][]
-}
+import { HighlightedText, ModifierBtn } from './FileSearchHighlight'
+import { computeFileHits, type FileHit, type FlatFile } from './fileSearchHelpers'
 
 interface FileSearchModalProps {
   cwd: string | null
   onClose: () => void
   onFileClick?: (relPath: string) => void
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function getMatchRanges(text: string, regex: RegExp): [number, number][] {
-  const ranges: [number, number][] = []
-  const r = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`)
-  let m: RegExpExecArray | null
-  m = r.exec(text)
-  while (m !== null) {
-    ranges.push([m.index, m.index + m[0].length - 1])
-    if (m[0].length === 0) r.lastIndex += 1
-    m = r.exec(text)
-  }
-  return ranges
-}
-
-function HighlightedText(props: { text: string; ranges?: readonly [number, number][] }) {
-  const nodes: (string | JSX.Element)[] = []
-  if (!props.ranges?.length) return <>{props.text}</>
-
-  let cursor = 0
-  for (const [start, end] of props.ranges) {
-    if (start > cursor) nodes.push(props.text.slice(cursor, start))
-    nodes.push(<mark class="fsearch-hl">{props.text.slice(start, end + 1)}</mark>)
-    cursor = end + 1
-  }
-  if (cursor < props.text.length) nodes.push(props.text.slice(cursor))
-
-  return <>{nodes}</>
-}
-
-function ModifierBtn(props: {
-  label: string
-  title: string
-  active: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      class={`fsearch-modifier-btn${props.active ? ' is-active' : ''}`}
-      title={props.title}
-      onClick={props.onToggle}
-      tabIndex={-1}
-      aria-pressed={props.active}
-    >
-      {props.label}
-    </button>
-  )
-}
-
-function computeFileHits(
-  query: string,
-  files: FlatFile[],
-  matchCase: boolean,
-  wholeWord: boolean,
-  useRegex: boolean
-): { hits: FileHit[]; error: boolean } {
-  const anyModifier = matchCase || wholeWord || useRegex
-
-  if (!query.trim()) {
-    return { hits: files.slice(0, 20).map((item) => ({ item })), error: false }
-  }
-
-  if (!anyModifier) {
-    // fuzzysort: search by name (weight 3) and path (weight 1)
-    const results = fuzzysort.go(query, files, { keys: ['name', 'path'], limit: 30 })
-    const hits: FileHit[] = results.map((r) => ({
-      item: r.obj,
-      // fuzzysort doesn't provide range arrays like Fuse — skip for now
-    }))
-    return { hits, error: false }
-  }
-
-  let regex: RegExp
-  try {
-    let pattern = useRegex ? query : escapeRegex(query)
-    if (wholeWord) pattern = `\\b${pattern}\\b`
-    regex = new RegExp(pattern, matchCase ? 'g' : 'gi')
-  } catch {
-    return { hits: [], error: true }
-  }
-
-  const hits: FileHit[] = []
-  for (const f of files) {
-    regex.lastIndex = 0
-    const nameMatch = regex.test(f.name)
-    regex.lastIndex = 0
-    const pathMatch = regex.test(f.path)
-    if (!nameMatch && !pathMatch) continue
-    hits.push({
-      item: f,
-      nameRanges: nameMatch ? getMatchRanges(f.name, regex) : undefined,
-      pathRanges: !nameMatch && pathMatch ? getMatchRanges(f.dir, regex) : undefined,
-    })
-    if (hits.length >= 30) break
-  }
-  return { hits, error: false }
 }
 
 export function FileSearchModal(props: FileSearchModalProps) {
