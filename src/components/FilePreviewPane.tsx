@@ -11,11 +11,9 @@
  * Images rendered via localfile:// — no readFile call.
  */
 
-// biome-ignore-all lint/a11y/useSemanticElements lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: existing file-preview line interactions are tracked separately from this release.
-import { EditorSelection } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import type { EditorView } from '@codemirror/view'
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
-import { collectCodeSearchMatches, isValidCodeSearchQuery } from '../lib/codeSearch'
+import { useFilePreviewFind } from '../hooks/useFilePreviewFind'
 import type { NewFileLineComment } from '../lib/fileLineComments'
 import { ensureHighlighter, highlightCode } from '../lib/shiki'
 import { type EditorThemeId, isEditorThemeId } from './CodeMirrorEditor'
@@ -131,8 +129,6 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const [editorTheme, setEditorTheme] = createSignal<EditorThemeId>(readStoredEditorTheme())
   const [saveError, setSaveError] = createSignal<string | null>(null)
 
-  let editorViewRef: EditorView | undefined
-
   createEffect(() => {
     window.localStorage.setItem(EDITOR_THEME_STORAGE_KEY, editorTheme())
   })
@@ -140,204 +136,17 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   let previewScrollRef: HTMLDivElement | undefined
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
   let isSyncingScroll = false
-  let findInputRef: HTMLInputElement | undefined
-  let replaceInputRef: HTMLInputElement | undefined
 
-  // ── Find bar ─────────────────────────────────────────────────────────────
-  const [findOpen, setFindOpen] = createSignal(false)
-  const [findQuery, setFindQuery] = createSignal('')
-  const [findMatchIndex, setFindMatchIndex] = createSignal(0)
-  const [findCaseSensitive, setFindCaseSensitive] = createSignal(false)
-  const [findWholeWord, setFindWholeWord] = createSignal(false)
-  const [findRegex, setFindRegex] = createSignal(false)
-  // Replace
-  const [findReplaceOpen, setFindReplaceOpen] = createSignal(false)
-  const [replaceQuery, setReplaceQuery] = createSignal('')
-  // In-selection search
-  const [findInSelection, setFindInSelection] = createSignal(false)
-  const [findSelStart, setFindSelStart] = createSignal(0)
-  const [findSelEnd, setFindSelEnd] = createSignal(0)
+  let editorViewRef: EditorView | undefined
 
-  const findMatches = createMemo(() => {
-    const text = editBuffer()
-    const inSelection = findInSelection()
-    const from = inSelection ? findSelStart() : undefined
-    const to = inSelection ? findSelEnd() : undefined
-
-    return collectCodeSearchMatches({
-      text,
-      query: findQuery(),
-      caseSensitive: findCaseSensitive(),
-      wholeWord: findWholeWord(),
-      regex: findRegex(),
-      from,
-      to,
-    })
+  const find = useFilePreviewFind({
+    getEditBuffer: editBuffer,
+    setEditBuffer,
+    editorViewRef: () => editorViewRef,
+    getMode: mode,
+    findOpen: props.findOpen,
+    onFindOpened: props.onFindOpened,
   })
-
-  const findTotal = createMemo(() => findMatches().length)
-  const safeMatchIndex = createMemo(() =>
-    findTotal() === 0 ? 0 : ((findMatchIndex() % findTotal()) + findTotal()) % findTotal()
-  )
-  const findQueryIsInvalid = createMemo(
-    () =>
-      findQuery() !== '' &&
-      !isValidCodeSearchQuery({ text: editBuffer(), query: findQuery(), regex: findRegex() })
-  )
-
-  const openFindBar = (withReplace = false) => {
-    setFindOpen(true)
-    if (withReplace) {
-      setFindReplaceOpen(true)
-      setTimeout(() => replaceInputRef?.focus(), 30)
-    } else {
-      setTimeout(() => findInputRef?.focus(), 30)
-    }
-  }
-
-  const closeFindBar = () => {
-    setFindOpen(false)
-    setFindQuery('')
-    setFindMatchIndex(0)
-    setFindReplaceOpen(false)
-    setReplaceQuery('')
-    setFindInSelection(false)
-    setFindSelStart(0)
-    setFindSelEnd(0)
-  }
-
-  const selectMatchAt = (index: number) => {
-    const matches = findMatches()
-    if (!matches.length || !editorViewRef) return
-    const safeIndex = ((index % matches.length) + matches.length) % matches.length
-    const match = matches[safeIndex]
-    if (!match) return
-
-    editorViewRef.dispatch({
-      selection: EditorSelection.range(match.index, match.index + match.length),
-      effects: EditorView.scrollIntoView(match.index, { y: 'center' }),
-    })
-    editorViewRef.focus()
-  }
-
-  const findNext = () => {
-    const next = safeMatchIndex() + 1
-    setFindMatchIndex(next)
-    selectMatchAt(next)
-  }
-
-  const findPrev = () => {
-    const next = safeMatchIndex() - 1
-    setFindMatchIndex(next)
-    selectMatchAt(next)
-  }
-
-  // Replace current match through CodeMirror so undo/redo and selection history stay intact.
-  const replaceNext = () => {
-    const matches = findMatches()
-    const match = matches[safeMatchIndex()]
-    if (!match) return
-
-    const replacement = replaceQuery()
-    if (!editorViewRef) {
-      const text = editBuffer()
-      setEditBuffer(
-        text.slice(0, match.index) + replacement + text.slice(match.index + match.length)
-      )
-      return
-    }
-
-    const cursor = match.index + replacement.length
-    editorViewRef.dispatch({
-      changes: { from: match.index, to: match.index + match.length, insert: replacement },
-      selection: { anchor: cursor },
-      scrollIntoView: true,
-    })
-  }
-
-  // Replace every match in one CodeMirror transaction to preserve a single undo step.
-  const replaceAll = () => {
-    const matches = findMatches()
-    if (!matches.length) return
-
-    const replacement = replaceQuery()
-    if (!editorViewRef) {
-      let result = editBuffer()
-      for (let i = matches.length - 1; i >= 0; i--) {
-        const match = matches[i]
-        if (match) {
-          result =
-            result.slice(0, match.index) + replacement + result.slice(match.index + match.length)
-        }
-      }
-      setEditBuffer(result)
-      setFindMatchIndex(0)
-      return
-    }
-
-    editorViewRef.dispatch({
-      changes: matches.map((match) => ({
-        from: match.index,
-        to: match.index + match.length,
-        insert: replacement,
-      })),
-      selection: { anchor: matches[0]?.index ?? 0 },
-      scrollIntoView: true,
-    })
-    setFindMatchIndex(0)
-  }
-
-  const selectAllMatches = () => {
-    const matches = findMatches()
-    if (!matches.length || !editorViewRef) return
-
-    editorViewRef.dispatch({
-      selection: EditorSelection.create(
-        matches.map((match) => EditorSelection.range(match.index, match.index + match.length))
-      ),
-      scrollIntoView: true,
-    })
-    editorViewRef.focus()
-  }
-
-  // Capture current textarea selection as the search scope
-  const toggleInSelection = () => {
-    if (findInSelection()) {
-      setFindInSelection(false)
-      setFindMatchIndex(0)
-      return
-    }
-    if (!editorEl()) return
-    const start = 0
-    const end = 0 // cm6
-    if (start === end) return // nothing selected — no-op
-    setFindSelStart(start)
-    setFindSelEnd(end)
-    setFindInSelection(true)
-    setFindMatchIndex(0)
-  }
-
-  // Scroll to the active CodeMirror search match without recomputing line offsets in the DOM.
-  createEffect(() => {
-    const matches = findMatches()
-    const idx = safeMatchIndex()
-    if (matches.length === 0 || !findOpen()) return
-    const match = matches[idx]
-    if (!match || !editorViewRef) return
-
-    editorViewRef.dispatch({
-      effects: EditorView.scrollIntoView(match.index, { y: 'center' }),
-    })
-  })
-
-  // Open find bar when findOpen prop changes to true
-  createEffect(() => {
-    if (props.findOpen) {
-      openFindBar()
-      props.onFindOpened?.()
-    }
-  })
-
   const isDirty = createMemo(() => content() !== null && editBuffer() !== content())
 
   // Reset to edit mode (with live syntax highlighting) when switching to a different file
@@ -454,8 +263,8 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     const handler = (e: KeyboardEvent) => {
       if (props.background) return
       if (e.key === 'Escape') {
-        if (findOpen()) {
-          closeFindBar()
+        if (find.findOpen()) {
+          find.closeFindBar()
           return
         }
         props.onClose()
@@ -466,31 +275,31 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
-        openFindBar(true) // Cmd+Shift+F → find with replace (like VS Code/Zed)
+        find.openFindBar(true) // Cmd+Shift+F → find with replace (like VS Code/Zed)
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         if (e.altKey) {
-          openFindBar(true) // Cmd+Alt+F → open with replace
+          find.openFindBar(true) // Cmd+Alt+F → open with replace
         } else {
-          openFindBar()
+          find.openFindBar()
         }
       }
-      if (findOpen() && e.altKey) {
+      if (find.findOpen() && e.altKey) {
         if (e.key.toLowerCase() === 'c') {
           e.preventDefault()
-          setFindCaseSensitive((v) => !v)
-          setFindMatchIndex(0)
+          find.setFindCaseSensitive((v) => !v)
+          find.setFindMatchIndex(0)
         }
         if (e.key.toLowerCase() === 'w') {
           e.preventDefault()
-          setFindWholeWord((v) => !v)
-          setFindMatchIndex(0)
+          find.setFindWholeWord((v) => !v)
+          find.setFindMatchIndex(0)
         }
         if (e.key.toLowerCase() === 'r') {
           e.preventDefault()
-          setFindRegex((v) => !v)
-          setFindMatchIndex(0)
+          find.setFindRegex((v) => !v)
+          find.setFindMatchIndex(0)
         }
       }
     }
@@ -543,47 +352,47 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
         />
 
         <FilePreviewFindBar
-          findOpen={findOpen()}
-          findQuery={findQuery()}
-          findCaseSensitive={findCaseSensitive()}
-          findWholeWord={findWholeWord()}
-          findRegex={findRegex()}
-          findReplaceOpen={findReplaceOpen()}
-          replaceQuery={replaceQuery()}
-          findInSelection={findInSelection()}
-          findTotal={findTotal()}
-          safeMatchIndex={safeMatchIndex()}
-          findQueryIsInvalid={findQueryIsInvalid()}
+          findOpen={find.findOpen()}
+          findQuery={find.findQuery()}
+          findCaseSensitive={find.findCaseSensitive()}
+          findWholeWord={find.findWholeWord()}
+          findRegex={find.findRegex()}
+          findReplaceOpen={find.findReplaceOpen()}
+          replaceQuery={find.replaceQuery()}
+          findInSelection={find.findInSelection()}
+          findTotal={find.findTotal()}
+          safeMatchIndex={find.safeMatchIndex()}
+          findQueryIsInvalid={find.findQueryIsInvalid()}
           modeIsEdit={mode() === 'edit'}
-          inputRef={findInputRef}
-          replaceInputRef={replaceInputRef}
-          onFindQueryChange={setFindQuery}
-          onFindMatchIndexReset={() => setFindMatchIndex(0)}
+          inputRef={find.findInputRef}
+          replaceInputRef={find.replaceInputRef}
+          onFindQueryChange={find.setFindQuery}
+          onFindMatchIndexReset={() => find.setFindMatchIndex(0)}
           onFindCaseSensitiveToggle={() => {
-            setFindCaseSensitive((v) => !v)
-            setFindMatchIndex(0)
+            find.setFindCaseSensitive((v) => !v)
+            find.setFindMatchIndex(0)
           }}
           onFindWholeWordToggle={() => {
-            setFindWholeWord((v) => !v)
-            setFindMatchIndex(0)
+            find.setFindWholeWord((v) => !v)
+            find.setFindMatchIndex(0)
           }}
           onFindRegexToggle={() => {
-            setFindRegex((v) => !v)
-            setFindMatchIndex(0)
+            find.setFindRegex((v) => !v)
+            find.setFindMatchIndex(0)
           }}
-          onFindReplaceOpenToggle={setFindReplaceOpen}
-          onReplaceQueryChange={setReplaceQuery}
+          onFindReplaceOpenToggle={find.setFindReplaceOpen}
+          onReplaceQueryChange={find.setReplaceQuery}
           onFindInSelectionToggle={() => {
-            setFindInSelection((v) => !v)
-            setFindMatchIndex(0)
+            find.setFindInSelection((v) => !v)
+            find.setFindMatchIndex(0)
           }}
-          onFindNext={findNext}
-          onFindPrev={findPrev}
-          onCloseFindBar={closeFindBar}
-          onSelectAllMatches={selectAllMatches}
-          onToggleInSelection={toggleInSelection}
-          onReplaceNext={replaceNext}
-          onReplaceAll={replaceAll}
+          onFindNext={find.findNext}
+          onFindPrev={find.findPrev}
+          onCloseFindBar={find.closeFindBar}
+          onSelectAllMatches={find.selectAllMatches}
+          onToggleInSelection={find.toggleInSelection}
+          onReplaceNext={find.replaceNext}
+          onReplaceAll={find.replaceAll}
         />
         <FilePreviewBody
           saveError={saveError()}
@@ -598,18 +407,18 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           wordWrap={wordWrap()}
           vimMode={vimMode()}
           editorTheme={editorTheme()}
-          findOpen={findOpen()}
-          findQuery={findQuery()}
-          findCaseSensitive={findCaseSensitive()}
-          findWholeWord={findWholeWord()}
-          findRegex={findRegex()}
-          safeMatchIndex={safeMatchIndex()}
+          findOpen={find.findOpen()}
+          findQuery={find.findQuery()}
+          findCaseSensitive={find.findCaseSensitive()}
+          findWholeWord={find.findWholeWord()}
+          findRegex={find.findRegex()}
+          safeMatchIndex={find.safeMatchIndex()}
           previewScrollRef={previewScrollRef}
           onEditBufferChange={setEditBuffer}
           onSetMode={setMode}
           onSyncEditorToPreview={syncEditorToPreview}
           onSyncPreviewToEditor={syncPreviewToEditor}
-          onOpenFindBar={openFindBar}
+          onOpenFindBar={find.openFindBar}
           onEditorViewInit={(v) => {
             editorViewRef = v
           }}
