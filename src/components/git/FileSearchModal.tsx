@@ -16,10 +16,10 @@
 
 // biome-ignore-all lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions lint/a11y/useSemanticElements: existing search modal backdrop/panel interactions are tracked separately from this release.
 import { Search } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
-import { FileIcon } from '../../lib/fileIcons'
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { FffGrepMatch } from '../../lib/ipc'
-import { HighlightedText, ModifierBtn } from './FileSearchHighlight'
+import { ModifierBtn } from './FileSearchHighlight'
+import { FileHitsList, TextResultsList } from './FileSearchResults'
 import { computeFileHits, type FlatFile } from './fileSearchHelpers'
 
 interface FileSearchModalProps {
@@ -269,124 +269,22 @@ export function FileSearchModal(props: FileSearchModalProps) {
           class="fsearch-results"
           role="listbox"
         >
-          <Show when={fileHitsState().hits.length > 0}>
-            <div class="fsearch-section">
-              <div class="fsearch-section-header">
-                Files
-                <span class="fsearch-section-count">{fileHitsState().hits.length}</span>
-              </div>
-              <For each={fileHitsState().hits}>
-                {(hit, idx) => (
-                  <button
-                    type="button"
-                    data-idx={idx()}
-                    class={`fsearch-result${idx() === activeIdx() ? ' is-active' : ''}`}
-                    role="option"
-                    aria-selected={idx() === activeIdx()}
-                    onClick={() => previewFile(hit.item.path)}
-                    onMouseEnter={() => setActiveIdx(idx())}
-                  >
-                    <span class="fsearch-result-icon">
-                      <FileIcon name={hit.item.name} size={13} />
-                    </span>
-                    <span class="fsearch-result-text">
-                      <span class="fsearch-result-name">
-                        <HighlightedText text={hit.item.name} ranges={hit.nameRanges} />
-                      </span>
-                      <Show when={hit.item.dir}>
-                        <span class="fsearch-result-dir">
-                          <HighlightedText text={hit.item.dir} ranges={hit.pathRanges} />
-                        </span>
-                      </Show>
-                    </span>
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-
-          <Show when={textSearching() || textResults().length > 0 || (query() && !textSearching())}>
-            <div class="fsearch-section">
-              <div class="fsearch-section-header">
-                In files
-                <Show
-                  when={textSearching()}
-                  fallback={<span class="fsearch-section-count">{textMatchCount()}</span>}
-                >
-                  <span class="fsearch-section-searching">searching…</span>
-                </Show>
-              </div>
-
-              <Show when={textSearching()}>
-                <div class="fsearch-empty" style={{ padding: '12px 14px' }}>
-                  …
-                </div>
-              </Show>
-
-              <Show when={!textSearching() && textResults().length === 0 && query()}>
-                <div class="fsearch-empty" style={{ padding: '8px 14px', 'font-size': '11px' }}>
-                  No content matches
-                </div>
-              </Show>
-
-              <Show when={!textSearching()}>
-                <For each={textFilesGrouped()}>
-                  {(group, gi) => {
-                    const first = group[0]
-                    const offsetBefore = textFilesGrouped()
-                      .slice(0, gi())
-                      .reduce((s, g) => s + g.length, 0)
-                    const rp = first?.relativePath ?? ''
-                    const dirPart = rp.includes('/') ? rp.slice(0, rp.lastIndexOf('/')) : ''
-
-                    return (
-                      <div class="fsearch-file-group">
-                        <div class="fsearch-file-header" aria-hidden>
-                          <span class="fsearch-file-header-icon">
-                            <FileIcon name={first?.fileName ?? ''} size={12} />
-                          </span>
-                          <span class="fsearch-file-header-name">{first?.fileName}</span>
-                          <Show when={dirPart}>
-                            <span class="fsearch-file-header-dir">{dirPart}</span>
-                          </Show>
-                          <span class="fsearch-file-header-count">{group.length}</span>
-                        </div>
-
-                        <For each={group}>
-                          {(match, mi) => {
-                            const globalIdx = () =>
-                              fileHitsState().hits.length + offsetBefore + mi()
-                            const isActive = () => globalIdx() === activeIdx()
-                            return (
-                              <button
-                                type="button"
-                                data-idx={globalIdx()}
-                                class={`fsearch-text-line${isActive() ? ' is-active' : ''}`}
-                                onClick={() => previewFile(match.relativePath)}
-                                onMouseEnter={() => setActiveIdx(globalIdx())}
-                              >
-                                <span class="fsearch-text-lineno">{match.lineNumber}</span>
-                                <span class="fsearch-text-content">
-                                  <HighlightedText
-                                    text={match.lineContent}
-                                    ranges={match.matchRanges}
-                                  />
-                                </span>
-                              </button>
-                            )
-                          }}
-                        </For>
-                      </div>
-                    )
-                  }}
-                </For>
-              </Show>
-            </div>
-          </Show>
-
-          <Show when={!query() && fileHitsState().hits.length === 0}>
-            <div class="fsearch-empty">No files in workspace</div>
-          </Show>
+          <FileHitsList
+            hits={fileHitsState().hits}
+            activeIdx={activeIdx()}
+            onSelect={setActiveIdx}
+            onClick={previewFile}
+          />
+          <TextResultsList
+            results={textFilesGrouped()}
+            textSearching={textSearching()}
+            query={query()}
+            activeIdx={activeIdx()}
+            matchCount={textMatchCount()}
+            fileHitCount={fileHitsState().hits.length}
+            onSelect={setActiveIdx}
+            onFileClick={(path) => props.onFileClick?.(path)}
+          />
         </div>
 
         <div class="fsearch-footer">
