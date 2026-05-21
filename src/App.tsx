@@ -13,14 +13,12 @@ import { BottomBar, type LeftDrawerMode } from './components/BottomBar'
 import { FileTree } from './components/git/FileTree'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
 import { ResizeHandle } from './components/ResizeHandle'
-import { SessionSidebar } from './components/sidebar/SessionSidebar'
-import { SessionTreePanel } from './components/sidebar/SessionTreePanel'
-import { WorkspacePane } from './components/sidebar/WorkspacePane'
 import { TopBar } from './components/TopBar'
 import { Welcome } from './components/Welcome'
 import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
+import { WorkbenchSidebar } from './components/workbench/WorkbenchSidebar'
 import { useAppArchive } from './hooks/useAppArchive'
 import { useAppFileManager } from './hooks/useAppFileManager'
 import { useAppKeybindings } from './hooks/useAppKeybindings'
@@ -41,7 +39,7 @@ export default function App() {
   const [leftDrawerMode, setLeftDrawerMode] = createSignal<LeftDrawerMode>('threads')
   const [gitPanelOpen, setGitPanelOpen] = createSignal(false)
   const [scrollToMessageId, setScrollToMessageId] = createSignal<string | null>(null)
-  let scrollToMessageNonce = 0
+  const scrollToMessageNonce = 0
   const [treeRefreshVersion, setTreeRefreshVersion] = createSignal(0)
   let prevStreaming = false
 
@@ -328,74 +326,39 @@ export default function App() {
                 </div>
               </Show>
 
-              {/* Left drawer — fixed left, switches between Threads, Workspace, and Session Map */}
-              <Show when={sidebarOpen()}>
-                <Show when={leftDrawerMode() === 'workspace'}>
-                  <WorkspacePane
-                    style={{ width: `${sidebarWidth()}px` }}
-                    workspaces={session.workspaces}
-                    selectedPath={session.selectedWorkspacePath}
-                    activePath={cwd()}
-                    onSelectWorkspace={(workspacePath) => {
-                      void session.selectWorkspace(workspacePath)
-                      setLeftDrawerMode('threads')
-                    }}
-                    onOpenWorkspace={session.openWorkspace}
-                    onNewSessionIn={archive.handleNewSessionIn}
-                  />
-                </Show>
-                <Show when={leftDrawerMode() === 'tree'}>
-                  <SessionTreePanel
-                    style={{ width: `${sidebarWidth()}px` }}
-                    sessionPath={activeSessionPath()}
-                    onScrollToMessage={(entryId) => {
-                      scrollToMessageNonce++
-                      setScrollToMessageId(`${entryId}:${scrollToMessageNonce.toString(36)}`)
-                    }}
-                    onClose={() => setSidebarOpen(false)}
-                    refreshTrigger={treeRefreshVersion()}
-                  />
-                </Show>
-                <Show when={leftDrawerMode() === 'threads'}>
-                  <SessionSidebar
-                    style={{ width: `${sidebarWidth()}px` }}
-                    sessions={session.sessions}
-                    workspaces={session.workspaces}
-                    selectedWorkspacePath={session.selectedWorkspacePath}
-                    activePath={activeSessionPath()}
-                    query={session.sessionQuery}
-                    sortBy={session.sortBy}
-                    groupBy={session.groupBy}
-                    showRecent={session.showRecent}
-                    collapsedGroups={session.collapsedGroups}
-                    onQuery={session.setSessionQuery}
-                    onSort={session.setSortBy}
-                    onGroup={session.setGroupBy}
-                    onShowRecent={session.setShowRecent}
-                    onCollapseAll={session.collapseAllGroups}
-                    onToggleGroup={session.toggleGroup}
-                    onNewSession={session.createNewSession}
-                    onNewSessionIn={archive.handleNewSessionIn}
-                    onArchiveGroup={archive.handleArchiveGroup}
-                    onArchiveSession={(path) => {
-                      void archive.handleArchiveSession(path)
-                    }}
-                    onPinSession={archive.togglePinSession}
-                    pinnedSessions={archive.pinnedSessions()}
-                    showArchived={archive.showArchived()}
-                    archivedSessions={archive.archivedSessions()}
-                    onToggleArchived={archive.handleToggleArchived}
-                    onUnarchiveSession={(p) => {
-                      void archive.handleUnarchiveSession(p)
-                    }}
-                    onDeleteArchivedSession={(p) => {
-                      void archive.handleDeleteArchivedSession(p)
-                    }}
-                    onOpenSession={session.openExistingSession}
-                  />
-                </Show>
-                <ResizeHandle direction="horizontal" onResize={resizeSidebar} />
-              </Show>
+              <WorkbenchSidebar
+                sidebarOpen={sidebarOpen()}
+                sidebarWidth={sidebarWidth()}
+                leftDrawerMode={leftDrawerMode()}
+                session={{
+                  workspaces: session.workspaces,
+                  selectedWorkspacePath: session.selectedWorkspacePath,
+                  selectWorkspace: session.selectWorkspace,
+                  openWorkspace: session.openWorkspace,
+                  sessions: session.sessions,
+                  sessionQuery: session.sessionQuery ?? '',
+                  sortBy: session.sortBy,
+                  groupBy: session.groupBy,
+                  showRecent: session.showRecent,
+                  collapsedGroups: session.collapsedGroups,
+                  setSessionQuery: session.setSessionQuery,
+                  setSortBy: session.setSortBy,
+                  setGroupBy: session.setGroupBy,
+                  setShowRecent: session.setShowRecent,
+                  collapseAllGroups: session.collapseAllGroups,
+                  toggleGroup: session.toggleGroup,
+                  createNewSession: session.createNewSession,
+                  openExistingSession: session.openExistingSession,
+                }}
+                archive={archive}
+                activeSessionPath={activeSessionPath()}
+                setLeftDrawerMode={setLeftDrawerMode}
+                setSidebarOpen={setSidebarOpen}
+                setScrollToMessageId={setScrollToMessageId}
+                scrollToMessageNonce={scrollToMessageNonce}
+                treeRefreshVersion={treeRefreshVersion()}
+                onResize={resizeSidebar}
+              />
 
               <GitSidePanel
                 visible={gitPanelOpen() && gitPanelSide() === 'left'}
