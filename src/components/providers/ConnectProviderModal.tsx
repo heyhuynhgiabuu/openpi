@@ -21,6 +21,8 @@ import type {
   ProviderLoginEvent,
 } from '../../lib/ipc'
 import { getProviderLabel } from '../../lib/providers'
+import { BuiltInProviderRow } from './BuiltInProviderRow'
+import { CustomProviderRow } from './CustomProviderRow'
 import {
   type FormErrors,
   type FormState,
@@ -28,7 +30,6 @@ import {
   type LoginPhase,
   type ModelRow,
   POPULAR_PROVIDER_IDS,
-  PROVIDER_DESCRIPTIONS,
   SUBSCRIPTION_IDS,
   SUBSCRIPTION_PROVIDERS,
   type View,
@@ -548,121 +549,30 @@ export function ConnectProviderModal(props: Props) {
     )
   }
 
-  const renderBuiltInRow = (provider: ProviderInfo) => {
-    const isExpanded = () => expandedId() === provider.id
-    const description = PROVIDER_DESCRIPTIONS[provider.id]
-
-    return (
-      <div class={`cp-provider-row ${provider.configured ? 'is-connected' : ''}`}>
-        <div class="cp-provider-header">
-          <div class="cp-provider-info">
-            <span class="cp-provider-name">{getProviderLabel(provider.id)}</span>
-            <Show when={description}>
-              <span class="cp-provider-desc">{description}</span>
-            </Show>
-          </div>
-          <div class="cp-provider-actions">
-            <span class="cp-model-count">{provider.modelCount}m</span>
-            <Show
-              when={provider.configured}
-              fallback={
-                <button
-                  type="button"
-                  class={`cp-connect-btn ${isExpanded() ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setExpandedId(isExpanded() ? null : provider.id)
-                    setApiKeyInput('')
-                    setListError(null)
-                  }}
-                  title="Add API key"
-                >
-                  <Plus size={12} strokeWidth={2.5} />
-                </button>
-              }
-            >
-              <div class="cp-connected-badge">
-                <Check size={11} strokeWidth={2.5} />
-                <span>Connected</span>
-                <button
-                  type="button"
-                  class="cp-disconnect-btn"
-                  onClick={() => void handleRemoveKey(provider.id)}
-                  title="Disconnect"
-                >
-                  <X size={10} strokeWidth={2} />
-                </button>
-              </div>
-            </Show>
-          </div>
-        </div>
-
-        <Show when={isExpanded()}>
-          <div class="cp-key-form">
-            <input
-              autofocus
-              type="password"
-              class="cp-key-input"
-              placeholder={`${provider.displayName} API key`}
-              value={apiKeyInput()}
-              onInput={(e) => setApiKeyInput(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleSaveKey(provider)
-              }}
-            />
-            <Show when={listError()}>
-              <p class="cp-key-error">{listError()}</p>
-            </Show>
-            <div class="cp-key-actions">
-              <button
-                type="button"
-                class="cp-key-cancel"
-                onClick={() => {
-                  setExpandedId(null)
-                  setApiKeyInput('')
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="cp-key-save"
-                disabled={!apiKeyInput().trim() || listSaving()}
-                onClick={() => void handleSaveKey(provider)}
-              >
-                {listSaving() ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </Show>
-      </div>
-    )
-  }
+  const renderBuiltInRow = (provider: ProviderInfo) => (
+    <BuiltInProviderRow
+      provider={provider}
+      expanded={expandedId() === provider.id}
+      apiKeyInput={apiKeyInput()}
+      listError={listError()}
+      listSaving={listSaving()}
+      onExpand={() => {
+        setExpandedId(expandedId() === provider.id ? null : provider.id)
+        setApiKeyInput('')
+        setListError(null)
+      }}
+      onApiKeyInput={setApiKeyInput}
+      onCancel={() => {
+        setExpandedId(null)
+        setApiKeyInput('')
+      }}
+      onSave={() => void handleSaveKey(provider)}
+      onRemove={() => void handleRemoveKey(provider.id)}
+    />
+  )
 
   const renderCustomRow = (provider: CustomProviderInfo) => (
-    <div class="cp-provider-row cp-custom-row">
-      <div class="cp-provider-header">
-        <div class="cp-provider-info">
-          <span class="cp-provider-name">{provider.name}</span>
-          <span class="cp-provider-desc">
-            {provider.baseUrl} · {provider.modelCount}m
-          </span>
-        </div>
-        <div class="cp-provider-actions">
-          <div class="cp-connected-badge">
-            <Check size={11} strokeWidth={2.5} />
-            <span>Custom</span>
-          </div>
-          <button
-            type="button"
-            class="cp-disconnect-btn"
-            onClick={() => void handleRemoveCustom(provider.id)}
-            title="Remove provider"
-          >
-            <Trash2 size={12} strokeWidth={2} />
-          </button>
-        </div>
-      </div>
-    </div>
+    <CustomProviderRow provider={provider} onRemove={() => void handleRemoveCustom(provider.id)} />
   )
 
   if (view() === 'list') {
