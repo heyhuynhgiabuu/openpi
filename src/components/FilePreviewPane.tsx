@@ -15,20 +15,7 @@
 import { EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-import {
-  ChevronDown,
-  ChevronUp,
-  Code2,
-  FileText,
-  Keyboard,
-  PanelBottomOpen,
-  PanelRight,
-  Replace,
-  ReplaceAll,
-  Save,
-  Search,
-  X,
-} from 'lucide-solid'
+import { Code2, FileText, Keyboard, PanelRight, Save, X } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
 import { collectCodeSearchMatches, isValidCodeSearchQuery } from '../lib/codeSearch'
 import { FileIcon } from '../lib/fileIcons'
@@ -37,6 +24,7 @@ import { ensureHighlighter, highlightCode } from '../lib/shiki'
 import { EDITOR_THEMES, type EditorThemeId, isEditorThemeId } from './CodeMirrorEditor'
 import type { ViewMode } from './FilePreviewBody'
 import { FilePreviewBody } from './FilePreviewBody'
+import { FilePreviewFindBar } from './FilePreviewFindBar'
 
 const EDITOR_THEME_STORAGE_KEY = 'openpi:file-preview-editor-theme'
 
@@ -664,195 +652,49 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           </div>
         </div>
 
-        {/* ── Find / Replace bar (Cmd+F / Cmd+⌥F) ──────────────────── */}
-        <Show when={findOpen()}>
-          {/* ── Search row ── */}
-          <div class="fv-find-bar">
-            {/* Replace-toggle chevron (left of search icon, like Zed) */}
-            <button
-              type="button"
-              class={`fv-find-replace-toggle${findReplaceOpen() ? ' is-active' : ''}`}
-              title={`${findReplaceOpen() ? 'Hide' : 'Show'} Replace (Cmd+⌥F)`}
-              onClick={() => {
-                const next = !findReplaceOpen()
-                setFindReplaceOpen(next)
-                if (next) setTimeout(() => replaceInputRef?.focus(), 30)
-              }}
-            >
-              <PanelBottomOpen size={13} strokeWidth={2} />
-            </button>
-
-            <Search size={12} class="fv-find-icon" />
-            <input
-              ref={findInputRef}
-              class={`fv-find-input${findQueryIsInvalid() ? ' fv-find-input--error' : ''}`}
-              type="text"
-              value={findQuery()}
-              placeholder={findRegex() ? 'Search regex…' : 'Find in file…'}
-              onInput={(e) => {
-                setFindQuery(e.currentTarget.value)
-                setFindMatchIndex(0)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.shiftKey ? findPrev() : findNext()
-                if (e.key === 'Escape') {
-                  e.stopPropagation()
-                  closeFindBar()
-                }
-              }}
-            />
-
-            {/* ── Match-mode toggles (Aa / Wd / .*) ── */}
-            <div class="fv-find-toggles">
-              <button
-                type="button"
-                class={`fv-find-toggle${findCaseSensitive() ? ' is-active' : ''}`}
-                title="Match case (Alt+C)"
-                onClick={() => {
-                  setFindCaseSensitive((v) => !v)
-                  setFindMatchIndex(0)
-                }}
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class={`fv-find-toggle${findWholeWord() ? ' is-active' : ''}`}
-                title="Match whole word (Alt+W)"
-                onClick={() => {
-                  setFindWholeWord((v) => !v)
-                  setFindMatchIndex(0)
-                }}
-              >
-                Wd
-              </button>
-              <button
-                type="button"
-                class={`fv-find-toggle${findRegex() ? ' is-active' : ''}`}
-                title="Use regular expression (Alt+R)"
-                onClick={() => {
-                  setFindRegex((v) => !v)
-                  setFindMatchIndex(0)
-                }}
-              >
-                .*
-              </button>
-            </div>
-
-            <span class="fv-find-sep" />
-
-            {/* ── Selection scope + select-all ── */}
-            <div class="fv-find-toggles">
-              <button
-                type="button"
-                class={`fv-find-toggle${findInSelection() ? ' is-active' : ''}`}
-                title={
-                  findInSelection()
-                    ? 'Clear selection scope (Alt+L)'
-                    : 'Find in current selection (Alt+L) — select text first'
-                }
-                onClick={toggleInSelection}
-              >
-                [sel]
-              </button>
-              <button
-                type="button"
-                class="fv-find-toggle"
-                title="Select all matches (Alt+↩)"
-                onClick={selectAllMatches}
-                disabled={findTotal() === 0}
-              >
-                all
-              </button>
-            </div>
-
-            <span class="fv-find-sep" />
-
-            {/* ── Count + navigation ── */}
-            <span class="fv-find-count">
-              <Show when={findQuery()}>
-                {findTotal() === 0 ? 'No results' : `${safeMatchIndex() + 1} / ${findTotal()}`}
-              </Show>
-            </span>
-            <button
-              type="button"
-              class="fv-find-nav"
-              title="Previous (Shift+↩)"
-              onClick={findPrev}
-              disabled={findTotal() === 0}
-            >
-              <ChevronUp size={13} strokeWidth={2.2} />
-            </button>
-            <button
-              type="button"
-              class="fv-find-nav"
-              title="Next (↩)"
-              onClick={findNext}
-              disabled={findTotal() === 0}
-            >
-              <ChevronDown size={13} strokeWidth={2.2} />
-            </button>
-
-            <button type="button" class="fv-find-close" title="Close (Esc)" onClick={closeFindBar}>
-              <X size={12} />
-            </button>
-          </div>
-
-          {/* ── Replace row (shown when findReplaceOpen) ── */}
-          <Show when={findReplaceOpen()}>
-            <div class="fv-find-replace-row">
-              {/* Indent to align replace input under search input */}
-              <span class="fv-find-replace-indent" />
-              <Search size={12} class="fv-find-icon fv-find-icon--replace" />
-              <input
-                ref={replaceInputRef}
-                class="fv-find-input"
-                type="text"
-                value={replaceQuery()}
-                placeholder="Replace with…"
-                disabled={mode() !== 'edit'}
-                onInput={(e) => setReplaceQuery(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault()
-                    replaceAll()
-                  } else if (e.key === 'Enter') {
-                    e.preventDefault()
-                    replaceNext()
-                  }
-                  if (e.key === 'Escape') {
-                    e.stopPropagation()
-                    closeFindBar()
-                  }
-                }}
-              />
-              <div class="fv-find-replace-actions">
-                <button
-                  type="button"
-                  class="fv-find-replace-btn"
-                  title="Replace next (↩)"
-                  onClick={replaceNext}
-                  disabled={findTotal() === 0 || mode() !== 'edit'}
-                >
-                  <Replace size={13} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  class="fv-find-replace-btn"
-                  title="Replace all (Cmd+↩)"
-                  onClick={replaceAll}
-                  disabled={findTotal() === 0 || mode() !== 'edit'}
-                >
-                  <ReplaceAll size={13} strokeWidth={2} />
-                </button>
-              </div>
-              <Show when={mode() !== 'edit'}>
-                <span class="fv-find-replace-note">switch to Edit mode to replace</span>
-              </Show>
-            </div>
-          </Show>
-        </Show>
-
+        <FilePreviewFindBar
+          findOpen={findOpen()}
+          findQuery={findQuery()}
+          findCaseSensitive={findCaseSensitive()}
+          findWholeWord={findWholeWord()}
+          findRegex={findRegex()}
+          findReplaceOpen={findReplaceOpen()}
+          replaceQuery={replaceQuery()}
+          findInSelection={findInSelection()}
+          findTotal={findTotal()}
+          safeMatchIndex={safeMatchIndex()}
+          findQueryIsInvalid={findQueryIsInvalid()}
+          modeIsEdit={mode() === 'edit'}
+          inputRef={findInputRef}
+          replaceInputRef={replaceInputRef}
+          onFindQueryChange={setFindQuery}
+          onFindMatchIndexReset={() => setFindMatchIndex(0)}
+          onFindCaseSensitiveToggle={() => {
+            setFindCaseSensitive((v) => !v)
+            setFindMatchIndex(0)
+          }}
+          onFindWholeWordToggle={() => {
+            setFindWholeWord((v) => !v)
+            setFindMatchIndex(0)
+          }}
+          onFindRegexToggle={() => {
+            setFindRegex((v) => !v)
+            setFindMatchIndex(0)
+          }}
+          onFindReplaceOpenToggle={setFindReplaceOpen}
+          onReplaceQueryChange={setReplaceQuery}
+          onFindInSelectionToggle={() => {
+            setFindInSelection((v) => !v)
+            setFindMatchIndex(0)
+          }}
+          onFindNext={findNext}
+          onFindPrev={findPrev}
+          onCloseFindBar={closeFindBar}
+          onSelectAllMatches={selectAllMatches}
+          onToggleInSelection={toggleInSelection}
+          onReplaceNext={replaceNext}
+          onReplaceAll={replaceAll}
+        />
         <FilePreviewBody
           saveError={saveError()}
           isImage={isImage()}
