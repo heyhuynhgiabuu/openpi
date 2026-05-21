@@ -1,91 +1,14 @@
-import { Check, Copy, GitBranch } from 'lucide-solid'
-import {
-  type Component,
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from 'solid-js'
+import { type Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage } from '../../lib/ipc'
 import type { Message, SystemMessage, ToolCard } from '../../types/session'
 import { MarkdownContent } from './MarkdownContent'
+import { MessageActions } from './MessageActions'
 import { SystemMsg } from './SystemMessage'
 import { ToolCardView } from './ToolCardView'
+import { UserMessage } from './UserMessage'
 import { aggregateUsage, LiveUsageRow, UsageRow, usageTotal } from './usage'
-
-type MessageActionsProps = {
-  messageId: string
-  /** Thunk: called only at copy-click time, never during streaming. */
-  getText: () => string
-  streaming?: boolean
-  onFork?: (id: string) => void
-}
-
-function MessageActions(props: MessageActionsProps) {
-  const [copied, setCopied] = createSignal(false)
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined
-
-  onCleanup(() => {
-    if (copiedTimer) clearTimeout(copiedTimer)
-  })
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(props.getText())
-    setCopied(true)
-    if (copiedTimer) clearTimeout(copiedTimer)
-    copiedTimer = setTimeout(() => setCopied(false), 1800)
-  }
-
-  return (
-    <Show when={!props.streaming}>
-      <div class="message-actions">
-        <button type="button" class="msg-action-btn" onClick={handleCopy} title="Copy text">
-          <Show when={copied()} fallback={<Copy size={12} />}>
-            <Check size={12} />
-          </Show>
-        </button>
-        <Show when={props.onFork}>
-          <button
-            type="button"
-            class="msg-action-btn fork-btn"
-            onClick={() => props.onFork?.(props.messageId)}
-            title="Fork conversation from here"
-          >
-            <GitBranch size={12} />
-            <span>fork</span>
-          </button>
-        </Show>
-      </div>
-    </Show>
-  )
-}
-
-type UserMessageProps = {
-  message: SessionHistoryMessage
-  onFork?: (id: string) => void
-}
-
-export const UserMessage: Component<UserMessageProps> = (props) => {
-  return (
-    <div class="message-row user-message-row">
-      <div class="user-msg-stack">
-        <div class="user-bubble">
-          <MarkdownContent text={props.message.text} />
-        </div>
-        <MessageActions
-          messageId={props.message.id}
-          getText={() => props.message.text}
-          streaming={props.message.streaming}
-          onFork={props.onFork}
-        />
-      </div>
-    </div>
-  )
-}
 
 type Segment =
   | { kind: 'rail'; cards: ToolCard[]; id: string }
