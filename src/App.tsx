@@ -23,6 +23,7 @@ import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
+import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { applyAppearancePreferences, loadAppearancePreferences } from './lib/appearancePreferences'
 import {
   DEFAULT_DISPLAY_PREFERENCES,
@@ -45,7 +46,6 @@ import {
   type KeybindingOverrides,
   loadCustomKeybindings,
 } from './lib/keybindings'
-import { DEFAULT_GIT_PANEL_SIDE, type GitPanelSide, parseGitPanelSide } from './lib/panelLayout'
 import { buildFileContextBlocks, buildSkillContextBlocks } from './lib/promptContext'
 import { restoreThemeFromStorage } from './lib/themeApply'
 
@@ -86,48 +86,19 @@ export default function App() {
 
   const onToggleTree = () => toggleLeftDrawerMode('tree')
 
-  // ── Git panel side (left or right of main pane) ───────────────────────────
-  // Sessions sidebar is always fixed on the left and is not draggable.
-  const [gitPanelSide, setGitPanelSide] = createSignal<GitPanelSide>(DEFAULT_GIT_PANEL_SIDE)
-
-  // ── Git panel drag state ──────────────────────────────────────────────────
-  const [isDraggingGit, setIsDraggingGit] = createSignal(false)
-  const [dropSide, setDropSide] = createSignal<GitPanelSide | null>(null)
-  let workbenchRef: HTMLDivElement | undefined
-
-  /**
-   * Drag the git panel to the left or right of the main conversation pane.
-   * Cursor position relative to the workbench midpoint determines the target side.
-   */
-  const _startGitDrag = (e: MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDraggingGit(true)
-    setDropSide(gitPanelSide())
-    document.body.classList.add('panel-dragging')
-
-    const onMove = (ev: MouseEvent) => {
-      if (!workbenchRef) return
-      const rect = workbenchRef.getBoundingClientRect()
-      setDropSide((ev.clientX - rect.left) / rect.width < 0.5 ? 'left' : 'right')
-    }
-
-    const onUp = () => {
-      const target = dropSide()
-      if (target && target !== gitPanelSide()) {
-        setGitPanelSide(target)
-        void window.openpi.setPref('panel.git_side', target)
-      }
-      setIsDraggingGit(false)
-      setDropSide(null)
-      document.body.classList.remove('panel-dragging')
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
+  const {
+    gitPanelSide,
+    isDraggingGit,
+    dropSide,
+    sidebarWidth,
+    gitPanelWidth,
+    previewWidth,
+    setWorkbenchRef,
+    startGitDrag,
+    resizeSidebar,
+    resizeGitPanel,
+    resizePreview,
+  } = useWorkbenchLayout()
   const [gitPanelTab, setGitPanelTab] = createSignal<'changes' | 'history'>('changes')
   // ── Git panel → TopBar bridge ──────────────────────────────────────────────
   // The active GitPanel surfaces its branch/upstream labels here so TopBar can
@@ -209,21 +180,6 @@ export default function App() {
   // Rename trigger — TopBar sets this when it mounts so App can call it from a keybinding
   let triggerRename: (() => void) | undefined
 
-  // Resizable panel widths — persisted in prefs
-  const SIDEBAR_DEFAULT = 280
-  const GIT_PANEL_DEFAULT = 260
-  const SIDEBAR_MIN = 240
-  const SIDEBAR_MAX = 480
-  const GIT_MIN = 300
-  const GIT_MAX = 560
-  const PREVIEW_DEFAULT = 480
-  const PREVIEW_MIN = 280
-  const PREVIEW_MAX = 900
-
-  const [sidebarWidth, setSidebarWidth] = createSignal(SIDEBAR_DEFAULT)
-  const [gitPanelWidth, setGitPanelWidth] = createSignal(GIT_PANEL_DEFAULT)
-  const [previewWidth, setPreviewWidth] = createSignal(PREVIEW_DEFAULT)
-
   // ── Workbench context bridge — report visible file to main ──────────
   createEffect(() => {
     const files = openFiles()
@@ -245,54 +201,6 @@ export default function App() {
       })
     }
   })
-
-  // Load persisted panel widths and git side once
-  onMount(() => {
-    window.openpi
-      .getPref('panel.sidebar_width')
-      .then((v) => {
-        const n = v ? parseInt(v, 10) : NaN
-        if (!Number.isNaN(n)) setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, n)))
-      })
-      .catch(() => {})
-    window.openpi
-      .getPref('panel.git_panel_width')
-      .then((v) => {
-        const n = v ? parseInt(v, 10) : NaN
-        if (!Number.isNaN(n)) setGitPanelWidth(Math.max(GIT_MIN, Math.min(GIT_MAX, n)))
-      })
-      .catch(() => {})
-    window.openpi
-      .getPref('panel.git_side')
-      .then((raw) => setGitPanelSide(parseGitPanelSide(raw)))
-      .catch(() => {})
-  })
-
-  // Sessions sidebar resize: always on the left, handle on its right edge.
-  const resizeSidebar = (delta: number) => {
-    setSidebarWidth((prev) => {
-      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, prev + delta))
-      void window.openpi.setPref('panel.sidebar_width', String(next))
-      return next
-    })
-  }
-
-  // Git panel resize: sign depends on which side of main it is.
-  // Left of main  → drag right (+delta) grows the panel.
-  // Right of main → drag right (+delta) shrinks it (handle is on its left edge).
-  const resizeGitPanel = (delta: number) => {
-    const sign = gitPanelSide() === 'left' ? 1 : -1
-    setGitPanelWidth((prev) => {
-      const next = Math.max(GIT_MIN, Math.min(GIT_MAX, prev + sign * delta))
-      void window.openpi.setPref('panel.git_panel_width', String(next))
-      return next
-    })
-  }
-
-  // Preview split: drag handle is on the left edge of preview → negative delta grows it.
-  const resizePreview = (delta: number) => {
-    setPreviewWidth((prev) => Math.max(PREVIEW_MIN, Math.min(PREVIEW_MAX, prev - delta)))
-  }
 
   onMount(() => {
     restoreThemeFromStorage()
@@ -789,12 +697,7 @@ export default function App() {
               }}
             />
 
-            <div
-              class="workbench"
-              ref={(el) => {
-                workbenchRef = el
-              }}
-            >
+            <div class="workbench" ref={setWorkbenchRef}>
               {/* Drop zones — shown while git panel is being dragged */}
               <Show when={isDraggingGit()}>
                 <div
@@ -885,7 +788,7 @@ export default function App() {
                 width={gitPanelWidth()}
                 activeTab={gitPanelTab()}
                 onActiveTabChange={setGitPanelTab}
-                onDragStart={_startGitDrag}
+                onDragStart={startGitDrag}
                 onResize={resizeGitPanel}
                 onRequestFileSearch={() => setFileSearchOpen(true)}
                 onDiffOpen={(diff, files, index) => {
@@ -947,7 +850,7 @@ export default function App() {
                 width={gitPanelWidth()}
                 activeTab={gitPanelTab()}
                 onActiveTabChange={setGitPanelTab}
-                onDragStart={_startGitDrag}
+                onDragStart={startGitDrag}
                 onResize={resizeGitPanel}
                 onRequestFileSearch={() => {
                   setFilePanelOpen(true)
