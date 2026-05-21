@@ -20,7 +20,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 import { FileIcon } from '../../lib/fileIcons'
 import type { FffGrepMatch } from '../../lib/ipc'
 import { HighlightedText, ModifierBtn } from './FileSearchHighlight'
-import { computeFileHits, type FileHit, type FlatFile } from './fileSearchHelpers'
+import { computeFileHits, type FlatFile } from './fileSearchHelpers'
 
 interface FileSearchModalProps {
   cwd: string | null
