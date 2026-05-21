@@ -1,4 +1,4 @@
-import { Check, ExternalLink, RotateCcw } from 'lucide-solid'
+import { Check, RotateCcw } from 'lucide-solid'
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import {
   type AppearancePreferences,
@@ -17,7 +17,7 @@ import {
   type DisplayPreferences,
   loadDisplayPreferences,
 } from '../../lib/displayPreferences'
-import type { CustomizationItem, PiUpdateCheckResult } from '../../lib/ipc'
+import type { PiUpdateCheckResult } from '../../lib/ipc'
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   loadNotificationPreferences,

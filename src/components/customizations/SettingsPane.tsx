@@ -1,4 +1,4 @@
-import { Check, FolderOpen, Globe, RotateCcw } from 'lucide-solid'
+import { FolderOpen, Globe } from 'lucide-solid'
 import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js'
 import type { PiSettings, SettingsResult } from '../../lib/ipc'
 import { SettingRow } from './SettingRow'

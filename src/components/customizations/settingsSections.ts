@@ -1,4 +1,4 @@
-import type { SettingField, SettingSection } from './settingsHelpers'
+import type { SettingSection } from './settingsHelpers'
 
 export const SECTIONS: SettingSection[] = [
   {

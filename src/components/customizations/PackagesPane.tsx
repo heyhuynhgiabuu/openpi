@@ -1,15 +1,6 @@
-import {
-  AlertTriangle,
-  Check,
-  Copy,
-  Download,
-  ExternalLink,
-  Loader2,
-  ShieldAlert,
-  Trash2,
-} from 'lucide-solid'
+import { Download, ExternalLink, Loader2, ShieldAlert } from 'lucide-solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
-import type { CustomizationItem, CustomizationScope, PackageOperationRequest } from '../../lib/ipc'
+import type { CustomizationItem, PackageOperationRequest } from '../../lib/ipc'
 import type { ParsedEntry, PkgSourceType } from './packageHelpers'
 import { DISPLAY_SCOPE, normalizeInstallSource, parsePackage, SOURCE_ORDER } from './packageHelpers'
 import { SourceGroup } from './SourceGroup'
