@@ -8,6 +8,7 @@
  */
 
 export * from './appearancePreferences'
+export * from './codeSearch'
 export * from './displayPreferences'
 export * from './extensionTrackers'
 export * from './fileIcons'

@@ -12,8 +12,8 @@ import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { python } from '@codemirror/lang-python'
 import { rust } from '@codemirror/lang-rust'
-import { Compartment, EditorState, type Extension, Prec, RangeSetBuilder } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, keymap } from '@codemirror/view'
+import { Compartment, EditorState, type Extension, Prec } from '@codemirror/state'
+import { EditorView, keymap } from '@codemirror/view'
 import { vim } from '@replit/codemirror-vim'
 import { atomone } from '@uiw/codemirror-theme-atomone'
 import { aura } from '@uiw/codemirror-theme-aura'
@@ -24,6 +24,7 @@ import { vscodeDark } from '@uiw/codemirror-theme-vscode'
 import { xcodeDark, xcodeLight } from '@uiw/codemirror-theme-xcode'
 import { basicSetup } from 'codemirror'
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js'
+import { getActiveSearchMatch, searchHighlightExtension } from './editor/search'
 
 // ── Language detection ───────────────────────────────────────────────────────
 
@@ -93,85 +94,6 @@ function codeMirrorThemeForCurrentAppTheme(themeId: EditorThemeId = 'github'): E
     case 'copilot':
       return vscodeDark
   }
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-interface SearchOptions {
-  text: string
-  query?: string
-  caseSensitive?: boolean
-  wholeWord?: boolean
-  regex?: boolean
-  currentIndex?: number
-}
-
-function collectSearchMatches(options: SearchOptions): Array<{ from: number; to: number }> {
-  const query = options.query ?? ''
-  if (!query || !options.text) return []
-
-  const pattern = options.regex
-    ? query
-    : `${options.wholeWord ? '\\b' : ''}${escapeRegExp(query)}${options.wholeWord ? '\\b' : ''}`
-  const re = new RegExp(pattern, options.caseSensitive ? 'g' : 'gi')
-  const matches: Array<{ from: number; to: number }> = []
-
-  for (let match = re.exec(options.text); match !== null; match = re.exec(options.text)) {
-    if (match[0].length > 0) {
-      matches.push({ from: match.index, to: match.index + match[0].length })
-    } else {
-      re.lastIndex++
-    }
-  }
-
-  return matches
-}
-
-function activeSearchIndex(matchesLength: number, currentIndex = 0): number {
-  return ((currentIndex % matchesLength) + matchesLength) % matchesLength
-}
-
-function getActiveSearchMatch(options: SearchOptions): { from: number; to: number } | undefined {
-  try {
-    const matches = collectSearchMatches(options)
-    if (!matches.length) return undefined
-    return matches[activeSearchIndex(matches.length, options.currentIndex)]
-  } catch {
-    return undefined
-  }
-}
-
-function buildSearchDecorations(options: SearchOptions): DecorationSet {
-  try {
-    const matches = collectSearchMatches(options)
-    if (!matches.length) return Decoration.none
-
-    const currentIndex = activeSearchIndex(matches.length, options.currentIndex)
-    const builder = new RangeSetBuilder<Decoration>()
-
-    matches.forEach((match, index) => {
-      builder.add(
-        match.from,
-        match.to,
-        Decoration.mark({
-          class:
-            index === currentIndex
-              ? 'cm-openpi-searchMatch cm-openpi-searchMatch-current'
-              : 'cm-openpi-searchMatch',
-        })
-      )
-    })
-
-    return builder.finish()
-  } catch {
-    return Decoration.none
-  }
-}
-
-function searchHighlightExtension(options: SearchOptions): Extension {
-  return EditorView.decorations.of(buildSearchDecorations(options))
 }
 
 // ── Theme ────────────────────────────────────────────────────────────────────
@@ -294,6 +216,7 @@ export function CodeMirrorEditor(props: CodeMirrorEditorProps) {
           ),
           vimCompartment.of(props.vimMode ? vim() : []),
           basicSetup,
+          EditorState.allowMultipleSelections.of(true),
           themeCompartment.of(codeMirrorThemeForCurrentAppTheme(props.editorTheme)),
           editorChromeTheme,
           wordWrapCompartment.of(props.wordWrap ? EditorView.lineWrapping : []),

@@ -12,7 +12,8 @@
  */
 
 // biome-ignore-all lint/a11y/useSemanticElements lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: existing file-preview line interactions are tracked separately from this release.
-import type { EditorView } from '@codemirror/view'
+import { EditorSelection } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 
 import {
   ChevronDown,
@@ -29,6 +30,7 @@ import {
   X,
 } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import { collectCodeSearchMatches, isValidCodeSearchQuery } from '../lib/codeSearch'
 import { FileIcon } from '../lib/fileIcons'
 import type { NewFileLineComment } from '../lib/fileLineComments'
 import { ensureHighlighter, highlightCode } from '../lib/shiki'
@@ -176,61 +178,32 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const [findSelStart, setFindSelStart] = createSignal(0)
   const [findSelEnd, setFindSelEnd] = createSignal(0)
 
-  const findMatches = createMemo((): Array<{ index: number; length: number }> => {
-    const q = findQuery()
+  const findMatches = createMemo(() => {
     const text = editBuffer()
-    if (!q || !text) return []
-    const inSel = findInSelection()
-    const selStart = findSelStart()
-    const selEnd = findSelEnd()
-    try {
-      let pattern: string
-      if (findRegex()) {
-        pattern = q
-      } else {
-        pattern = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        if (findWholeWord()) pattern = `\\b${pattern}\\b`
-      }
-      const flags = findCaseSensitive() ? 'g' : 'gi'
-      const re = new RegExp(pattern, flags)
-      const matches: Array<{ index: number; length: number }> = []
-      for (let m = re.exec(text); m !== null; m = re.exec(text)) {
-        if (!inSel || (m.index >= selStart && m.index + m[0].length <= selEnd)) {
-          matches.push({ index: m.index, length: m[0].length })
-        }
-        if (m[0].length === 0) re.lastIndex++
-      }
-      return matches
-    } catch {
-      return []
-    }
+    const inSelection = findInSelection()
+    const from = inSelection ? findSelStart() : undefined
+    const to = inSelection ? findSelEnd() : undefined
+
+    return collectCodeSearchMatches({
+      text,
+      query: findQuery(),
+      caseSensitive: findCaseSensitive(),
+      wholeWord: findWholeWord(),
+      regex: findRegex(),
+      from,
+      to,
+    })
   })
 
   const findTotal = createMemo(() => findMatches().length)
   const safeMatchIndex = createMemo(() =>
     findTotal() === 0 ? 0 : ((findMatchIndex() % findTotal()) + findTotal()) % findTotal()
   )
-
-  // 0-indexed line numbers containing any match — drives minimap indicators
-  const _findMatchLines = createMemo(() => {
-    const matches = findMatches()
-    const text = editBuffer()
-    if (!matches.length || !text) return []
-    const lineSet = new Set<number>()
-    for (const m of matches) {
-      lineSet.add(text.substring(0, m.index).split('\n').length - 1)
-    }
-    return Array.from(lineSet)
-  })
-
-  // Line of the currently-active match
-  const _currentMatchLine = createMemo(() => {
-    const matches = findMatches()
-    const text = editBuffer()
-    const m = matches[safeMatchIndex()]
-    if (!m || !text) return -1
-    return text.substring(0, m.index).split('\n').length - 1
-  })
+  const findQueryIsInvalid = createMemo(
+    () =>
+      findQuery() !== '' &&
+      !isValidCodeSearchQuery({ text: editBuffer(), query: findQuery(), regex: findRegex() })
+  )
 
   const openFindBar = (withReplace = false) => {
     setFindOpen(true)
@@ -253,38 +226,98 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     setFindSelEnd(0)
   }
 
-  const findNext = () => setFindMatchIndex((i) => i + 1)
-  const findPrev = () => setFindMatchIndex((i) => i - 1)
-
-  // Replace current match and advance
-  const replaceNext = () => {
+  const selectMatchAt = (index: number) => {
     const matches = findMatches()
-    const idx = safeMatchIndex()
-    const m = matches[idx]
-    if (!m) return
-    const text = editBuffer()
-    setEditBuffer(text.slice(0, m.index) + replaceQuery() + text.slice(m.index + m.length))
-    // matches recompute reactively; safeMatchIndex auto-clamps
+    if (!matches.length || !editorViewRef) return
+    const safeIndex = ((index % matches.length) + matches.length) % matches.length
+    const match = matches[safeIndex]
+    if (!match) return
+
+    editorViewRef.dispatch({
+      selection: EditorSelection.range(match.index, match.index + match.length),
+      effects: EditorView.scrollIntoView(match.index, { y: 'center' }),
+    })
+    editorViewRef.focus()
   }
 
-  // Replace every match at once (end-to-start to preserve earlier indices)
+  const findNext = () => {
+    const next = safeMatchIndex() + 1
+    setFindMatchIndex(next)
+    selectMatchAt(next)
+  }
+
+  const findPrev = () => {
+    const next = safeMatchIndex() - 1
+    setFindMatchIndex(next)
+    selectMatchAt(next)
+  }
+
+  // Replace current match through CodeMirror so undo/redo and selection history stay intact.
+  const replaceNext = () => {
+    const matches = findMatches()
+    const match = matches[safeMatchIndex()]
+    if (!match) return
+
+    const replacement = replaceQuery()
+    if (!editorViewRef) {
+      const text = editBuffer()
+      setEditBuffer(
+        text.slice(0, match.index) + replacement + text.slice(match.index + match.length)
+      )
+      return
+    }
+
+    const cursor = match.index + replacement.length
+    editorViewRef.dispatch({
+      changes: { from: match.index, to: match.index + match.length, insert: replacement },
+      selection: { anchor: cursor },
+      scrollIntoView: true,
+    })
+  }
+
+  // Replace every match in one CodeMirror transaction to preserve a single undo step.
   const replaceAll = () => {
     const matches = findMatches()
     if (!matches.length) return
+
     const replacement = replaceQuery()
-    let result = editBuffer()
-    for (let i = matches.length - 1; i >= 0; i--) {
-      const m = matches[i]
-      if (m) result = result.slice(0, m.index) + replacement + result.slice(m.index + m.length)
+    if (!editorViewRef) {
+      let result = editBuffer()
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const match = matches[i]
+        if (match) {
+          result =
+            result.slice(0, match.index) + replacement + result.slice(match.index + match.length)
+        }
+      }
+      setEditBuffer(result)
+      setFindMatchIndex(0)
+      return
     }
-    setEditBuffer(result)
+
+    editorViewRef.dispatch({
+      changes: matches.map((match) => ({
+        from: match.index,
+        to: match.index + match.length,
+        insert: replacement,
+      })),
+      selection: { anchor: matches[0]?.index ?? 0 },
+      scrollIntoView: true,
+    })
     setFindMatchIndex(0)
   }
 
-  // Select all match spans in the textarea (first→last range; best we can do without multi-cursor)
   const selectAllMatches = () => {
-    const _matches = findMatches()
-    // CM6 handles search internally — textarea find disabled
+    const matches = findMatches()
+    if (!matches.length || !editorViewRef) return
+
+    editorViewRef.dispatch({
+      selection: EditorSelection.create(
+        matches.map((match) => EditorSelection.range(match.index, match.index + match.length))
+      ),
+      scrollIntoView: true,
+    })
+    editorViewRef.focus()
   }
 
   // Capture current textarea selection as the search scope
@@ -304,19 +337,17 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     setFindMatchIndex(0)
   }
 
-  // Scroll to current match in textarea
+  // Scroll to the active CodeMirror search match without recomputing line offsets in the DOM.
   createEffect(() => {
     const matches = findMatches()
     const idx = safeMatchIndex()
     if (matches.length === 0 || !findOpen()) return
-    const m = matches[idx]
-    if (!m) return
-    const lines = editBuffer().substring(0, m.index).split('\n')
-    const lineNumber = lines.length - 1
-    const lineHeight =
-      (editorEl()?.scrollHeight ?? 0) / Math.max(editBuffer().split('\n').length, 1)
-    const el = editorEl()
-    if (el) el.scrollTop = Math.max(0, lineNumber * lineHeight - (el.clientHeight ?? 0) / 2)
+    const match = matches[idx]
+    if (!match || !editorViewRef) return
+
+    editorViewRef.dispatch({
+      effects: EditorView.scrollIntoView(match.index, { y: 'center' }),
+    })
   })
 
   // Open find bar when findOpen prop changes to true
@@ -660,19 +691,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
             <Search size={12} class="fv-find-icon" />
             <input
               ref={findInputRef}
-              class={`fv-find-input${
-                findRegex() &&
-                (() => {
-                  try {
-                    new RegExp(findQuery())
-                    return false
-                  } catch {
-                    return true
-                  }
-                })()
-                  ? ' fv-find-input--error'
-                  : ''
-              }`}
+              class={`fv-find-input${findQueryIsInvalid() ? ' fv-find-input--error' : ''}`}
               type="text"
               value={findQuery()}
               placeholder={findRegex() ? 'Search regex…' : 'Find in file…'}
