@@ -31,6 +31,7 @@ import { applySessionEvent } from '../lib/sessionEvents'
 import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessionPrompt'
 import { groupSessions } from '../lib/sessionView'
 import type { GroupMode, Message, SortMode } from '../types/session'
+import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
@@ -85,11 +86,7 @@ export function useOpenPiSession() {
 
   // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
   const trackers = useExtensionTrackers()
-  const [agentRunMetrics, setAgentRunMetrics] = createSignal<{
-    elapsedMs: number
-    output: number
-    tps: number
-  } | null>(null)
+  const agentRunMetrics = useAgentRunMetrics()
 
   // ── Remote agent status (Pi TUI sync bridge) ─────────────────────────────
   const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<{
@@ -131,9 +128,6 @@ export function useOpenPiSession() {
   let latestSessionFile: string | null = null
   let currentModelName: string | null = null
   let currentTurnStartMs: number | null = null
-  // ── Agent-run wall-clock tracking (for accurate TPS) ─────────────────
-  let _agentStartWallMs: number | null = null
-
   // ── Derived ───────────────────────────────────────────────────────────────
   // (contextPercent is already a signal — no memo wrapper needed)
 
@@ -177,9 +171,7 @@ export function useOpenPiSession() {
     if (event.type === 'agent_start') {
       setIsStreaming(true)
       markLocalActivity()
-      // Reset wall-clock TPS tracking
-      _agentStartWallMs = Date.now()
-      setAgentRunMetrics(null)
+      agentRunMetrics.start()
       // Auto-activate steer mode ONLY when the user explicitly sent a fresh
       // prompt — not on every agent_start (e.g. intermediate restarts after
       // a steer delivery). This prevents overriding a mode the user set
@@ -202,31 +194,7 @@ export function useOpenPiSession() {
       trackers.clearFinished()
 
       // Compute wall-clock TPS using agent_end event.messages (same approach as Pi's tps.ts)
-      if (_agentStartWallMs !== null) {
-        const elapsedMs = Date.now() - _agentStartWallMs
-        const msgs = (event as Record<string, unknown>).messages
-        if (elapsedMs > 0 && Array.isArray(msgs)) {
-          let output = 0
-          for (const m of msgs) {
-            if ((m as Record<string, unknown>).role === 'assistant') {
-              const usage = (m as Record<string, unknown>).usage as
-                | Record<string, unknown>
-                | undefined
-              if (usage && typeof usage.output === 'number') {
-                output += usage.output
-              }
-            }
-          }
-          if (output > 0) {
-            setAgentRunMetrics({
-              elapsedMs,
-              output,
-              tps: output / (elapsedMs / 1000),
-            })
-          }
-        }
-        _agentStartWallMs = null
-      }
+      agentRunMetrics.finish(event as Record<string, unknown>)
     }
 
     // ── Extension tracker dispatch ───────────────────────────────────────────
@@ -670,7 +638,7 @@ export function useOpenPiSession() {
       return isStreaming()
     },
     get agentRunMetrics() {
-      return agentRunMetrics()
+      return agentRunMetrics.metrics()
     },
     get isShellRunning() {
       return isShellRunning()
