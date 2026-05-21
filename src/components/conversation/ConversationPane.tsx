@@ -6,8 +6,9 @@ import { VList, type VListHandle } from 'virtua/solid'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage, WorkspaceSummaryInfo } from '../../lib/ipc'
 import type { Message } from '../../types/session'
-import { AssistantMessageGroup, SystemMsg, UserMessage } from './Messages'
+import { AssistantMessageGroup, UserMessage } from './Messages'
 import { latestPlanCard, PlanDock } from './PlanDock'
+import { SystemMsg } from './SystemMessage'
 
 type AssistantGroup = {
   kind: 'assistant-group'
