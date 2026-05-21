@@ -58,21 +58,8 @@ import {
   loadCustomKeybindings,
 } from './lib/keybindings'
 import { DEFAULT_GIT_PANEL_SIDE, type GitPanelSide, parseGitPanelSide } from './lib/panelLayout'
+import { buildFileContextBlocks, buildSkillContextBlocks } from './lib/promptContext'
 import { restoreThemeFromStorage } from './lib/themeApply'
-
-/**
- * Strip YAML frontmatter from a SKILL.md file before sending to the LLM.
- * Matches Pi SDK's internal stripFrontmatter() used in _expandSkillCommand().
- * Frontmatter is metadata for the skill registry — the LLM only needs the body.
- */
-function stripSkillFrontmatter(content: string): string {
-  const trimmed = content.trimStart()
-  if (!trimmed.startsWith('---')) return trimmed
-  const afterOpen = trimmed.slice(3)
-  const closeIdx = afterOpen.indexOf('\n---')
-  if (closeIdx === -1) return trimmed
-  return afterOpen.slice(closeIdx + 4).trimStart()
-}
 
 export default function App() {
   const session = useOpenPiSession()
@@ -598,18 +585,7 @@ export default function App() {
       const skillReads = await Promise.all(
         skills.map((s) => window.openpi.readSkillFile(`${s.path}/SKILL.md`).catch(() => null))
       )
-      // Build skill blocks matching Pi SDK's _expandSkillCommand() format exactly:
-      //   <skill name="..." location=".../SKILL.md">\nReferences are relative to ...\n\n{body}\n</skill>
-      // This ensures the LLM can resolve relative paths (./scripts/...) in skill content.
-      // Frontmatter is stripped — it is registry metadata, not instructions.
-      const skillBlocks = skillReads
-        .map((content, i) => {
-          if (!content) return null
-          const skill = skills[i]
-          const body = stripSkillFrontmatter(content)
-          return `<skill name="${skill.name}" location="${skill.path}/SKILL.md">\nReferences are relative to ${skill.path}.\n\n${body}\n</skill>`
-        })
-        .filter(Boolean) as string[]
+      const skillBlocks = buildSkillContextBlocks(skills, skillReads)
       if (skillBlocks.length > 0) {
         prefix = skillBlocks.join('\n\n')
       }
@@ -619,12 +595,7 @@ export default function App() {
     const files = attachedFiles()
     if (files.length > 0) {
       const reads = await Promise.all(files.map((p) => window.openpi.readFile(p).catch(() => null)))
-      const blocks = reads
-        .map((content, i) =>
-          content ? `<file path="${files[i]}">\n${content.content}\n</file>` : null
-        )
-        .filter(Boolean) as string[]
-      const filePrefix = blocks.join('\n\n')
+      const filePrefix = buildFileContextBlocks(files, reads).join('\n\n')
       prefix = prefix ? `${prefix}\n\n${filePrefix}` : filePrefix
       setAttachedFiles([])
     }

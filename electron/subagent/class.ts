@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Model } from '@earendil-works/pi-ai'
+import type { Api, Model } from '@earendil-works/pi-ai'
 import type { AgentSessionEvent, ExtensionContext } from '@earendil-works/pi-coding-agent'
 import {
   createAgentSession,
@@ -188,7 +188,7 @@ export class SubagentManager {
     let resolvedModel = params.model ? resolveModel(ctx, params.model) : undefined
     if (params.model && !resolvedModel) throw new Error(`Unknown model override: ${params.model}`)
     if (!resolvedModel && agent.model) resolvedModel = resolveModel(ctx, agent.model)
-    const model = (resolvedModel ?? ctx.model) as Model<any> | undefined
+    const model = (resolvedModel ?? ctx.model) as Model<Api> | undefined
     // Resolve thinking level: explicit param > agent config default
     const thinkingLevel = params.thinking ?? agent.thinking
     // Build tool list: start with agent allowlist or all tools, then apply blocklists

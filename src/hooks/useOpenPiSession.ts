@@ -14,14 +14,6 @@
  * tracking when accessed from JSX or createEffect.
  */
 import { batch, createEffect, createSignal, on, onCleanup, onMount } from 'solid-js'
-import {
-  type AskState,
-  AskTracker,
-  SubagentTracker,
-  TaskTracker,
-  type TrackedAgent,
-  type TrackedTask,
-} from '../lib/extensionTrackers'
 import type {
   BashExecutionResult,
   GoalUpdate,
@@ -39,6 +31,7 @@ import { applySessionEvent } from '../lib/sessionEvents'
 import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessionPrompt'
 import { groupSessions } from '../lib/sessionView'
 import type { GroupMode, Message, SortMode } from '../types/session'
+import { useExtensionTrackers } from './useExtensionTrackers'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -91,26 +84,12 @@ export function useOpenPiSession() {
   const [activeGoalText, setActiveGoalText] = createSignal<string | null>(null)
 
   // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
-  const _taskTracker = new TaskTracker()
-  const _askTracker = new AskTracker()
-  const _subagentTracker = new SubagentTracker()
-  const [tasks, setTasks] = createSignal<TrackedTask[]>([])
-  const [askState, setAskState] = createSignal<AskState | null>(null)
-  const [agents, setAgents] = createSignal<TrackedAgent[]>([])
+  const trackers = useExtensionTrackers()
   const [agentRunMetrics, setAgentRunMetrics] = createSignal<{
     elapsedMs: number
     output: number
     tps: number
   } | null>(null)
-
-  // ── Subagent completion notification ─────────────────────────────────────
-  const [subagentNotification, setSubagentNotification] = createSignal<{
-    id: string
-    description: string
-    status: 'completed' | 'failed'
-    result?: string
-  } | null>(null)
-  const _notifiedAgentIds = new Set<string>()
 
   // ── Remote agent status (Pi TUI sync bridge) ─────────────────────────────
   const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<{
@@ -220,8 +199,7 @@ export function useOpenPiSession() {
       currentTurnStartMs = null
       void refreshContextUsage()
       // Clear finished subagents on session end; keep tasks/ask across agent turns
-      _subagentTracker.clearFinished()
-      setAgents(_subagentTracker.snapshot())
+      trackers.clearFinished()
 
       // Compute wall-clock TPS using agent_end event.messages (same approach as Pi's tps.ts)
       if (_agentStartWallMs !== null) {
@@ -252,73 +230,11 @@ export function useOpenPiSession() {
     }
 
     // ── Extension tracker dispatch ───────────────────────────────────────────
-    if (event.type === 'openpi_subagent_update') {
-      if (_subagentTracker.onSubagentUpdate(event)) setAgents(_subagentTracker.snapshot())
-      // Proactive notification when a background agent completes or fails
-      const subEvent = event as {
-        agent_id?: string
-        status?: string
-        background?: boolean
-        description?: string
-        result?: string
-      }
-      const agentStatus = subEvent.status
-      if (
-        subEvent.agent_id &&
-        !_notifiedAgentIds.has(subEvent.agent_id) &&
-        (agentStatus === 'completed' || agentStatus === 'failed')
-      ) {
-        _notifiedAgentIds.add(subEvent.agent_id)
-        setSubagentNotification({
-          id: subEvent.agent_id,
-          description: String(subEvent.description ?? 'Agent task'),
-          status: agentStatus,
-          result: subEvent.result,
-        })
-        // Auto-dismiss after 8 seconds
-        setTimeout(() => setSubagentNotification(null), 8000)
-      }
-      return
-    }
-    if (event.type === 'tool_execution_start') {
-      const e = event as { toolCallId?: string; toolName?: string; args?: Record<string, unknown> }
-      const id = e.toolCallId ?? ''
-      const name = e.toolName ?? ''
-      const args = e.args ?? {}
-      let changed = false
-      changed = _taskTracker.onToolStart(id, name, args) || changed
-      changed = _askTracker.onToolStart(id, name, args) || changed
-      changed = _subagentTracker.onToolStart(id, name, args) || changed
-      if (changed) {
-        batch(() => {
-          setTasks(_taskTracker.snapshot())
-          setAskState(_askTracker.snapshot())
-          setAgents(_subagentTracker.snapshot())
-        })
-      }
+    if (event.type === 'openpi_subagent_update' || event.type === 'tool_execution_start') {
+      trackers.dispatchEvent(event, event.type)
     }
     if (event.type === 'tool_execution_end') {
-      const e = event as {
-        toolCallId?: string
-        toolName?: string
-        result?: unknown
-        isError?: boolean
-      }
-      const id = e.toolCallId ?? ''
-      const name = e.toolName ?? ''
-      const result = typeof e.result === 'string' ? e.result : JSON.stringify(e.result ?? '')
-      const isError = Boolean(e.isError)
-      let changed = false
-      changed = _taskTracker.onToolEnd(id, name, result) || changed
-      changed = _askTracker.onToolEnd(id, name, isError) || changed
-      changed = _subagentTracker.onToolEnd(id, name, result, isError) || changed
-      if (changed) {
-        batch(() => {
-          setTasks(_taskTracker.snapshot())
-          setAskState(_askTracker.snapshot())
-          setAgents(_subagentTracker.snapshot())
-        })
-      }
+      trackers.dispatchEvent(event, event.type)
     }
 
     if (event.type === 'queue_update') {
@@ -426,14 +342,7 @@ export function useOpenPiSession() {
           setFollowUpQueue([])
           setSessionNameState(payload.sessionName ?? null)
           // Clear extension trackers on new session
-          _taskTracker.clear()
-          _askTracker.clear()
-          _subagentTracker.clear()
-          _notifiedAgentIds.clear()
-          setSubagentNotification(null)
-          setTasks([])
-          setAskState(null)
-          setAgents([])
+          trackers.clearAll()
           if (payload.model) {
             setCurrentModel(payload.model)
             currentModelName = payload.model.name
@@ -717,8 +626,7 @@ export function useOpenPiSession() {
 
   // ── Ask-user-question actions ─────────────────────────────────────────
   const submitAsk = async (formatted: string) => {
-    _askTracker.clear()
-    setAskState(null)
+    trackers.clearAsk()
     markLocalActivity()
     try {
       if (isStreaming()) {
@@ -733,8 +641,7 @@ export function useOpenPiSession() {
   }
 
   const dismissAsk = () => {
-    _askTracker.clear()
-    setAskState(null)
+    trackers.clearAsk()
   }
 
   // ── Goal actions ──────────────────────────────────────────────────────────
@@ -882,18 +789,18 @@ export function useOpenPiSession() {
 
     // ── Extension tracker state ─────────────────────────────────────
     get tasks() {
-      return tasks()
+      return trackers.tasks()
     },
     get askState() {
-      return askState()
+      return trackers.askState()
     },
     get agents() {
-      return agents()
+      return trackers.agents()
     },
     get subagentNotification() {
-      return subagentNotification()
+      return trackers.subagentNotification()
     },
-    dismissSubagentNotification: () => setSubagentNotification(null),
+    dismissSubagentNotification: () => trackers.dismissSubagentNotification(),
 
     // Ref setters — pass as `ref={session.setBottomRef}` in JSX
     setBottomRef: (el: HTMLDivElement) => {
@@ -934,8 +841,7 @@ export function useOpenPiSession() {
     clearActiveGoal,
 
     clearTasks: () => {
-      _taskTracker.clear()
-      setTasks([])
+      trackers.clearTasks()
     },
   }
 }
