@@ -30,11 +30,10 @@ import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessio
 import type { Message } from '../types/session'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
+import { useSessionHistory } from './useSessionHistory'
 import { useSessionIndex } from './useSessionIndex'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
-
-const HISTORY_PAGE_LIMIT = 200
 
 export { buildSessionPromptText }
 
@@ -68,16 +67,13 @@ export function useOpenPiSession() {
   const [followUpQueue, setFollowUpQueue] = createSignal<string[]>([])
   const [sessionName, setSessionNameState] = createSignal<string | null>(null)
   const [contextPercent, setContextPercent] = createSignal<number | null>(null)
-  const [hasMoreHistoryBefore, setHasMoreHistoryBefore] = createSignal(false)
-  const [historyBeforeEntryId, setHistoryBeforeEntryId] = createSignal<string | null>(null)
-  const [isLoadingOlderHistory, setIsLoadingOlderHistory] = createSignal(false)
-
   // ── Goal state ────────────────────────────────────────────────────────────
   const [activeGoalText, setActiveGoalText] = createSignal<string | null>(null)
 
   // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
   const trackers = useExtensionTrackers()
   const agentRunMetrics = useAgentRunMetrics()
+  const sessionHistory = useSessionHistory({ setMessages, setError })
 
   // ── Remote agent status (Pi TUI sync bridge) ─────────────────────────────
   const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<{
@@ -116,7 +112,6 @@ export function useOpenPiSession() {
   // ── Refs — plain variables assigned via SolidJS ref= callback ────────────
   let _bottomEl: HTMLDivElement | undefined
   let textareaEl: HTMLTextAreaElement | undefined
-  let latestSessionFile: string | null = null
   let currentModelName: string | null = null
   let currentTurnStartMs: number | null = null
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -269,8 +264,6 @@ export function useOpenPiSession() {
 
     unsubs.push(
       window.openpi.onSessionReady((payload) => {
-        latestSessionFile = payload.sessionFile ?? null
-
         batch(() => {
           setReady(payload)
           sessionIndex.setSelectedWorkspacePath(payload.cwd)
@@ -286,8 +279,7 @@ export function useOpenPiSession() {
             currentModelName = payload.model.name
           }
           if (payload.thinkingLevel) setThinkingLevelState(payload.thinkingLevel)
-          setHasMoreHistoryBefore(false)
-          setHistoryBeforeEntryId(null)
+          sessionHistory.reset(payload.sessionFile ?? null)
           setContextPercent(null)
           setWorkspaceSummary(null)
         })
@@ -307,18 +299,7 @@ export function useOpenPiSession() {
           })
 
         if (payload.sessionFile) {
-          const sessionFile = payload.sessionFile
-          window.openpi
-            .getSessionMessages(sessionFile, { limit: HISTORY_PAGE_LIMIT })
-            .then((page) => {
-              if (latestSessionFile !== sessionFile) return
-              batch(() => {
-                setMessages(page.messages)
-                setHasMoreHistoryBefore(page.hasMoreBefore)
-                setHistoryBeforeEntryId(page.nextBeforeEntryId)
-              })
-            })
-            .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+          sessionHistory.loadInitialMessages(payload.sessionFile)
         }
 
         void sessionIndex.loadSessionIndex(payload.cwd)
@@ -376,31 +357,6 @@ export function useOpenPiSession() {
   const createNewSession = async () => {
     setError(null)
     await window.openpi.newSession(sessionIndex.selectedWorkspaceForQuery() ?? ready()?.cwd)
-  }
-
-  const loadOlderSessionMessages = async () => {
-    const sessionFile = latestSessionFile
-    const beforeEntryId = historyBeforeEntryId()
-    if (!sessionFile || !beforeEntryId || isLoadingOlderHistory()) return
-
-    setIsLoadingOlderHistory(true)
-    try {
-      const page = await window.openpi.getSessionMessages(sessionFile, {
-        limit: HISTORY_PAGE_LIMIT,
-        beforeEntryId,
-      })
-      if (latestSessionFile !== sessionFile) return
-      setMessages((previous) => {
-        const seen = new Set(previous.map((message) => message.id))
-        return [...page.messages.filter((message) => !seen.has(message.id)), ...previous]
-      })
-      setHasMoreHistoryBefore(page.hasMoreBefore)
-      setHistoryBeforeEntryId(page.nextBeforeEntryId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setIsLoadingOlderHistory(false)
-    }
   }
 
   const send = async (contextPrefix?: string) => {
@@ -692,10 +648,10 @@ export function useOpenPiSession() {
       return thinkingLevel()
     },
     get hasMoreHistoryBefore() {
-      return hasMoreHistoryBefore()
+      return sessionHistory.hasMoreHistoryBefore()
     },
     get isLoadingOlderHistory() {
-      return isLoadingOlderHistory()
+      return sessionHistory.isLoadingOlderHistory()
     },
 
     // ── Extension tracker state ─────────────────────────────────────
@@ -736,7 +692,7 @@ export function useOpenPiSession() {
     createNewSession,
     selectWorkspace: sessionIndex.selectWorkspace,
     loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
-    loadOlderSessionMessages,
+    loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
     send,
     sendShell,
     selectModel,
