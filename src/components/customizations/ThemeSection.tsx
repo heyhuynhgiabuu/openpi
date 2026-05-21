@@ -1,6 +1,5 @@
-import { Check, RotateCcw } from 'lucide-solid'
+import { Check } from 'lucide-solid'
 import { For, Show } from 'solid-js'
-import type { AppearancePreferences } from '../../lib/appearancePreferences'
 import { BUILT_IN_THEME_OPTIONS } from './generalPaneTypes'
 
 interface ThemeSectionProps {
