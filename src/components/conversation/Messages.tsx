@@ -148,9 +148,10 @@ function buildSegments(messages: SessionHistoryMessage[]): Segment[] {
         id: `${msg.id}:thinking`,
       })
     }
-    if (msg.toolCards.length > 0) {
-      if (railAnchorId === undefined) railAnchorId = msg.toolCards[0].toolCallId
-      rail.push(...msg.toolCards)
+    const inlineToolCards = msg.toolCards.filter((card) => card.toolName !== 'update_plan')
+    if (inlineToolCards.length > 0) {
+      if (railAnchorId === undefined) railAnchorId = inlineToolCards[0].toolCallId
+      rail.push(...inlineToolCards)
     }
     if (msg.text) {
       if (rail.length > 0) {
@@ -391,7 +392,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           />
         </Show>
 
-        <For each={props.message.toolCards}>
+        <For each={props.message.toolCards.filter((card) => card.toolName !== 'update_plan')}>
           {(card) => (
             <ToolCardView
               card={card}

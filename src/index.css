@@ -3871,6 +3871,187 @@ body.panel-dragging {
   color: var(--accent);
 }
 
+/* Sticky plan dock — mirrors pi-tasks' persistent task widget without
+ * duplicating update_plan cards in the transcript. */
+.plan-dock {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 8;
+  width: min(420px, calc(100% - 36px));
+  max-height: min(42vh, 320px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-lg, 14px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 92%, transparent), var(--surface-card)),
+    var(--surface-card);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(18px);
+}
+
+.plan-dock.is-active {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline-strong));
+}
+
+.plan-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-dock-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.plan-dock.is-active .plan-dock-icon {
+  animation: plan-icon-breathe 1.4s ease-in-out infinite;
+}
+
+.plan-dock.is-complete .plan-dock-icon {
+  color: var(--success, #22c55e);
+  background: color-mix(in srgb, var(--success, #22c55e) 12%, transparent);
+}
+
+.plan-dock-title-group {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.plan-dock-title {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.plan-dock-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--graphite-muted);
+  font-size: 11px;
+}
+
+.plan-dock-count {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--graphite);
+  background: var(--surface-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.plan-dock-explanation {
+  color: var(--graphite-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.plan-dock-list {
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+}
+
+.plan-dock-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  color: var(--graphite);
+  font-size: 12px;
+}
+
+.plan-dock-item--in_progress {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.plan-dock-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--graphite-muted);
+}
+
+.plan-dock-item--completed .plan-dock-marker {
+  color: var(--success, #22c55e);
+}
+
+.plan-dock-item--in_progress .plan-dock-marker {
+  color: var(--accent);
+  animation: plan-marker-spin 1.1s steps(8) infinite;
+}
+
+.plan-dock-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-dock-item--completed .plan-dock-step {
+  color: var(--graphite-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--graphite-muted) 60%, transparent);
+}
+
+.plan-dock-status {
+  color: var(--graphite-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.plan-dock-item--in_progress .plan-dock-status {
+  color: var(--accent);
+}
+
+@keyframes plan-icon-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+@keyframes plan-marker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ─── Ask tool row ──────────────────────────────────────────────────── */
 
 .ask-question-badge {

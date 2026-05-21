@@ -7,6 +7,7 @@ import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage, WorkspaceSummaryInfo } from '../../lib/ipc'
 import type { Message } from '../../types/session'
 import { AssistantMessageGroup, SystemMsg, UserMessage } from './Messages'
+import { latestPlanCard, PlanDock } from './PlanDock'
 
 type AssistantGroup = {
   kind: 'assistant-group'
@@ -135,6 +136,7 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
   createEffect(() => {
     setItems(reconcile(groupMessages(props.messages), { key: 'id', merge: true }))
   })
+  const planCard = createMemo(() => latestPlanCard(props.messages))
 
   let listRef: VListHandle | undefined
   const [showScrollBtn, setShowScrollBtn] = createSignal(false)
@@ -322,6 +324,8 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
           </VList>
         </Show>
       </div>
+
+      <PlanDock card={planCard()} />
 
       <Show when={showScrollBtn()}>
         <button

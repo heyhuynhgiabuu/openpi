@@ -14,7 +14,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent'
+import type { ExtensionAPI, ExtensionContext, Theme } from '@earendil-works/pi-coding-agent'
+import { type Component, truncateToWidth } from '@earendil-works/pi-tui'
 import { Type } from 'typebox'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -119,6 +120,9 @@ let _budgetLimitInjected = false
 let _plan: PlanStep[] | null = null
 let _proposedPlanText = ''
 let _inProposedPlan = false
+let _planWidget: PlanWidget | null = null
+let _planWidgetRender: (() => void) | null = null
+let _planWidgetTimer: ReturnType<typeof setInterval> | null = null
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -212,19 +216,130 @@ function goalStatusLines(goal: GoalState): string[] {
 
 // ── Plan Helpers ─────────────────────────────────────────────────────────────
 
-function renderPlanWidget(plan: PlanStep[] | null): string[] {
-  if (!plan || plan.length === 0) return []
-  const lines = ['\x1b[1mPlan\x1b[22m']
-  for (const item of plan) {
-    const marker =
-      item.status === 'completed'
-        ? '\x1b[32m✓\x1b[39m'
-        : item.status === 'in_progress'
-          ? '\x1b[36m●\x1b[39m'
-          : '\x1b[2m○\x1b[22m'
-    lines.push(` ${marker} ${item.step}`)
+const PLAN_SPINNER_FRAMES = ['✳', '✽', '✶', '✷'] as const
+
+interface TextToolResult {
+  content: Array<{ type: string; text?: string }>
+}
+
+function hasActivePlanStep(plan: PlanStep[] | null): boolean {
+  return Boolean(plan?.some((item) => item.status === 'in_progress'))
+}
+
+function completedPlanSteps(plan: PlanStep[] | null): number {
+  return plan?.filter((item) => item.status === 'completed').length ?? 0
+}
+
+function planStepStatusLabel(status: PlanStepStatus): string {
+  switch (status) {
+    case 'completed':
+      return 'done'
+    case 'in_progress':
+      return 'now'
+    case 'pending':
+      return 'next'
   }
-  return lines
+}
+
+class PlanResultWidget implements Component {
+  constructor(
+    private readonly theme: Theme,
+    private readonly text: string,
+    private readonly isError: boolean
+  ) {}
+
+  render(width: number): string[] {
+    if (width <= 0 || !this.text) return []
+    return [truncateToWidth(this.theme.fg(this.isError ? 'accent' : 'dim', this.text), width)]
+  }
+
+  invalidate(): void {
+    // Static render.
+  }
+}
+
+class PlanWidget implements Component {
+  private frame = 0
+
+  constructor(
+    private readonly theme: Theme,
+    private plan: PlanStep[]
+  ) {}
+
+  update(plan: PlanStep[]): void {
+    this.plan = plan
+    this.invalidate()
+  }
+
+  tick(): void {
+    this.frame = (this.frame + 1) % PLAN_SPINNER_FRAMES.length
+    this.invalidate()
+  }
+
+  render(width: number): string[] {
+    if (width <= 0 || this.plan.length === 0) return []
+    const completed = completedPlanSteps(this.plan)
+    const active = this.plan.find((item) => item.status === 'in_progress')
+    const title = [
+      this.theme.fg('accent', this.theme.bold('▣ Plan')),
+      this.theme.fg('dim', `${completed}/${this.plan.length} done`),
+      active ? this.theme.fg('accent', `Now: ${active.step}`) : '',
+    ]
+      .filter(Boolean)
+      .join(this.theme.fg('dim', ' · '))
+
+    const lines = [truncateToWidth(title, width)]
+    for (const item of this.plan) {
+      const marker = this.marker(item.status)
+      const step =
+        item.status === 'completed'
+          ? this.theme.fg('muted', item.step)
+          : item.status === 'in_progress'
+            ? this.theme.fg('text', item.step)
+            : this.theme.fg('dim', item.step)
+      const status = this.theme.fg(
+        item.status === 'in_progress' ? 'accent' : 'dim',
+        planStepStatusLabel(item.status)
+      )
+      lines.push(
+        truncateToWidth(` ${marker} ${step} ${this.theme.fg('dim', '·')} ${status}`, width)
+      )
+    }
+    return lines
+  }
+
+  invalidate(): void {
+    // Stateless render: theme and frame are applied fresh every render.
+  }
+
+  private marker(status: PlanStepStatus): string {
+    switch (status) {
+      case 'completed':
+        return this.theme.fg('success', '✓')
+      case 'in_progress':
+        return this.theme.fg('accent', PLAN_SPINNER_FRAMES[this.frame])
+      case 'pending':
+        return this.theme.fg('dim', '◻')
+    }
+  }
+}
+
+function stopPlanWidgetTimer(): void {
+  if (!_planWidgetTimer) return
+  clearInterval(_planWidgetTimer)
+  _planWidgetTimer = null
+}
+
+function syncPlanWidgetTimer(): void {
+  if (hasActivePlanStep(_plan)) {
+    if (_planWidgetTimer) return
+    _planWidgetTimer = setInterval(() => {
+      _planWidget?.tick()
+      _planWidgetRender?.()
+    }, 160)
+    return
+  }
+  stopPlanWidgetTimer()
 }
 
 function formatPlanText(plan: PlanStep[] | null): string {
@@ -237,13 +352,40 @@ function formatPlanText(plan: PlanStep[] | null): string {
   return lines.join('\n')
 }
 
+function compactPlanResultText(result: TextToolResult, isError: boolean): string {
+  const text = result.content.find((item) => item.type === 'text' && item.text)?.text ?? ''
+  if (isError) return text || 'Plan update failed.'
+  if (text === 'Plan cleared.') return text
+  return 'Plan dock updated below the editor.'
+}
+
 function showPlanWidget(ctx: ExtensionContext) {
   if (!ctx.hasUI) return
   if (!_plan || _plan.length === 0) {
     ctx.ui.setWidget('plan', undefined)
+    _planWidget = null
+    _planWidgetRender = null
+    stopPlanWidgetTimer()
     return
   }
-  ctx.ui.setWidget('plan', renderPlanWidget(_plan))
+
+  if (_planWidget) {
+    _planWidget.update(_plan)
+    syncPlanWidgetTimer()
+    _planWidgetRender?.()
+    return
+  }
+
+  ctx.ui.setWidget(
+    'plan',
+    (tui, theme) => {
+      _planWidget = new PlanWidget(theme, _plan ?? [])
+      _planWidgetRender = () => tui.requestRender()
+      syncPlanWidgetTimer()
+      return _planWidget
+    },
+    { placement: 'belowEditor' }
+  )
 }
 
 /**
@@ -499,6 +641,7 @@ export default function (pi: ExtensionAPI) {
     execute: async (
       _callId: string,
       params: UnknownRecord,
+      _signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext
     ) => {
@@ -510,7 +653,7 @@ export default function (pi: ExtensionAPI) {
               text: `A goal already exists: "${_goal.objective}". Use /goal clear first or update_goal only for completion.`,
             },
           ],
-          details: {},
+          details: { goal: null as GoalState | null },
           isError: true,
         }
       }
@@ -523,7 +666,7 @@ export default function (pi: ExtensionAPI) {
               text: `Objective must be 1-${MAX_GOAL_OBJECTIVE_CHARS} characters.`,
             },
           ],
-          details: {},
+          details: { goal: null as GoalState | null },
           isError: true,
         }
       }
@@ -547,7 +690,7 @@ export default function (pi: ExtensionAPI) {
       writeGoalFile(_goal)
       return {
         content: [{ type: 'text' as const, text: `Goal created: ${objective}` }],
-        details: { goal: { ..._goal } },
+        details: { goal: { ..._goal } as GoalState | null },
       }
     },
   })
@@ -567,20 +710,21 @@ export default function (pi: ExtensionAPI) {
     execute: async (
       _callId: string,
       _params: UnknownRecord,
+      _signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext
     ) => {
       if (!_goal) {
         return {
           content: [{ type: 'text' as const, text: 'No goal to update. Use create_goal first.' }],
-          details: {},
+          details: { goal: null as GoalState | null },
           isError: true,
         }
       }
       if (_goal.status === 'complete') {
         return {
           content: [{ type: 'text' as const, text: 'Goal is already marked complete.' }],
-          details: {},
+          details: { goal: null as GoalState | null },
         }
       }
       _goal.status = 'complete'
@@ -595,7 +739,7 @@ export default function (pi: ExtensionAPI) {
           : ` (${formatTokens(_goal.tokensUsed)} tokens, ${formatElapsed(_goal.timeUsedSeconds)})`
       return {
         content: [{ type: 'text' as const, text: `Goal complete: ${_goal.objective}${usage}` }],
-        details: { goal: { ..._goal } },
+        details: { goal: { ..._goal } as GoalState | null },
       }
     },
   })
@@ -610,6 +754,7 @@ export default function (pi: ExtensionAPI) {
     execute: async (
       _callId: string,
       _params: UnknownRecord,
+      _signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext
     ) => {
@@ -649,9 +794,12 @@ export default function (pi: ExtensionAPI) {
         { description: 'The list of steps' }
       ),
     }),
+    renderResult: (result, _options, theme, context) =>
+      new PlanResultWidget(theme, compactPlanResultText(result, context.isError), context.isError),
     execute: async (
       _callId: string,
       params: UnknownRecord,
+      _signal: AbortSignal | undefined,
       _onUpdate: unknown,
       ctx: ExtensionContext
     ) => {
@@ -660,7 +808,7 @@ export default function (pi: ExtensionAPI) {
       if (inProgress > 1) {
         return {
           content: [{ type: 'text' as const, text: 'Only one step can be in_progress at a time.' }],
-          details: {},
+          details: { plan: [] as PlanStep[] },
           isError: true,
         }
       }
@@ -672,7 +820,7 @@ export default function (pi: ExtensionAPI) {
       writePlanFile(_plan)
       return {
         content: [{ type: 'text' as const, text: formatPlanText(_plan) }],
-        details: { plan: _plan },
+        details: { plan: _plan as PlanStep[] },
       }
     },
   })
@@ -850,7 +998,7 @@ export default function (pi: ExtensionAPI) {
           { overlay: true }
         )
         if (result === 'implement') {
-          await _pi?.sendMessage({ role: 'user', content: 'Implement the plan.' })
+          await _pi?.sendUserMessage('Implement the plan.')
         }
       } catch {
         // UI not available in this context
@@ -881,14 +1029,14 @@ export default function (pi: ExtensionAPI) {
           return
         }
         if (!ctx.hasUI) return
-        const result = await ctx.ui.input('Edit goal', _goal.objective, {
-          placeholder: 'Type a goal objective',
-          validate: (v: string) =>
-            v.trim().length > 0 && v.trim().length <= MAX_GOAL_OBJECTIVE_CHARS,
-          errorMessage: `Objective must be 1-${MAX_GOAL_OBJECTIVE_CHARS} characters`,
-        })
+        const result = await ctx.ui.input('Edit goal', _goal.objective)
         if (result == null) return
-        _goal.objective = (result as string).trim()
+        const objective = result.trim()
+        if (!objective || objective.length > MAX_GOAL_OBJECTIVE_CHARS) {
+          ctx.ui.notify(`Objective must be 1-${MAX_GOAL_OBJECTIVE_CHARS} characters`, 'warning')
+          return
+        }
+        _goal.objective = objective
         _goal.updatedAt = Date.now()
         persistGoal()
         setGoalStatus(ctx)
