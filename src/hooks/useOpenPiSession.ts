@@ -16,10 +16,7 @@
 import { batch, createEffect, createSignal, on, onCleanup, onMount } from 'solid-js'
 import type {
   BashExecutionResult,
-  GoalUpdate,
   ModelInfo,
-  PlanUpdate,
-  RemoteSessionUpdate,
   SessionEvent,
   SessionListItem,
   SessionReady,
@@ -30,6 +27,7 @@ import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessio
 import type { Message } from '../types/session'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
+import { useRemoteSessionSync } from './useRemoteSessionSync'
 import { useSessionHistory } from './useSessionHistory'
 import { useSessionIndex } from './useSessionIndex'
 
@@ -67,47 +65,15 @@ export function useOpenPiSession() {
   const [followUpQueue, setFollowUpQueue] = createSignal<string[]>([])
   const [sessionName, setSessionNameState] = createSignal<string | null>(null)
   const [contextPercent, setContextPercent] = createSignal<number | null>(null)
-  // ── Goal state ────────────────────────────────────────────────────────────
-  const [activeGoalText, setActiveGoalText] = createSignal<string | null>(null)
-
   // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
   const trackers = useExtensionTrackers()
   const agentRunMetrics = useAgentRunMetrics()
   const sessionHistory = useSessionHistory({ setMessages, setError })
-
-  // ── Remote agent status (Pi TUI sync bridge) ─────────────────────────────
-  const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<{
-    app: string
-    status: string
-    pid: number
-    workspace?: string
-    sessionFile?: string | null
-  } | null>(null)
-  const [remoteSessionUpdate, setRemoteSessionUpdate] = createSignal<RemoteSessionUpdate | null>(
-    null
-  )
-  const [goalUpdate, setGoalUpdate] = createSignal<GoalUpdate | null>(null)
-  const [planUpdate, setPlanUpdate] = createSignal<PlanUpdate | null>(null)
-
-  // Live elapsed offset: ticks up every second while the agent is streaming
-  const [goalElapsedOffset, setGoalElapsedOffset] = createSignal(0)
-  createEffect(() => {
-    if (isStreaming() && activeGoalText()) {
-      const id = setInterval(() => {
-        setGoalElapsedOffset((o) => o + 1)
-      }, 1000)
-      onCleanup(() => clearInterval(id))
-    } else {
-      setGoalElapsedOffset(0)
-    }
+  const remoteSync = useRemoteSessionSync({
+    isStreaming,
+    isReady: () => ready() !== null,
+    setError,
   })
-  const [localActivityAt, setLocalActivityAt] = createSignal(0)
-
-  const markLocalActivity = () => {
-    setLocalActivityAt(Date.now())
-    setRemoteSessionStatus(null)
-    setRemoteSessionUpdate(null)
-  }
 
   // ── Refs — plain variables assigned via SolidJS ref= callback ────────────
   let _bottomEl: HTMLDivElement | undefined
@@ -130,7 +96,7 @@ export function useOpenPiSession() {
   const handleEvent = (event: SessionEvent) => {
     if (event.type === 'agent_start') {
       setIsStreaming(true)
-      markLocalActivity()
+      remoteSync.markLocalActivity()
       agentRunMetrics.start()
       // Auto-activate steer mode ONLY when the user explicitly sent a fresh
       // prompt — not on every agent_start (e.g. intermediate restarts after
@@ -228,39 +194,13 @@ export function useOpenPiSession() {
     const unsubs: Array<() => void> = []
 
     unsubs.push(window.openpi.onSessionEvent(handleEvent))
-    unsubs.push(
-      window.openpi.onRemoteSessionStatus((payload) => {
-        setRemoteSessionStatus({
-          app: payload.app,
-          status: payload.status,
-          pid: payload.pid,
-          workspace: payload.workspace,
-          sessionFile: payload.sessionFile,
-        })
-        if (payload.status !== 'running' && !payload.sessionFile) setRemoteSessionUpdate(null)
-      })
-    )
+    unsubs.push(window.openpi.onRemoteSessionStatus(remoteSync.handleRemoteSessionStatus))
 
-    unsubs.push(
-      window.openpi.onRemoteSessionUpdate((payload) => {
-        setRemoteSessionUpdate(payload)
-      })
-    )
+    unsubs.push(window.openpi.onRemoteSessionUpdate(remoteSync.handleRemoteSessionUpdate))
 
-    unsubs.push(
-      window.openpi.onGoalUpdate((payload) => {
-        setGoalUpdate(payload)
-        // Treat the harness file as authoritative: create/edit replaces the text;
-        // clear writes objective:null and must clear the banner.
-        setActiveGoalText(payload.objective)
-      })
-    )
+    unsubs.push(window.openpi.onGoalUpdate(remoteSync.handleGoalUpdate))
 
-    unsubs.push(
-      window.openpi.onPlanUpdate((payload) => {
-        setPlanUpdate(payload)
-      })
-    )
+    unsubs.push(window.openpi.onPlanUpdate(remoteSync.handlePlanUpdate))
 
     unsubs.push(
       window.openpi.onSessionReady((payload) => {
@@ -365,19 +305,11 @@ export function useOpenPiSession() {
     if (!promptPayload.text || !r) return
 
     // Detect /goal command from the raw input text and sync goal state
-    const rawText = input().trim()
-    if (rawText.startsWith('/goal')) {
-      const afterSlash = rawText.slice(5).trim()
-      if (afterSlash && afterSlash.toLowerCase() !== 'clear') {
-        setActiveGoalText(afterSlash)
-      } else {
-        setActiveGoalText(null)
-      }
-    }
+    remoteSync.syncGoalFromInput(input())
 
     setInput('')
     if (textareaEl) textareaEl.style.height = 'auto'
-    markLocalActivity()
+    remoteSync.markLocalActivity()
     try {
       if (queueMode() === 'steer')
         await window.openpi.steer(promptPayload.text, promptPayload.contextPrefix)
@@ -494,7 +426,7 @@ export function useOpenPiSession() {
   // ── Ask-user-question actions ─────────────────────────────────────────
   const submitAsk = async (formatted: string) => {
     trackers.clearAsk()
-    markLocalActivity()
+    remoteSync.markLocalActivity()
     try {
       if (isStreaming()) {
         await window.openpi.steer(formatted)
@@ -509,19 +441,6 @@ export function useOpenPiSession() {
 
   const dismissAsk = () => {
     trackers.clearAsk()
-  }
-
-  // ── Goal actions ──────────────────────────────────────────────────────────
-  const setActiveGoal = (text: string | null) => {
-    setActiveGoalText(text)
-    if (text === null && ready()) {
-      void window.openpi.prompt('/goal clear').catch((err) => {
-        setError(err instanceof Error ? err.message : String(err))
-      })
-    }
-  }
-  const clearActiveGoal = () => {
-    setActiveGoalText(null)
   }
 
   // ── Return — getter-based object so callers use session.ready (not session.ready()) ──
@@ -591,27 +510,16 @@ export function useOpenPiSession() {
       return gitStats()
     },
     get activeGoalText() {
-      return activeGoalText()
+      return remoteSync.activeGoalText()
     },
     get activeGoalStep() {
-      const goal = activeGoalText()
-      if (!goal) return null
-      const status = goalUpdate()?.status
-      if (status === 'complete' || status === 'paused' || status === 'budget_limited') return status
-      return isStreaming() ? 'running' : 'idle'
+      return remoteSync.activeGoalStep()
     },
     get activeGoalElapsed() {
-      const base = goalUpdate()?.timeUsedSeconds ?? 0
-      return base + goalElapsedOffset()
+      return remoteSync.activeGoalElapsed()
     },
     get activeGoalProgress() {
-      const gu = goalUpdate()
-      if (!gu || gu.tokensUsed === undefined) return null
-      return {
-        tokensUsed: gu.tokensUsed,
-        tokenBudget: gu.tokenBudget,
-        percent: gu.tokenBudget ? Math.min(gu.tokensUsed / gu.tokenBudget, 1) : null,
-      }
+      return remoteSync.activeGoalProgress()
     },
     get steeringQueue() {
       return steeringQueue()
@@ -620,23 +528,23 @@ export function useOpenPiSession() {
       return followUpQueue()
     },
     get remoteSessionStatus() {
-      return remoteSessionStatus()
+      return remoteSync.remoteSessionStatus()
     },
     get remoteSessionMessages() {
-      return remoteSessionUpdate()?.messages ?? []
+      return remoteSync.remoteSessionMessages()
     },
     get remoteSessionUpdatedAt() {
-      return remoteSessionUpdate()?.updatedAt ?? 0
+      return remoteSync.remoteSessionUpdatedAt()
     },
     get goalUpdate() {
-      return goalUpdate()
+      return remoteSync.goalUpdate()
     },
     get planUpdate() {
-      return planUpdate()
+      return remoteSync.planUpdate()
     },
 
     get localActivityAt() {
-      return localActivityAt()
+      return remoteSync.localActivityAt()
     },
     get sessionName() {
       return sessionName()
@@ -704,8 +612,8 @@ export function useOpenPiSession() {
     forkFromMessage,
     submitAsk,
     dismissAsk,
-    setActiveGoal,
-    clearActiveGoal,
+    setActiveGoal: remoteSync.setActiveGoal,
+    clearActiveGoal: remoteSync.clearActiveGoal,
 
     clearTasks: () => {
       trackers.clearTasks()
