@@ -22,17 +22,15 @@ import type {
   RemoteSessionUpdate,
   SessionEvent,
   SessionListItem,
-  SessionListOptions,
   SessionReady,
-  WorkspaceInfo,
   WorkspaceSummaryInfo,
 } from '../lib/ipc'
 import { applySessionEvent } from '../lib/sessionEvents'
 import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessionPrompt'
-import { groupSessions } from '../lib/sessionView'
-import type { GroupMode, Message, SortMode } from '../types/session'
+import type { Message } from '../types/session'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
+import { useSessionIndex } from './useSessionIndex'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -57,14 +55,7 @@ export function useOpenPiSession() {
   let _justSentPrompt = false
   const [currentModel, setCurrentModel] = createSignal<ModelInfo | null>(null)
   const [thinkingLevel, setThinkingLevelState] = createSignal<string>('medium')
-  const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
-  const [sessions, setSessions] = createSignal<SessionListItem[]>([])
-  const [selectedWorkspacePath, setSelectedWorkspacePath] = createSignal<string | null>(null)
-  const [sessionQuery, setSessionQuery] = createSignal('')
-  const [sortBy, setSortBy] = createSignal<SortMode>('created')
-  const [groupBy, setGroupBy] = createSignal<GroupMode>('workspace')
-  const [showRecent, setShowRecent] = createSignal(true)
-  const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
+  const sessionIndex = useSessionIndex(() => ready()?.cwd ?? null)
   const [gitBranch, setGitBranch] = createSignal<string | null>(null)
   const [workspaceSummary, setWorkspaceSummary] = createSignal<WorkspaceSummaryInfo | null>(null)
   const [gitStats, setGitStats] = createSignal<{
@@ -132,32 +123,6 @@ export function useOpenPiSession() {
   // (contextPercent is already a signal — no memo wrapper needed)
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const selectedWorkspaceForQuery = () => selectedWorkspacePath() ?? ready()?.cwd ?? null
-
-  const loadSessionIndex = async (workspaceOverride?: string | null) => {
-    const workspacePath = workspaceOverride ?? selectedWorkspaceForQuery()
-    const options: SessionListOptions = {
-      query: sessionQuery(),
-      sortBy: sortBy(),
-      groupBy: groupBy(),
-      showRecent: showRecent(),
-      recentDays: 30,
-      workspacePath: workspacePath ?? undefined,
-    }
-    const [workspaceList, sessionList] = await Promise.all([
-      window.openpi.getWorkspaces(),
-      window.openpi.getSessions(options),
-    ])
-    batch(() => {
-      setWorkspaces(workspaceList)
-      setSessions(sessionList)
-      if (!selectedWorkspacePath()) {
-        const fallback = workspacePath ?? workspaceList[0]?.path ?? null
-        if (fallback) setSelectedWorkspacePath(fallback)
-      }
-    })
-  }
-
   const refreshContextUsage = async () => {
     try {
       const stats = await window.openpi.getSessionStats()
@@ -250,9 +215,14 @@ export function useOpenPiSession() {
   // ── Re-fetch session index when filter options change ─────────────────────
   createEffect(
     on(
-      [sessionQuery, sortBy, groupBy, showRecent] as const,
+      [
+        sessionIndex.sessionQuery,
+        sessionIndex.sortBy,
+        sessionIndex.groupBy,
+        sessionIndex.showRecent,
+      ] as const,
       () => {
-        void loadSessionIndex()
+        void sessionIndex.loadSessionIndex()
       },
       { defer: true }
     )
@@ -303,7 +273,7 @@ export function useOpenPiSession() {
 
         batch(() => {
           setReady(payload)
-          setSelectedWorkspacePath(payload.cwd)
+          sessionIndex.setSelectedWorkspacePath(payload.cwd)
           setMessages([])
           setError(null)
           setSteeringQueue([])
@@ -351,7 +321,7 @@ export function useOpenPiSession() {
             .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
         }
 
-        void loadSessionIndex(payload.cwd)
+        void sessionIndex.loadSessionIndex(payload.cwd)
         void refreshContextUsage()
       })
     )
@@ -367,7 +337,7 @@ export function useOpenPiSession() {
 
     unsubs.push(
       window.openpi.onSessionIndexUpdated(() => {
-        void loadSessionIndex()
+        void sessionIndex.loadSessionIndex()
       })
     )
 
@@ -383,7 +353,7 @@ export function useOpenPiSession() {
     )
 
     // Initial load
-    void loadSessionIndex()
+    void sessionIndex.loadSessionIndex()
 
     onCleanup(() => {
       for (const u of unsubs) u()
@@ -395,7 +365,7 @@ export function useOpenPiSession() {
   const openWorkspace = async () => {
     setError(null)
     await window.openpi.pickWorkspace()
-    await loadSessionIndex()
+    await sessionIndex.loadSessionIndex()
   }
 
   const openExistingSession = async (session: SessionListItem) => {
@@ -405,21 +375,7 @@ export function useOpenPiSession() {
 
   const createNewSession = async () => {
     setError(null)
-    await window.openpi.newSession(selectedWorkspaceForQuery() ?? ready()?.cwd)
-  }
-
-  const selectWorkspace = async (workspacePath: string) => {
-    setSelectedWorkspacePath(workspacePath)
-    await loadSessionIndex(workspacePath)
-  }
-
-  const loadWorkspacePreview = (workspacePath: string): Promise<SessionListItem[]> => {
-    return window.openpi.getSessions({
-      workspacePath,
-      sortBy: 'updated',
-      showRecent: false,
-      limit: 8,
-    })
+    await window.openpi.newSession(sessionIndex.selectedWorkspaceForQuery() ?? ready()?.cwd)
   }
 
   const loadOlderSessionMessages = async () => {
@@ -562,19 +518,6 @@ export function useOpenPiSession() {
     await window.openpi.setThinking(level)
   }
 
-  const toggleGroup = (group: string) => {
-    setCollapsedGroups((previous) => {
-      const next = new Set(previous)
-      if (next.has(group)) next.delete(group)
-      else next.add(group)
-      return next
-    })
-  }
-
-  const collapseAllGroups = () => {
-    setCollapsedGroups(new Set(groupSessions(sessions(), groupBy()).map((group) => group.key)))
-  }
-
   const setSessionName = async (name: string) => {
     try {
       await window.openpi.setSessionName(name)
@@ -659,28 +602,28 @@ export function useOpenPiSession() {
       return currentModel()
     },
     get workspaces() {
-      return workspaces()
+      return sessionIndex.workspaces()
     },
     get sessions() {
-      return sessions()
+      return sessionIndex.sessions()
     },
     get selectedWorkspacePath() {
-      return selectedWorkspacePath()
+      return sessionIndex.selectedWorkspacePath()
     },
     get sessionQuery() {
-      return sessionQuery()
+      return sessionIndex.sessionQuery()
     },
     get sortBy() {
-      return sortBy()
+      return sessionIndex.sortBy()
     },
     get groupBy() {
-      return groupBy()
+      return sessionIndex.groupBy()
     },
     get showRecent() {
-      return showRecent()
+      return sessionIndex.showRecent()
     },
     get collapsedGroups() {
-      return collapsedGroups()
+      return sessionIndex.collapsedGroups()
     },
     get gitBranch() {
       return gitBranch()
@@ -782,25 +725,25 @@ export function useOpenPiSession() {
     setInput,
     setError,
     setQueueMode,
-    setSessionQuery,
-    setSortBy,
-    setGroupBy,
-    setShowRecent,
+    setSessionQuery: sessionIndex.setSessionQuery,
+    setSortBy: sessionIndex.setSortBy,
+    setGroupBy: sessionIndex.setGroupBy,
+    setShowRecent: sessionIndex.setShowRecent,
 
     // Actions
     openWorkspace,
     openExistingSession,
     createNewSession,
-    selectWorkspace,
-    loadWorkspacePreview,
+    selectWorkspace: sessionIndex.selectWorkspace,
+    loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
     loadOlderSessionMessages,
     send,
     sendShell,
     selectModel,
     refreshModels,
     selectThinkingLevel,
-    toggleGroup,
-    collapseAllGroups,
+    toggleGroup: sessionIndex.toggleGroup,
+    collapseAllGroups: sessionIndex.collapseAllGroups,
     setSessionName,
     forkFromMessage,
     submitAsk,
