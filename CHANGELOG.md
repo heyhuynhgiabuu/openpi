@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.18] - 2026-05-22
+
+### Added
+
+- **Sticky plan dock** — persistent bottom widget for `update_plan` with auto-hide on completion, expand/collapse toggle, active step spinner animation. Pi TUI version uses `belowEditor` placement with animated spinner frames. (dd45fa1, 8a0b1bb)
+- **CodeMirror search performance** — file preview search now passes the editor document (`Text`) directly instead of creating `Text.of(text.split('\n'))` on every keystroke, eliminating the 1–2s delay on large files like `index.css`. (859f3a8)
+
+### Changed
+
+- **refactor: massive module splitting across the codebase** — every file over 500 LOC was split into focused sub-modules:
+  - `App.tsx` reduced from 1,332 to 518 LOC by extracting 5 hooks (`useAppFileManager`, `useAppKeybindings`, `useAppArchive`, `useAppPrefs`, `useWorkbenchLayout`) and 4 workbench components (`ConversationWorkspace`, `GitSidePanel`, `AppOverlays`, `WorkbenchSidebar`).
+  - `ConnectProviderModal.tsx` reduced from 1,108 to 270 LOC (6 extracted modules).
+  - `GeneralPane.tsx` reduced from 861 to 129 LOC (5 extracted modules).
+  - `GitPanel.tsx` reduced from 857 to 294 LOC (8 extracted modules + hook).
+  - `SettingsPane.tsx` reduced from 760 to 181 LOC (extracted `settingsSections.ts`).
+  - `FileSearchModal.tsx` reduced from 534 to 311 LOC (extracted `FileHitsList`, `TextResultsList`).
+  - `Messages.tsx` reduced from 555 to 298 LOC (extracted `SystemMessage`, `UsageRow`, `MessageActions`, `UserMessage`).
+  - `ToolCardView.tsx` reduced from 883 to 60 LOC (10 extracted tool row components).
+  - `PackagesPane.tsx` reduced from 587 to 310 LOC (3 extracted modules).
+  - Provider modal: extracted `BuiltInProviderRow`, `CustomProviderRow`, `CustomProviderFormView`, `ProviderListView`, `SubscriptionProviderRow`, `providerActions`, `providerLoginEvents`.
+  - `Composer.tsx`: 18 helper modules extracted.
+  - `useOpenPiSession.ts`: 5 hooks extracted (`useExtensionTrackers`, `useAgentRunMetrics`, `useSessionIndex`, `useSessionHistory`, `useRemoteSessionSync`).
+
+### Fixed
+
+- **Plan dock completion** — plan dock now auto-hides in both OpenPi and Pi TUI when all steps are completed. (8a0b1bb)
+- **Plan dock visual polish** — active border changed from blue to white, header icon removed per user preference. (cee9aee)
+
 ## [0.1.17] - 2026-05-19
 
 ### Added
