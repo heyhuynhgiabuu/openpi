@@ -1,17 +1,6 @@
 // biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/noSvgWithoutTitle: existing composer picker/progress markup is tracked separately from this release.
 import fuzzysort from 'fuzzysort'
-import {
-  ArrowUp,
-  ChevronDown,
-  Clock,
-  Paperclip,
-  Plus,
-  RotateCcw,
-  SlidersHorizontal,
-  Square,
-  TerminalSquare,
-  Zap,
-} from 'lucide-solid'
+import { ArrowUp, Clock, Paperclip, RotateCcw, Square, TerminalSquare, Zap } from 'lucide-solid'
 import {
   type Component,
   createEffect,
@@ -43,6 +32,8 @@ import { SkillPicker, SlashCommandPicker } from './composer/CommandPicker'
 import { ContextPicker } from './composer/ContextPicker'
 import { formatSlashCommandInput, THINKING_LEVELS, truncate } from './composer/helpers'
 import { MentionPicker } from './composer/MentionPicker'
+import { ModelPicker } from './composer/ModelPicker'
+import { ThinkingPicker } from './composer/ThinkingPicker'
 import type { ComposerProps, SlashCommand } from './composer/types'
 import { GoalBanner } from './GoalBanner'
 
@@ -938,138 +929,46 @@ export const Composer: Component<ComposerProps> = (props) => {
               {/* Divider */}
               <span class="composer-toolbar-divider" aria-hidden />
 
-              {/* Model picker */}
-              <div
-                ref={(el) => {
+              <ModelPicker
+                modelOpen={modelOpen()}
+                modelSearch={modelSearch()}
+                currentModel={props.currentModel}
+                filteredModels={filteredModels}
+                onToggle={() => {
+                  setModelOpen((v) => !v)
+                  setThinkingOpen(false)
+                  setPickerOpen(false)
+                }}
+                onSearchChange={(v) => setModelSearch(v)}
+                onSelectModel={(m) => {
+                  props.onSelectModel(m)
+                  setModelSearch('')
+                }}
+                onConnectProvider={props.onConnectProvider}
+                onManageModels={props.onManageModels}
+                onClose={() => {
+                  setModelOpen(false)
+                  setModelSearch('')
+                }}
+                wrapperRef={(el) => {
                   modelRef = el
                 }}
-                class="composer-picker"
-              >
-                <button
-                  type="button"
-                  class="composer-tool-btn"
-                  onClick={() => {
-                    setModelOpen((v) => !v)
-                    setThinkingOpen(false)
-                    setPickerOpen(false)
-                    if (!modelOpen()) setTimeout(() => modelSearchRef?.focus(), 30)
-                  }}
-                  title="Select model"
-                >
-                  <span class="composer-tool-label">{props.currentModel?.name ?? 'No model'}</span>
-                  <ChevronDown size={11} strokeWidth={2} />
-                </button>
+              />
 
-                <Show when={modelOpen()}>
-                  <div class="composer-dropdown composer-dropdown-up composer-model-dropdown">
-                    <div class="cmd-header">
-                      <div class="cmd-search-wrap">
-                        <input
-                          ref={(el) => {
-                            modelSearchRef = el
-                          }}
-                          class="cmd-search"
-                          placeholder="Search models"
-                          value={modelSearch()}
-                          onInput={(e) => setModelSearch(e.currentTarget.value)}
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        class="cmd-icon-btn"
-                        title="Connect provider"
-                        onClick={() => {
-                          setModelOpen(false)
-                          props.onConnectProvider()
-                        }}
-                      >
-                        <Plus size={13} strokeWidth={2} />
-                      </button>
-
-                      <button
-                        type="button"
-                        class="cmd-icon-btn"
-                        title="Manage models"
-                        onClick={() => {
-                          setModelOpen(false)
-                          props.onManageModels()
-                        }}
-                      >
-                        <SlidersHorizontal size={13} strokeWidth={2} />
-                      </button>
-                    </div>
-
-                    <For each={filteredModels()}>
-                      {(m) => {
-                        const active = () =>
-                          props.currentModel?.id === m.id &&
-                          props.currentModel?.provider === m.provider
-
-                        return (
-                          <button
-                            type="button"
-                            class={`composer-drop-item ${active() ? 'is-active' : ''}`}
-                            onClick={() => {
-                              props.onSelectModel(m)
-                              setModelOpen(false)
-                              setModelSearch('')
-                            }}
-                          >
-                            <span class="composer-drop-name">{m.name}</span>
-                            <span class="composer-drop-sub">{m.provider}</span>
-                          </button>
-                        )
-                      }}
-                    </For>
-
-                    <Show when={filteredModels().length === 0}>
-                      <div class="cmd-empty">No models match</div>
-                    </Show>
-                  </div>
-                </Show>
-              </div>
-
-              {/* Thinking level picker */}
-              <div
-                ref={(el) => {
+              <ThinkingPicker
+                thinkingOpen={thinkingOpen()}
+                thinkingLevel={props.thinkingLevel}
+                onToggle={() => {
+                  setThinkingOpen((v) => !v)
+                  setModelOpen(false)
+                  setPickerOpen(false)
+                }}
+                onSelect={(level) => props.onThinkingLevel(level)}
+                onClose={() => setThinkingOpen(false)}
+                wrapperRef={(el) => {
                   thinkingRef = el
                 }}
-                class="composer-picker"
-              >
-                <button
-                  type="button"
-                  class="composer-tool-btn"
-                  onClick={() => {
-                    setThinkingOpen((v) => !v)
-                    setModelOpen(false)
-                    setPickerOpen(false)
-                  }}
-                  title="Thinking level"
-                >
-                  <span class="composer-tool-label">{props.thinkingLevel}</span>
-                  <ChevronDown size={11} strokeWidth={2} />
-                </button>
-
-                <Show when={thinkingOpen()}>
-                  <div class="composer-dropdown composer-dropdown-up">
-                    <For each={THINKING_LEVELS}>
-                      {(level) => (
-                        <button
-                          type="button"
-                          class={`composer-drop-item ${props.thinkingLevel === level ? 'is-active' : ''}`}
-                          onClick={() => {
-                            props.onThinkingLevel(level)
-                            setThinkingOpen(false)
-                          }}
-                        >
-                          <span class="composer-drop-name">{level}</span>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </div>
+              />
 
               {/* Context usage indicator */}
               <Show when={props.contextPercent !== null && props.contextPercent !== undefined}>
