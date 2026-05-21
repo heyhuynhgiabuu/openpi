@@ -42,11 +42,8 @@ import {
   type UpdatePreferenceKey,
   type UpdatePreferences,
 } from '../../lib/updatePreferences'
-
-type GeneralPaneProps = {
-  onError: (message: string) => void
-  themeItems: CustomizationItem[]
-}
+import { BUILT_IN_THEME_OPTIONS, type GeneralPaneProps, THEME_DEFAULT } from './generalPaneTypes'
+import { UpdateSection } from './UpdateSection'
 
 type SavedKey =
   | DisplayPreferenceKey
@@ -58,13 +55,6 @@ type SavedKey =
   | 'diagnostics'
   | 'checkPiUpdate'
   | 'installPiUpdate'
-
-const THEME_DEFAULT = '__default__'
-const BUILT_IN_THEME_OPTIONS = [
-  { value: THEME_DEFAULT, label: 'Default' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-]
 
 export function GeneralPane(props: GeneralPaneProps) {
   const [prefs, setPrefs] = createSignal<DisplayPreferences>({
@@ -738,116 +728,20 @@ export function GeneralPane(props: GeneralPaneProps) {
             </div>
           </section>
 
-          <section class="osp-section">
-            <div class="osp-section-head">Updates</div>
-            <For each={UPDATE_PREFERENCES}>
-              {(field) => {
-                const on = () => updatePrefs()[field.key]
-                const isDefault = () => on() === field.defaultValue
-                const justSaved = () => savedKey() === field.key
-                return (
-                  <div class="osp-row">
-                    <div class="osp-row-left">
-                      <div class="osp-row-name">
-                        {field.label}
-                        <Show when={justSaved()}>
-                          <span class="osp-saved">
-                            <Check size={10} /> saved
-                          </span>
-                        </Show>
-                      </div>
-                      <div class="osp-row-desc">{field.description}</div>
-                    </div>
-                    <div class="osp-row-right">
-                      <Show when={!isDefault()}>
-                        <button
-                          class="osp-reset-btn"
-                          type="button"
-                          onClick={() => resetUpdateValue(field.key)}
-                          title="Reset to default"
-                        >
-                          <RotateCcw size={11} />
-                        </button>
-                      </Show>
-                      <button
-                        class={`osp-toggle${on() ? ' is-on' : ''}`}
-                        type="button"
-                        onClick={() => saveUpdateValue(field.key, !on())}
-                        role="switch"
-                        aria-checked={on()}
-                        aria-label={field.label}
-                      >
-                        <span class="osp-toggle-thumb" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              }}
-            </For>
-            <div class="osp-row osp-row-last">
-              <div class="osp-row-left">
-                <div class="osp-row-name">
-                  Check for updates
-                  <Show when={savedKey() === 'checkPiUpdate'}>
-                    <span class="osp-saved">
-                      <Check size={10} /> checked
-                    </span>
-                  </Show>
-                </div>
-                <div class="osp-row-desc">
-                  Manually check for Pi coding agent updates and install with the official{' '}
-                  <code>pi update --self</code> flow when available.
-                </div>
-                <Show when={updateStatus()}>
-                  {(status) => (
-                    <div class="osp-update-status">
-                      <Show when={!status().error} fallback={<span>{status().error}</span>}>
-                        <span>
-                          Current {status().currentVersion}
-                          <Show when={status().latestVersion}>
-                            {(latest) => <> · Latest {latest()}</>}
-                          </Show>
-                          {status().updateAvailable ? ' · Update available' : ' · Up to date'}
-                        </span>
-                      </Show>
-                    </div>
-                  )}
-                </Show>
-                <Show when={installOutput()}>
-                  {(output) => <pre class="osp-update-output">{output()}</pre>}
-                </Show>
-              </div>
-              <div class="osp-row-right osp-row-right-actions">
-                <button
-                  class="osp-action-btn"
-                  type="button"
-                  onClick={openLatestReleaseNotes}
-                  title="Open Pi release notes"
-                >
-                  <ExternalLink size={12} />
-                  Release notes
-                </button>
-                <Show when={updateStatus()?.updateAvailable}>
-                  <button
-                    class="osp-action-btn osp-action-btn-primary"
-                    type="button"
-                    disabled={installingUpdate()}
-                    onClick={installUpdate}
-                  >
-                    {installingUpdate() ? 'Installing…' : 'Install'}
-                  </button>
-                </Show>
-                <button
-                  class="osp-action-btn"
-                  type="button"
-                  disabled={checkingUpdates()}
-                  onClick={checkForUpdates}
-                >
-                  {checkingUpdates() ? 'Checking…' : 'Check now'}
-                </button>
-              </div>
-            </div>
-          </section>
+          <UpdateSection
+            updatePrefs={updatePrefs()}
+            savedKey={savedKey()}
+            updateStatus={updateStatus()}
+            checkingUpdates={checkingUpdates()}
+            installingUpdate={installingUpdate()}
+            installOutput={installOutput()}
+            onToggle={(key: string, value: boolean) =>
+              saveUpdateValue(key as UpdatePreferenceKey, value)
+            }
+            onReset={(key: string) => resetUpdateValue(key as UpdatePreferenceKey)}
+            onCheck={checkForUpdates}
+            onInstall={installUpdate}
+          />
         </div>
       </Show>
 
