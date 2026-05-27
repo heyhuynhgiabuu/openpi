@@ -85,12 +85,3 @@ export const HarnessToolRow: Component<HarnessToolRowProps> = (props) => {
     </div>
   )
 }
-
-// ─── Ask tool row ──────────────────────────────────────────────────────────
-
-interface AskQuestion {
-  question: string
-  header: string
-  options: { label: string; description?: string }[]
-  multiSelect: boolean
-}

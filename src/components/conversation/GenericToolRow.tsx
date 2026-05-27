@@ -49,12 +49,3 @@ export const GenericToolRow: Component<GenericToolRowProps> = (props) => {
     </div>
   )
 }
-
-// ── Plan tool row ───────────────────────────────────────────────────────
-
-type PlanItemStatus = 'pending' | 'in_progress' | 'completed'
-
-interface PlanItem {
-  step: string
-  status: PlanItemStatus
-}

@@ -84,7 +84,3 @@ export const FileToolRow: Component<FileToolRowProps> = (props) => {
     </div>
   )
 }
-
-type GenericToolRowProps = {
-  card: ToolCard
-}

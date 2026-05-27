@@ -96,6 +96,7 @@ export function ToolTypeIcon(props: ToolTypeIconProps) {
     <span
       class={`tool-type-icon tool-icon-${state()} ${isShell() ? 'is-shell' : ''}`}
       title={title()}
+      role="img"
       aria-label={title()}
     >
       <ToolIcon name={props.toolName} />

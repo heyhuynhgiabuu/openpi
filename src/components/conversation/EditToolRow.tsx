@@ -146,8 +146,3 @@ export const EditToolRow: Component<EditToolRowProps> = (props) => {
     </div>
   )
 }
-
-type ShellToolRowProps = {
-  card: ToolCard
-  displayPreferences: DisplayPreferences
-}
