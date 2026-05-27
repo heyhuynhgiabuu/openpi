@@ -88,16 +88,22 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
 
   const closeSoundMenu = () => setOpenSoundMenu(null)
 
+  const handleOutsideMouseDown = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('.osp-sound-picker')) return
+    closeSoundMenu()
+  }
+
   const handleSoundMenuKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') closeSoundMenu()
   }
 
-  document.addEventListener('mousedown', closeSoundMenu)
+  document.addEventListener('mousedown', handleOutsideMouseDown)
   document.addEventListener('keydown', handleSoundMenuKeyDown)
 
   onCleanup(() => {
     if (savedTimer) clearTimeout(savedTimer)
-    document.removeEventListener('mousedown', closeSoundMenu)
+    document.removeEventListener('mousedown', handleOutsideMouseDown)
     document.removeEventListener('keydown', handleSoundMenuKeyDown)
   })
 

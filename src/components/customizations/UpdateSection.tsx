@@ -76,19 +76,15 @@ export function UpdateSection(props: UpdateSectionProps) {
           <div class="osp-row-name">Pi Update</div>
           <div class="osp-row-desc">Check for and install the latest Pi release</div>
           <Show when={props.updateStatus}>
-            <div class="osp-update-info">
-              <Show
-                when={!props.updateStatus!.error}
-                fallback={<span>{props.updateStatus!.error}</span>}
-              >
-                <Show
-                  when={props.updateStatus!.updateAvailable}
-                  fallback={<span>Pi is up to date</span>}
-                >
-                  <span>v{props.updateStatus!.latestVersion ?? ''} available</span>
+            {(status) => (
+              <div class="osp-update-info">
+                <Show when={!status().error} fallback={<span>{status().error}</span>}>
+                  <Show when={status().updateAvailable} fallback={<span>Pi is up to date</span>}>
+                    <span>v{status().latestVersion ?? ''} available</span>
+                  </Show>
                 </Show>
-              </Show>
-            </div>
+              </div>
+            )}
           </Show>
         </div>
         <div class="osp-row-right">

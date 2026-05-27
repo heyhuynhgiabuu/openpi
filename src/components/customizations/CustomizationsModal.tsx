@@ -92,6 +92,7 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
   const [inventory, setInventory] = createSignal<CustomizationsInventory | null>(null)
   const [activeType, setActiveType] = createSignal<ActiveTab>('extensions')
   const [loading, setLoading] = createSignal(false)
+  let contentEl: HTMLElement | undefined
 
   const loadInventory = async () => {
     setLoading(true)
@@ -110,6 +111,17 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
       void loadInventory()
     }, 0)
     return () => window.clearTimeout(timer)
+  })
+
+  // Reset scroll position when switching tabs so previous tab's scroll
+  // offset does not carry over into the new tab.
+  createEffect(() => {
+    const tab = activeType()
+    if (!props.open) return
+    queueMicrotask(() => {
+      if (activeType() !== tab) return
+      contentEl?.scrollTo({ top: 0, left: 0 })
+    })
   })
 
   const counts = createMemo(() => {
@@ -239,7 +251,12 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
           </aside>
 
           <div class="customizations-main">
-            <main class="customizations-content">
+            <main
+              ref={(element) => {
+                contentEl = element
+              }}
+              class="customizations-content"
+            >
               <div class={`customizations-page-shell customizations-page-shell-${activeType()}`}>
                 <Show
                   when={
