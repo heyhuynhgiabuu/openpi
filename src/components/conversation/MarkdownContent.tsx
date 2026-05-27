@@ -234,7 +234,11 @@ export const MarkdownContent: Component<Props> = (props) => {
     const codeEl = block?.querySelector('code')
     if (!codeEl) return
 
-    const text = codeEl.textContent ?? ''
+    // Clone the code element and strip line-number spans before copying
+    // so the clipboard contains only source code, not rendered line numbers.
+    const clone = codeEl.cloneNode(true) as HTMLElement
+    for (const ln of clone.querySelectorAll('.line-num')) ln.remove()
+    const text = clone.textContent ?? ''
     void navigator.clipboard.writeText(text).then(() => {
       btn.textContent = 'Copied!'
       btn.classList.add('is-copied')
