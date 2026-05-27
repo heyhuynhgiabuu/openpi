@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.19] - 2026-05-27
+
+### Fixed
+
+- **Terminal pane startup** — toggling the terminal panel (Cmd+J) now auto-creates a terminal tab instead of showing an empty panel. Fixed PTY race condition where early shell output was dropped and missing error feedback on spawn failure. Prevented repeated PTY spawns caused by SolidJS remounting on shell integration cwd updates. (8d5cbd5)
+- **Workspace thread count** — clicking a workspace in the sidebar now refreshes the thread index before listing, so other workspaces no longer show stale or missing thread counts. Scoped stale-session cleanup to the refreshed workspace to prevent deleting other workspaces' indexed sessions. (65cc36b)
+- **Customize General tab** — fixed sound effect selections not persisting by closing the picker on document mousedown only for clicks outside the picker. Reset scroll position when switching Customize tabs so content no longer starts scrolled to the previous tab's offset. Added missing CSS for the Installation subsection (subheading, action button group, update status). Removed non-null assertions from update status display. (ed118b4)
+- **Code block copy** — copying code blocks no longer includes rendered line numbers in the clipboard; line-number elements are stripped before writing. (94e6f0c)
+
 ## [0.1.18] - 2026-05-22
 
 ### Added
@@ -385,3 +394,4 @@ Initial public beta for early testers.
 - Added persistent Git/source-control panel with file tree, file search, diff viewer, and file viewer.
 - Added bottom terminal/output panel backed by Electron main and `node-pty`.
 - Added OpenPi app branding, runtime version metadata, icon packaging, CI, and tag-triggered beta builds.
+
