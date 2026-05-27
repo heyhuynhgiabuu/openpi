@@ -24,6 +24,7 @@ import {
 import { canonicalizePath, displayNameForPath, toIso, truncate } from './sessionEntryUtils'
 import { runMigrations } from './sessionMigration'
 import {
+  deleteMissingSessions as _deleteMissingSessions,
   getLastWorkspace as _getLastWorkspace,
   getPref as _getPref,
   isWorkspaceTrusted as _isWorkspaceTrusted,
@@ -98,11 +99,8 @@ export class SessionIndexStore {
     })
     tx(infos)
 
-    // Remove sessions from the index that are no longer on disk
-    if (seen.size > 0) {
-      const placeholders = [...seen].map(() => '?').join(',')
-      this.db.prepare(`delete from sessions where path not in (${placeholders})`).run(...seen)
-    }
+    // Remove missing sessions only from the refreshed scope.
+    _deleteMissingSessions(this.db, seen, workspacePath)
 
     return this.listSessions({}, activeSessionPath, workspacePath)
   }

@@ -196,11 +196,13 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
       const options = sessionListOptionsSchema.parse(raw)
       const workspacePath = options.workspacePath ?? deps.activeWorkspacePath()
       if (!workspacePath) return []
-      return (
-        deps
-          .getSessionIndex()
-          ?.listSessions(options, deps.getSessionState()?.sessionFile ?? null, workspacePath) ?? []
-      )
+
+      const sessionIndex = deps.getSessionIndex()
+      if (!sessionIndex) return []
+
+      const activeSessionPath = deps.getSessionState()?.sessionFile ?? null
+      await sessionIndex.refreshSessions(activeSessionPath, workspacePath)
+      return sessionIndex.listSessions(options, activeSessionPath, workspacePath)
     }
   )
 

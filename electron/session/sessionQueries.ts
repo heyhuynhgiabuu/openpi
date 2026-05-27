@@ -112,6 +112,28 @@ export function listWorkspaces(db: Database.Database): WorkspaceInfo[] {
   }))
 }
 
+export function deleteMissingSessions(
+  db: Database.Database,
+  seenPaths: Set<string>,
+  workspacePath?: string
+): void {
+  const seen = [...seenPaths]
+  const where: string[] = []
+  const params: string[] = []
+
+  if (seen.length > 0) {
+    where.push(`path not in (${seen.map(() => '?').join(',')})`)
+    params.push(...seen)
+  }
+  if (workspacePath) {
+    where.push('workspace_path = ?')
+    params.push(workspacePath)
+  }
+  if (where.length === 0) return
+
+  db.prepare(`delete from sessions where ${where.join(' and ')}`).run(...params)
+}
+
 // ── Preference queries ──────────────────────────────────────────────────────
 
 export function getPref(db: Database.Database, key: string): string | null {
