@@ -31,6 +31,7 @@ export function TerminalPanel(props: Props) {
   const [renameValue, setRenameValue] = createSignal('')
   let dragState: { startY: number; startHeight: number } | null = null
   let tabCount = 0
+  let lastTerminalRequest = 0
   let renameInputRef: HTMLInputElement | undefined
 
   onMount(() => {
@@ -69,6 +70,8 @@ export function TerminalPanel(props: Props) {
   }
 
   const terminalLabel = (cwd: string) => `shell · ${terminalCwdLabel(cwd) || 'terminal'}`
+  const terminalIds = () => termTabs().map((tab) => tab.id)
+  const terminalById = (id: string) => termTabs().find((tab) => tab.id === id)
 
   const addTerminal = () => {
     tabCount += 1
@@ -79,7 +82,11 @@ export function TerminalPanel(props: Props) {
   }
 
   createEffect(() => {
-    if (props.newTerminalRequest > 0) addTerminal()
+    const req = props.newTerminalRequest
+    if (req > lastTerminalRequest) {
+      lastTerminalRequest = req
+      addTerminal()
+    }
   })
 
   const onTerminalExit = (id: string) => {
@@ -87,10 +94,13 @@ export function TerminalPanel(props: Props) {
   }
 
   const onTerminalCwdChange = (id: string, cwd: string) => {
+    const nextLabel = terminalLabel(cwd)
     setTermTabs((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, cwd, label: t.renamed ? t.label : terminalLabel(cwd) } : t
-      )
+      prev.map((t) => {
+        if (t.id !== id) return t
+        if (t.cwd === cwd && (t.renamed || t.label === nextLabel)) return t
+        return { ...t, cwd, label: t.renamed ? t.label : nextLabel }
+      })
     )
   }
 
@@ -137,58 +147,64 @@ export function TerminalPanel(props: Props) {
             Output
           </button>
 
-          <For each={termTabs()}>
-            {(tab) => (
-              <div
-                class={`terminal-tab terminal-tab-closable${activeTab() === tab.id ? ' is-active' : ''}${tab.exited ? ' is-exited' : ''}`}
-              >
-                <span
-                  class={`terminal-tab-status ${tab.exited ? 'is-exited' : 'is-running'}`}
-                  aria-hidden="true"
-                />
-                <Show
-                  when={renamingTabId() === tab.id}
-                  fallback={
-                    <button
-                      type="button"
-                      class="terminal-tab-label"
-                      onClick={() => setActiveTab(tab.id)}
-                      onDblClick={() => _startRename(tab)}
-                      title={`${tab.cwd}${tab.exited ? ' — exited' : ''}`}
-                    >
-                      {tab.label}
-                    </button>
-                  }
+          <For each={terminalIds()}>
+            {(id) => {
+              const tab = () => terminalById(id)
+              return (
+                <div
+                  class={`terminal-tab terminal-tab-closable${activeTab() === id ? ' is-active' : ''}${tab()?.exited ? ' is-exited' : ''}`}
                 >
-                  <input
-                    ref={(el) => {
-                      renameInputRef = el
-                    }}
-                    class="terminal-tab-rename-input"
-                    value={renameValue()}
-                    onInput={(e) => setRenameValue(e.currentTarget.value)}
-                    onBlur={_commitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') _commitRename()
-                      if (e.key === 'Escape') {
-                        setRenamingTabId(null)
-                        setRenameValue('')
-                      }
-                    }}
+                  <span
+                    class={`terminal-tab-status ${tab()?.exited ? 'is-exited' : 'is-running'}`}
+                    aria-hidden="true"
                   />
-                </Show>
-                <button
-                  type="button"
-                  class="terminal-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeTerminal(tab.id)
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            )}
+                  <Show
+                    when={renamingTabId() === id}
+                    fallback={
+                      <button
+                        type="button"
+                        class="terminal-tab-label"
+                        onClick={() => setActiveTab(id)}
+                        onDblClick={() => {
+                          const current = tab()
+                          if (current) _startRename(current)
+                        }}
+                        title={`${tab()?.cwd ?? ''}${tab()?.exited ? ' — exited' : ''}`}
+                      >
+                        {tab()?.label ?? id}
+                      </button>
+                    }
+                  >
+                    <input
+                      ref={(el) => {
+                        renameInputRef = el
+                      }}
+                      class="terminal-tab-rename-input"
+                      value={renameValue()}
+                      onInput={(e) => setRenameValue(e.currentTarget.value)}
+                      onBlur={_commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') _commitRename()
+                        if (e.key === 'Escape') {
+                          setRenamingTabId(null)
+                          setRenameValue('')
+                        }
+                      }}
+                    />
+                  </Show>
+                  <button
+                    type="button"
+                    class="terminal-tab-close"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeTerminal(id)
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            }}
           </For>
 
           <button type="button" class="terminal-tab-add" onClick={addTerminal} title="New terminal">
@@ -212,25 +228,28 @@ export function TerminalPanel(props: Props) {
             <OutputPane />
           </Show>
 
-          <For each={termTabs()}>
-            {(tab) => (
-              <div
-                style={{
-                  display: activeTab() === tab.id ? 'flex' : 'none',
-                  flex: '1',
-                  'min-height': '0',
-                  overflow: 'hidden',
-                }}
-              >
-                <TerminalPane
-                  id={tab.id}
-                  cwd={props.cwd}
-                  isVisible={activeTab() === tab.id && props.isOpen}
-                  onExit={onTerminalExit}
-                  onCwdChange={onTerminalCwdChange}
-                />
-              </div>
-            )}
+          <For each={terminalIds()}>
+            {(id) => {
+              const tab = () => terminalById(id)
+              return (
+                <div
+                  style={{
+                    display: activeTab() === id ? 'flex' : 'none',
+                    flex: '1',
+                    'min-height': '0',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <TerminalPane
+                    id={id}
+                    cwd={tab()?.cwd ?? props.cwd}
+                    isVisible={activeTab() === id && props.isOpen}
+                    onExit={onTerminalExit}
+                    onCwdChange={onTerminalCwdChange}
+                  />
+                </div>
+              )
+            }}
           </For>
         </div>
       </div>

@@ -461,7 +461,12 @@ export default function App() {
               filePanelOpen={filePanelOpen()}
               onToggleFilePanel={() => setFilePanelOpen((prev) => !prev)}
               terminalOpen={terminalOpen()}
-              onToggleTerminal={() => setTerminalOpen((prev) => !prev)}
+              onToggleTerminal={() => {
+                setTerminalOpen((prev) => {
+                  if (!prev) setNewTerminalRequest((n) => n + 1)
+                  return !prev
+                })
+              }}
               appVersion={appInfo()?.version}
               isStreaming={session.isStreaming}
               gitSyncAction={gitSyncAction()}

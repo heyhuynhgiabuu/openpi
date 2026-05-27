@@ -64,7 +64,12 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
       command('toggleSidebar', () => options.toggleLeftDrawerMode('threads')),
       command('toggleGitPanel', () => options.setGitPanelOpen((prev) => !prev)),
       command('toggleFileTree', () => options.setFilePanelOpen((prev) => !prev)),
-      command('toggleTerminal', () => options.setTerminalOpen((prev) => !prev)),
+      command('toggleTerminal', () => {
+        options.setTerminalOpen((prev) => {
+          if (!prev) options.setNewTerminalRequest((n) => n + 1)
+          return !prev
+        })
+      }),
       command('newTerminal', () => {
         options.setTerminalOpen(() => true)
         options.setNewTerminalRequest((prev) => prev + 1)
@@ -113,7 +118,10 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
       }
       if (eventMatchesBinding(event, binding('toggleTerminal'))) {
         event.preventDefault()
-        options.setTerminalOpen((prev) => !prev)
+        options.setTerminalOpen((prev) => {
+          if (!prev) options.setNewTerminalRequest((n) => n + 1)
+          return !prev
+        })
         return
       }
       if (eventMatchesBinding(event, binding('newTerminal'))) {

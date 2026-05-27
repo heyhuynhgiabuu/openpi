@@ -134,6 +134,12 @@ export class PtyHost {
     this.sender = webContents
   }
 
+  private send(channel: string, ...args: unknown[]): void {
+    if (this.sender && !this.sender.isDestroyed()) {
+      this.sender.send(channel, ...args)
+    }
+  }
+
   create(cwd: string, cols: number, rows: number): string {
     const id = `pty-${this.nextId++}`
     const shell = process.env.SHELL ?? '/bin/zsh'
@@ -149,12 +155,12 @@ export class PtyHost {
     })
 
     p.onData((data: string) => {
-      this.sender?.send(IPC.PTY_DATA, { id, data })
+      this.send(IPC.PTY_DATA, { id, data })
     })
 
     p.onExit(({ exitCode }: { exitCode: number }) => {
       this.entries.delete(id)
-      this.sender?.send(IPC.PTY_EXIT, { id, code: exitCode })
+      this.send(IPC.PTY_EXIT, { id, code: exitCode })
     })
 
     this.entries.set(id, { id, ptyProcess: p, cwd: workingDirectory })

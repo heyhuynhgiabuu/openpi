@@ -135,32 +135,41 @@ export function TerminalPane(props: Props) {
       setTerminalReady(true)
 
       const { cols, rows } = nextTerm
-      void window.openpi.pty.create(props.cwd, cols, rows).then((id) => {
-        if (disposed) {
-          void window.openpi.pty.close(id)
-          return
-        }
-        ptyId = id
-        window.openpi.pty.resize(id, nextTerm.cols, nextTerm.rows)
-      })
+      window.openpi.pty
+        .create(props.cwd, cols, rows)
+        .then((id) => {
+          if (disposed) {
+            void window.openpi.pty.close(id)
+            return
+          }
+          ptyId = id
+          window.openpi.pty.resize(id, nextTerm.cols, nextTerm.rows)
 
-      onDataDisposable = nextTerm.onData((data) => {
-        if (ptyId) window.openpi.pty.write(ptyId, data)
-      })
+          // Register xterm → PTY input listener after ptyId is set to avoid race
+          onDataDisposable = nextTerm.onData((data) => {
+            if (ptyId) window.openpi.pty.write(ptyId, data)
+          })
 
-      unsubData = window.openpi.pty.onData(({ id, data }) => {
-        if (id !== ptyId) return
-        const parsed = parseTerminalIntegrationData(data)
-        if (parsed.cwd) props.onCwdChange?.(props.id, parsed.cwd)
-        if (parsed.data) nextTerm.write(parsed.data)
-      })
+          // Register PTY → xterm output listener after ptyId is set
+          unsubData = window.openpi.pty.onData(({ id: msgId, data }) => {
+            if (msgId !== ptyId) return
+            const parsed = parseTerminalIntegrationData(data)
+            if (parsed.cwd) props.onCwdChange?.(props.id, parsed.cwd)
+            if (parsed.data) nextTerm.write(parsed.data)
+          })
 
-      unsubExit = window.openpi.pty.onExit(({ id }) => {
-        if (id === ptyId) {
-          nextTerm.write('\r\n[Process exited]\r\n')
-          ptyId = null
-        }
-      })
+          unsubExit = window.openpi.pty.onExit(({ id: msgId }) => {
+            if (msgId === ptyId) {
+              nextTerm.write('\r\n[Process exited]\r\n')
+              ptyId = null
+            }
+          })
+        })
+        .catch((err: unknown) => {
+          if (!disposed) {
+            nextTerm.write(`\r\n[Failed to create terminal: ${String(err)}]\r\n`)
+          }
+        })
     }
 
     void startTerminal()
