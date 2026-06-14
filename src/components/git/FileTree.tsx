@@ -24,17 +24,6 @@ interface FileTreeProps {
   triggerCollapseAll?: number
 }
 
-function TreeConnector(props: { parentLines: boolean[]; isLast: boolean }) {
-  return (
-    <span class="ftree-connectors" aria-hidden>
-      <For each={props.parentLines}>
-        {(hasMore) => <span class={`ftree-rail${hasMore ? ' is-active' : ''}`} />}
-      </For>
-      <span class={`ftree-branch${props.isLast ? ' is-last' : ''}`} />
-    </span>
-  )
-}
-
 interface NodeProps {
   node: FileTreeNode
   isLast: boolean
@@ -107,7 +96,6 @@ function TreeNode(props: NodeProps) {
                 props.onFileClick?.(props.node.path)
               }}
             >
-              <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
               <FileIcon name={props.node.name} size={15} />
               {NodeName(props, isChanged)}
             </KContextMenu.Trigger>
@@ -161,12 +149,12 @@ function TreeNode(props: NodeProps) {
             }}
             title={props.node.path}
           >
-            <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
-            <FileIcon name={props.node.name} size={15} />
-            <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
-            <Show when={props.node.children?.length}>
-              <span class="ftree-count">{props.node.children!.length}</span>
+            <Show when={(props.node.children?.length ?? 0) > 0}>
+              <span class={`ftree-chevron${isExpanded() ? ' is-expanded' : ''}`} aria-hidden="true">
+                ▸
+              </span>
             </Show>
+            <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
           </KContextMenu.Trigger>
           <button
             type="button"

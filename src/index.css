@@ -9421,6 +9421,40 @@ body.panel-dragging {
   background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
 }
 
+/* File icon: mono by default, slightly brighter on hover. Matches
+ * the OpenCode file-tree look (single muted color, no rainbow). */
+.ftree-item .ftree-icon-img {
+  filter: grayscale(1) brightness(0.9) opacity(0.55);
+  transition: filter 0.12s ease;
+}
+.ftree-item:hover .ftree-icon-img,
+.ftree-item:focus-within .ftree-icon-img {
+  filter: grayscale(1) opacity(0.85);
+}
+
+/* Folder expand chevron — OpenCode-style: tiny, subtle, rotates 90deg
+ * when expanded. Only shown for dirs that have children. */
+.ftree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 14px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--ash, #888);
+  user-select: none;
+  transform-origin: 50% 50%;
+  transition: transform 0.12s ease, color 0.12s ease;
+}
+.ftree-chevron.is-expanded {
+  transform: rotate(90deg);
+  color: var(--graphite, #ccc);
+}
+.ftree-row:hover .ftree-chevron {
+  color: var(--graphite, #ccc);
+}
+
 .ftree-delete-btn {
   width: 22px;
   height: 22px;
