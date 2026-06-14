@@ -365,6 +365,13 @@ export type ProviderLoginEvent =
   | { type: 'progress'; message: string }
   | { type: 'prompt'; message: string; placeholder?: string; allowEmpty?: boolean }
   | { type: 'select'; message: string; options: { id: string; label: string }[] }
+  | {
+      type: 'device_code'
+      verificationUri: string
+      userCode: string
+      intervalSeconds?: number
+      expiresInSeconds?: number
+    }
   | { type: 'success' }
   | { type: 'error'; message: string }
 

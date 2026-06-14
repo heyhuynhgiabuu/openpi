@@ -63,7 +63,7 @@ brew upgrade --cask openpi
 
 Requirements:
 
-- Node.js 22+
+- Node.js 22.19+
 - npm
 - macOS, Linux, or Windows for development builds
 

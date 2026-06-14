@@ -269,20 +269,15 @@ async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
  */
 async function emitSessionShutdown(
   session: Awaited<ReturnType<typeof createAgentSession>>['session'],
-  reason: string
+  reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
 ): Promise<void> {
   try {
-    const runner = (
-      session as unknown as {
-        extensionRunner?: {
-          hasHandlers?: (t: string) => boolean
-          emit?: (e: unknown) => Promise<unknown>
-        }
-      }
-    ).extensionRunner
-    if (runner?.hasHandlers?.('session_shutdown')) {
-      await runner.emit?.({ type: 'session_shutdown', reason })
-    }
+    // Pi 0.79.3 exposes `session.extensionRunner` as a public typed getter.
+    // `emit` iterates registered handlers; no-op when none are subscribed.
+    // TODO(upgrade/pi-0.79.3 follow-up): register a `pi.on('project_trust', ...)` handler
+    // in `.pi/extensions/openpi-bridge.ts` that defers to our workspace-trust gate.
+    // That requires a synchronous channel from the extension process to the sidecar.
+    await session.extensionRunner.emit({ type: 'session_shutdown', reason })
   } catch {
     // Never let extension errors block session disposal
   }
@@ -301,7 +296,7 @@ async function startSession(
   // (e.g. pi-sub-bar) can clean up timers before the ctx becomes stale.
   if (state) {
     state.unsubscribe()
-    await emitSessionShutdown(state.session, 'session_replaced')
+    await emitSessionShutdown(state.session, 'new')
     state.session.dispose()
     state = null
   }
@@ -801,6 +796,24 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
             })
             return new Promise<string | undefined>((resolve) => {
               _pendingOAuthPrompts.set(cmd.providerId, (v) => resolve(v || undefined))
+            })
+          },
+          onDeviceCode: (info: {
+            userCode: string
+            verificationUri: string
+            intervalSeconds?: number
+            expiresInSeconds?: number
+          }) => {
+            send({
+              type: 'provider_login_event',
+              requestId: cmd.requestId,
+              event: {
+                type: 'device_code',
+                verificationUri: info.verificationUri,
+                userCode: info.userCode,
+                intervalSeconds: info.intervalSeconds,
+                expiresInSeconds: info.expiresInSeconds,
+              },
             })
           },
         })
