@@ -117,3 +117,20 @@ export function stopFileTreeWatch(): void {
     fileTreeWatcher = null
   }
 }
+
+/** Enrich a file tree with git status changeType markers. */
+export function enrichTree(tree: FileTreeResult, statusMap: Map<string, string>): FileTreeResult {
+  return {
+    ...tree,
+    children: tree.children.map((child) => enrichNode(child, statusMap)),
+  }
+}
+
+function enrichNode(node: FileTreeNode, statusMap: Map<string, string>): FileTreeNode {
+  const changeType = statusMap.get(node.path) as 'M' | 'A' | 'D' | 'R' | undefined
+  return {
+    ...node,
+    changeType,
+    children: node.children?.map((child) => enrichNode(child, statusMap)),
+  }
+}

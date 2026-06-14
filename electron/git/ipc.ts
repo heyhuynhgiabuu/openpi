@@ -38,6 +38,7 @@ import {
 } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
 import type { filterBlockedPaths as filterProtectedPaths } from '../services/protectedPaths'
+import { enrichTree } from './gitFileTree'
 
 interface ConfirmMutationOptions {
   title: string
@@ -242,7 +243,14 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     const cwd = requireCwd(deps)
     if (!cwd) return null
     const git = await deps.getGitHost()
-    return fileTreeResultSchema.parse(git.getFileTree(cwd))
+    const tree = git.getFileTree(cwd)
+    // Enrich tree with git status so the renderer can show M/A/D/R badges
+    const status = await git.getGitStatus(cwd)
+    const statusMap = new Map<string, string>()
+    for (const file of status.files) {
+      statusMap.set(file.path, file.status)
+    }
+    return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
   })
 
   deps.ipcMain.handle(

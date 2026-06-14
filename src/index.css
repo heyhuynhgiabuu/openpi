@@ -9407,7 +9407,6 @@ body.panel-dragging {
   font-size: 12px;
   color: var(--graphite);
   white-space: nowrap;
-  overflow: hidden;
 }
 
 /* Left-border accent on hover/focus — positioned at the
@@ -9566,6 +9565,20 @@ body.panel-dragging {
 .ftree-name.is-changed {
   color: var(--warning, #eab308);
 }
+.ftree-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+.ftree-badge-M { color: #f59e0b; }
+.ftree-badge-A { color: #22c55e; }
+.ftree-badge-D { color: #ef4444; }
+.ftree-badge-R { color: #3b82f6; }
 
 /* ─── CommandPalette ─────────────────────────────────────────────────────────────── */
 

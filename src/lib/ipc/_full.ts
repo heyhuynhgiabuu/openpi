@@ -865,6 +865,8 @@ export type FileTreeNode = {
   /** Path relative to workspace root */
   path: string
   isDir: boolean
+  /** Git status indicator: M=modified, A=added, D=deleted, R=renamed */
+  changeType?: 'M' | 'A' | 'D' | 'R'
   children?: FileTreeNode[]
 }
 
@@ -873,6 +875,7 @@ export const fileTreeNodeSchema: z.ZodType<FileTreeNode> = z.lazy(() =>
     name: z.string(),
     path: z.string(),
     isDir: z.boolean(),
+    changeType: z.enum(['M', 'A', 'D', 'R']).optional(),
     children: z.array(fileTreeNodeSchema).optional(),
   })
 )
