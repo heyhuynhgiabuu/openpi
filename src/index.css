@@ -9411,6 +9411,7 @@ body.panel-dragging {
 .ftree-item:hover,
 .ftree-item:focus-within {
   background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent, #6cf);
 }
 
 .ftree-row:hover {
