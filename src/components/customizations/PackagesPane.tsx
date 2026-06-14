@@ -157,7 +157,7 @@ export function PackagesPane(props: PackagesPaneProps) {
         <div class="pkg-install-controls">
           <input
             class="pkg-install-input"
-            placeholder="npm:pi-subagents"
+            placeholder="npm:@marckrenn/pi-sub-core"
             value={installSource()}
             onInput={(e) => setInstallSource(e.currentTarget.value)}
             disabled={installing()}

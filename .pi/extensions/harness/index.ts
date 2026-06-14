@@ -783,7 +783,7 @@ export default function (pi: ExtensionAPI) {
     name: 'update_plan',
     label: 'Update Plan',
     description:
-      'Updates the current ephemeral execution plan. Use this for short-lived planning only; use TaskCreate/TaskUpdate from pi-tasks for durable tracked tasks, dependencies, ownership, or subagent execution. Provide an optional explanation and the full list of plan items. At most one step can be in_progress at a time.',
+      'Updates the current ephemeral execution plan. Use this for short-lived planning only; use TaskCreate/TaskUpdate from the global task tool (provided by `@marckrenn/pi-sub-core`) for durable tracked tasks, dependencies, ownership, or subagent execution. Provide an optional explanation and the full list of plan items. At most one step can be in_progress at a time.',
     promptSnippet: 'Update the current ephemeral execution plan with steps and statuses',
     parameters: Type.Object({
       explanation: Type.Optional(

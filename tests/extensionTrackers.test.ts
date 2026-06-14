@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { assistantText } from '../electron/subagent/manager'
-import { SubagentTracker } from '../src/lib/extensionTrackers'
+import { SubagentTracker, TaskTracker } from '../src/lib/extensionTrackers'
 
 describe('assistantText', () => {
   it('joins text content and ignores non-text assistant parts', () => {
@@ -337,5 +337,141 @@ describe('SubagentTracker', () => {
         result: 'Race won!',
       }),
     ])
+  })
+})
+
+describe('TaskTracker', () => {
+  function makeTracker() {
+    return new TaskTracker()
+  }
+
+  it('adds a task on TaskCreate tool start', () => {
+    const tracker = makeTracker()
+    const changed = tracker.onToolStart('call-1', 'TaskCreate', {
+      subject: 'Write tests',
+      activeForm: 'Writing tests',
+    })
+    expect(changed).toBe(true)
+    const tasks = tracker.snapshot()
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].subject).toBe('Write tests')
+    expect(tasks[0].status).toBe('pending')
+    expect(tasks[0].activeForm).toBe('Writing tests')
+    expect(tasks[0].id).toBe('pending-call-1')
+  })
+
+  it('falls back to "(task)" when subject is missing', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', {})
+    expect(tracker.snapshot()[0].subject).toBe('(task)')
+  })
+
+  it('renames the temp id to the canonical id parsed from the result text', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', { subject: 'Write tests' })
+    expect(tracker.snapshot()[0].id).toBe('pending-call-1')
+    const changed = tracker.onToolEnd('call-1', 'TaskCreate', 'Task #7 created successfully.')
+    expect(changed).toBe(true)
+    const tasks = tracker.snapshot()
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].id).toBe('7')
+  })
+
+  it('handles the lowercase "task #N" result format', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', { subject: 'X' })
+    tracker.onToolEnd('call-1', 'TaskCreate', 'task #12 created')
+    expect(tracker.snapshot()[0].id).toBe('12')
+  })
+
+  it('keeps the temp id when the result text has no task id', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', { subject: 'X' })
+    tracker.onToolEnd('call-1', 'TaskCreate', 'Something went wrong')
+    expect(tracker.snapshot()).toHaveLength(1)
+    expect(tracker.snapshot()[0].id).toBe('pending-call-1')
+  })
+
+  it('returns false from onToolEnd when the toolCallId is unknown', () => {
+    const tracker = makeTracker()
+    const changed = tracker.onToolEnd('unknown', 'TaskCreate', 'Task #1 created')
+    expect(changed).toBe(false)
+  })
+
+  it('returns false from onToolEnd for non-TaskCreate tools', () => {
+    const tracker = makeTracker()
+    const changed = tracker.onToolEnd('call-1', 'TaskUpdate', 'Task #1 updated')
+    expect(changed).toBe(false)
+  })
+
+  it('updates the status of an existing task via TaskUpdate', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', { subject: 'X' })
+    tracker.onToolEnd('call-1', 'TaskCreate', 'Task #1 created')
+    const changed = tracker.onToolStart('call-2', 'TaskUpdate', {
+      taskId: '1',
+      status: 'in_progress',
+    })
+    expect(changed).toBe(true)
+    expect(tracker.snapshot()[0].status).toBe('in_progress')
+  })
+
+  it('removes a task when TaskUpdate sets status to deleted', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('call-1', 'TaskCreate', { subject: 'X' })
+    tracker.onToolEnd('call-1', 'TaskCreate', 'Task #1 created')
+    tracker.onToolStart('call-2', 'TaskUpdate', { taskId: '1', status: 'deleted' })
+    expect(tracker.snapshot()).toHaveLength(0)
+  })
+
+  it('returns false from TaskUpdate when the task id is unknown', () => {
+    const tracker = makeTracker()
+    const changed = tracker.onToolStart('call-1', 'TaskUpdate', {
+      taskId: '999',
+      status: 'completed',
+    })
+    expect(changed).toBe(false)
+    expect(tracker.snapshot()).toHaveLength(0)
+  })
+
+  it('merges addBlockedBy into the existing blockedBy list (deduped)', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('c1', 'TaskCreate', { subject: 'A' })
+    tracker.onToolStart('c2', 'TaskCreate', { subject: 'B' })
+    tracker.onToolEnd('c1', 'TaskCreate', 'Task #1 created')
+    tracker.onToolEnd('c2', 'TaskCreate', 'Task #2 created')
+    tracker.onToolStart('c3', 'TaskUpdate', { taskId: '2', status: 'pending', addBlockedBy: ['1'] })
+    tracker.onToolStart('c4', 'TaskUpdate', {
+      taskId: '2',
+      status: 'pending',
+      addBlockedBy: ['1', '2'],
+    })
+    const task = tracker.snapshot().find((t) => t.id === '2')
+    expect(task?.blockedBy).toEqual(['1', '2'])
+  })
+
+  it('tracks multiple independent tasks', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('c1', 'TaskCreate', { subject: 'A' })
+    tracker.onToolStart('c2', 'TaskCreate', { subject: 'B' })
+    tracker.onToolStart('c3', 'TaskCreate', { subject: 'C' })
+    tracker.onToolEnd('c1', 'TaskCreate', 'Task #10 created')
+    tracker.onToolEnd('c2', 'TaskCreate', 'Task #11 created')
+    tracker.onToolEnd('c3', 'TaskCreate', 'Task #12 created')
+    tracker.onToolStart('c4', 'TaskUpdate', { taskId: '11', status: 'completed' })
+    const tasks = tracker.snapshot()
+    expect(tasks.map((t) => t.subject)).toEqual(['A', 'B', 'C'])
+    expect(tasks.find((t) => t.id === '11')?.status).toBe('completed')
+  })
+
+  it('clear() empties all tasks and pending creates', () => {
+    const tracker = makeTracker()
+    tracker.onToolStart('c1', 'TaskCreate', { subject: 'A' })
+    tracker.onToolStart('c2', 'TaskCreate', { subject: 'B' })
+    tracker.clear()
+    expect(tracker.snapshot()).toHaveLength(0)
+    // After clear, the same pending create should produce a new temp id
+    tracker.onToolStart('c3', 'TaskCreate', { subject: 'C' })
+    expect(tracker.snapshot()[0].id).toBe('pending-c3')
   })
 })

@@ -3871,8 +3871,10 @@ body.panel-dragging {
   color: var(--accent);
 }
 
-/* Sticky plan dock — mirrors pi-tasks' persistent task widget without
- * duplicating update_plan cards in the transcript. */
+/* Sticky plan dock — pins the OpenPi task list to the conversation
+ * timeline without duplicating TaskCreate/TaskUpdate cards in the
+ * transcript. The task tool itself is provided globally by
+ * `@marckrenn/pi-sub-core`; OpenPi just tracks and renders the state. */
 .plan-dock {
   position: absolute;
   right: 18px;

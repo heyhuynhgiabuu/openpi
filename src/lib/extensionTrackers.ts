@@ -2,10 +2,20 @@
  * Reactive state trackers for Pi extension ecosystems.
  * All state is derived purely from the AgentSessionEvent stream — no sidecar changes needed.
  *
- * Covers:
- *   - @tintinweb/pi-tasks     → TaskTracker
- *   - ghoseb/pi-askuserquestion → AskTracker
- *   - @tintinweb/pi-subagents  → SubagentTracker
+ *   - TaskTracker     — tracks the global task tool's `TaskCreate` and
+ *                       `TaskUpdate` calls. The tool itself is provided
+ *                       by `@marckrenn/pi-sub-core` in the user's global
+ *                       `~/.pi/agent/settings.json`; OpenPi does not
+ *                       register its own copy. State is rendered by
+ *                       `<TaskWidget>`.
+ *   - AskTracker      — tracks the global `AskUserQuestion` tool (provided
+ *                       by `ghoseb/pi-askuserquestion` in the user's
+ *                       global config). State is rendered by `<AskCard>`.
+ *   - SubagentTracker — tracks OpenPi's own `Agent` tool (registered as
+ *                       a `customTool` on the sidecar session in
+ *                       `electron/subagent/class.ts`). State is rendered
+ *                       by `<SubagentWidget>`. This is NOT a global
+ *                       Pi package — it is built into OpenPi.
  */
 
 // ─── Task Tracker ──────────────────────────────────────────────────────────
