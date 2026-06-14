@@ -1,8 +1,11 @@
 # OpenPi Project Rules
 
-**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.74.0+).
+**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.79.3+).
 **Audience:** human developers and AI coding agents.
-**Source references:** earendil-works/pi main repo (https://github.com/earendil-works/pi), especially `packages/coding-agent/docs/` (sdk.md, rpc.md, session-format.md, extensions.md) and `packages/agent/README.md`.
+**Related surfaces:**
+- `STATUS.md` — current feature status, beta surface, known constraints.
+- `~/.pi/agent/APPEND_SYSTEM.md` — global system prompt supplement (workflow routing, tool selection, persona). Loaded every turn. Project-local `.pi/APPEND_SYSTEM.md` is intentionally absent so the global takes effect.
+- `node_modules/@earendil-works/pi-coding-agent/` — installed SDK; see `## Pi Documentation Sources` below for the canonical doc table.
 
 ---
 
@@ -29,26 +32,7 @@ Target UX: sessions sidebar (workspace-grouped, token/cost badges, filter/sort p
 | Persistence | SQLite via better-sqlite3 in Electron main |
 | Secrets | OS keychain via Electron safeStorage |
 
----
-
-## Current Beta Surface
-
-Implemented slices currently include:
-- Secure Electron main/preload boundary with typed IPC schemas and renderer-only UI authority.
-- Pi session host integration with streaming conversation, model controls, steering/follow-up queue visibility, abort, fork, and session rename flows.
-- Workspace/session sidebar with recent workspace restore, session search/sort/group controls, pinned/archive affordances, workspace hero metadata, and Git branch/last-modified summary.
-- Customizations modal for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings, including the `⇧⌘P` Command Palette binding.
-- OpenCode-style command palette (`⇧⌘P`) searching commands, workspace files via `fff`, and historical sessions.
-- Main-owned Git source control panel, file tree/search, file viewer, and split diff viewer; renderer never runs Git directly.
-- Bottom terminal/output panel with multi-terminal tabs (renameable, add/close/switch), process exit indicators, and resizable panel backed by main-owned PTY lifecycle.
-- Dynamic app metadata exposed from Electron main for Welcome/customizations branding, OpenPi runtime icons, and tag-triggered beta CI/release workflows.
-- **Goal/harness v2 loop** — `/goal` controller replaces `/specs`, powered by 7 harness v2 tools (harness_status, harness_intake, harness_init, harness_lint, story_create, decision_record, test_matrix_update). Legacy spec adapters removed; extension code split into modules.
-- **Conversation polish** — live token counter during streaming, code block line numbers (toggle with Ln button), streaming cursor after all element types, responsive images, entry animation.
-- **File editor improvements** — format-on-save (Biome), word wrap toggle, Cmd+Shift+F opens find-with-replace, FORMAT_FILE IPC.
-- **Extensions UI** — enable/disable toggle switch per extension, preference persistence, reload button.
-- **Onboarding flow** — first-run detection, enhanced welcome screen with getting-started guide and external links.
-- **Goal status indicator** — persistent banner in composer header showing objective and running/idle step badge.
-- **Pi subagent and task tool cards** — rendering for Agent/TaskCreate/TaskExecute, subagent and task widgets.
+For current feature status, beta surface, and known constraints, see `STATUS.md`.
 
 ---
 
@@ -156,6 +140,25 @@ The Pi SDK (`@earendil-works/pi-coding-agent`) owns:
 
 OpenPi does not reimplement any of this. It observes events and commands the SDK.
 
+### Pi documentation sources
+
+Use these to look up SDK behavior, never the broader internet, when the answer should be authoritative.
+
+| Topic | Path |
+|---|---|
+| SDK overview, providers, modes | `node_modules/@earendil-works/pi-coding-agent/README.md` |
+| SDK reference (sessions, runtime, exports) | `node_modules/@earendil-works/pi-coding-agent/docs/sdk.md` |
+| RPC protocol (strict JSONL) | `node_modules/@earendil-works/pi-coding-agent/docs/rpc.md` |
+| Extension API surface | `node_modules/@earendil-works/pi-coding-agent/docs/extensions.md` |
+| Session JSONL v3 format | `node_modules/@earendil-works/pi-coding-agent/docs/session-format.md` |
+| Settings, settings.json schema | `node_modules/@earendil-works/pi-coding-agent/docs/settings.md` |
+| Security, project trust, supply-chain | `node_modules/@earendil-works/pi-coding-agent/docs/security.md` |
+| CLI usage flags | `node_modules/@earendil-works/pi-coding-agent/docs/usage.md` |
+| Agent core types (`AgentToolResult`, events) | `node_modules/@earendil-works/pi-agent-core/README.md` |
+| AI model registry and providers | `node_modules/@earendil-works/pi-ai/README.md` |
+
+For upstream source when the installed version lags, mirror paths are at https://github.com/earendil-works/pi/tree/main/packages/coding-agent/docs/.
+
 ---
 
 ## Pi Concepts You Must Understand
@@ -211,7 +214,7 @@ Core events to drive the UI:
 
 ### What Pi does NOT have built-in
 
-Pi intentionally ships without: MCP, permission gates, plan mode, background bash. **OpenPi provides built-in subagents** (see § OpenPi Subagent System below) — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
+Pi intentionally ships without: MCP, permission gates, plan mode, background bash. OpenPi provides built-in subagents (see § OpenPi Subagent System) — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
 
 ### Extensions
 
@@ -257,6 +260,70 @@ Mandatory defaults — not optional:
 - no remote content by default
 - no renderer access to raw Node built-ins
 - sandbox exceptions must be documented and scope-limited
+
+---
+
+## OpenPi Subagent System
+
+Pi intentionally ships without: MCP, permission gates, plan mode, background bash. **OpenPi provides built-in subagents** — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
+
+### Architecture
+
+| Layer | File(s) | Role |
+|---|---|---|
+| **Sidecar host** | `electron/pi/sidecar.ts` | Electron `utilityProcess` running the Pi SDK; owns `createAgentSession`, `DefaultResourceLoader`, `SettingsManager`, `SessionManager`, `AuthStorage`, `ModelRegistry` |
+| **Subagent core** | `electron/subagent/class.ts`, `electron/subagent/schemas.ts`, `electron/subagent/types.ts` | Custom tool definitions (worker, explorer, scout, planner, reviewer) injected via the sidecar's `customTools` option |
+| **Main bridge** | `electron/services/piSidecar.ts` (e.g. `buildGoalHarnessPrompt`) | Wraps subagent invocation, builds the system prompt fragment, forwards user input |
+| **Renderer shell** | `src/components/SubagentWidget.tsx`, `src/components/conversation/ToolCardView.tsx`, `src/components/conversation/PlanDock.tsx` | Renders the subagent and tool cards in the conversation timeline |
+| **State bridge** | `src/lib/syncBridge.ts`, `electron/services/statusWatchers.ts` | Reads `~/.pi/agent/.openpi-goal.json` and `.openpi-plan.json` written by the harness extension; surfaces state to the renderer |
+
+### Built-in agent types
+
+| Type | Surface | Notes |
+|---|---|---|
+| `worker` | LLM tool | Default general-purpose subagent |
+| `explorer` | LLM tool | Read-only investigation, no writes |
+| `scout` | LLM tool | Cheap, fast reconnaissance |
+| `planner` | LLM tool | Decomposes objectives into plans, no execution |
+| `reviewer` | LLM tool | Code review and quality assessment |
+
+### Custom agents
+
+Subagents can be added under `~/.pi/agent/agents/<name>/` with an `AGENTS.md` frontmatter block:
+
+```yaml
+---
+name: my-agent
+description: One-line purpose
+model: anthropic/claude-sonnet-4-6
+thinking: medium
+tools: [read, grep, find]
+---
+```
+
+The frontmatter is parsed by `DefaultResourceLoader` and registered as a subagent tool. The body becomes the system prompt fragment.
+
+### Goal/harness tools (local, project-specific)
+
+The `/goal` controller is powered by 5 LLM-callable tools registered by the project-local harness extension at `.pi/extensions/harness/index.ts`:
+
+- `get_goal` — read current goal state
+- `create_goal` — start a new goal
+- `update_goal` — mark complete or change status
+- `clear_goal` — clear the active goal
+- `update_plan` — push plan steps to the renderer
+
+State files: `~/.pi/agent/.openpi-goal.json`, `~/.pi/agent/.openpi-plan.json`. The OpenPi main process watches these files and reflects state in the goal banner and `PlanDock` widget.
+
+**Note:** the global `harness` build-pipeline tool at `~/.pi/agent/extensions/harness/` (Planner → Generator → Evaluator loop) is a separate system. It runs long-running build workflows and is not part of the project-local extension surface.
+
+### Subagent-specific don'ts
+
+- Do not import `@earendil-works/pi-coding-agent` in the renderer to use subagent APIs.
+- Do not reuse a `customTools` array across sessions; rebuild per `createAgentSession` call.
+- Do not let the model decide which subagent to invoke without an explicit user trigger; the surface is opt-in.
+- Do not wire subagent prompts that bypass the sidecar; all subagent invocation goes through `electron/pi/sidecar.ts` so Electron main owns lifecycle.
+- Do not write goal/plan state directly to the JSON files; always call the tool so events stream back to the renderer.
 
 ---
 
@@ -314,7 +381,7 @@ Never reimplement session tree, compaction, message queuing, or tool execution i
 4. **Preserve session tree semantics.** Never flatten JSONL trees into plain message arrays for persistence.
 5. **Permission before mutation.** Any action that writes files, applies patches, mutates Git state, executes shell commands, or runs extensions needs explicit policy in Electron main before execution.
 6. **No speculative work.** Build macOS first. Add platforms after core stability. No cloud, marketplace, or collaboration until local workflows are excellent.
-7. **File size limit — max 300 LOC per file.** Files over 300 lines must be refactored into smaller modules with clear single responsibilities. Extract helpers, constants, types, and subcomponents into separate files. Every file should have one obvious purpose. Exception: generated files, CSS, and auto-detected/auto-configured files are exempt.
+7. **File size limit — max 300 LOC per file.** Files over 300 lines must be refactored into smaller modules with clear single responsibilities. Extract helpers, constants, types, and subcomponents into separate files. Every file should have one obvious purpose. Exception: generated files, CSS, auto-detected/auto-configured files, and the project rule surface (`AGENTS.md`, `STATUS.md`) are exempt.
 8. **File naming — 1 word preferred, PascalCase for components, camelCase for modules.**
    - **Components (.tsx)**: PascalCase, 1 word — `Sidebar.tsx`, `Composer.tsx`, `FileTree.tsx`. Not `sidebarPanel.tsx` or `FilePreviewPanel.tsx`.
    - **Hooks**: camelCase with `use` prefix — `useSession.ts`, `useFileTree.ts`.
