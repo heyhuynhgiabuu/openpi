@@ -1,6 +1,6 @@
-import type { AgentToolResult } from '@earendil-works/pi-agent-core'
 import type {
   AgentSession,
+  AgentToolResult,
   createAgentSession,
   ExtensionContext,
 } from '@earendil-works/pi-coding-agent'

@@ -5,6 +5,7 @@
 /** Known display names for built-in Pi providers */
 export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'amazon-bedrock': 'Amazon Bedrock',
+  'ant-ling': 'Ant Ling',
   anthropic: 'Anthropic',
   'azure-openai-responses': 'Azure OpenAI',
   cerebras: 'Cerebras',
@@ -22,12 +23,14 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'minimax-cn': 'MiniMax (China)',
   mistral: 'Mistral',
   moonshotai: 'Moonshot AI',
+  nvidia: 'NVIDIA NIM',
   'moonshotai-cn': 'Moonshot AI (China)',
   openai: 'OpenAI',
   'openai-codex': 'ChatGPT Plus/Pro',
   opencode: 'OpenCode Zen',
   'opencode-go': 'OpenCode Go',
   openrouter: 'OpenRouter',
+  together: 'Together AI',
   'vercel-ai-gateway': 'Vercel AI Gateway',
   xai: 'xAI',
   xiaomi: 'Xiaomi MiMo',

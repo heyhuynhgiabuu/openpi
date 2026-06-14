@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.20] - 2026-06-14
+
+### Changed
+
+- **Pi coding agent SDK** — bumped `@earendil-works/pi-coding-agent` from `^0.74.0` to `~0.79.3`. Tilde pin (not caret) because 0.74.2 was silently republished without release notes; we don't want a stealth minor bump. Picks up the supply-chain hardening, project-trust gating, the new SDK surfaces (`session.extensionRunner` is now a public typed getter, `session.dispose()` is public, `OAuthLoginCallbacks.onDeviceCode` is required), Claude Fable 5, Claude Opus 4.8, GPT-5.4/5.5, MiniMax-M3, and the Ant Ling / NVIDIA NIM / Together AI providers. (c3b36a8)
+- **Node minimum** — pinned `engines.node` to `>=22.19.0 <23` to match Pi 0.75.0's floor. CI workflows now use `node-version: 22.19.0` explicitly. README updated. (c3b36a8)
+
+### Added
+
+- **New provider display names** — Ant Ling, NVIDIA NIM, and Together AI are now visible by name in the model picker. The model picker reads from the SDK's `ModelRegistry` directly, so the new models (claude-fable-5, claude-opus-4.8, gpt-5.4, gpt-5.5, minimax-m3) appear automatically. (c3b36a8)
+- **Headless Codex device-code login** — the `onDeviceCode` OAuth callback required since Pi 0.77.0 is wired through the existing `provider_login_event` channel as a new `device_code` variant. UX for surfacing the URL + user code to the user is a follow-up; the event is emitted and typed end-to-end. (c3b36a8)
+- **Declared surface leaks** — `@earendil-works/pi-ai` (~0.79.3) and `typebox` (~1.1.38) are now direct dependencies, both with tilde pins matching the SDK. They were already imported in `electron/subagent/class.ts`, `electron/subagent/schemas.ts`, and `tests/sessionPrompt.test.ts` from Pi's nested `node_modules`; declaring them directly fixes the resolution and makes the dependency surface honest. (c3b36a8)
+
+### Fixed
+
+- **Private-API poke in sidecar teardown** — `electron/pi/sidecar.ts` was reaching into the session via `(session as unknown as { extensionRunner: { hasHandlers, emit } })` to fire a `session_shutdown` event. Pi 0.79.3 exposes `session.extensionRunner` as a public typed getter, so the cast is gone and the reason parameter is now typed against the `SessionShutdownReason` union (`'quit' | 'reload' | 'new' | 'resume' | 'fork'`). Caught a latent bug in passing: the previous call site used the string `'session_replaced'` which was never a valid reason. (c3b36a8)
+
 ## [0.1.19] - 2026-05-27
 
 ### Fixed
