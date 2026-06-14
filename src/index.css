@@ -9410,8 +9410,7 @@ body.panel-dragging {
 }
 
 /* Left-border accent on hover/focus — positioned at the
- * indentation point via CSS variable --indent, so the border
- * aligns with the chevron column, not the container edge. */
+ * indentation point via CSS variable --indent. */
 .ftree-item::before {
   content: '';
   position: absolute;
@@ -9419,7 +9418,7 @@ body.panel-dragging {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--ink-soft);
+  background: var(--ink);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -9431,7 +9430,7 @@ body.panel-dragging {
 
 .ftree-item:hover::before,
 .ftree-item:focus-within::before {
-  opacity: 1;
+  opacity: 0.15;
 }
 
 .ftree-row:hover {
@@ -9443,11 +9442,12 @@ body.panel-dragging {
 }
 
 /* File / folder icon: grayscale by default (mono look),
- * full color on hover/focus. */
+ * full color when hovering the tree pane. */
 .ftree-item img {
   filter: grayscale(1) opacity(0.6);
   transition: filter 0.15s ease;
 }
+.ftree-root:hover .ftree-item img,
 .ftree-item:hover img,
 .ftree-item:focus-within img {
   filter: none;
