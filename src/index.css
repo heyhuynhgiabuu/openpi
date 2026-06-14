@@ -2940,6 +2940,22 @@ body.panel-dragging {
   color: var(--ink-soft);
   letter-spacing: -0.1px;
 }
+/* Spinner icon before the Thinking label. Static when idle, spinning when
+ * streaming, in the warning color so it reads as "agent is processing". */
+.thinking-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  color: var(--warning, #ead7b1);
+  margin-right: 6px;
+  user-select: none;
+}
+.thinking-icon--spin {
+  animation: thinking-spin 1.4s linear infinite;
+}
+@keyframes thinking-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 .thinking-block.is-streaming .thinking-label {
   color: var(--graphite);
 }
@@ -2969,22 +2985,10 @@ body.panel-dragging {
   content: "∨";
   font-size: 11px;
 }
-/* └ connector: ASCII tree branch before thinking content; aligns with .message-list padding */
+/* Thinking block body — no glyph connector, no negative-margin */
 .thinking-body {
   position: relative;
   margin-top: 6px;
-  margin-left: -1.4em;
-  padding-left: 1.4em; /* └ glyph hangs in the negative-margin gutter */
-}
-.thinking-body::before {
-  content: "└";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: var(--ash);
-  font-size: 13px;
-  line-height: 1.6;
-  font-family: ui-monospace, monospace;
 }
 /* Mute the markdown inside thinking */
 .thinking-body .md-content {

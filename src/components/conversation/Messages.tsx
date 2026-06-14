@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-solid'
 import { type Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
@@ -32,6 +33,12 @@ function ThinkingBlock(props: { text: string; streaming?: boolean; show: boolean
         onToggle={(event) => setOpen(event.currentTarget.open)}
       >
         <summary>
+          <Loader2
+            size={13}
+            class="thinking-icon"
+            classList={{ 'thinking-icon--spin': props.streaming }}
+            aria-hidden="true"
+          />
           <span class="thinking-label">Thinking</span>
           <Show when={props.streaming}>
             <span class="thinking-state">streaming</span>
