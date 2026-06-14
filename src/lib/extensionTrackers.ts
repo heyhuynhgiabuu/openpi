@@ -2,12 +2,6 @@
  * Reactive state trackers for Pi extension ecosystems.
  * All state is derived purely from the AgentSessionEvent stream — no sidecar changes needed.
  *
- *   - TaskTracker     — tracks the global task tool's `TaskCreate` and
- *                       `TaskUpdate` calls. The tool itself is provided
- *                       by `@marckrenn/pi-sub-core` in the user's global
- *                       `~/.pi/agent/settings.json`; OpenPi does not
- *                       register its own copy. State is rendered by
- *                       `<TaskWidget>`.
  *   - AskTracker      — tracks the global `AskUserQuestion` tool (provided
  *                       by `ghoseb/pi-askuserquestion` in the user's
  *                       global config). State is rendered by `<AskCard>`.
@@ -16,100 +10,13 @@
  *                       `electron/subagent/class.ts`). State is rendered
  *                       by `<SubagentWidget>`. This is NOT a global
  *                       Pi package — it is built into OpenPi.
+ *
+ * The Anthropic-style TODO list (`TaskCreate`/`TaskUpdate` from
+ * `@marendil-m3/pi-sub-core`) is no longer tracked here. TODO lists are
+ * now sourced from the global sub-agent delegator at
+ * `~/.pi/agent/extensions/task/`, which writes per-task artifacts to
+ * `.pi/artifacts/task-<id>/`. See `src/lib/subagentFileTracker.ts`.
  */
-
-// ─── Task Tracker ──────────────────────────────────────────────────────────
-
-export type TaskStatus = 'pending' | 'in_progress' | 'completed'
-
-export interface TrackedTask {
-  id: string
-  subject: string
-  status: TaskStatus
-  activeForm?: string
-  blockedBy: string[]
-  owner?: string
-}
-
-const TASK_TOOL_NAMES = new Set([
-  'TaskCreate',
-  'TaskUpdate',
-  'TaskList',
-  'TaskGet',
-  'TaskExecute',
-  'TaskOutput',
-  'TaskStop',
-])
-
-export function isTaskToolName(name: string): boolean {
-  return TASK_TOOL_NAMES.has(name)
-}
-
-/** Mutable task state — caller wraps in SolidJS createStore or signals */
-export class TaskTracker {
-  private tasks: TrackedTask[] = []
-  // Map toolCallId → task id (while awaiting tool_execution_end for TaskCreate)
-  private pendingCreates = new Map<string, string>()
-
-  snapshot(): TrackedTask[] {
-    return [...this.tasks]
-  }
-
-  onToolStart(toolCallId: string, toolName: string, args: Record<string, unknown>): boolean {
-    switch (toolName) {
-      case 'TaskCreate': {
-        const subject = String(args.subject ?? '(task)')
-        const activeForm = args.activeForm ? String(args.activeForm) : undefined
-        const tempId = `pending-${toolCallId}`
-        this.tasks.push({ id: tempId, subject, status: 'pending', activeForm, blockedBy: [] })
-        this.pendingCreates.set(toolCallId, tempId)
-        return true
-      }
-      case 'TaskUpdate': {
-        const taskId = String(args.taskId ?? '')
-        const idx = this.tasks.findIndex((t) => t.id === taskId)
-        if (idx === -1) return false
-        const t = this.tasks[idx]
-        const next: TrackedTask = { ...t }
-        if (args.status === 'deleted') {
-          this.tasks.splice(idx, 1)
-          return true
-        }
-        if (args.status && typeof args.status === 'string') next.status = args.status as TaskStatus
-        if (args.subject && typeof args.subject === 'string') next.subject = String(args.subject)
-        if (args.activeForm !== undefined)
-          next.activeForm = args.activeForm ? String(args.activeForm) : undefined
-        if (args.owner !== undefined) next.owner = args.owner ? String(args.owner) : undefined
-        if (Array.isArray(args.addBlockedBy)) {
-          next.blockedBy = [...new Set([...next.blockedBy, ...args.addBlockedBy.map(String)])]
-        }
-        this.tasks[idx] = next
-        return true
-      }
-      default:
-        return false
-    }
-  }
-
-  onToolEnd(toolCallId: string, toolName: string, result: string): boolean {
-    if (toolName !== 'TaskCreate') return false
-    const tempId = this.pendingCreates.get(toolCallId)
-    if (!tempId) return false
-    this.pendingCreates.delete(toolCallId)
-    // Parse real ID from "Task #N created successfully: ..." or "→ Task #N created"
-    const match = result.match(/[Tt]ask\s*#(\d+)/)?.[1] ?? null
-    if (match) {
-      const idx = this.tasks.findIndex((t) => t.id === tempId)
-      if (idx !== -1) this.tasks[idx] = { ...this.tasks[idx], id: match }
-    }
-    return true
-  }
-
-  clear() {
-    this.tasks = []
-    this.pendingCreates.clear()
-  }
-}
 
 // ─── Ask User Question Tracker ─────────────────────────────────────────────
 

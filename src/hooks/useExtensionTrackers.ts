@@ -1,17 +1,19 @@
 /**
- * useExtensionTrackers — manages Pi extension tracker instances (tasks, ask, subagents).
+ * useExtensionTrackers — manages Pi extension tracker instances (ask, subagents).
  *
- * SolidJS hook encapsulating TaskTracker, AskTracker, and SubagentTracker lifecycle,
+ * SolidJS hook encapsulating AskTracker and SubagentTracker lifecycle,
  * providing reactive signals derived from session events.
+ *
+ * TODO list tracking was moved to `useSubagentFileTracker` which watches
+ * `.pi/artifacts/task-<id>/` directly. The Anthropic-style
+ * `TaskCreate`/`TaskUpdate` tools are no longer tracked here.
  */
 import { batch, createSignal } from 'solid-js'
 import {
   type AskState,
   AskTracker,
   SubagentTracker,
-  TaskTracker,
   type TrackedAgent,
-  type TrackedTask,
 } from '../lib/extensionTrackers'
 
 export interface SubagentNotification {
@@ -22,12 +24,10 @@ export interface SubagentNotification {
 }
 
 export function useExtensionTrackers() {
-  const _taskTracker = new TaskTracker()
   const _askTracker = new AskTracker()
   const _subagentTracker = new SubagentTracker()
   const _notifiedAgentIds = new Set<string>()
 
-  const [tasks, setTasks] = createSignal<TrackedTask[]>([])
   const [askState, setAskState] = createSignal<AskState | null>(null)
   const [agents, setAgents] = createSignal<TrackedAgent[]>([])
   const [subagentNotification, setSubagentNotification] = createSignal<SubagentNotification | null>(
@@ -36,7 +36,6 @@ export function useExtensionTrackers() {
 
   const updateSnapshots = () => {
     batch(() => {
-      setTasks(_taskTracker.snapshot())
       setAskState(_askTracker.snapshot())
       setAgents(_subagentTracker.snapshot())
     })
@@ -80,8 +79,6 @@ export function useExtensionTrackers() {
     if (eventType === 'tool_execution_start') {
       const e = event as { toolCallId?: string; toolName?: string; args?: Record<string, unknown> }
       changed =
-        _taskTracker.onToolStart(e.toolCallId ?? '', e.toolName ?? '', e.args ?? {}) || changed
-      changed =
         _askTracker.onToolStart(e.toolCallId ?? '', e.toolName ?? '', e.args ?? {}) || changed
       changed =
         _subagentTracker.onToolStart(e.toolCallId ?? '', e.toolName ?? '', e.args ?? {}) || changed
@@ -97,7 +94,6 @@ export function useExtensionTrackers() {
       const id = e.toolCallId ?? ''
       const name = e.toolName ?? ''
       const result = typeof e.result === 'string' ? e.result : JSON.stringify(e.result ?? '')
-      changed = _taskTracker.onToolEnd(id, name, result) || changed
       changed = _askTracker.onToolEnd(id, name, Boolean(e.isError)) || changed
       changed = _subagentTracker.onToolEnd(id, name, result, Boolean(e.isError)) || changed
     }
@@ -111,36 +107,27 @@ export function useExtensionTrackers() {
     setAgents(_subagentTracker.snapshot())
   }
 
-  const clearTasks = () => {
-    _taskTracker.clear()
-    setTasks([])
-  }
-
   const clearAsk = () => {
     _askTracker.clear()
     setAskState(null)
   }
 
   const clearAll = () => {
-    _taskTracker.clear()
     _askTracker.clear()
     _subagentTracker.clear()
     _notifiedAgentIds.clear()
     setSubagentNotification(null)
-    setTasks([])
     setAskState(null)
     setAgents([])
   }
 
   return {
-    tasks,
     askState,
     agents,
     subagentNotification,
     dismissSubagentNotification: () => setSubagentNotification(null),
     dispatchEvent,
     clearFinished,
-    clearTasks,
     clearAsk,
     clearAll,
   }

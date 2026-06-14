@@ -20,7 +20,7 @@ OpenPi is in active development. Core slices shipped:
 - **Extensions UI** — enable/disable toggle switch per extension, preference persistence, reload button.
 - **Onboarding flow** — first-run detection, enhanced welcome screen with getting-started guide and external links.
 - **Goal status indicator** — persistent banner in composer header showing objective and running/idle step badge.
-- **Pi subagent and task tool cards** — rendering for `Agent` / `TaskCreate` / `TaskExecute`, subagent and task widgets.
+- **Sub-agent file tracking** — OpenPi watches `.pi/artifacts/task-<id>/` for the global `task` delegator (provided by `~/.pi/agent/extensions/task/`) and renders in-flight and completed sub-agent runs in `<SubagentFileWidget>`. Replaces the previous in-memory tracking of the Anthropic-style `TaskCreate`/`TaskUpdate` tools, which is no longer used.
 
 ## Known constraints
 

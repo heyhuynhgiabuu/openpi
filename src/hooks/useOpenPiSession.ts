@@ -30,6 +30,7 @@ import { useExtensionTrackers } from './useExtensionTrackers'
 import { useRemoteSessionSync } from './useRemoteSessionSync'
 import { useSessionHistory } from './useSessionHistory'
 import { useSessionIndex } from './useSessionIndex'
+import { useSubagentFileTracker } from './useSubagentFileTracker'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -65,8 +66,9 @@ export function useOpenPiSession() {
   const [followUpQueue, setFollowUpQueue] = createSignal<string[]>([])
   const [sessionName, setSessionNameState] = createSignal<string | null>(null)
   const [contextPercent, setContextPercent] = createSignal<number | null>(null)
-  // ── Extension trackers (tasks / ask / subagents) ──────────────────────────
+  // ── Extension trackers (ask / subagents) ──────────────────────────
   const trackers = useExtensionTrackers()
+  const subagentFiles = useSubagentFileTracker()
   const agentRunMetrics = useAgentRunMetrics()
   const sessionHistory = useSessionHistory({ setMessages, setError })
   const remoteSync = useRemoteSessionSync({
@@ -563,9 +565,6 @@ export function useOpenPiSession() {
     },
 
     // ── Extension tracker state ─────────────────────────────────────
-    get tasks() {
-      return trackers.tasks()
-    },
     get askState() {
       return trackers.askState()
     },
@@ -576,6 +575,10 @@ export function useOpenPiSession() {
       return trackers.subagentNotification()
     },
     dismissSubagentNotification: () => trackers.dismissSubagentNotification(),
+    get artifacts() {
+      return subagentFiles.artifacts()
+    },
+    clearArtifacts: () => subagentFiles.clear(),
 
     // Ref setters — pass as `ref={session.setBottomRef}` in JSX
     setBottomRef: (el: HTMLDivElement) => {
@@ -616,7 +619,7 @@ export function useOpenPiSession() {
     clearActiveGoal: remoteSync.clearActiveGoal,
 
     clearTasks: () => {
-      trackers.clearTasks()
+      trackers.clearAll()
     },
   }
 }

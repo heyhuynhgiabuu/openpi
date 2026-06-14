@@ -347,6 +347,28 @@ export const planUpdateSchema = z.object({
 })
 export type PlanUpdate = z.infer<typeof planUpdateSchema>
 
+// ─── Sub-agent file artifacts ───────────────────────────────────────────────
+
+export const subagentArtifactStatusSchema = z.enum(['running', 'completed', 'failed'])
+export const subagentArtifactSchema = z.object({
+  id: z.string(),
+  agent: z.string(),
+  prompt: z.string(),
+  context: z.string(),
+  result: z.string().nullable(),
+  status: subagentArtifactStatusSchema,
+  createdAt: z.number(),
+  completedAt: z.number().nullable(),
+  filePath: z.string(),
+})
+export type SubagentArtifact = z.infer<typeof subagentArtifactSchema>
+
+export const artifactUpdateSchema = z.object({
+  artifacts: z.array(subagentArtifactSchema),
+  timestamp: z.number(),
+})
+export type ArtifactUpdate = z.infer<typeof artifactUpdateSchema>
+
 // ─── Provider info ───────────────────────────────────────────────────────────
 
 export const providerInfoSchema = z.object({

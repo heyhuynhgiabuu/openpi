@@ -9,8 +9,8 @@ import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
 import { FileTabBar } from '../FileTabBar'
 import { ResizeHandle } from '../ResizeHandle'
+import { SubagentFileWidget } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
-import { TaskWidget } from '../TaskWidget'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 
 type OpenPiSession = ReturnType<typeof useOpenPiSession>
@@ -79,7 +79,10 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
 
           <div class="widget-tray">
             <SubagentWidget agents={props.session.agents} />
-            <TaskWidget tasks={props.session.tasks} onDismiss={() => props.session.clearTasks()} />
+            <SubagentFileWidget
+              artifacts={props.session.artifacts}
+              onDismiss={() => props.session.clearArtifacts()}
+            />
             <Show when={props.session.askState}>
               {(state) => (
                 <AskWidget

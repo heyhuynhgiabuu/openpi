@@ -1,5 +1,6 @@
 import { ipcRenderer } from 'electron'
 import type {
+  ArtifactUpdate,
   GoalUpdate,
   PlanUpdate,
   RemoteSessionUpdate,
@@ -67,5 +68,11 @@ export const eventsApi = {
     const handler = (_: Electron.IpcRendererEvent, payload: PlanUpdate) => cb(payload)
     ipcRenderer.on(IPC.PLAN_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.PLAN_UPDATE, handler)
+  },
+
+  onArtifactUpdate: (cb: (payload: ArtifactUpdate) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, payload: ArtifactUpdate) => cb(payload)
+    ipcRenderer.on(IPC.ARTIFACT_UPDATE, handler)
+    return () => ipcRenderer.removeListener(IPC.ARTIFACT_UPDATE, handler)
   },
 } as const

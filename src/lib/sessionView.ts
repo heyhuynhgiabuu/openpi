@@ -30,14 +30,6 @@ export const TOOL_LABEL: Record<string, string> = {
   Agent: 'agent',
   get_subagent_result: 'agent',
   steer_subagent: 'agent',
-  // Pi Tasks
-  TaskCreate: 'task',
-  TaskList: 'tasks',
-  TaskGet: 'task',
-  TaskUpdate: 'task',
-  TaskExecute: 'exec',
-  TaskOutput: 'task',
-  TaskStop: 'stop',
   // Goal/plan tools
   get_goal: 'goal',
   create_goal: 'goal',

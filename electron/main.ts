@@ -8,6 +8,7 @@ import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
 import { checkPiUpdate } from './pi/updater'
+import { startArtifactWatcher } from './services/artifactWatcher'
 import { handleLocalFileProtocol, registerLocalFileScheme } from './services/localFileProtocol'
 import {
   ensureFffInitialized,
@@ -32,6 +33,7 @@ import { checkForAppUpdate, initAutoUpdater } from './services/updater'
 import { createMainWindow } from './services/windowHost'
 import { bindWebContents } from './services/workbenchContext'
 import {
+  activeWorkspacePath,
   applySessionReady,
   clearSessionState,
   ensurePiSidecarStarted,
@@ -252,6 +254,13 @@ app.whenReady().then(() => {
     getPiSidecarHost,
     checkForAppUpdate,
   })
+
+  const artifactWatcher = startArtifactWatcher({
+    getMainWindow: () => mainWindow,
+    getWorkspacePath: () => activeWorkspacePath(),
+  })
+
+  app.on('before-quit', () => artifactWatcher.stop())
 })
 
 app.on('window-all-closed', () => {

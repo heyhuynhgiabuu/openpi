@@ -51,14 +51,6 @@ export function ToolIcon(props: ToolIconProps) {
     case 'get_subagent_result':
     case 'steer_subagent':
       return <Bot {...ICON_PROPS} />
-    case 'TaskCreate':
-    case 'TaskList':
-    case 'TaskGet':
-    case 'TaskUpdate':
-    case 'TaskExecute':
-    case 'TaskOutput':
-    case 'TaskStop':
-      return <ListChecks {...ICON_PROPS} />
     case 'spec_create':
       return <FileText {...ICON_PROPS} />
     case 'spec_next_phase':

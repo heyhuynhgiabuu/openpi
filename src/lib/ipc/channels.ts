@@ -131,4 +131,5 @@ export const IPC = {
   REMOTE_SESSION_UPDATE: 'openpi:remote-session-update',
   GOAL_UPDATE: 'openpi:goal-update',
   PLAN_UPDATE: 'openpi:plan-update',
+  ARTIFACT_UPDATE: 'openpi:artifact-update',
 } as const

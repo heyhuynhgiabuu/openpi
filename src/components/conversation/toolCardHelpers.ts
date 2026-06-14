@@ -36,18 +36,6 @@ export function extractCommand(card: ToolCard): string {
   if (typeof card.args.path === 'string') return card.args.path
   if (card.toolName === 'Agent' && typeof card.args.description === 'string')
     return card.args.description
-  if (card.toolName === 'TaskCreate' && typeof card.args.subject === 'string')
-    return card.args.subject
-  if (
-    ['TaskGet', 'TaskUpdate', 'TaskStop'].includes(card.toolName) &&
-    typeof card.args.taskId === 'string'
-  )
-    return `#${card.args.taskId}`
-  if (card.toolName === 'TaskExecute' && Array.isArray(card.args.task_ids))
-    return `[${card.args.task_ids.join(', ')}]`
-  if (card.toolName === 'TaskList') return 'all tasks'
-  if (card.toolName === 'TaskOutput' && typeof card.args.task_id === 'string')
-    return `#${card.args.task_id}`
   if (card.toolName === 'ask_user_question') {
     const qs = card.args.questions
     if (Array.isArray(qs) && qs.length > 0) {
