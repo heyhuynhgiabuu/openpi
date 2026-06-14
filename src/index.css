@@ -9388,6 +9388,7 @@ body.panel-dragging {
   align-items: center;
   min-width: 0;
   width: 100%;
+  position: relative;
 }
 
 .ftree-row {
@@ -9398,7 +9399,7 @@ body.panel-dragging {
   min-width: 0;
   width: 100%;
   min-height: 22px;
-  padding: 1px 8px 1px 10px;
+  padding: 1px 8px 1px calc(var(--indent, 0px) + 10px);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -9408,10 +9409,30 @@ body.panel-dragging {
   white-space: nowrap;
   overflow: hidden;
 }
+
+/* Left-border accent on hover/focus — positioned at the
+ * indentation point via CSS variable --indent, so the border
+ * aligns with the chevron column, not the container edge. */
+.ftree-item::before {
+  content: '';
+  position: absolute;
+  left: var(--indent, 0);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent, #6cf);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
 .ftree-item:hover,
 .ftree-item:focus-within {
   background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent, #6cf);
+}
+
+.ftree-item:hover::before,
+.ftree-item:focus-within::before {
+  opacity: 1;
 }
 
 .ftree-row:hover {

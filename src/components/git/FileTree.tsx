@@ -85,7 +85,10 @@ function TreeNode(props: NodeProps) {
       when={props.node.isDir}
       fallback={
         <KContextMenu>
-          <div class="ftree-item">
+          <div
+            class="ftree-item"
+            style={{ '--indent': `${(props.parentLines.length + 1) * 16}px` }}
+          >
             <KContextMenu.Trigger
               as="button"
               type="button"
@@ -138,7 +141,7 @@ function TreeNode(props: NodeProps) {
       }
     >
       <KContextMenu>
-        <div class="ftree-item">
+        <div class="ftree-item" style={{ '--indent': `${(props.parentLines.length + 1) * 16}px` }}>
           <KContextMenu.Trigger
             as="button"
             type="button"
