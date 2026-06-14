@@ -9418,8 +9418,8 @@ body.panel-dragging {
   left: var(--indent, 0);
   top: 0;
   bottom: 0;
-  width: 2px;
-  background: var(--accent, #6cf);
+  width: 1px;
+  background: var(--ink-soft);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -9442,17 +9442,15 @@ body.panel-dragging {
   background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
 }
 
-/* File / folder icon: use the material-icon-theme's natural colors.
- * Slightly reduced opacity by default so the tree reads as "muted",
- * full opacity on hover/focus. Mirrors the OpenCode file-tree look
- * (colorful file-type icons, blue folder icon, no rainbow chrome). */
+/* File / folder icon: grayscale by default (mono look),
+ * full color on hover/focus. */
 .ftree-item img {
-  opacity: 0.78;
-  transition: opacity 0.12s ease;
+  filter: grayscale(1) opacity(0.6);
+  transition: filter 0.15s ease;
 }
 .ftree-item:hover img,
 .ftree-item:focus-within img {
-  opacity: 1;
+  filter: none;
 }
 
 /* Folder expand chevron — OpenCode-style: tiny, subtle, rotates 90deg
