@@ -446,7 +446,7 @@ export default function App() {
                 <ResizeHandle
                   direction="horizontal"
                   onResize={(delta) =>
-                    setFilePanelWidth(Math.max(180, Math.min(640, filePanelWidth() + delta)))
+                    setFilePanelWidth(Math.max(180, Math.min(640, filePanelWidth() - delta)))
                   }
                 />
                 <div class="file-panel" style={{ width: `${filePanelWidth()}px` }}>
