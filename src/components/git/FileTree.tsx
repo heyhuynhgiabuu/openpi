@@ -154,6 +154,9 @@ function TreeNode(props: NodeProps) {
                 ▸
               </span>
             </Show>
+            <Show when={isExpanded()}>
+              <FolderIcon name={props.node.name} size={15} open={true} />
+            </Show>
             <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
           </KContextMenu.Trigger>
           <button

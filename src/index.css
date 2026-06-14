@@ -9422,15 +9422,17 @@ body.panel-dragging {
   background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
 }
 
-/* File icon: mono by default, slightly brighter on hover. Matches
- * the OpenCode file-tree look (single muted color, no rainbow). */
-.ftree-item .ftree-icon-img {
-  filter: grayscale(1) brightness(0.9) opacity(0.55);
-  transition: filter 0.12s ease;
+/* File / folder icon: use the material-icon-theme's natural colors.
+ * Slightly reduced opacity by default so the tree reads as "muted",
+ * full opacity on hover/focus. Mirrors the OpenCode file-tree look
+ * (colorful file-type icons, blue folder icon, no rainbow chrome). */
+.ftree-item img {
+  opacity: 0.78;
+  transition: opacity 0.12s ease;
 }
-.ftree-item:hover .ftree-icon-img,
-.ftree-item:focus-within .ftree-icon-img {
-  filter: grayscale(1) opacity(0.85);
+.ftree-item:hover img,
+.ftree-item:focus-within img {
+  opacity: 1;
 }
 
 /* Folder expand chevron — OpenCode-style: tiny, subtle, rotates 90deg
