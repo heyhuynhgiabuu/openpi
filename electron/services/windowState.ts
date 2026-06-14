@@ -14,7 +14,6 @@
  */
 
 import { promises as fs } from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { app, type BrowserWindow, screen } from 'electron'
 

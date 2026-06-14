@@ -29,13 +29,6 @@ export const SECTIONS: SettingSection[] = [
         options: ['', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
         default: '',
       },
-      {
-        key: 'hideThinkingBlock',
-        type: 'boolean',
-        label: 'Hide Thinking Blocks',
-        description: 'Suppress thinking content from appearing in the conversation',
-        default: false,
-      },
     ],
   },
   {

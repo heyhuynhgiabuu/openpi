@@ -2911,84 +2911,25 @@ body.panel-dragging {
   padding-left: 0;
 }
 
-/* Thinking — inline pattern matching Claude Code reference:
- * summary: [extracted title] [chevron down]
- * closed: chevron rotated 90° (points right →)
- * open:   chevron at 0° (points down ∨)
- * body: markdown rendered, muted tones, left border indent */
+/* Thinking block — sutil left border to distinguish from regular content.
+ * No icon, no label, no streaming badge. The body speaks for itself;
+ * the left border + muted color is the only signal. */
 .thinking-block {
-  margin-bottom: 10px;
+  position: relative;
+  padding: 4px 0 4px 12px;
+  margin: 8px 0;
+  border-left: 2px solid var(--ash-2, #444);
+  border-radius: 2px;
 }
 .thinking-block.is-streaming {
-  margin-bottom: 12px;
+  border-left-color: var(--warning, #ead7b1);
 }
-.thinking-block > summary {
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-}
-.thinking-block > summary::-webkit-details-marker {
-  display: none;
-}
-.thinking-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-soft);
-  letter-spacing: -0.1px;
-}
-/* Spinner icon before the Thinking label. Static when idle, spinning when
- * streaming, in the warning color so it reads as "agent is processing". */
-.thinking-icon {
-  display: inline-block;
-  vertical-align: -2px;
-  color: var(--warning, #ead7b1);
-  margin-right: 6px;
-  user-select: none;
-}
-.thinking-icon--spin {
-  animation: thinking-spin 1.4s linear infinite;
-}
-@keyframes thinking-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-.thinking-block.is-streaming .thinking-label {
-  color: var(--graphite);
-}
-.thinking-state {
-  color: var(--ash);
-  font-size: 11px;
-  font-weight: 500;
-}
-.thinking-block.is-streaming .thinking-state::after {
-  content: "·";
-  display: inline-block;
-  margin-left: 3px;
-  color: var(--accent);
-  animation: pulse-dot 1s ease-in-out infinite;
-}
-/* ASCII caret via ::after — no SVG icon in JSX
- * closed: › (right-angle quotation, points right)
- * open:   ∨ (logical OR symbol, points down — matches Claude Code reference) */
-.thinking-block > summary::after {
-  content: "›";
-  color: var(--ash);
-  font-size: 13px;
-  margin-left: 4px;
-  line-height: 1;
-}
-.thinking-block[open] > summary::after {
-  content: "∨";
-  font-size: 11px;
-}
-/* Thinking block body — no glyph connector, no negative-margin */
 .thinking-body {
   position: relative;
-  margin-top: 6px;
+  margin-top: 0;
+  color: var(--ink-soft, #aaa);
+  font-size: 13px;
+  line-height: 1.6;
 }
 /* Mute the markdown inside thinking */
 .thinking-body .md-content {

@@ -1,6 +1,5 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
-import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMain, shell } from 'electron'
 import type { FileContent } from '../../src/lib/ipc'

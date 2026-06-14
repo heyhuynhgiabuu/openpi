@@ -140,7 +140,6 @@ export default function App() {
   // Rename trigger — TopBar sets this when it mounts so App can call it from a keybinding
   let triggerRename: (() => void) | undefined
   const keybindings = useAppKeybindings({
-    displayPreferences: () => displayPreferences(),
     customKeybindings,
     setCommandPaletteOpen,
     setTerminalOpen,
@@ -308,10 +307,7 @@ export default function App() {
               models={session.models}
               currentModel={session.currentModel}
               onSelectModel={session.selectModel}
-              onOpenSettings={() => {
-                if (displayPreferences().hideCustomizationsPanel) return
-                setCustomizationsOpen(true)
-              }}
+              onOpenSettings={() => setCustomizationsOpen(true)}
               startRenameRef={(fn) => {
                 triggerRename = fn
               }}

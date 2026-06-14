@@ -19,7 +19,6 @@ interface UseAppKeybindingsOptions {
   setFileSearchOpen: (open: boolean) => void
   setFileFindOpen: (open: boolean) => void
   setCustomizationsOpen: (open: boolean) => void
-  displayPreferences: () => { hideCustomizationsPanel?: boolean }
   toggleLeftDrawerMode: (mode: LeftDrawerMode) => void
   openFiles: () => string[]
   activeFileIdx: () => number
@@ -59,10 +58,7 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
       command('searchInFile', () => {
         if (options.openFiles().length > 0) options.setFileFindOpen(true)
       }),
-      command('openCustomizations', () => {
-        if (options.displayPreferences().hideCustomizationsPanel) return
-        options.setCustomizationsOpen(true)
-      }),
+      command('openCustomizations', () => options.setCustomizationsOpen(true)),
       command('openProject', () => void options.openWorkspace()),
       command('renameSession', () => options.triggerRename?.()),
       command('toggleSidebar', () => options.toggleLeftDrawerMode('threads')),
@@ -171,7 +167,6 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
       }
       if (eventMatchesBinding(event, binding('openCustomizations'))) {
         event.preventDefault()
-        if (options.displayPreferences().hideCustomizationsPanel) return
         options.setCustomizationsOpen(true)
         return
       }

@@ -3,7 +3,7 @@ export type DisplayPreferenceKey =
   | 'expandShellToolParts'
   | 'expandEditToolParts'
   | 'showSessionProgressBar'
-  | 'hideCustomizationsPanel'
+  | 'hideThinkingBlock'
 
 export type DisplayPreferences = Record<DisplayPreferenceKey, boolean>
 
@@ -46,11 +46,11 @@ export const DISPLAY_PREFERENCES: DisplayPreferenceMeta[] = [
     defaultValue: true,
   },
   {
-    key: 'hideCustomizationsPanel',
-    storageKey: 'display.hide_customizations_panel',
-    label: 'Hide Customizations Panel',
+    key: 'hideThinkingBlock',
+    storageKey: 'display.hide_thinking_block',
+    label: 'Hide Thinking Block',
     description:
-      'Disable the OpenPi Customizations modal entirely. Use this to keep OpenPi as a thin UI over Pi\u2019s own configuration.',
+      'Hide the Thinking block by default. Use this if you find the agent\u2019s reasoning noisy and want a cleaner conversation view.',
     defaultValue: false,
   },
 ]

@@ -1,4 +1,3 @@
-import { Loader2 } from 'lucide-solid'
 import { type Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
@@ -17,45 +16,13 @@ type Segment =
   | { kind: 'text'; content: string; streaming?: boolean; id: string }
 
 function ThinkingBlock(props: { text: string; streaming?: boolean; show: boolean }) {
-  // Start open and force-open during streaming. User can collapse after.
-  const [open, setOpen] = createSignal(true)
-
-  // Re-open automatically whenever streaming resumes (e.g. fork / new turn).
-  createEffect(() => {
-    if (props.streaming) setOpen(true)
-  })
-
   return (
     <Show when={props.show}>
-      <details
-        class={`thinking-block${props.streaming ? ' is-streaming' : ' is-complete'}`}
-        open={open()}
-        onToggle={(event) => setOpen(event.currentTarget.open)}
-      >
-        <summary>
-          <Loader2
-            size={13}
-            class="thinking-icon"
-            classList={{ 'thinking-icon--spin': props.streaming }}
-            aria-hidden="true"
-          />
-          <span class="thinking-label">Thinking</span>
-          <Show when={props.streaming}>
-            <span class="thinking-state">streaming</span>
-          </Show>
-        </summary>
-        {/*
-         * IMPORTANT: do NOT wrap with <Show when={open()}> here.
-         * Using <Show> would unmount MarkdownContent every time the user
-         * collapses the block, destroying the rendered html() signal and
-         * forcing a full re-render (plain flash) on next open.
-         * The browser's native <details> already hides non-summary content
-         * when closed — no extra Show needed.
-         */}
+      <div class={`thinking-block${props.streaming ? ' is-streaming' : ' is-complete'}`}>
         <div class="thinking-body">
           <MarkdownContent text={props.text} streaming={props.streaming} />
         </div>
-      </details>
+      </div>
     </Show>
   )
 }
