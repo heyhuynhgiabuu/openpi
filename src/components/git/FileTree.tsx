@@ -9,6 +9,7 @@
  * Actual I/O lives in Electron main (getFileTree IPC).
  */
 
+import { ContextMenu as KContextMenu } from '@kobalte/core/context-menu'
 import { Trash2 } from 'lucide-solid'
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { FileIcon, FolderIcon } from '../../lib/fileIcons'
@@ -56,17 +57,45 @@ function TreeNode(props: NodeProps) {
       when={props.node.isDir}
       fallback={
         <div class="ftree-item">
-          <button
-            type="button"
-            class="ftree-row ftree-file"
-            title={props.node.path}
-            onClick={() => props.onFileClick?.(props.node.path)}
-            onContextMenu={(e) => props.onContextMenu?.(e, props.node)}
-          >
-            <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
-            <FileIcon name={props.node.name} size={15} />
-            <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
-          </button>
+          <KContextMenu>
+            <KContextMenu.Trigger
+              as="button"
+              type="button"
+              class="ftree-row ftree-file"
+              title={props.node.path}
+              onClick={() => props.onFileClick?.(props.node.path)}
+            >
+              <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
+              <FileIcon name={props.node.name} size={15} />
+              <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
+            </KContextMenu.Trigger>
+            <KContextMenu.Portal>
+              <KContextMenu.Content class="ftree-context-menu">
+                <KContextMenu.Item
+                  class="ftree-context-menu__item"
+                  onSelect={() => props.onRename?.(props.node)}
+                >
+                  Rename
+                  <span class="ftree-context-menu__shortcut">F2</span>
+                </KContextMenu.Item>
+                <KContextMenu.Item
+                  class="ftree-context-menu__item"
+                  onSelect={() => props.onCopy?.(props.node)}
+                >
+                  Copy
+                  <span class="ftree-context-menu__shortcut">Ctrl+C</span>
+                </KContextMenu.Item>
+                <KContextMenu.Separator class="ftree-context-menu__separator" />
+                <KContextMenu.Item
+                  class="ftree-context-menu__item ftree-context-menu__item--danger"
+                  onSelect={() => props.onDelete?.(props.node)}
+                >
+                  Move to Trash
+                  <span class="ftree-context-menu__shortcut">Del</span>
+                </KContextMenu.Item>
+              </KContextMenu.Content>
+            </KContextMenu.Portal>
+          </KContextMenu>
           <button
             type="button"
             class="ftree-delete-btn"
@@ -208,12 +237,10 @@ export function FileTree(props: FileTreeProps) {
     }
   }
 
-  const handleContextMenu = (event: MouseEvent, node: FileTreeNode) => {
-    event.preventDefault()
-    const choice = window.prompt(`Action for "${node.name}":\n1. Rename\n2. Copy\n3. Delete`, '1')
-    if (choice === '1') void renameNode(node)
-    else if (choice === '2') void copyNode(node)
-    else if (choice === '3') void deleteNode(node)
+  const handleContextMenu = (_event: MouseEvent, _node: FileTreeNode) => {
+    // Kobalte <ContextMenu.Trigger> in the row handles the right-click
+    // and shows the actual menu; this no-op is left as a prop so callers
+    // can still wire their own logic if they want to.
   }
 
   const changedPaths = () => props.changedPaths ?? new Set<string>()
