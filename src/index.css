@@ -15518,13 +15518,21 @@ body.panel-dragging {
 /* File tree context menu (Kobalte) */
 .ftree-context-menu {
   min-width: 200px;
-  background: var(--ink-2);
+  background: var(--canvas);
   border: 1px solid var(--ash-2);
   border-radius: 6px;
   padding: 4px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   font-size: 12px;
   color: var(--text);
+}
+.ftree-context-menu__item[data-highlighted] {
+  background: var(--ink-2);
+  color: var(--text);
+}
+.ftree-context-menu__item--danger[data-highlighted] {
+  background: var(--danger, #d23);
+  color: white;
 }
 .ftree-context-menu__item {
   display: flex;
@@ -15559,4 +15567,48 @@ body.panel-dragging {
   height: 1px;
   margin: 4px 8px;
   background: var(--ash-2);
+}
+
+/* File tree inline rename editor */
+.ftree-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  background: var(--ink-0, #0a0a0a);
+  color: var(--text);
+  border: 1px solid var(--accent, #6cf);
+  border-radius: 3px;
+  padding: 0 4px;
+  outline: none;
+  height: 20px;
+  line-height: 1.4;
+}
+
+/* File tree "more actions" trigger */
+.ftree-more-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--ash, #888);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.ftree-row-wrap:hover .ftree-more-btn,
+.ftree-row-wrap:focus-within .ftree-more-btn,
+.ftree-more-btn[data-highlighted] {
+  opacity: 1;
+}
+.ftree-more-btn:hover {
+  background: var(--ink-2, #1a1a1a);
+  color: var(--text, #f0f0f0);
 }

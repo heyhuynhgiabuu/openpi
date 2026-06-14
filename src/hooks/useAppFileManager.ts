@@ -57,6 +57,20 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
     }
   }
 
+  /**
+   * Update any open previews when a file is renamed in the workspace.
+   * The preview pane keys by path; without this, a renamed file shows
+   * stale content (the old path no longer exists on disk) or fails to
+   * refresh its title to the new name.
+   */
+  const renameFileInPreviews = (oldPath: string, newPath: string) => {
+    if (oldPath === newPath) return
+    const before = openFiles()
+    const newFiles = before.map((f) => (f === oldPath ? newPath : f))
+    if (newFiles.every((f, i) => f === before[i])) return
+    setOpenFiles(newFiles)
+  }
+
   const addAttachedFile = (relPath: string) => {
     setAttachedFiles((prev) => (prev.includes(relPath) ? prev : [...prev, relPath]))
   }
@@ -202,6 +216,7 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
     openFile,
     closeFile,
     closeDeletedFilePreviews,
+    renameFileInPreviews,
     addAttachedFile,
     removeAttachedFile,
     addLineComment,

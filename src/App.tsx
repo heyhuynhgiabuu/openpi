@@ -103,6 +103,7 @@ export default function App() {
     openFile,
     closeFile,
     closeDeletedFilePreviews,
+    renameFileInPreviews,
     addAttachedFile,
     removeAttachedFile,
     addLineComment,
@@ -455,6 +456,7 @@ export default function App() {
                     changedPaths={new Set()}
                     onFileClick={(relPath) => openFile(relPath)}
                     onFileDeleted={closeDeletedFilePreviews}
+                    onFileRenamed={renameFileInPreviews}
                   />
                 </div>
               </Show>

@@ -10,7 +10,7 @@
  */
 
 import { ContextMenu as KContextMenu } from '@kobalte/core/context-menu'
-import { Trash2 } from 'lucide-solid'
+import { MoreHorizontal } from 'lucide-solid'
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { FileIcon, FolderIcon } from '../../lib/fileIcons'
 import type { FileTreeNode, FileTreeResult } from '../../lib/ipc'
@@ -20,6 +20,7 @@ interface FileTreeProps {
   changedPaths?: Set<string>
   onFileClick?: (relPath: string) => void
   onFileDeleted?: (relPath: string, isDir: boolean) => void
+  onFileRenamed?: (oldPath: string, newPath: string) => void
   triggerCollapseAll?: number
 }
 
@@ -46,6 +47,44 @@ interface NodeProps {
   onRename?: (node: FileTreeNode) => void
   onCopy?: (node: FileTreeNode) => void
   onContextMenu?: (e: MouseEvent, node: FileTreeNode) => void
+  renamingPath: () => string | null
+  renamingDraft: () => string
+  setRenamingDraft: (s: string) => void
+  startRename: (node: FileTreeNode) => void
+  commitRename: () => void
+  cancelRename: () => void
+  onRenameKeyDown?: (e: KeyboardEvent) => void
+  onRenameInputRef?: (el: HTMLInputElement | null) => void
+  activeNodePath: () => string | null
+  setActiveNodePath: (path: string | null) => void
+}
+
+function NodeName(props: NodeProps, isChanged: () => boolean) {
+  if (props.renamingPath() === props.node.path) {
+    return (
+      <input
+        ref={props.onRenameInputRef}
+        class="ftree-rename-input"
+        value={props.renamingDraft()}
+        onInput={(e) => props.setRenamingDraft((e.currentTarget as HTMLInputElement).value)}
+        onKeyDown={props.onRenameKeyDown}
+        onBlur={props.commitRename}
+        onClick={(e) => e.stopPropagation()}
+        onDblClick={(e) => e.stopPropagation()}
+      />
+    )
+  }
+  return (
+    <span
+      class={`ftree-name${isChanged() ? ' is-changed' : ''}`}
+      onDblClick={(e) => {
+        e.stopPropagation()
+        props.startRename(props.node)
+      }}
+    >
+      {props.node.name}
+    </span>
+  )
 }
 
 function TreeNode(props: NodeProps) {
@@ -56,77 +95,115 @@ function TreeNode(props: NodeProps) {
     <Show
       when={props.node.isDir}
       fallback={
-        <div class="ftree-item">
-          <KContextMenu>
+        <KContextMenu>
+          <div class="ftree-item">
             <KContextMenu.Trigger
               as="button"
               type="button"
               class="ftree-row ftree-file"
               title={props.node.path}
-              onClick={() => props.onFileClick?.(props.node.path)}
+              onClick={() => {
+                props.setActiveNodePath(props.node.path)
+                props.onFileClick?.(props.node.path)
+              }}
             >
               <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
               <FileIcon name={props.node.name} size={15} />
-              <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
+              {NodeName(props, isChanged)}
             </KContextMenu.Trigger>
-            <KContextMenu.Portal>
-              <KContextMenu.Content class="ftree-context-menu">
-                <KContextMenu.Item
-                  class="ftree-context-menu__item"
-                  onSelect={() => props.onRename?.(props.node)}
-                >
-                  Rename
-                  <span class="ftree-context-menu__shortcut">F2</span>
-                </KContextMenu.Item>
-                <KContextMenu.Item
-                  class="ftree-context-menu__item"
-                  onSelect={() => props.onCopy?.(props.node)}
-                >
-                  Copy
-                  <span class="ftree-context-menu__shortcut">Ctrl+C</span>
-                </KContextMenu.Item>
-                <KContextMenu.Separator class="ftree-context-menu__separator" />
-                <KContextMenu.Item
-                  class="ftree-context-menu__item ftree-context-menu__item--danger"
-                  onSelect={() => props.onDelete?.(props.node)}
-                >
-                  Move to Trash
-                  <span class="ftree-context-menu__shortcut">Del</span>
-                </KContextMenu.Item>
-              </KContextMenu.Content>
-            </KContextMenu.Portal>
-          </KContextMenu>
-          <button
-            type="button"
-            class="ftree-delete-btn"
-            title={`Move ${props.node.name} to Trash`}
-            onClick={() => props.onDelete?.(props.node)}
-          >
-            <Trash2 size={12} strokeWidth={1.8} />
-          </button>
-        </div>
+            <button
+              type="button"
+              class="ftree-more-btn"
+              title="More actions"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreHorizontal size={13} strokeWidth={1.8} />
+            </button>
+          </div>
+          <KContextMenu.Portal>
+            <KContextMenu.Content class="ftree-context-menu">
+              <KContextMenu.Item
+                class="ftree-context-menu__item"
+                onSelect={() => props.startRename?.(props.node)}
+              >
+                Rename
+                <span class="ftree-context-menu__shortcut">F2</span>
+              </KContextMenu.Item>
+              <KContextMenu.Item
+                class="ftree-context-menu__item"
+                onSelect={() => props.onCopy?.(props.node)}
+              >
+                Copy
+                <span class="ftree-context-menu__shortcut">Ctrl+C</span>
+              </KContextMenu.Item>
+              <KContextMenu.Separator class="ftree-context-menu__separator" />
+              <KContextMenu.Item
+                class="ftree-context-menu__item ftree-context-menu__item--danger"
+                onSelect={() => props.onDelete?.(props.node)}
+              >
+                Move to Trash
+                <span class="ftree-context-menu__shortcut">Del</span>
+              </KContextMenu.Item>
+            </KContextMenu.Content>
+          </KContextMenu.Portal>
+        </KContextMenu>
       }
     >
-      <div class="ftree-item">
-        <button
-          type="button"
-          class="ftree-row ftree-dir"
-          onClick={() => props.onToggle(props.node.path)}
-          title={props.node.path}
-        >
-          <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
-          <FolderIcon name={props.node.name} size={15} open={isExpanded()} />
-          <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
-        </button>
-        <button
-          type="button"
-          class="ftree-delete-btn"
-          title={`Move ${props.node.name} to Trash`}
-          onClick={() => props.onDelete?.(props.node)}
-        >
-          <Trash2 size={12} strokeWidth={1.8} />
-        </button>
-      </div>
+      <KContextMenu>
+        <div class="ftree-item">
+          <KContextMenu.Trigger
+            as="button"
+            type="button"
+            class="ftree-row ftree-dir"
+            onClick={() => {
+              props.setActiveNodePath(props.node.path)
+              props.onToggle(props.node.path)
+            }}
+            title={props.node.path}
+          >
+            <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
+            <FileIcon name={props.node.name} size={15} />
+            <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
+            <Show when={props.node.children?.length}>
+              <span class="ftree-count">{props.node.children!.length}</span>
+            </Show>
+          </KContextMenu.Trigger>
+          <button
+            type="button"
+            class="ftree-more-btn"
+            title="More actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal size={13} strokeWidth={1.8} />
+          </button>
+        </div>
+        <KContextMenu.Portal>
+          <KContextMenu.Content class="ftree-context-menu">
+            <KContextMenu.Item
+              class="ftree-context-menu__item"
+              onSelect={() => props.startRename?.(props.node)}
+            >
+              Rename
+              <span class="ftree-context-menu__shortcut">F2</span>
+            </KContextMenu.Item>
+            <KContextMenu.Item
+              class="ftree-context-menu__item"
+              onSelect={() => props.onCopy?.(props.node)}
+            >
+              Copy
+              <span class="ftree-context-menu__shortcut">Ctrl+C</span>
+            </KContextMenu.Item>
+            <KContextMenu.Separator class="ftree-context-menu__separator" />
+            <KContextMenu.Item
+              class="ftree-context-menu__item ftree-context-menu__item--danger"
+              onSelect={() => props.onDelete?.(props.node)}
+            >
+              Move to Trash
+              <span class="ftree-context-menu__shortcut">Del</span>
+            </KContextMenu.Item>
+          </KContextMenu.Content>
+        </KContextMenu.Portal>
+      </KContextMenu>
       <Show when={isExpanded()}>
         <For each={props.node.children ?? []}>
           {(child, idx) => {
@@ -145,6 +222,16 @@ function TreeNode(props: NodeProps) {
                 onRename={props.onRename}
                 onCopy={props.onCopy}
                 onContextMenu={props.onContextMenu}
+                renamingPath={props.renamingPath}
+                renamingDraft={props.renamingDraft}
+                setRenamingDraft={props.setRenamingDraft}
+                startRename={props.startRename}
+                commitRename={props.commitRename}
+                cancelRename={props.cancelRename}
+                onRenameKeyDown={props.onRenameKeyDown}
+                onRenameInputRef={props.onRenameInputRef}
+                activeNodePath={props.activeNodePath}
+                setActiveNodePath={props.setActiveNodePath}
               />
             )
           }}
@@ -157,8 +244,96 @@ function TreeNode(props: NodeProps) {
 export function FileTree(props: FileTreeProps) {
   const [tree, setTree] = createSignal<FileTreeResult | null>(null)
   const [expanded, setExpanded] = createSignal<Set<string>>(new Set())
+  const [renamingPath, setRenamingPath] = createSignal<string | null>(null)
+  const [renamingDraft, setRenamingDraft] = createSignal<string>('')
+  const [activeNodePath, setActiveNodePath] = createSignal<string | null>(null)
   let mounted = true
   let requestId = 0
+
+  const startRename = (node: FileTreeNode) => {
+    setRenamingPath(node.path)
+    setRenamingDraft(node.name)
+  }
+  const cancelRename = () => {
+    setRenamingPath(null)
+    setRenamingDraft('')
+  }
+  const commitRename = async () => {
+    const path = renamingPath()
+    const draft = renamingDraft().trim()
+    cancelRename()
+    if (!path) return
+    const original = path.split('/').pop() ?? ''
+    if (!draft || draft === original) return
+    try {
+      const newPath = await window.openpi.renameFile(path, draft)
+      props.onFileRenamed?.(path, newPath)
+      void refreshTree(false)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not rename')
+    }
+  }
+  const onRenameKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void commitRename()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelRename()
+    }
+  }
+
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '')
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (!target || !(target instanceof HTMLElement)) return false
+    const tag = target.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+    if (target.isContentEditable) return true
+    return false
+  }
+  const getActiveNode = (): FileTreeNode | null => {
+    const path = activeNodePath()
+    if (!path) return null
+    const findInTree = (n: FileTreeNode): FileTreeNode | null => {
+      if (n.path === path) return n
+      for (const child of n.children ?? []) {
+        const r = findInTree(child)
+        if (r) return r
+      }
+      return null
+    }
+    const root = tree()
+    if (!root) return null
+    for (const child of root.children) {
+      const r = findInTree(child)
+      if (r) return r
+    }
+    return null
+  }
+  const handleTreeKeydown = (e: KeyboardEvent) => {
+    if (isEditableTarget(e.target)) return
+    const node = getActiveNode()
+    if (!node) return
+    const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+    if (e.key === 'F2' && !e.shiftKey && !cmdOrCtrl && !e.altKey) {
+      e.preventDefault()
+      startRename(node)
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (!e.shiftKey && !cmdOrCtrl && !e.altKey) {
+        e.preventDefault()
+        void deleteNode(node)
+      }
+    } else if ((e.key === 'c' || e.key === 'C') && cmdOrCtrl && !e.shiftKey && !e.altKey) {
+      e.preventDefault()
+      void copyNode(node)
+    }
+  }
+  onMount(() => {
+    window.addEventListener('keydown', handleTreeKeydown)
+  })
+  onCleanup(() => {
+    window.removeEventListener('keydown', handleTreeKeydown)
+  })
 
   const refreshTree = async (resetExpansion = false) => {
     const currentRequest = ++requestId
@@ -217,17 +392,6 @@ export function FileTree(props: FileTreeProps) {
     }
   }
 
-  const renameNode = async (node: FileTreeNode) => {
-    const newName = window.prompt(`Rename ${node.isDir ? 'folder' : 'file'} to:`, node.name)
-    if (!newName || newName === node.name) return
-    try {
-      await window.openpi.renameFile(node.path, newName)
-      void refreshTree(false)
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Could not rename')
-    }
-  }
-
   const copyNode = async (node: FileTreeNode) => {
     try {
       await window.openpi.copyFile(node.path)
@@ -275,9 +439,24 @@ export function FileTree(props: FileTreeProps) {
                   onToggle={toggle}
                   onFileClick={props.onFileClick}
                   onDelete={deleteNode}
-                  onRename={renameNode}
+                  onRename={startRename}
                   onCopy={copyNode}
                   onContextMenu={handleContextMenu}
+                  renamingPath={renamingPath}
+                  renamingDraft={renamingDraft}
+                  setRenamingDraft={setRenamingDraft}
+                  startRename={startRename}
+                  commitRename={commitRename}
+                  cancelRename={cancelRename}
+                  onRenameKeyDown={onRenameKeyDown}
+                  onRenameInputRef={(el) => {
+                    if (el) {
+                      el.focus()
+                      el.select()
+                    }
+                  }}
+                  activeNodePath={activeNodePath}
+                  setActiveNodePath={setActiveNodePath}
                 />
               )}
             </For>
