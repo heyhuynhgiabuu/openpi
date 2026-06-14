@@ -3,6 +3,7 @@ import { Archive, Check, Plus, RotateCcw, Search, Trash2 } from 'lucide-solid'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { ArchivedSessionItem, SessionListItem, WorkspaceInfo } from '../../lib/ipc'
 import { formatRelativeTime, groupSessions } from '../../lib/sessionView'
+import { isMacPlatform } from '../../lib/shortcutFormat'
 import type { GroupMode, SortMode } from '../../types/session'
 import { SessionFilterMenu } from './SessionFilterMenu'
 import { SessionRow } from './SessionRow'
@@ -109,7 +110,7 @@ export function SessionSidebar(props: SessionSidebarProps) {
               type="button"
               class="icon-button no-drag"
               onClick={props.onNewSession}
-              title="New thread (⌘N)"
+              title={`New thread (${isMacPlatform() ? '⌘N' : 'Ctrl+N'})`}
               aria-label="New thread"
             >
               <Plus size={15} />

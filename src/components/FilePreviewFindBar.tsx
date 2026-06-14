@@ -8,6 +8,7 @@ import {
   X,
 } from 'lucide-solid'
 import { Show } from 'solid-js'
+import { isMacPlatform } from '../lib/shortcutFormat'
 
 export interface FilePreviewFindBarProps {
   findOpen: boolean
@@ -50,7 +51,7 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
         <button
           type="button"
           class={`fv-find-replace-toggle${props.findReplaceOpen ? ' is-active' : ''}`}
-          title={`${props.findReplaceOpen ? 'Hide' : 'Show'} Replace (Cmd+⌥F)`}
+          title={`${props.findReplaceOpen ? 'Hide' : 'Show'} Replace (${isMacPlatform() ? 'Cmd+⌥F' : 'Ctrl+H'})`}
           onClick={() => {
             const next = !props.findReplaceOpen
             props.onFindReplaceOpenToggle(next)
@@ -214,7 +215,7 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
             <button
               type="button"
               class="fv-find-replace-btn"
-              title="Replace all (Cmd+↩)"
+              title={`Replace all (${isMacPlatform() ? 'Cmd+↩' : 'Ctrl+Enter'})`}
               onClick={props.onReplaceAll}
               disabled={props.findTotal === 0 || !props.modeIsEdit}
             >

@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onMount, Show } from 'solid-js'
+import { isMacPlatform } from '../../lib/shortcutFormat'
 import { OutputPane } from './OutputPane'
 import { terminalCwdLabel } from './shellIntegration'
 import { TerminalPane } from './TerminalPane'
@@ -217,7 +218,7 @@ export function TerminalPanel(props: Props) {
             type="button"
             class="terminal-panel-close"
             onClick={props.onClose}
-            title="Close panel (⌘J)"
+            title={`Close panel (${isMacPlatform() ? '⌘J' : 'Ctrl+J'})`}
           >
             ×
           </button>

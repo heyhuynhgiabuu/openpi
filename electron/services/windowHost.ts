@@ -4,6 +4,7 @@ import { IPC } from '../../src/lib/ipc'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import type { PtyHost } from './ptyHost'
 import { appIconPath } from './shellEnv'
+import { attachWindowStateSaver, loadWindowState } from './windowState'
 
 type PtyHostInstance = InstanceType<typeof PtyHost>
 
@@ -18,9 +19,12 @@ interface CreateWindowOptions {
 }
 
 export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
+  const saved = loadWindowState()
   const mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    x: saved.x,
+    y: saved.y,
+    width: saved.width,
+    height: saved.height,
     minWidth: 900,
     minHeight: 600,
     title: 'OpenPi',
@@ -34,6 +38,10 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
       sandbox: true,
     },
   })
+
+  if (saved.isMaximized) mainWindow.maximize()
+  if (saved.isFullScreen) mainWindow.setFullScreen(true)
+  attachWindowStateSaver(mainWindow)
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)

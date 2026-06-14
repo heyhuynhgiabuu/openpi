@@ -75,6 +75,48 @@ function shellName(shellPath: string): string {
     .toLowerCase()
 }
 
+/**
+ * Pick a sensible default shell for the current platform.
+ *
+ * Order of precedence:
+ *  1. `OPENPI_SHELL` env var (escape hatch)
+ *  2. Platform default: PowerShell on Windows, `$SHELL` elsewhere
+ *  3. Common fallbacks: cmd.exe on Windows, bash/zsh on POSIX
+ *
+ * The previous implementation used `$SHELL ?? '/bin/zsh'`, which
+ * always failed on Windows because `$SHELL` is not set and
+ * `/bin/zsh` does not exist. Users on Windows now get
+ * PowerShell by default, with a friendlier error if it can't be
+ * found.
+ */
+function pickDefaultShell(): string {
+  if (process.env.OPENPI_SHELL) return process.env.OPENPI_SHELL
+  if (process.platform === 'win32') {
+    if (process.env.ComSpec) return process.env.ComSpec
+    const candidates = [
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      'cmd.exe',
+    ]
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate
+    }
+    return 'powershell.exe'
+  }
+  if (process.env.SHELL && fs.existsSync(process.env.SHELL)) return process.env.SHELL
+  const posixCandidates = [
+    '/bin/zsh',
+    '/bin/bash',
+    '/usr/bin/zsh',
+    '/usr/bin/bash',
+    '/usr/local/bin/zsh',
+  ]
+  for (const candidate of posixCandidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return '/bin/sh'
+}
+
 function shellIntegrationRoot(): string {
   const root = path.join(os.homedir(), '.cache', 'openpi', 'shell-integration')
   fs.mkdirSync(root, { recursive: true })
@@ -142,9 +184,18 @@ export class PtyHost {
 
   create(cwd: string, cols: number, rows: number): string {
     const id = `pty-${this.nextId++}`
-    const shell = process.env.SHELL ?? '/bin/zsh'
-    const workingDirectory = cwd || (process.env.HOME ?? '/')
-    const launch = buildShellLaunchConfig(shell, workingDirectory)
+    const shell = pickDefaultShell()
+    const workingDirectory = cwd || os.homedir()
+    let launch: ShellLaunchConfig
+    try {
+      launch = buildShellLaunchConfig(shell, workingDirectory)
+    } catch (err) {
+      throw new Error(
+        `Terminal shell not found: ${shell}. ` +
+          `On Windows, install PowerShell or set the OPENPI_SHELL environment variable. ` +
+          `Original error: ${(err as Error).message}`
+      )
+    }
 
     const p = pty.spawn(launch.shell, launch.args, {
       name: 'xterm-256color',

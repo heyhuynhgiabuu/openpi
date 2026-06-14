@@ -128,6 +128,7 @@ export default function App() {
   const [gitSyncAction, setGitSyncAction] = createSignal<GitSyncAction | null>(null)
   const [gitSyncMessage, setGitSyncMessage] = createSignal<string | null>(null)
   const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false)
+  const [filePanelWidth, setFilePanelWidth] = createSignal(280)
   const [connectProviderOpen, setConnectProviderOpen] = createSignal(false)
   const [manageModelsOpen, setManageModelsOpen] = createSignal(false)
   const archive = useAppArchive()
@@ -138,6 +139,7 @@ export default function App() {
   // Rename trigger — TopBar sets this when it mounts so App can call it from a keybinding
   let triggerRename: (() => void) | undefined
   const keybindings = useAppKeybindings({
+    displayPreferences: () => displayPreferences(),
     customKeybindings,
     setCommandPaletteOpen,
     setTerminalOpen,
@@ -305,7 +307,10 @@ export default function App() {
               models={session.models}
               currentModel={session.currentModel}
               onSelectModel={session.selectModel}
-              onOpenSettings={() => setCustomizationsOpen(true)}
+              onOpenSettings={() => {
+                if (displayPreferences().hideCustomizationsPanel) return
+                setCustomizationsOpen(true)
+              }}
               startRenameRef={(fn) => {
                 triggerRename = fn
               }}
@@ -438,8 +443,13 @@ export default function App() {
               />
               {/* File tree panel — separate from git panel */}
               <Show when={filePanelOpen()}>
-                <ResizeHandle direction="horizontal" onResize={() => {}} />
-                <div class="file-panel" style={{ width: '240px' }}>
+                <ResizeHandle
+                  direction="horizontal"
+                  onResize={(delta) =>
+                    setFilePanelWidth(Math.max(180, Math.min(640, filePanelWidth() + delta)))
+                  }
+                />
+                <div class="file-panel" style={{ width: `${filePanelWidth()}px` }}>
                   <FileTree
                     cwd={cwd()}
                     changedPaths={new Set()}

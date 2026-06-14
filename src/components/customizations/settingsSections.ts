@@ -196,6 +196,14 @@ export const SECTIONS: SettingSection[] = [
         default: false,
       },
       {
+        key: 'hideCustomizationsPanel',
+        type: 'boolean',
+        label: 'Hide Customizations Panel',
+        description:
+          'Disable the OpenPi Customizations modal entirely. Use this if you want OpenPi to be a UI for Pi without overriding Pi\u2019s own configuration.',
+        default: false,
+      },
+      {
         key: 'warnings.anthropicExtraUsage',
         type: 'boolean',
         label: 'Anthropic Usage Warning',

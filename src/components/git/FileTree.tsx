@@ -42,6 +42,9 @@ interface NodeProps {
   onToggle: (path: string) => void
   onFileClick?: (relPath: string) => void
   onDelete?: (node: FileTreeNode) => void
+  onRename?: (node: FileTreeNode) => void
+  onCopy?: (node: FileTreeNode) => void
+  onContextMenu?: (e: MouseEvent, node: FileTreeNode) => void
 }
 
 function TreeNode(props: NodeProps) {
@@ -58,6 +61,7 @@ function TreeNode(props: NodeProps) {
             class="ftree-row ftree-file"
             title={props.node.path}
             onClick={() => props.onFileClick?.(props.node.path)}
+            onContextMenu={(e) => props.onContextMenu?.(e, props.node)}
           >
             <TreeConnector parentLines={props.parentLines} isLast={props.isLast} />
             <FileIcon name={props.node.name} size={15} />
@@ -109,6 +113,9 @@ function TreeNode(props: NodeProps) {
                 onToggle={props.onToggle}
                 onFileClick={props.onFileClick}
                 onDelete={props.onDelete}
+                onRename={props.onRename}
+                onCopy={props.onCopy}
+                onContextMenu={props.onContextMenu}
               />
             )
           }}
@@ -181,6 +188,34 @@ export function FileTree(props: FileTreeProps) {
     }
   }
 
+  const renameNode = async (node: FileTreeNode) => {
+    const newName = window.prompt(`Rename ${node.isDir ? 'folder' : 'file'} to:`, node.name)
+    if (!newName || newName === node.name) return
+    try {
+      await window.openpi.renameFile(node.path, newName)
+      void refreshTree(false)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not rename')
+    }
+  }
+
+  const copyNode = async (node: FileTreeNode) => {
+    try {
+      await window.openpi.copyFile(node.path)
+      void refreshTree(false)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not copy')
+    }
+  }
+
+  const handleContextMenu = (event: MouseEvent, node: FileTreeNode) => {
+    event.preventDefault()
+    const choice = window.prompt(`Action for "${node.name}":\n1. Rename\n2. Copy\n3. Delete`, '1')
+    if (choice === '1') void renameNode(node)
+    else if (choice === '2') void copyNode(node)
+    else if (choice === '3') void deleteNode(node)
+  }
+
   const changedPaths = () => props.changedPaths ?? new Set<string>()
   const isRootExpanded = () => expanded().has('')
 
@@ -213,6 +248,9 @@ export function FileTree(props: FileTreeProps) {
                   onToggle={toggle}
                   onFileClick={props.onFileClick}
                   onDelete={deleteNode}
+                  onRename={renameNode}
+                  onCopy={copyNode}
+                  onContextMenu={handleContextMenu}
                 />
               )}
             </For>

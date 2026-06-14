@@ -1,14 +1,17 @@
 import { execSync } from 'node:child_process'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMain, shell } from 'electron'
 import type { FileContent } from '../../src/lib/ipc'
 import {
+  copyFileRequestSchema,
   deleteFileRequestSchema,
   deleteFileResultSchema,
   formatFileRequestSchema,
   IPC,
   readFileRequestSchema,
+  renameFileRequestSchema,
   writeFileRequestSchema,
 } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
@@ -130,6 +133,61 @@ export function registerFileIpc(deps: FileIpcDeps): void {
       // Git status refresh is best-effort; the file-tree refresh above is authoritative here.
     }
     return deleteFileResultSchema.parse({ trashed: true })
+  })
+
+  deps.ipcMain.handle(IPC.RENAME_FILE, async (_event, raw: unknown): Promise<string> => {
+    const cwd = deps.getCwd()
+    if (!cwd) throw new Error('No active workspace')
+    const { path: relPath, newName } = renameFileRequestSchema.parse(raw)
+    if (newName.includes('/') || newName.includes('\\') || newName === '.' || newName === '..') {
+      throw new Error(`Invalid name: ${newName}`)
+    }
+    const full = resolveWorkspaceRelativePath(cwd, relPath, 'rename')
+    const target = path.join(path.dirname(full), newName)
+    if (fs.existsSync(target)) {
+      throw new Error(`Target already exists: ${newName}`)
+    }
+    if (isGitMetadataPath(relPath) || isGitMetadataPath(path.relative(cwd, target))) {
+      throw new Error('Refusing to rename into or out of Git metadata')
+    }
+    const violation = checkProtectedPath(target, cwd)
+    if (violation && violation.level !== 'soft') {
+      throw new Error(`Refusing to rename to protected path: ${violation.reason}`)
+    }
+    fs.renameSync(full, target)
+    deps.getMainWindow()?.webContents.send(IPC.FILE_TREE_CHANGED)
+    return path.relative(cwd, target)
+  })
+
+  deps.ipcMain.handle(IPC.COPY_FILE, async (_event, raw: unknown): Promise<string> => {
+    const cwd = deps.getCwd()
+    if (!cwd) throw new Error('No active workspace')
+    const { path: relPath, target: relTarget } = copyFileRequestSchema.parse(raw)
+    const src = resolveWorkspaceRelativePath(cwd, relPath, 'copy')
+    let dest: string
+    if (relTarget) {
+      dest = resolveWorkspaceRelativePath(cwd, relTarget, 'copy')
+    } else {
+      const ext = path.extname(src)
+      const base = src.slice(0, src.length - ext.length)
+      dest = `${base}-copy${ext}`
+      let n = 1
+      while (fs.existsSync(dest)) {
+        dest = `${base}-copy${n}${ext}`
+        n += 1
+      }
+    }
+    if (fs.existsSync(dest)) {
+      throw new Error(`Target already exists: ${path.relative(cwd, dest)}`)
+    }
+    const stat = fs.statSync(src)
+    if (stat.isDirectory()) {
+      fs.cpSync(src, dest, { recursive: true })
+    } else {
+      fs.copyFileSync(src, dest)
+    }
+    deps.getMainWindow()?.webContents.send(IPC.FILE_TREE_CHANGED)
+    return path.relative(cwd, dest)
   })
 
   deps.ipcMain.handle(IPC.FORMAT_FILE, async (_event, raw: unknown): Promise<string> => {

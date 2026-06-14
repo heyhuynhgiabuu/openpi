@@ -94,6 +94,10 @@ export const gitApi = {
     ipcRenderer.invoke(IPC.WRITE_FILE, { path: relPath, content }),
   deleteFile: (relPath: string): Promise<{ trashed: boolean }> =>
     ipcRenderer.invoke(IPC.DELETE_FILE, { path: relPath }),
+  renameFile: (relPath: string, newName: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.RENAME_FILE, { path: relPath, newName }),
+  copyFile: (relPath: string, target?: string): Promise<string> =>
+    ipcRenderer.invoke(IPC.COPY_FILE, { path: relPath, target }),
   formatFile: (relPath: string): Promise<string> =>
     ipcRenderer.invoke(IPC.FORMAT_FILE, { path: relPath }),
   getGitRemoteUrl: (): Promise<string | null> => ipcRenderer.invoke(IPC.GIT_REMOTE_URL),

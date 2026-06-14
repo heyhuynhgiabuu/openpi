@@ -9,6 +9,7 @@ import {
   onCleanup,
   Show,
 } from 'solid-js'
+import { isMacPlatform } from '../lib/shortcutFormat'
 import { ContextUsageButton, TpsBadge } from './composer/Badges'
 import { AgentChip, FileChip, LineCommentChip, SkillChip } from './composer/Chips'
 import { SkillPicker, SlashCommandPicker } from './composer/CommandPicker'
@@ -321,7 +322,7 @@ export const Composer: Component<ComposerProps> = (props) => {
               textareaEl = el
               props.setTextareaRef(el)
             }}
-            rows={1}
+            rows={3}
             placeholder={
               shellMode()
                 ? 'Enter shell command…'
@@ -356,7 +357,7 @@ export const Composer: Component<ComposerProps> = (props) => {
                     setModelOpen(false)
                     setThinkingOpen(false)
                   }}
-                  title="Add context file (⌘/)"
+                  title={`Add context file (${isMacPlatform() ? '⌘/' : 'Ctrl+/'})`}
                   aria-label="Add context file"
                 >
                   <Paperclip size={13} strokeWidth={2} />

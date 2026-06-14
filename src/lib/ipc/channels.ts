@@ -82,6 +82,8 @@ export const IPC = {
   READ_FILE: 'openpi:read-file',
   WRITE_FILE: 'openpi:write-file',
   DELETE_FILE: 'openpi:delete-file',
+  RENAME_FILE: 'openpi:rename-file',
+  COPY_FILE: 'openpi:copy-file',
   FORMAT_FILE: 'openpi:format-file',
   SET_EXTENSION_ENABLED: 'openpi:set-extension-enabled',
   GET_FIRST_RUN: 'openpi:get-first-run',

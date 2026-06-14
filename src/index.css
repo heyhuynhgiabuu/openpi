@@ -2473,15 +2473,9 @@ body.panel-dragging {
   min-width: 0;
 }
 .session-title-text {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink-soft);
-  font-size: 15px;
-  font-weight: 560;
-  letter-spacing: -0.16px;
+  font-size: 13px;
+  font-weight: 540;
+  letter-spacing: -0.01em;
 }
 .session-row.is-active .session-title-text {
   color: var(--ink);
@@ -2975,11 +2969,12 @@ body.panel-dragging {
   content: "∨";
   font-size: 11px;
 }
-/* └ connector: ASCII tree branch before thinking content; replaces left border */
+/* └ connector: ASCII tree branch before thinking content; aligns with .message-list padding */
 .thinking-body {
   position: relative;
   margin-top: 6px;
-  padding-left: 1.6em; /* indent body past the └ glyph */
+  margin-left: -1.4em;
+  padding-left: 1.4em; /* └ glyph hangs in the negative-margin gutter */
 }
 .thinking-body::before {
   content: "└";
@@ -3030,6 +3025,12 @@ body.panel-dragging {
   font-size: 12px;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.message:hover .message-usage,
+.message-usage:focus-within {
+  opacity: 1;
 }
 /* Model name — plain text, consistent with token in/out */
 .message-usage-model {
@@ -3049,6 +3050,10 @@ body.panel-dragging {
 /* Streaming mode — live estimate replaces static usage */
 .message-usage--streaming {
   opacity: 0.7;
+}
+.message:hover .message-usage--streaming,
+.message:has(.message-usage--streaming) .message-usage {
+  opacity: 1;
 }
 .message-usage-live {
   color: var(--accent);

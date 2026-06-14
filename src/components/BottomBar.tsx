@@ -10,6 +10,7 @@ import {
 } from 'lucide-solid'
 import { createSignal, Show } from 'solid-js'
 import type { AppUpdateStatus, GoalUpdate } from '../lib/ipc'
+import { isMacPlatform } from '../lib/shortcutFormat'
 import { ChangelogModal } from './ChangelogModal'
 
 export type LeftDrawerMode = 'threads' | 'workspace' | 'tree'
@@ -144,7 +145,7 @@ export function BottomBar(props: BottomBarProps) {
             type="button"
             class={`bottom-bar-btn${props.leftDrawerOpen && props.leftDrawerMode === 'threads' ? ' is-active' : ''}`}
             onClick={props.onToggleThreads}
-            title="Show thread history (⌘B)"
+            title={`Show thread history (${isMacPlatform() ? '⌘B' : 'Ctrl+B'})`}
             aria-pressed={props.leftDrawerOpen && props.leftDrawerMode === 'threads'}
           >
             <MessageSquareText size={13} />
@@ -243,7 +244,7 @@ export function BottomBar(props: BottomBarProps) {
             type="button"
             class={`bottom-bar-btn${props.terminalOpen ? ' is-active' : ''}`}
             onClick={props.onToggleTerminal}
-            title="Toggle terminal (⌘J)"
+            title={`Toggle terminal (${isMacPlatform() ? '⌘J' : 'Ctrl+J'})`}
             aria-pressed={props.terminalOpen}
           >
             <SquareTerminal size={13} />

@@ -931,6 +931,24 @@ export const deleteFileRequestSchema = z.object({
 })
 export type DeleteFileRequest = z.infer<typeof deleteFileRequestSchema>
 
+export const renameFileRequestSchema = z.object({
+  /** Path relative to workspace cwd */
+  path: z.string().min(1),
+  newName: z.string().min(1).max(255),
+})
+export type RenameFileRequest = z.infer<typeof renameFileRequestSchema>
+
+export const copyFileRequestSchema = z.object({
+  /** Source path relative to workspace cwd */
+  path: z.string().min(1),
+  /**
+   * Target path relative to workspace cwd. If absent, the file is
+   * copied to its sibling with a "-copy" suffix.
+   */
+  target: z.string().min(1).optional(),
+})
+export type CopyFileRequest = z.infer<typeof copyFileRequestSchema>
+
 export const deleteFileResultSchema = z.object({
   trashed: z.boolean(),
 })

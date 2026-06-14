@@ -3,6 +3,7 @@ export type DisplayPreferenceKey =
   | 'expandShellToolParts'
   | 'expandEditToolParts'
   | 'showSessionProgressBar'
+  | 'hideCustomizationsPanel'
 
 export type DisplayPreferences = Record<DisplayPreferenceKey, boolean>
 
@@ -43,6 +44,14 @@ export const DISPLAY_PREFERENCES: DisplayPreferenceMeta[] = [
     description:
       'Display the animated progress bar at the top of the session when the agent is working',
     defaultValue: true,
+  },
+  {
+    key: 'hideCustomizationsPanel',
+    storageKey: 'display.hide_customizations_panel',
+    label: 'Hide Customizations Panel',
+    description:
+      'Disable the OpenPi Customizations modal entirely. Use this to keep OpenPi as a thin UI over Pi\u2019s own configuration.',
+    defaultValue: false,
   },
 ]
 

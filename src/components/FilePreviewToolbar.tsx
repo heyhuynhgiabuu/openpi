@@ -1,6 +1,7 @@
 import { Code2, FileText, Keyboard, PanelRight, Save, X } from 'lucide-solid'
 import { Show } from 'solid-js'
 import { FileIcon } from '../lib/fileIcons'
+import { isMacPlatform } from '../lib/shortcutFormat'
 import { EDITOR_THEMES, type EditorThemeId, isEditorThemeId } from './CodeMirrorEditor'
 import type { ViewMode } from './FilePreviewBody'
 
@@ -59,7 +60,7 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
             class={`fv-tb-btn${props.formatOnSave ? ' fv-tb-btn--active' : ''}`}
             title={
               props.formatOnSave
-                ? 'Format on save enabled (⌘⇧F to format now)'
+                ? `Format on save enabled (${isMacPlatform() ? '⌘⇧F' : 'Ctrl+Shift+F'} to format now)`
                 : 'Format on save disabled'
             }
             onClick={() => props.onFormatOnSaveToggle()}
@@ -117,7 +118,11 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
           <button
             type="button"
             class={`fv-tb-btn${props.isDirty ? ' fv-tb-btn--dirty' : ''}`}
-            title={props.truncatedFile ? 'Cannot save truncated file' : 'Save (⌘S)'}
+            title={
+              props.truncatedFile
+                ? 'Cannot save truncated file'
+                : `Save (${isMacPlatform() ? '⌘S' : 'Ctrl+S'})`
+            }
             onClick={() => void props.onSave()}
             disabled={!props.isDirty || props.saving || props.truncatedFile}
           >
