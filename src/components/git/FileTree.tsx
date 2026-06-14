@@ -134,7 +134,7 @@ function TreeNode(props: NodeProps) {
                 onSelect={() => props.onCopy?.(props.node)}
               >
                 Copy
-                <span class="ftree-context-menu__shortcut">Ctrl+C</span>
+                <span class="ftree-context-menu__shortcut">Ctrl/Cmd+C</span>
               </KContextMenu.Item>
               <KContextMenu.Separator class="ftree-context-menu__separator" />
               <KContextMenu.Item
@@ -191,7 +191,7 @@ function TreeNode(props: NodeProps) {
               onSelect={() => props.onCopy?.(props.node)}
             >
               Copy
-              <span class="ftree-context-menu__shortcut">Ctrl+C</span>
+              <span class="ftree-context-menu__shortcut">Ctrl/Cmd+C</span>
             </KContextMenu.Item>
             <KContextMenu.Separator class="ftree-context-menu__separator" />
             <KContextMenu.Item
