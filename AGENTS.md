@@ -273,9 +273,9 @@ Pi intentionally ships without: MCP, permission gates, plan mode, background bas
 |---|---|---|
 | **Sidecar host** | `electron/pi/sidecar.ts` | Electron `utilityProcess` running the Pi SDK; owns `createAgentSession`, `DefaultResourceLoader`, `SettingsManager`, `SessionManager`, `AuthStorage`, `ModelRegistry` |
 | **Subagent core** | `electron/subagent/class.ts`, `electron/subagent/schemas.ts`, `electron/subagent/types.ts` | Custom tool definitions (worker, explorer, scout, planner, reviewer) injected via the sidecar's `customTools` option |
-| **Main bridge** | `electron/services/piSidecar.ts` (e.g. `buildGoalHarnessPrompt`) | Wraps subagent invocation, builds the system prompt fragment, forwards user input |
-| **Renderer shell** | `src/components/SubagentWidget.tsx`, `src/components/conversation/ToolCardView.tsx`, `src/components/conversation/PlanDock.tsx` | Renders the subagent and tool cards in the conversation timeline |
-| **State bridge** | `src/lib/syncBridge.ts`, `electron/services/statusWatchers.ts` | Reads `~/.pi/agent/.openpi-goal.json` and `.openpi-plan.json` written by the harness extension; surfaces state to the renderer |
+| **Main bridge** | `electron/services/piSidecar.ts` | Wraps subagent invocation, builds the system prompt fragment, forwards user input |
+| **Renderer shell** | `src/components/SubagentWidget.tsx`, `src/components/conversation/ToolCardView.tsx` | Renders the subagent and tool cards in the conversation timeline |
+| **State bridge** | `src/lib/syncBridge.ts` | Bridges session state from the electron main to the renderer |
 
 ### Built-in agent types
 
@@ -303,27 +303,13 @@ tools: [read, grep, find]
 
 The frontmatter is parsed by `DefaultResourceLoader` and registered as a subagent tool. The body becomes the system prompt fragment.
 
-### Goal/harness tools (local, project-specific)
-
-The `/goal` controller is powered by 5 LLM-callable tools registered by the project-local harness extension at `.pi/extensions/harness/index.ts`:
-
-- `get_goal` — read current goal state
-- `create_goal` — start a new goal
-- `update_goal` — mark complete or change status
-- `clear_goal` — clear the active goal
-- `update_plan` — push plan steps to the renderer
-
-State files: `~/.pi/agent/.openpi-goal.json`, `~/.pi/agent/.openpi-plan.json`. The OpenPi main process watches these files and reflects state in the goal banner and `PlanDock` widget.
-
-**Note:** the global `harness` build-pipeline tool at `~/.pi/agent/extensions/harness/` (Planner → Generator → Evaluator loop) is a separate system. It runs long-running build workflows and is not part of the project-local extension surface.
-
 ### Subagent-specific don'ts
 
 - Do not import `@earendil-works/pi-coding-agent` in the renderer to use subagent APIs.
 - Do not reuse a `customTools` array across sessions; rebuild per `createAgentSession` call.
 - Do not let the model decide which subagent to invoke without an explicit user trigger; the surface is opt-in.
 - Do not wire subagent prompts that bypass the sidecar; all subagent invocation goes through `electron/pi/sidecar.ts` so Electron main owns lifecycle.
-- Do not write goal/plan state directly to the JSON files; always call the tool so events stream back to the renderer.
+
 
 ---
 
