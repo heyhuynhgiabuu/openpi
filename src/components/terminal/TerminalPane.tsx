@@ -78,9 +78,10 @@ export function TerminalPane(props: Props) {
       fontSize,
       lineHeight: 1.12,
       letterSpacing: 0,
-      fontWeight: 600,
-      fontWeightBold: 700,
+      fontWeight: 400,
+      fontWeightBold: 600,
       cursorStyle: 'block',
+
       cursorBlink: true,
       scrollback: 5000,
       customGlyphs: true,

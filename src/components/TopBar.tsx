@@ -1,32 +1,34 @@
 /**
  * TopBar — SolidJS version.
- * Three-zone header: macOS traffic-light spacer · session identity · settings.
+ * Three-zone header: hamburger + new session · session tabs · workspace + git + settings.
  */
-import logoUrl from '@icons/icon.svg'
-import { GitBranch, MonitorCog } from 'lucide-solid'
-import { createSignal, Show } from 'solid-js'
-import type { ModelInfo } from '../lib/ipc'
+import { GitBranch, Menu, MonitorCog, Plus } from 'lucide-solid'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import type { ModelInfo, SessionListItem } from '../lib/ipc'
+import { isMacPlatform } from '../lib/shortcutFormat'
 
 interface Props {
   workspaceName: string
   gitBranch: string | null
   gitStats?: { added: number; removed: number; untracked: number; changed?: number } | null
-  /** Upstream ref label, e.g. "origin/main ↑1 ↓2" — surfaced by GitPanel. */
   gitUpstream?: string | null
-  /** Total number of changed files (staged + unstaged + untracked). */
   gitChangeCount?: number | null
-  /** Called when the branch chip is clicked — opens the refs picker in GitPanel. */
   onBranchClick?: () => void
   sessionName: string
   isStreaming: boolean
   onRenameSession: (name: string) => void
   onOpenWorkspace: () => void
   onOpenSettings: () => void
-  /** Optional ref callback — parent calls the returned function to trigger rename mode */
   startRenameRef?: (fn: () => void) => void
   models?: ModelInfo[]
   currentModel?: ModelInfo | null
   onSelectModel?: (model: ModelInfo) => void
+  // ── Session tabs ─────────────────────────────────────────────────
+  sessions: SessionListItem[]
+  activeSessionPath: string | null
+  onSelectSession: (path: string) => void
+  onNewSession: () => void
+  onToggleHomescreen: () => void
 }
 
 export function TopBar(props: Props) {
@@ -40,7 +42,6 @@ export function TopBar(props: Props) {
     setTimeout(() => inputRef?.select(), 0)
   }
 
-  // Expose startEdit to parent via callback ref
   props.startRenameRef?.(startEdit)
 
   const commitEdit = () => {
@@ -49,42 +50,122 @@ export function TopBar(props: Props) {
     setEditing(false)
   }
 
+  const [openSessionPaths, setOpenSessionPaths] = createSignal<string[]>([])
+
+  createEffect(() => {
+    const activePath = props.activeSessionPath
+    if (!activePath) return
+    setOpenSessionPaths((paths) => (paths.includes(activePath) ? paths : [...paths, activePath]))
+  })
+
+  const sessionTabs = createMemo(() => {
+    const knownPaths = new Set(props.sessions.map((session) => session.path))
+    const activePath = props.activeSessionPath
+    const paths = openSessionPaths().filter((path) => path === activePath || knownPaths.has(path))
+
+    if (activePath && !paths.includes(activePath)) paths.push(activePath)
+
+    return paths.map((path) => {
+      const session = props.sessions.find((item) => item.path === path)
+      return {
+        path,
+        title: session?.title || (path === activePath ? props.sessionName : 'session'),
+      }
+    })
+  })
+
+  const closeSessionTab = (path: string) => {
+    const remainingPaths = sessionTabs()
+      .map((session) => session.path)
+      .filter((sessionPath) => sessionPath !== path)
+
+    setOpenSessionPaths((paths) => paths.filter((sessionPath) => sessionPath !== path))
+
+    if (path === props.activeSessionPath && remainingPaths.length > 0) {
+      props.onSelectSession(remainingPaths[remainingPaths.length - 1])
+    }
+  }
+
   return (
     <header class="topbar drag">
-      <div class="topbar-left-zone" aria-hidden="true" />
+      {/* ── Left zone: hamburger + new session ── */}
+      <div class="topbar-left-zone">
+        <div class="topbar-left-buttons">
+          <button
+            type="button"
+            class="topbar-icon-btn no-drag"
+            onClick={props.onToggleHomescreen}
+            title="Show homescreen"
+            aria-label="Show homescreen"
+          >
+            <Menu size={16} />
+          </button>
+          <button
+            type="button"
+            class="topbar-icon-btn no-drag"
+            onClick={props.onNewSession}
+            title={`New thread (${isMacPlatform() ? '⌘N' : 'Ctrl+N'})`}
+            aria-label="New thread"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
 
+      {/* ── Center zone: session tabs + workspace + git ── */}
       <div class="topbar-center no-drag">
-        <span class="topbar-brand-icon" aria-hidden="true">
-          <img src={logoUrl} alt="" />
-        </span>
-
-        <Show
-          when={editing()}
-          fallback={
-            <button
-              type="button"
-              class="topbar-name-btn"
-              onClick={startEdit}
-              title="Click to rename session"
-            >
-              {props.sessionName}
-            </button>
-          }
-        >
-          <input
-            ref={(el) => {
-              inputRef = el
-            }}
-            class="topbar-name-input"
-            value={draft()}
-            onInput={(e) => setDraft(e.currentTarget.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitEdit()
-              if (e.key === 'Escape') setEditing(false)
-            }}
-          />
-        </Show>
+        <div class="topbar-tabs">
+          <Show
+            when={!editing()}
+            fallback={
+              <input
+                ref={(el) => {
+                  inputRef = el
+                }}
+                class="topbar-name-input"
+                value={draft()}
+                onInput={(e) => setDraft(e.currentTarget.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit()
+                  if (e.key === 'Escape') setEditing(false)
+                }}
+              />
+            }
+          >
+            <For each={sessionTabs()}>
+              {(session) => {
+                const isActive = () => session.path === props.activeSessionPath
+                return (
+                  <div
+                    class={`topbar-tab${isActive() ? ' is-active' : ''}`}
+                    onClick={() => {
+                      if (!isActive()) props.onSelectSession(session.path)
+                    }}
+                    onDblClick={() => {
+                      if (isActive()) startEdit()
+                    }}
+                    title={isActive() ? 'Double-click to rename session' : 'Switch session'}
+                  >
+                    <span class="topbar-tab-label">{session.title}</span>
+                    <button
+                      type="button"
+                      class="topbar-tab-close"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeSessionTab(session.path)
+                      }}
+                      title="Close session tab"
+                      aria-label="Close session tab"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              }}
+            </For>
+          </Show>
+        </div>
 
         <span class="topbar-sep">in</span>
 
@@ -146,6 +227,7 @@ export function TopBar(props: Props) {
         </Show>
       </div>
 
+      {/* ── Right zone: settings ── */}
       <div class="topbar-right-zone">
         <button
           type="button"

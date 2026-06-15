@@ -1,17 +1,18 @@
-import { Show } from 'solid-js'
+import { createMemo, Show } from 'solid-js'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
-import type { ModelInfo, SkillItem } from '../../lib/ipc'
+import type { GitChangedFile, GitFileDiff, ModelInfo, SkillItem } from '../../lib/ipc'
+import { isDiffPreviewTab } from '../../lib/previewTabs'
 import { AskWidget } from '../AskWidget'
 import { Composer } from '../Composer'
 import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
 import { FileTabBar } from '../FileTabBar'
+import { DiffViewer } from '../git/DiffViewer'
 import { ResizeHandle } from '../ResizeHandle'
 import { SubagentFileWidget } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
-import { TerminalPanel } from '../terminal/TerminalPanel'
 
 type OpenPiSession = ReturnType<typeof useOpenPiSession>
 type ConversationMessages = Parameters<typeof ConversationPane>[0]['messages']
@@ -34,11 +35,13 @@ interface ConversationWorkspaceProps {
   openFiles: string[]
   activeFileIdx: number
   previewWidth: number
+  activeDiff: GitFileDiff | null
+  diffFiles: GitChangedFile[]
+  diffIndex: number
   fileSearchOpen: boolean
   fileFindOpen: boolean
-  terminalOpen: boolean
-  newTerminalRequest: number
   onOpenFile: (path: string) => void
+
   onAddAttachedFile: (path: string) => void
   onRemoveAttachedFile: (path: string) => void
   onAddLineComment: (comment: NewFileLineComment) => void
@@ -51,11 +54,15 @@ interface ConversationWorkspaceProps {
   onResizePreview: (delta: number) => void
   onSelectFile: (index: number) => void
   onCloseFile: (index: number) => void
+  onNavigateDiff: (index: number) => void
+  onCloseDiff: () => void
+  onRequestFileSearch: () => void
   onFindOpened: () => void
-  onCloseTerminal: () => void
 }
 
 export function ConversationWorkspace(props: ConversationWorkspaceProps) {
+  const activePreviewTab = createMemo(() => props.openFiles[props.activeFileIdx] ?? '')
+
   return (
     <div class="center-col">
       <main class={`main-panel${props.openFiles.length > 0 ? ' main-panel--split' : ''}`}>
@@ -186,6 +193,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             activeGoalProgress={props.session.activeGoalProgress}
             onSetActiveGoal={props.session.setActiveGoal}
             contextPercent={props.session.contextPercent}
+            sessionStats={props.session.sessionStats}
             agentTps={props.session.agentRunMetrics?.tps ?? null}
             availableAgentTypes={[
               { name: 'worker', description: 'Surgical implementer' },
@@ -205,27 +213,41 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
               activeIndex={props.activeFileIdx}
               onSelect={props.onSelectFile}
               onClose={props.onCloseFile}
+              onRequestFileSearch={props.onRequestFileSearch}
             />
-            <FilePreviewPane
-              relativePath={props.openFiles[props.activeFileIdx] ?? ''}
-              cwd={props.cwd}
-              workspaceName={props.workspaceName}
-              background={props.fileSearchOpen}
-              findOpen={props.fileFindOpen}
-              onFindOpened={props.onFindOpened}
-              onAddLineComment={props.onAddLineComment}
-              onClose={() => props.onCloseFile(props.activeFileIdx)}
-            />
+            <Show
+              when={isDiffPreviewTab(activePreviewTab())}
+              fallback={
+                <FilePreviewPane
+                  relativePath={activePreviewTab()}
+                  cwd={props.cwd}
+                  workspaceName={props.workspaceName}
+                  background={props.fileSearchOpen}
+                  findOpen={props.fileFindOpen}
+                  onFindOpened={props.onFindOpened}
+                  onAddLineComment={props.onAddLineComment}
+                  onClose={() => props.onCloseFile(props.activeFileIdx)}
+                />
+              }
+            >
+              <Show when={props.activeDiff} fallback={<div class="diff-empty">Loading diff…</div>}>
+                {(diff) => (
+                  <DiffViewer
+                    diff={diff()}
+                    allFiles={props.diffFiles}
+                    currentIndex={props.diffIndex}
+                    onNavigate={props.onNavigateDiff}
+                    onClose={() => {
+                      props.onCloseDiff()
+                      props.onCloseFile(props.activeFileIdx)
+                    }}
+                  />
+                )}
+              </Show>
+            </Show>
           </div>
         </Show>
       </main>
-
-      <TerminalPanel
-        cwd={props.cwd}
-        isOpen={props.terminalOpen}
-        newTerminalRequest={props.newTerminalRequest}
-        onClose={props.onCloseTerminal}
-      />
     </div>
   )
 }

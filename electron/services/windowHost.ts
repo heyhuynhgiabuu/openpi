@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { BrowserWindow } from 'electron'
+import type { MenuItemConstructorOptions } from 'electron'
+import { BrowserWindow, Menu } from 'electron'
 import { IPC } from '../../src/lib/ipc'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import type { PtyHost } from './ptyHost'
@@ -18,7 +19,35 @@ interface CreateWindowOptions {
   onClosed: () => void
 }
 
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin'
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' as const },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' as const },
+        { role: 'redo' as const },
+        { type: 'separator' as const },
+        { role: 'cut' as const },
+        { role: 'copy' as const },
+        { role: 'paste' as const },
+        { role: 'pasteAndMatchStyle' as const },
+        { role: 'delete' as const },
+        { role: 'selectAll' as const },
+      ],
+    },
+    { role: 'viewMenu' as const },
+    { role: 'windowMenu' as const },
+  ]
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
+  buildAppMenu()
+
   const saved = loadWindowState()
   const mainWindow = new BrowserWindow({
     x: saved.x,
@@ -42,6 +71,12 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
   if (saved.isMaximized) mainWindow.maximize()
   if (saved.isFullScreen) mainWindow.setFullScreen(true)
   attachWindowStateSaver(mainWindow)
+
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key.toLowerCase() === 'f' && (input.meta || input.control)) {
+      mainWindow.webContents.send(IPC.FILE_FIND_SHORTCUT)
+    }
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)

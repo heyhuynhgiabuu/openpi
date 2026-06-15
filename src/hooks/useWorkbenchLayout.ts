@@ -1,10 +1,7 @@
 import { createSignal, onMount } from 'solid-js'
 import { DEFAULT_GIT_PANEL_SIDE, type GitPanelSide, parseGitPanelSide } from '../lib/panelLayout'
 
-const SIDEBAR_DEFAULT = 280
 const GIT_PANEL_DEFAULT = 260
-const SIDEBAR_MIN = 240
-const SIDEBAR_MAX = 480
 const GIT_MIN = 300
 const GIT_MAX = 560
 const PREVIEW_DEFAULT = 480
@@ -15,7 +12,6 @@ export function useWorkbenchLayout() {
   const [gitPanelSide, setGitPanelSide] = createSignal<GitPanelSide>(DEFAULT_GIT_PANEL_SIDE)
   const [isDraggingGit, setIsDraggingGit] = createSignal(false)
   const [dropSide, setDropSide] = createSignal<GitPanelSide | null>(null)
-  const [sidebarWidth, setSidebarWidth] = createSignal(SIDEBAR_DEFAULT)
   const [gitPanelWidth, setGitPanelWidth] = createSignal(GIT_PANEL_DEFAULT)
   const [previewWidth, setPreviewWidth] = createSignal(PREVIEW_DEFAULT)
   let workbenchRef: HTMLDivElement | undefined
@@ -54,13 +50,6 @@ export function useWorkbenchLayout() {
 
   onMount(() => {
     window.openpi
-      .getPref('panel.sidebar_width')
-      .then((value) => {
-        const next = value ? parseInt(value, 10) : NaN
-        if (!Number.isNaN(next)) setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, next)))
-      })
-      .catch(() => {})
-    window.openpi
       .getPref('panel.git_panel_width')
       .then((value) => {
         const next = value ? parseInt(value, 10) : NaN
@@ -73,18 +62,18 @@ export function useWorkbenchLayout() {
       .catch(() => {})
   })
 
-  const resizeSidebar = (delta: number) => {
-    setSidebarWidth((prev) => {
-      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, prev + delta))
-      void window.openpi.setPref('panel.sidebar_width', String(next))
-      return next
-    })
-  }
-
   const resizeGitPanel = (delta: number) => {
     const sign = gitPanelSide() === 'left' ? 1 : -1
     setGitPanelWidth((prev) => {
       const next = Math.max(GIT_MIN, Math.min(GIT_MAX, prev + sign * delta))
+      void window.openpi.setPref('panel.git_panel_width', String(next))
+      return next
+    })
+  }
+
+  const resizeRightPanel = (delta: number) => {
+    setGitPanelWidth((prev) => {
+      const next = Math.max(GIT_MIN, Math.min(GIT_MAX, prev - delta))
       void window.openpi.setPref('panel.git_panel_width', String(next))
       return next
     })
@@ -98,13 +87,12 @@ export function useWorkbenchLayout() {
     gitPanelSide,
     isDraggingGit,
     dropSide,
-    sidebarWidth,
     gitPanelWidth,
     previewWidth,
     setWorkbenchRef,
     startGitDrag,
-    resizeSidebar,
     resizeGitPanel,
+    resizeRightPanel,
     resizePreview,
   }
 }

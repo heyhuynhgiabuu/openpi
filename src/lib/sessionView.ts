@@ -12,43 +12,43 @@ export const OPENPI_ASCII = [
 
 export const TOOL_LABEL: Record<string, string> = {
   // Shell
-  bash: 'sh',
-  sh: 'sh',
-  computer_bash: 'sh',
-  run_command: 'sh',
+  bash: 'Shell',
+  sh: 'Shell',
+  computer_bash: 'Shell',
+  run_command: 'Shell',
   // File ops
-  read: 'read',
-  write: 'write',
+  read: 'Read',
+  write: 'Write',
   // Edit ops
-  edit: 'edit',
-  multiedit: 'edit',
+  edit: 'Edit',
+  multiedit: 'Edit',
   // Search / navigation
-  grep: 'grep',
-  find: 'find',
-  ls: 'ls',
+  grep: 'Grep',
+  find: 'Find',
+  ls: 'List',
   // Pi Subagents
-  Agent: 'agent',
-  get_subagent_result: 'agent',
-  steer_subagent: 'agent',
+  Agent: 'Agent',
+  get_subagent_result: 'Agent',
+  steer_subagent: 'Agent',
   // Goal/plan tools
-  get_goal: 'goal',
-  create_goal: 'goal',
-  update_goal: 'goal',
-  update_plan: 'plan',
+  get_goal: 'Goal',
+  create_goal: 'Goal',
+  update_goal: 'Goal',
+  update_plan: 'Plan',
   // Ask / question tool
-  ask_user_question: 'ask',
+  ask_user_question: 'Ask',
   // Legacy spec compatibility tools
-  spec_create: 'legacy',
-  spec_next_phase: 'legacy',
-  spec_run_task: 'legacy',
-  spec_run_all: 'legacy',
-  spec_status: 'legacy',
-  spec_analyze: 'legacy',
-  spec_sync_tasks: 'legacy',
+  spec_create: 'Legacy',
+  spec_next_phase: 'Legacy',
+  spec_run_task: 'Legacy',
+  spec_run_all: 'Legacy',
+  spec_status: 'Legacy',
+  spec_analyze: 'Legacy',
+  spec_sync_tasks: 'Legacy',
 }
 
 export function labelForTool(name: string): string {
-  return TOOL_LABEL[name] ?? 'tool'
+  return TOOL_LABEL[name] ?? 'Tool'
 }
 
 export function groupSessions(sessions: SessionListItem[], groupBy: GroupMode): SessionGroup[] {

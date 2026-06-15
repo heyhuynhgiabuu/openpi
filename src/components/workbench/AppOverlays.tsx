@@ -1,8 +1,7 @@
 import { Show } from 'solid-js'
-import type { GitChangedFile, GitFileDiff, ModelInfo } from '../../lib/ipc'
+import type { ModelInfo } from '../../lib/ipc'
 import { CommandPalette, type PaletteCommand } from '../CommandPalette'
 import { CustomizationsModal } from '../customizations/CustomizationsModal'
-import { DiffViewer } from '../git/DiffViewer'
 import { FileSearchModal } from '../git/FileSearchModal'
 import { ConnectProviderModal } from '../providers/ConnectProviderModal'
 import { ManageModelsModal } from '../providers/ManageModelsModal'
@@ -17,9 +16,6 @@ interface AppOverlaysProps {
   cwd: string | null
   fileSearchOpen: boolean
   commandPaletteOpen: boolean
-  activeDiff: GitFileDiff | null
-  diffFiles: GitChangedFile[]
-  diffIndex: number
   customizationsOpen: boolean
   connectProviderOpen: boolean
   manageModelsOpen: boolean
@@ -35,8 +31,6 @@ interface AppOverlaysProps {
   onOpenFile: (path: string) => void
   onCloseCommandPalette: () => void
   onOpenSession: Parameters<typeof CommandPalette>[0]['onOpenSession']
-  onNavigateDiff: (index: number) => void
-  onCloseDiff: () => void
   onCloseCustomizations: () => void
   onSelectModel: (model: ModelInfo) => void
   onError: (error: string | null) => void
@@ -69,18 +63,6 @@ export function AppOverlays(props: AppOverlaysProps) {
           onOpenFile={props.onOpenFile}
           onOpenSession={props.onOpenSession}
         />
-      </Show>
-
-      <Show when={props.activeDiff}>
-        {(getDiff) => (
-          <DiffViewer
-            diff={getDiff()}
-            allFiles={props.diffFiles}
-            currentIndex={props.diffIndex}
-            onNavigate={props.onNavigateDiff}
-            onClose={props.onCloseDiff}
-          />
-        )}
       </Show>
 
       <CustomizationsModal
