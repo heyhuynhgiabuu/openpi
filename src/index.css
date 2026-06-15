@@ -86,14 +86,14 @@
     "Symbols Nerd Font", "MesloLGS NF", "MesloLGM Nerd Font Mono",
     "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
 
-  --tool-shimmer-base: rgba(156, 163, 175, 0.42);
-  --tool-shimmer-highlight: rgba(244, 244, 245, 0.95);
-  --tool-shimmer-accent: rgba(209, 213, 219, 0.78);
+  --tool-shimmer-base: rgba(148, 163, 184, 0.28);
+  --tool-shimmer-highlight: rgba(248, 250, 252, 0.9);
+  --tool-shimmer-accent: rgba(203, 213, 225, 0.56);
   --tool-shimmer-angle: 105deg;
-  --tool-shimmer-speed: 1.35s;
-  --tool-shimmer-size: 220%;
+  --tool-shimmer-speed: 2.4s;
+  --tool-shimmer-size: 210%;
   --tool-shimmer-enabled: running;
-  --tool-shimmer-opacity: 1;
+  --tool-shimmer-opacity: 0.9;
 }
 
 :root[data-color-scheme="light"] {
@@ -165,18 +165,6 @@ body {
   font-family: var(--font-ui);
   font-size: 16px;
   line-height: 1.5;
-}
-
-.tool-shimmer-pane {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 80;
-  width: 280px;
-  opacity: 0.92;
-}
-.tool-shimmer-pane:empty {
-  display: none;
 }
 
 button,
@@ -2655,9 +2643,11 @@ body.panel-dragging {
   -webkit-text-fill-color: transparent;
   background-image: linear-gradient(
     var(--tool-shimmer-angle),
-    var(--tool-shimmer-highlight),
-    var(--tool-shimmer-base),
-    var(--tool-shimmer-highlight)
+    var(--tool-shimmer-base) 0%,
+    var(--tool-shimmer-accent) 36%,
+    var(--tool-shimmer-highlight) 50%,
+    var(--tool-shimmer-accent) 64%,
+    var(--tool-shimmer-base) 100%
   );
   background-size: var(--tool-shimmer-size) 100%;
   background-position: 200% 0;
