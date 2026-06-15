@@ -8,7 +8,7 @@
  * artifacts. Auto-collapses when all tasks are completed.
  */
 
-import { CheckCircle2, Circle, CircleAlert, Loader2, Square, X } from 'lucide-solid'
+import { CheckCircle2, Circle, CircleAlert, Loader2, Square, SquareCheck, X } from 'lucide-solid'
 import { createMemo, createSignal, For, type JSX, Show } from 'solid-js'
 import type { SubagentArtifact, TodoListFile } from '../lib/ipc/_full'
 
@@ -133,31 +133,31 @@ export function SubagentFileTray(props: SubagentFileTrayProps) {
 }
 
 export function TodoListTray(props: TodoListTrayProps) {
-  const files = createMemo(() => props.todoFiles)
-  const openCount = createMemo(() => files().reduce((sum, file) => sum + file.openCount, 0))
+  const activeFile = createMemo(() => props.todoFiles[0])
 
   return (
-    <Show when={files().length > 0}>
-      <section class="todo-list-tray" aria-label="Active TODOs">
-        <div class="todo-list-tray__title">Active TODOs ({openCount()} open)</div>
-        <For each={files()}>
-          {(file) => (
-            <div class="todo-list-tray__source">
-              <div class="todo-list-tray__source-name">{file.source}</div>
-              <ul class="todo-list-tray__items">
-                <For each={file.items.filter((item) => !item.checked)}>
-                  {(item) => (
-                    <li class="todo-list-tray__item">
-                      <Square size={13} />
-                      <span>{item.text}</span>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </div>
-          )}
-        </For>
-      </section>
+    <Show when={activeFile()}>
+      {(file) => (
+        <section class="todo-list-tray" aria-label="Active TODOs">
+          <div class="todo-list-tray__title">
+            Active TODOs ({file().openCount} open, source: {file().source})
+          </div>
+          <div class="todo-list-tray__source">
+            <ul class="todo-list-tray__items">
+              <For each={file().items}>
+                {(item) => (
+                  <li
+                    class={`todo-list-tray__item${item.checked ? ' todo-list-tray__item--done' : ''}`}
+                  >
+                    {item.checked ? <SquareCheck size={13} /> : <Square size={13} />}
+                    <span>{item.text}</span>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </div>
+        </section>
+      )}
     </Show>
   )
 }
