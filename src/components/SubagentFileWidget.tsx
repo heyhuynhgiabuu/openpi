@@ -8,7 +8,7 @@
  * artifacts. Auto-collapses when all tasks are completed.
  */
 
-import { CheckCircle2, Circle, CircleAlert, Loader2, Square, SquareCheck, X } from 'lucide-solid'
+import { CheckCircle2, Circle, CircleAlert, Loader2, Square, X } from 'lucide-solid'
 import { createMemo, createSignal, For, type JSX, Show } from 'solid-js'
 import type { SubagentArtifact, TodoListFile } from '../lib/ipc/_full'
 
@@ -145,12 +145,10 @@ export function TodoListTray(props: TodoListTrayProps) {
             <div class="todo-list-tray__source">
               <div class="todo-list-tray__source-name">{file.source}</div>
               <ul class="todo-list-tray__items">
-                <For each={file.items}>
+                <For each={file.items.filter((item) => !item.checked)}>
                   {(item) => (
-                    <li
-                      class={`todo-list-tray__item${item.checked ? ' todo-list-tray__item--done' : ''}`}
-                    >
-                      {item.checked ? <SquareCheck size={13} /> : <Square size={13} />}
+                    <li class="todo-list-tray__item">
+                      <Square size={13} />
                       <span>{item.text}</span>
                     </li>
                   )}

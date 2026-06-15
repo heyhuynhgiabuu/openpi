@@ -157,6 +157,7 @@ export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => v
         .sort((a, b) => b.createdAt - a.createdAt),
       todoFiles: [...todoSnapshots.values()]
         .map((s) => s.todoFile)
+        .filter((file) => file.openCount > 0)
         .sort((a, b) => a.source.localeCompare(b.source)),
       timestamp: Date.now(),
     }
