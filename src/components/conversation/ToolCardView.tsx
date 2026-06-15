@@ -19,10 +19,11 @@ export interface ToolCardViewProps {
   card: ToolCard
   onFileClick?: (relativePath: string) => void
   displayPreferences: DisplayPreferences
+  shimmerActive: boolean
 }
 
 export const ToolCardView: Component<ToolCardViewProps> = (props) => {
-  const shimmerClass = () => 'tool-shimmer-scope is-tool-shimmering'
+  const shimmerClass = () => `tool-shimmer-scope${props.shimmerActive ? ' is-tool-shimmering' : ''}`
 
   if (SHELL_TOOLS.has(props.card.toolName))
     return (

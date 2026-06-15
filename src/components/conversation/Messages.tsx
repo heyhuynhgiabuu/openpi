@@ -116,9 +116,10 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
               return (
                 <div class="tool-group-rail">
                   <For each={segment.cards}>
-                    {(card) => (
+                    {(card, index) => (
                       <ToolCardView
                         card={card}
+                        shimmerActive={card.streaming && index() === segment.cards.length - 1}
                         onFileClick={props.onFileClick}
                         displayPreferences={props.displayPreferences}
                       />
@@ -202,13 +203,17 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
         </Show>
 
         <For each={props.message.toolCards.filter((card) => card.toolName !== 'update_plan')}>
-          {(card) => (
-            <ToolCardView
-              card={card}
-              onFileClick={props.onFileClick}
-              displayPreferences={props.displayPreferences}
-            />
-          )}
+          {(card, index) => {
+            const cards = props.message.toolCards.filter((item) => item.toolName !== 'update_plan')
+            return (
+              <ToolCardView
+                card={card}
+                shimmerActive={card.streaming && index() === cards.length - 1}
+                onFileClick={props.onFileClick}
+                displayPreferences={props.displayPreferences}
+              />
+            )
+          }}
         </For>
 
         <Show when={props.message.text}>
