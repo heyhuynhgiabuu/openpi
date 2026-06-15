@@ -8,7 +8,7 @@ export interface UseFilePreviewFindOptions {
   setEditBuffer?: (v: string) => void
   editorViewRef: () => EditorView | undefined
   getMode: () => string
-  findOpen?: boolean
+  findOpen?: () => boolean
   onFindOpened?: () => void
 }
 
@@ -35,8 +35,8 @@ export interface UseFilePreviewFindReturn {
   findTotal: () => number
   safeMatchIndex: () => number
   findQueryIsInvalid: () => boolean
-  findInputRef: HTMLInputElement | undefined
-  replaceInputRef: HTMLInputElement | undefined
+  setFindInputRef: (el: HTMLInputElement) => void
+  setReplaceInputRef: (el: HTMLInputElement) => void
   openFindBar: (withReplace?: boolean) => void
   closeFindBar: () => void
   findNext: () => void
@@ -60,8 +60,14 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
   const [replaceQuery, setReplaceQuery] = createSignal('')
   const [findInSelection, setFindInSelection] = createSignal(false)
 
-  let findInputRef: HTMLInputElement | undefined
-  let replaceInputRef: HTMLInputElement | undefined
+  let _findInputRef: HTMLInputElement | undefined
+  let _replaceInputRef: HTMLInputElement | undefined
+  const setFindInputRef = (el: HTMLInputElement) => {
+    _findInputRef = el
+  }
+  const setReplaceInputRef = (el: HTMLInputElement) => {
+    _replaceInputRef = el
+  }
 
   const findMatches = createMemo(() => {
     const view = editorViewRef()
@@ -95,9 +101,9 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
     setFindOpen(true)
     if (withReplace) {
       setFindReplaceOpen(true)
-      setTimeout(() => replaceInputRef?.focus(), 30)
+      setTimeout(() => _replaceInputRef?.focus(), 30)
     } else {
-      setTimeout(() => findInputRef?.focus(), 30)
+      setTimeout(() => _findInputRef?.focus(), 30)
     }
   }
 
@@ -223,10 +229,9 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
   })
 
   createEffect(() => {
-    if (options.findOpen) {
-      openFindBar()
-      options.onFindOpened?.()
-    }
+    if (!options.findOpen?.()) return
+    openFindBar()
+    options.onFindOpened?.()
   })
 
   return {
@@ -252,8 +257,8 @@ export function useFilePreviewFind(options: UseFilePreviewFindOptions): UseFileP
     findTotal,
     safeMatchIndex,
     findQueryIsInvalid,
-    findInputRef,
-    replaceInputRef,
+    setFindInputRef,
+    setReplaceInputRef,
     openFindBar,
     closeFindBar,
     findNext,

@@ -14,7 +14,6 @@ export interface FilePreviewToolbarProps {
   saveStatus: 'idle' | 'saved' | 'error'
   formatOnSave: boolean
   editorTheme: EditorThemeId
-  wordWrap: boolean
   vimMode: boolean
   mode: ViewMode
   saving: boolean
@@ -23,7 +22,6 @@ export interface FilePreviewToolbarProps {
   loading: boolean
   onFormatOnSaveToggle: () => void
   onEditorThemeChange: (theme: EditorThemeId) => void
-  onWordWrapToggle: () => void
   onVimModeToggle: () => void
   onSave: () => void
   onToggleSplit: () => void
@@ -84,18 +82,6 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
               ))}
             </select>
           </label>
-        </Show>
-
-        <Show when={!props.isImage}>
-          <button
-            type="button"
-            class={`fv-tb-btn${props.wordWrap ? ' fv-tb-btn--active' : ''}`}
-            title={props.wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
-            aria-pressed={props.wordWrap}
-            onClick={() => props.onWordWrapToggle()}
-          >
-            <FileText size={14} strokeWidth={1.8} />
-          </button>
         </Show>
 
         <Show when={!props.isImage}>

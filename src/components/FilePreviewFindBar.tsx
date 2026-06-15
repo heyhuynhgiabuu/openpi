@@ -23,8 +23,8 @@ export interface FilePreviewFindBarProps {
   safeMatchIndex: number
   findQueryIsInvalid: boolean
   modeIsEdit: boolean
-  inputRef?: HTMLInputElement
-  replaceInputRef?: HTMLInputElement
+  onInputRef?: (el: HTMLInputElement) => void
+  onReplaceInputRef?: (el: HTMLInputElement) => void
   onFindQueryChange: (value: string) => void
   onFindMatchIndexReset: () => void
   onFindCaseSensitiveToggle: () => void
@@ -43,6 +43,9 @@ export interface FilePreviewFindBarProps {
 }
 
 export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
+  let _findEl: HTMLInputElement | undefined
+  let _replaceEl: HTMLInputElement | undefined
+
   return (
     <Show when={props.findOpen}>
       {/* ── Search row ── */}
@@ -55,7 +58,7 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
           onClick={() => {
             const next = !props.findReplaceOpen
             props.onFindReplaceOpenToggle(next)
-            if (next) setTimeout(() => props.replaceInputRef?.focus(), 30)
+            if (next) setTimeout(() => _replaceEl?.focus(), 30)
           }}
         >
           <PanelBottomOpen size={13} strokeWidth={2} />
@@ -63,7 +66,10 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
 
         <Search size={12} class="fv-find-icon" />
         <input
-          ref={props.inputRef}
+          ref={(el) => {
+            _findEl = el
+            props.onInputRef?.(el)
+          }}
           class={`fv-find-input${props.findQueryIsInvalid ? ' fv-find-input--error' : ''}`}
           type="text"
           value={props.findQuery}
@@ -181,7 +187,10 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
           <span class="fv-find-replace-indent" />
           <Search size={12} class="fv-find-icon fv-find-icon--replace" />
           <input
-            ref={props.replaceInputRef}
+            ref={(el) => {
+              _replaceEl = el
+              props.onReplaceInputRef?.(el)
+            }}
             class="fv-find-input"
             type="text"
             value={props.replaceQuery}

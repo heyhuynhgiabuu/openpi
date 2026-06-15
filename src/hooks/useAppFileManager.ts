@@ -2,6 +2,7 @@ import { batch, createSignal } from 'solid-js'
 import type { FileLineComment, NewFileLineComment } from '../lib/fileLineComments'
 import { formatFileLineCommentsPrompt } from '../lib/fileLineComments'
 import type { GitChangedFile, GitFileDiff, SkillItem } from '../lib/ipc'
+import { isDiffPreviewTab, makeDiffPreviewTab } from '../lib/previewTabs'
 import { buildFileContextBlocks, buildSkillContextBlocks } from '../lib/promptContext'
 
 interface UseAppFileManagerOptions {
@@ -25,21 +26,31 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
   const [fileFindOpen, setFileFindOpen] = createSignal(false)
   const [activeDiff, setActiveDiff] = createSignal<GitFileDiff | null>(null)
 
-  const openFile = (relPath: string) => {
+  const selectPreviewTab = (tab: string) => {
     const files = openFiles()
-    const existing = files.indexOf(relPath)
+    const existing = files.indexOf(tab)
     if (existing >= 0) {
       setActiveFileIdx(existing)
-    } else {
-      const newFiles = [...files, relPath]
-      setOpenFiles(newFiles)
-      setActiveFileIdx(newFiles.length - 1)
+      return
     }
+
+    const newFiles = [...files, tab]
+    setOpenFiles(newFiles)
+    setActiveFileIdx(newFiles.length - 1)
+  }
+
+  const openFile = (relPath: string) => {
+    selectPreviewTab(relPath)
   }
 
   const closeFile = (idx: number) => {
+    const closing = openFiles()[idx]
     const newFiles = openFiles().filter((_, i) => i !== idx)
     setOpenFiles(newFiles)
+    if (isDiffPreviewTab(closing) && idx === activeFileIdx()) {
+      setActiveDiff(null)
+      setCommitDiffHash(null)
+    }
     if (newFiles.length > 0) {
       setActiveFileIdx((prev) => Math.min(prev, newFiles.length - 1))
     }
@@ -48,7 +59,7 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
   const closeDeletedFilePreviews = (relPath: string, isDir: boolean) => {
     const prefix = `${relPath.replace(/\/+$/, '')}/`
     const newFiles = openFiles().filter(
-      (file) => file !== relPath && !(isDir && file.startsWith(prefix))
+      (file) => isDiffPreviewTab(file) || (file !== relPath && !(isDir && file.startsWith(prefix)))
     )
     if (newFiles.length === openFiles().length) return
     setOpenFiles(newFiles)
@@ -160,6 +171,7 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
         setActiveDiff(diff)
         setDiffFiles(filesArray)
         setDiffIndex(Math.max(0, index))
+        selectPreviewTab(makeDiffPreviewTab())
       })
     })
   }
@@ -172,7 +184,12 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
     const diff = hash
       ? await window.openpi.git.getCommitDiff(hash, file.path)
       : await window.openpi.git.getDiff(file.path)
-    if (diff) setActiveDiff(diff)
+    if (diff) {
+      batch(() => {
+        setActiveDiff(diff)
+        selectPreviewTab(makeDiffPreviewTab())
+      })
+    }
   }
 
   const handleDiffOpen = (diff: GitFileDiff, files: GitChangedFile[], index: number) => {
@@ -180,6 +197,7 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
       setActiveDiff(diff)
       setDiffFiles(files)
       setDiffIndex(index)
+      selectPreviewTab(makeDiffPreviewTab())
     })
   }
 

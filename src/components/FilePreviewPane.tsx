@@ -12,7 +12,7 @@
  */
 
 import type { EditorView } from '@codemirror/view'
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { useFilePreviewFind } from '../hooks/useFilePreviewFind'
 import type { NewFileLineComment } from '../lib/fileLineComments'
 import { ensureHighlighter, highlightCode } from '../lib/shiki'
@@ -124,7 +124,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const [saveStatus, setSaveStatus] = createSignal<'idle' | 'saved' | 'error'>('idle')
 
   const [formatOnSave, setFormatOnSave] = createSignal(false)
-  const [wordWrap, setWordWrap] = createSignal(false)
+  const wordWrap = () => true
   const [vimMode, setVimMode] = createSignal(false)
   const [editorTheme, setEditorTheme] = createSignal<EditorThemeId>(readStoredEditorTheme())
   const [saveError, setSaveError] = createSignal<string | null>(null)
@@ -133,6 +133,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     window.localStorage.setItem(EDITOR_THEME_STORAGE_KEY, editorTheme())
   })
   const editorEl = (): HTMLElement | undefined => editorViewRef?.dom ?? undefined
+  let paneRef: HTMLElement | undefined
   let previewScrollRef: HTMLDivElement | undefined
   let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
   let isSyncingScroll = false
@@ -144,8 +145,26 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     setEditBuffer,
     editorViewRef: () => editorViewRef,
     getMode: mode,
-    findOpen: props.findOpen,
+    findOpen: () => props.findOpen ?? false,
     onFindOpened: props.onFindOpened,
+  })
+
+  onMount(() => {
+    const handleFindShortcut = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'f' || !(event.metaKey || event.ctrlKey)) return
+      const target = event.target
+      const activeElement = document.activeElement
+      const eventStartedInPane = target instanceof Node && paneRef?.contains(target)
+      const focusInsidePane = activeElement instanceof Node && paneRef?.contains(activeElement)
+      if (eventStartedInPane || focusInsidePane) {
+        event.preventDefault()
+        event.stopPropagation()
+        find.openFindBar()
+      }
+    }
+
+    document.addEventListener('keydown', handleFindShortcut, true)
+    onCleanup(() => document.removeEventListener('keydown', handleFindShortcut, true))
   })
   const isDirty = createMemo(() => content() !== null && editBuffer() !== content())
 
@@ -323,7 +342,13 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   }
 
   return (
-    <section class="file-preview-pane" aria-label={`File preview: ${filename()}`}>
+    <section
+      ref={(el) => {
+        paneRef = el
+      }}
+      class="file-preview-pane"
+      aria-label={`File preview: ${filename()}`}
+    >
       <div class="fv-modal fv-modal--embedded">
         <FilePreviewToolbar
           filename={filename()}
@@ -334,7 +359,6 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           saveStatus={saveStatus()}
           formatOnSave={formatOnSave()}
           editorTheme={editorTheme()}
-          wordWrap={wordWrap()}
           vimMode={vimMode()}
           mode={mode()}
           saving={saving()}
@@ -343,7 +367,6 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           loading={loading()}
           onFormatOnSaveToggle={() => setFormatOnSave((v) => !v)}
           onEditorThemeChange={(theme) => setEditorTheme(theme)}
-          onWordWrapToggle={() => setWordWrap((v) => !v)}
           onVimModeToggle={() => setVimMode((v) => !v)}
           onSave={() => void handleSave()}
           onToggleSplit={toggleSplit}
@@ -364,8 +387,8 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           safeMatchIndex={find.safeMatchIndex()}
           findQueryIsInvalid={find.findQueryIsInvalid()}
           modeIsEdit={mode() === 'edit'}
-          inputRef={find.findInputRef}
-          replaceInputRef={find.replaceInputRef}
+          onInputRef={find.setFindInputRef}
+          onReplaceInputRef={find.setReplaceInputRef}
           onFindQueryChange={find.setFindQuery}
           onFindMatchIndexReset={() => find.setFindMatchIndex(0)}
           onFindCaseSensitiveToggle={() => {

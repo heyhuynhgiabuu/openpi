@@ -1,5 +1,4 @@
 import { createMemo } from 'solid-js'
-import type { LeftDrawerMode } from '../components/BottomBar'
 import type { PaletteCommand } from '../components/CommandPalette'
 import {
   buildKeybindingEntries,
@@ -14,12 +13,10 @@ interface UseAppKeybindingsOptions {
   setCommandPaletteOpen: (open: boolean) => void
   setTerminalOpen: (fn: (prev: boolean) => boolean) => void
   setNewTerminalRequest: (fn: (prev: number) => number) => void
-  setGitPanelOpen: (fn: (prev: boolean) => boolean) => void
-  setFilePanelOpen: (fn: (prev: boolean) => boolean) => void
+  setRightPanelOpen: (fn: (prev: boolean) => boolean) => void
   setFileSearchOpen: (open: boolean) => void
   setFileFindOpen: (open: boolean) => void
   setCustomizationsOpen: (open: boolean) => void
-  toggleLeftDrawerMode: (mode: LeftDrawerMode) => void
   openFiles: () => string[]
   activeFileIdx: () => number
   closeFile: (idx: number) => void
@@ -30,6 +27,11 @@ interface UseAppKeybindingsOptions {
 }
 
 export function useAppKeybindings(options: UseAppKeybindingsOptions) {
+  const requestFileFind = () => {
+    options.setFileFindOpen(false)
+    queueMicrotask(() => options.setFileFindOpen(true))
+  }
+
   const paletteCommands = createMemo<PaletteCommand[]>(() => {
     const entries = new Map(
       buildKeybindingEntries(options.customKeybindings()).map((entry) => [entry.id, entry])
@@ -49,21 +51,21 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
     return [
       command('newSession', () => void options.createNewSession()),
       command('openFileSearch', () => {
-        options.setFilePanelOpen(() => true)
+        options.setRightPanelOpen(() => true)
         options.setFileSearchOpen(true)
       }),
       command('closeFileTab', () => {
         if (options.openFiles().length > 0) options.closeFile(options.activeFileIdx())
       }),
       command('searchInFile', () => {
-        if (options.openFiles().length > 0) options.setFileFindOpen(true)
+        requestFileFind()
       }),
       command('openCustomizations', () => options.setCustomizationsOpen(true)),
       command('openProject', () => void options.openWorkspace()),
       command('renameSession', () => options.triggerRename?.()),
-      command('toggleSidebar', () => options.toggleLeftDrawerMode('threads')),
-      command('toggleGitPanel', () => options.setGitPanelOpen((prev) => !prev)),
-      command('toggleFileTree', () => options.setFilePanelOpen((prev) => !prev)),
+      command('toggleSidebar', () => {}),
+      command('toggleGitPanel', () => options.setRightPanelOpen((prev) => !prev)),
+      command('toggleFileTree', () => options.setRightPanelOpen((prev) => !prev)),
       command('toggleTerminal', () => {
         options.setTerminalOpen((prev) => {
           if (!prev) options.setNewTerminalRequest((n) => n + 1)
@@ -132,22 +134,21 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
       }
       if (eventMatchesBinding(event, binding('toggleSidebar'))) {
         event.preventDefault()
-        options.toggleLeftDrawerMode('threads')
         return
       }
       if (eventMatchesBinding(event, binding('toggleGitPanel'))) {
         event.preventDefault()
-        options.setGitPanelOpen((prev) => !prev)
+        options.setRightPanelOpen((prev) => !prev)
         return
       }
       if (eventMatchesBinding(event, binding('toggleFileTree'))) {
         event.preventDefault()
-        options.setFilePanelOpen((prev) => !prev)
+        options.setRightPanelOpen((prev) => !prev)
         return
       }
       if (eventMatchesBinding(event, binding('openFileSearch'))) {
         event.preventDefault()
-        options.setFilePanelOpen(() => true)
+        options.setRightPanelOpen(() => true)
         options.setFileSearchOpen(true)
         return
       }
@@ -159,10 +160,8 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
         return
       }
       if (eventMatchesBinding(event, binding('searchInFile'))) {
-        if (options.openFiles().length > 0) {
-          event.preventDefault()
-          options.setFileFindOpen(true)
-        }
+        event.preventDefault()
+        requestFileFind()
         return
       }
       if (eventMatchesBinding(event, binding('openCustomizations'))) {
