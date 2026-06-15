@@ -8729,13 +8729,15 @@ body.panel-dragging {
 /* File / folder icon: grayscale by default (mono look),
  * full color when hovering the tree pane OR when the file is changed. */
 .ftree-item img {
-  filter: grayscale(1) opacity(0.6);
-  transition: filter 0.15s ease;
+  filter: grayscale(1);
+  opacity: 0.5;
+  transition: filter 0.15s ease, opacity 0.15s ease;
 }
 .ftree-root:hover .ftree-item img,
 .ftree-item:hover img,
 .ftree-item:focus-within img {
   filter: none;
+  opacity: 1;
 }
 /* Changed files: icon tinted to exact status color via mix-blend-mode.
  * Per-type colors match the badge and name text. */
