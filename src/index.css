@@ -277,7 +277,6 @@ input::placeholder {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   padding: 0 8px 0 0;
-  border-bottom: 1px solid var(--hairline);
   background: var(--canvas);
   gap: 0;
 }
@@ -512,6 +511,19 @@ input::placeholder {
 .topbar-tab.is-active {
   background: var(--surface-card);
   color: var(--ink);
+}
+
+.topbar-tab-main {
+  min-width: 0;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: inherit;
 }
 
 .topbar-tab-label {
@@ -848,6 +860,7 @@ input::placeholder {
   min-height: 0;
   flex: 1;
   display: flex;
+  gap: 4px;
   overflow: hidden;
 }
 
@@ -947,7 +960,7 @@ body.panel-dragging {
   transition: background 120ms;
 }
 .resize-handle--h {
-  width: 1px;
+  width: 0.25px;
   cursor: col-resize;
 }
 .resize-handle--h::before {
@@ -993,12 +1006,14 @@ body.panel-dragging {
 }
 
 .main-panel {
+  border-radius: var(--r-lg);
+  margin: 0 0 8px 8px;
   min-width: 0;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--scrim);
+  background: var(--surface-soft);
   overflow: hidden;
   position: relative;
 }
@@ -1028,7 +1043,49 @@ body.panel-dragging {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  
+  border-left: 1px solid var(--hairline-soft);
+}
+
+.main-panel-preview-header {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  background: var(--surface-soft);
+}
+.main-panel-preview-header .ftb-bar {
+  flex: 1;
+  min-width: 0;
+}
+.gh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 0 0 8px;
+  padding: 0 8px 0 10px;
+  height: 32px;
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ash);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-family: inherit;
+  transition:
+    background 80ms,
+    color 80ms;
+  position: relative;
+  box-sizing: border-box;
+  outline: none;
+}
+.gh-btn:hover {
+  background: var(--surface-card);
+  color: var(--ink-soft);
+}
+.gh-btn--active {
+  color: var(--ink);
+  background: var(--surface-card);
 }
 
 /* Common controls */
@@ -1572,7 +1629,7 @@ body.panel-dragging {
   height: 28px;
   background: var(--surface-raised);
   border: 1px solid var(--hairline-strong);
-  border-radius: 50%;
+  border-radius: var(--r-lg);
   color: var(--graphite);
   cursor: pointer;
   z-index: 10;
@@ -1691,7 +1748,7 @@ body.panel-dragging {
  */
 .history-load-more-wrap {
   width: 100%;
-  margin: 18px 0 0;
+  margin: 8px 0 0;
   padding: 0 clamp(18px, 3vw, 42px);
   display: flex;
   justify-content: center;
@@ -2588,7 +2645,7 @@ body.panel-dragging {
   color: var(--ash);
   flex-shrink: 0;
   opacity: 0;
-  font-size: 18px;
+  font-size: 24px;
   line-height: 1;
   transform: translateX(2px);
   transition:
@@ -3108,7 +3165,7 @@ body.panel-dragging {
 /* Expanded output */
 .tool-ran-output {
   padding: 8px 12px 10px;
-  background: var(--surface-inset);
+  background: var(--surface-card);
   border-radius: var(--r-sm);
   max-height: 280px;
   overflow-y: auto;
@@ -3200,7 +3257,7 @@ body.panel-dragging {
     "Berkeley Mono", "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.5;
-  background: var(--surface-inset);
+  background: var(--surface-card);
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color 0.12s;
@@ -3228,9 +3285,8 @@ body.panel-dragging {
   background: transparent;
 }
 .diff-pair-sep {
-  height: 1px;
+  height: 0.25px;
   background: var(--hairline);
-  margin: 2px 0;
 }
 .diff-line {
   display: flex;
@@ -3314,7 +3370,7 @@ body.panel-dragging {
 /* Composer */
 .composer-wrap {
   flex-shrink: 0;
-  background: var(--scrim);
+  background: var(--surface-soft);
   padding: 14px 18px 18px;
   position: relative;
 }
@@ -3617,14 +3673,14 @@ body.panel-dragging {
 .composer-box {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   background: var(--surface-soft);
   padding: 10px 10px 8px 14px;
   gap: 6px;
 }
 .composer-box:focus-within {
-  border-color: var(--graphite);
+  border-color: var(--hairline-strong);
 }
 .composer-box.is-shell-mode {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--hairline-strong));
@@ -3710,14 +3766,14 @@ body.panel-dragging {
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--mute);
+  color: var(--ash);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.12s;
 }
 .composer-tool-btn:hover {
-  background: var(--surface-inset);
+  background: var(--surface-card);
   color: var(--ink-soft);
 }
 .composer-tool-label {
@@ -3762,7 +3818,7 @@ body.panel-dragging {
   cursor: pointer;
 }
 .composer-drop-item:hover {
-  background: var(--surface-inset);
+  background: var(--surface-raised);
 }
 .composer-drop-item.is-active {
   background: var(--surface-raised);
@@ -3839,7 +3895,7 @@ body.panel-dragging {
   border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--mute);
+  color: var(--ash);
   cursor: pointer;
   transition:
     color 0.2s,
@@ -3918,14 +3974,14 @@ body.panel-dragging {
 .ctx-pop-usage-bar {
   width: 100%;
   height: 4px;
-  background: var(--surface-inset);
+  background: var(--hairline);
   border-radius: 2px;
   overflow: hidden;
   margin: 6px 0 4px;
 }
 .ctx-pop-usage-fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--ink);
   border-radius: 2px;
   transition: width 0.2s ease;
 }
@@ -4320,7 +4376,7 @@ body.panel-dragging {
   justify-content: center;
 }
 .composer-add-ctx-btn.is-open {
-  background: var(--surface-inset);
+  background: var(--surface-card);
   color: var(--ink-soft);
 }
 
@@ -4457,10 +4513,10 @@ body.panel-dragging {
 .ctx-picker-footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 5px 12px;
   border-top: 1px solid var(--hairline);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ash);
   flex-shrink: 0;
 }
@@ -6814,6 +6870,7 @@ body.panel-dragging {
 }
 
 .git-icon-btn {
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6822,7 +6879,7 @@ body.panel-dragging {
   border: none;
   border-radius: var(--r-xs);
   cursor: pointer;
-  color: var(--graphite);
+  color: var(--ash);
   transition:
     background-color 150ms,
     color 150ms;
@@ -6830,8 +6887,8 @@ body.panel-dragging {
 }
 
 .git-icon-btn:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--steel);
+  background-color: var(--surface-card);
+  color: var(--ink-soft);
 }
 
 .git-icon-btn:active:not(:disabled) {
@@ -7153,19 +7210,12 @@ body.panel-dragging {
   gap: 6px;
   align-items: center;
   padding: 4px 6px;
-  border-bottom: 1px solid var(--hairline);
 }
 
 .git-history-search-row .git-refs-search {
   flex: 1;
   width: auto;
   margin: 0;
-}
-
-.git-history-list {
-  display: flex;
-  flex-direction: column;
-  padding: 2px 0;
 }
 
 .git-history-row {
@@ -7294,13 +7344,11 @@ body.panel-dragging {
   flex: 1;
   overflow-y: auto;
   padding: 2px 0;
-  border-bottom: 1px solid var(--hairline);
 }
 
 .git-history-details-pane {
   padding: 12px 10px;
-  background: rgba(0, 0, 0, 0.1);
-  border-top: 1px solid var(--hairline);
+  background: var(--surface-soft);
   font-size: 12px;
 }
 
@@ -7330,9 +7378,6 @@ body.panel-dragging {
 .git-history-details-sha code {
   font-family: ui-monospace, monospace;
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 2px 6px;
-  border-radius: var(--r-xs);
   color: var(--graphite);
 }
 
@@ -7375,9 +7420,6 @@ body.panel-dragging {
 
 .git-history-details-message pre {
   margin: 0;
-  padding: 6px 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: var(--r-xs);
   font-family: ui-monospace, monospace;
   font-size: 11px;
   line-height: 1.4;
@@ -7491,13 +7533,12 @@ body.panel-dragging {
 
 .git-panel-body {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: var(--canvas);
+  background: var(--surface-soft);
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.12s;
 }
 .git-panel-body:hover {
   scrollbar-color: var(--text-tertiary) transparent;
@@ -7705,12 +7746,16 @@ body.panel-dragging {
   font-family: ui-monospace, monospace;
 }
 
+.git-changes-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .git-commit-area {
   position: sticky;
   bottom: 0;
   padding: 8px;
-  border-top: 1px solid var(--hairline-soft);
-  background: var(--canvas);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -7721,9 +7766,9 @@ body.panel-dragging {
   display: flex;
   flex-direction: column;
   min-height: 104px;
-  background: #090b0f;
+  background: var(--surface-soft);
   border: 1px solid var(--hairline);
-  border-radius: var(--r-xs);
+  border-radius: var(--r-lg);
   /* overflow: hidden removed — would clip the upward-opening sync popover */
 }
 
@@ -7778,14 +7823,14 @@ body.panel-dragging {
   border: 0;
   border-radius: var(--r-xs);
   cursor: pointer;
-  color: var(--graphite);
+  color: var(--ash);
   transition:
     background 120ms,
     color 120ms;
 }
 .git-generate-msg-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--steel);
+  background: var(--surface-card);
+  color: var(--ink-soft);
 }
 .git-generate-msg-btn:disabled {
   opacity: 0.45;
@@ -7810,7 +7855,7 @@ body.panel-dragging {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--hairline);
-  background: #2b2d31;
+  background: var(--surface-soft);
   color: var(--steel);
   font-size: 11px;
   font-weight: 500;
@@ -7835,7 +7880,7 @@ body.panel-dragging {
 .git-commit-mode-menu-btn:hover:not(:disabled),
 .git-commit-mode-menu-btn.is-active,
 .git-commit-push-btn:hover:not(:disabled) {
-  background: #3a3d42;
+  background: var(--surface-card);
   color: var(--ink);
 }
 .git-commit-mode-btn:disabled,
@@ -8097,19 +8142,21 @@ body.panel-dragging {
 /* ─── Right panel ─────────────────────────────────────────────────────── */
 
 .rp-container {
+  border-radius: var(--r-lg);
+  margin: 0 8px 8px 0;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  height: 100%;
   overflow: hidden;
-  border-left: 1px solid var(--hairline-soft);
   background: var(--canvas);
 }
 
 .rp-sidebar-tabs {
+  padding: 8px 8px 0 8px;
+  gap: 8px;
   display: flex;
   flex-shrink: 0;
-  height: 32px;
+  height: 40px;
   background: var(--surface-soft);
 }
 
@@ -8118,11 +8165,11 @@ body.panel-dragging {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 8px;
   height: 100%;
   padding: 0 10px;
   border: 0;
-  
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--ash);
   font-size: 12px;
@@ -8142,7 +8189,7 @@ body.panel-dragging {
 
 .rp-sidebar-tab.is-active {
   color: var(--ink);
-  background: var(--canvas);
+  background: var(--surface-card);
 }
 
 
@@ -8514,8 +8561,7 @@ body.panel-dragging {
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--hairline-soft);
-  background: var(--canvas);
+  background: var(--surface-soft);
 }
 
 .diff-nav {
@@ -8527,8 +8573,6 @@ body.panel-dragging {
 .diff-nav-btn {
   padding: 2px 8px;
   background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xs);
   color: var(--graphite);
   cursor: pointer;
   font-size: 13px;
@@ -8606,8 +8650,6 @@ body.panel-dragging {
   flex-shrink: 0;
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xs);
   color: var(--graphite);
   cursor: pointer;
   font-size: 12px;
@@ -8631,7 +8673,7 @@ body.panel-dragging {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: #050505;
+  background: var(--canvas);
 }
 
 /* ── @pierre/diffs side-by-side container ───────────────────────────────── */
@@ -8661,7 +8703,7 @@ body.panel-dragging {
 .ftree-root {
   min-height: 100%;
   padding: 6px 0 10px;
-  background: var(--canvas);
+  background: var(--surface-soft);
 }
 
 .ftree-empty {
@@ -9335,7 +9377,7 @@ body.panel-dragging {
   gap: 12px;
   padding: 6px 14px;
   border-top: 1px solid var(--hairline);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--ash);
   flex-shrink: 0;
 }
@@ -9533,7 +9575,6 @@ body.panel-dragging {
   align-items: center;
   justify-content: space-between;
   padding: 0 6px 0 12px;
-  border-bottom: 1px solid var(--hairline);
   background: var(--surface-soft);
   gap: 8px;
 }
@@ -9680,17 +9721,12 @@ body.panel-dragging {
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--hairline-strong);
+  background: var(--surface-soft);
   flex-shrink: 0;
   height: 34px;
   box-sizing: border-box;
 }
-.fv-find-icon {
-  color: var(--ash);
-  flex-shrink: 0;
-  margin-right: 2px;
-}
+
 .fv-find-input {
   flex: 1;
   min-width: 0;
@@ -9706,7 +9742,6 @@ body.panel-dragging {
     box-shadow 0.12s;
 }
 .fv-find-input:focus {
-  border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
 }
 .fv-find-input--error,
@@ -9733,7 +9768,7 @@ body.panel-dragging {
   border-radius: 3px;
   font-size: 11px;
   font-family: "Berkeley Mono", "IBM Plex Mono", ui-monospace, monospace;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.02em;
   color: var(--ash);
   border: 1px solid transparent;
@@ -9785,7 +9820,7 @@ body.panel-dragging {
   width: 24px;
   height: 24px;
   border-radius: var(--r-xs);
-  color: var(--graphite);
+  color: var(--ash);
   transition:
     background 0.1s,
     color 0.1s;
@@ -9895,10 +9930,6 @@ body.panel-dragging {
 .fv-find-toggle:disabled {
   opacity: 0.32;
   cursor: default;
-}
-/* Dimmer icon in replace row */
-.fv-find-icon--replace {
-  opacity: 0.35;
 }
 /* Disabled replace input */
 .fv-find-input:disabled {
@@ -10067,12 +10098,11 @@ body.panel-dragging {
   flex-direction: row;
   align-items: stretch;
   flex-shrink: 0;
-  height: 32px;
+  height: 40px;
   overflow-x: hidden;
   overflow-y: hidden;
   scrollbar-width: none;
   background: var(--surface-soft);
-  border-bottom: 1px solid var(--hairline-soft);
   gap: 0;
 }
 .ftb-bar::-webkit-scrollbar {
@@ -10080,6 +10110,8 @@ body.panel-dragging {
 }
 
 .ftb-tabs {
+  padding: 8px 8px 0;
+  gap: 8px;
   display: flex;
   align-items: stretch;
   min-width: 0;
@@ -10093,13 +10125,14 @@ body.panel-dragging {
 }
 
 .ftb-search {
+  margin: 8px 0 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 32px;
-  width: 32px;
-  border: 0;
-  border-left: 1px solid var(--hairline);
+  width: 40px;
+  border: none;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--graphite);
   cursor: pointer;
@@ -10116,7 +10149,7 @@ body.panel-dragging {
   padding: 0 8px 0 10px;
   height: 100%;
   border: none;
-  border-right: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--ash);
   cursor: pointer;
@@ -10137,7 +10170,7 @@ body.panel-dragging {
 }
 .ftb-tab.is-active {
   color: var(--ink);
-  background: var(--canvas);
+  background: var(--surface-card);
 }
 
 .ftb-tab:focus-visible {
@@ -10172,11 +10205,15 @@ body.panel-dragging {
     color 80ms;
 }
 .ftb-tab:hover .ftb-tab-close,
-.ftb-tab.is-active .ftb-tab-close {
+.ftb-tab.is-active .ftb-tab-close,
+.gh-btn:hover .ftb-tab-close,
+.gh-btn--active .ftb-tab-close {
   opacity: 0.7;
 }
 .ftb-tab:hover .ftb-tab-close:hover,
-.ftb-tab.is-active .ftb-tab-close:hover {
+.ftb-tab.is-active .ftb-tab-close:hover,
+.gh-btn:hover .ftb-tab-close:hover,
+.gh-btn--active .ftb-tab-close:hover {
   opacity: 1;
   background: rgba(255, 255, 255, 0.1);
   color: var(--ink);
@@ -10866,7 +10903,7 @@ body.panel-dragging {
   padding-top: 80px;
 }
 .modal-sheet {
-  background: var(--surface-card);
+  background: var(--surface-soft);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-md);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
@@ -10900,8 +10937,7 @@ body.panel-dragging {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 16px 10px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 12px 12px 0px;
 }
 .cp-title {
   font-size: 15px;
@@ -10940,13 +10976,13 @@ body.panel-dragging {
   padding: 8px 6px 10px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--surface-soft) 74%, var(--canvas) 26%);
+  background: var(--surface-inset);
 }
 .cp-section + .cp-section {
   margin-top: 10px;
 }
 .cp-group-label {
-  padding: 0 8px 7px;
+  padding: 0 6px 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -10987,7 +11023,7 @@ body.panel-dragging {
   gap: 5px;
   height: 26px;
   padding: 0 10px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-lg);
   border: 1px solid var(--hairline-strong);
   background: transparent;
   color: var(--graphite);
@@ -11210,7 +11246,7 @@ body.panel-dragging {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 100px;
+  border-radius: var(--r-lg);
   background: rgba(74, 222, 128, 0.12);
   border: 1px solid rgba(74, 222, 128, 0.25);
   font-size: 11px;
@@ -11499,8 +11535,7 @@ body.panel-dragging {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 16px 16px 10px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 12px 12px 0px;
 }
 .mm-header-left {
   flex: 1;
@@ -11607,18 +11642,21 @@ body.panel-dragging {
 }
 /* Toggle switch */
 .mm-toggle {
-  flex-shrink: 0;
   position: relative;
-  width: 34px;
-  height: 20px;
-  border-radius: 100px;
-  border: none;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--r-md);
   background: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+  flex-shrink: 0;
 }
 .mm-toggle.is-on {
-  background: var(--success, #4ade80);
+  background: var(--graphite);
+  border-color: var(--graphite);
 }
 .mm-toggle-thumb {
   position: absolute;
@@ -11626,13 +11664,16 @@ body.panel-dragging {
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  background: white;
-  transition: left 0.15s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  border-radius: var(--r-sm);
+  background: var(--graphite);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition:
+    left 0.2s,
+    background 0.2s;
 }
 .mm-toggle.is-on .mm-toggle-thumb {
-  left: 16px;
+  left: 20px;
+  background: var(--canvas);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

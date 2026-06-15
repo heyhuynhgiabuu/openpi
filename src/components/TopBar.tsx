@@ -1,8 +1,8 @@
 /**
  * TopBar — SolidJS version.
- * Three-zone header: hamburger + new session · session tabs · workspace + git + settings.
+ * Three-zone header: homescreen + new session · session tabs · workspace + git + settings.
  */
-import { GitBranch, Menu, MonitorCog, Plus } from 'lucide-solid'
+import { GitBranch, House, MonitorCog, Plus } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import type { ModelInfo, SessionListItem } from '../lib/ipc'
 import { isMacPlatform } from '../lib/shortcutFormat'
@@ -88,7 +88,7 @@ export function TopBar(props: Props) {
 
   return (
     <header class="topbar drag">
-      {/* ── Left zone: hamburger + new session ── */}
+      {/* ── Left zone: homescreen + new session ── */}
       <div class="topbar-left-zone">
         <div class="topbar-left-buttons">
           <button
@@ -98,7 +98,7 @@ export function TopBar(props: Props) {
             title="Show homescreen"
             aria-label="Show homescreen"
           >
-            <Menu size={16} />
+            <House size={16} />
           </button>
           <button
             type="button"
@@ -137,17 +137,20 @@ export function TopBar(props: Props) {
               {(session) => {
                 const isActive = () => session.path === props.activeSessionPath
                 return (
-                  <div
-                    class={`topbar-tab${isActive() ? ' is-active' : ''}`}
-                    onClick={() => {
-                      if (!isActive()) props.onSelectSession(session.path)
-                    }}
-                    onDblClick={() => {
-                      if (isActive()) startEdit()
-                    }}
-                    title={isActive() ? 'Double-click to rename session' : 'Switch session'}
-                  >
-                    <span class="topbar-tab-label">{session.title}</span>
+                  <div class={`topbar-tab${isActive() ? ' is-active' : ''}`}>
+                    <button
+                      type="button"
+                      class="topbar-tab-main"
+                      onClick={() => {
+                        if (!isActive()) props.onSelectSession(session.path)
+                      }}
+                      onDblClick={() => {
+                        if (isActive()) startEdit()
+                      }}
+                      title={isActive() ? 'Double-click to rename session' : 'Switch session'}
+                    >
+                      <span class="topbar-tab-label">{session.title}</span>
+                    </button>
                     <button
                       type="button"
                       class="topbar-tab-close"
