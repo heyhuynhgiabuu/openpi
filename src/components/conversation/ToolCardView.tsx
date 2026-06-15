@@ -22,8 +22,7 @@ export interface ToolCardViewProps {
 }
 
 export const ToolCardView: Component<ToolCardViewProps> = (props) => {
-  const shimmerClass = () =>
-    `tool-shimmer-scope${props.card.streaming ? ' is-tool-shimmering' : ''}`
+  const shimmerClass = () => 'tool-shimmer-scope is-tool-shimmering'
 
   if (SHELL_TOOLS.has(props.card.toolName))
     return (

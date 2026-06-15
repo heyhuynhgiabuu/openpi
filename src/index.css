@@ -2649,6 +2649,29 @@ body.panel-dragging {
   color: var(--graphite);
 }
 
+.tool-shimmer-scope.is-tool-shimmering .tool-row {
+  position: relative;
+  overflow: hidden;
+}
+.tool-shimmer-scope.is-tool-shimmering .tool-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 38%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.04) 62%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-position: 200% 0;
+  animation: tool-text-shimmer var(--tool-shimmer-speed) linear infinite;
+  animation-play-state: var(--tool-shimmer-enabled);
+  opacity: var(--tool-shimmer-opacity);
+}
 .tool-shimmer-scope.is-tool-shimmering .tool-ran-header {
   position: relative;
   overflow: hidden;
