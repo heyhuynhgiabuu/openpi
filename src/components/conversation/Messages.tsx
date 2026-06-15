@@ -76,6 +76,7 @@ export type AssistantMessageGroupProps = {
 
 export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (props) => {
   const lastMsg = createMemo(() => props.messages[props.messages.length - 1])
+  const isStreaming = createMemo(() => props.messages.some((msg) => msg.streaming))
   const usage = createMemo(() => aggregateUsage(props.messages))
 
   /*
@@ -119,7 +120,7 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
                     {(card) => (
                       <ToolCardView
                         card={card}
-                        shimmerActive={card.streaming}
+                        shimmerActive={isStreaming()}
                         onFileClick={props.onFileClick}
                         displayPreferences={props.displayPreferences}
                       />
@@ -206,7 +207,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           {(card) => (
             <ToolCardView
               card={card}
-              shimmerActive={card.streaming}
+              shimmerActive={props.message.streaming ?? false}
               onFileClick={props.onFileClick}
               displayPreferences={props.displayPreferences}
             />
