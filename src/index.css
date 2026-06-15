@@ -4561,7 +4561,7 @@ body.panel-dragging {
   justify-content: center;
   background: var(--scrim);
   padding: 64px;
-  max-width: 960px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 .welcome-logo-stage {
