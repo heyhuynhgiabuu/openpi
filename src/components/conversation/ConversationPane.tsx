@@ -227,6 +227,7 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
       return (
         <AssistantMessageGroup
           messages={item.messages}
+          agentStreaming={props.isStreaming}
           onFork={props.onFork}
           onFileClick={props.onFileClick}
           displayPreferences={props.displayPreferences}

@@ -69,6 +69,7 @@ function buildSegments(messages: SessionHistoryMessage[]): Segment[] {
 
 export type AssistantMessageGroupProps = {
   messages: SessionHistoryMessage[]
+  agentStreaming: boolean
   onFork?: (id: string) => void
   onFileClick?: (path: string) => void
   displayPreferences: DisplayPreferences
@@ -76,7 +77,6 @@ export type AssistantMessageGroupProps = {
 
 export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (props) => {
   const lastMsg = createMemo(() => props.messages[props.messages.length - 1])
-  const isStreaming = createMemo(() => props.messages.some((msg) => msg.streaming))
   const usage = createMemo(() => aggregateUsage(props.messages))
 
   /*
@@ -120,7 +120,7 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
                     {(card) => (
                       <ToolCardView
                         card={card}
-                        shimmerActive={isStreaming()}
+                        shimmerActive={props.agentStreaming}
                         onFileClick={props.onFileClick}
                         displayPreferences={props.displayPreferences}
                       />
@@ -182,6 +182,7 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
 
 type AssistantMessageProps = {
   message: SessionHistoryMessage
+  agentStreaming?: boolean
   onFork?: (id: string) => void
   onFileClick?: (path: string) => void
   displayPreferences: DisplayPreferences
@@ -207,7 +208,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           {(card) => (
             <ToolCardView
               card={card}
-              shimmerActive={props.message.streaming ?? false}
+              shimmerActive={props.agentStreaming ?? props.message.streaming ?? false}
               onFileClick={props.onFileClick}
               displayPreferences={props.displayPreferences}
             />
