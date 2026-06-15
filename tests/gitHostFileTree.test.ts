@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { enrichTree } from '../electron/git/gitFileTree'
 import {
   checkoutBranch,
   commitFiles,
@@ -14,6 +15,7 @@ import {
   syncRemote,
 } from '../electron/git/gitHost'
 import {
+  fileTreeResultSchema,
   gitCheckoutBranchResultSchema,
   gitHistoryResultSchema,
   gitRefsResultSchema,
@@ -94,6 +96,15 @@ describe('getFileTree', () => {
     expect(paths).toContain('src/index.ts')
     expect(paths).not.toContain('node_modules')
     expect(paths).not.toContain('node_modules/pkg/index.js')
+  })
+
+  it('normalizes untracked status before schema validation', () => {
+    const cwd = makeWorkspace()
+    writeFileSync(join(cwd, 'new-file.ts'), 'export const value = 1')
+
+    const tree = enrichTree(getFileTree(cwd), new Map([['new-file.ts', '?']]))
+
+    expect(fileTreeResultSchema.parse(tree).children[0]?.changeType).toBe('A')
   })
 })
 
