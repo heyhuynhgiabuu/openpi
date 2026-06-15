@@ -1028,7 +1028,7 @@ body.panel-dragging {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid var(--hairline);
+  
 }
 
 /* Common controls */
@@ -3362,7 +3362,7 @@ body.panel-dragging {
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  border-bottom: 1px solid var(--hairline-soft);
+  
 }
 .pq-row:last-child {
   border-bottom: none;
@@ -8123,7 +8123,7 @@ body.panel-dragging {
   height: 100%;
   padding: 0 10px;
   border: 0;
-  border-right: 1px solid var(--hairline-soft);
+  
   background: transparent;
   color: var(--ash);
   font-size: 12px;
