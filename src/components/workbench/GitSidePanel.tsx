@@ -21,6 +21,7 @@ interface GitSidePanelProps {
   onSyncLabelChange: (label: string) => void
   onSyncActionChange: (action: GitSyncAction | null) => void
   onSyncMessageChange: (message: string | null) => void
+  onOpenHistory: () => void
 }
 
 export function GitSidePanel(props: GitSidePanelProps) {
@@ -75,6 +76,7 @@ function PanelBody(props: GitSidePanelProps) {
         onSyncLabelChange={props.onSyncLabelChange}
         onSyncActionChange={props.onSyncActionChange}
         onSyncMessageChange={props.onSyncMessageChange}
+        onOpenHistory={props.onOpenHistory}
       />
     </div>
   )

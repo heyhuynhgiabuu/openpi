@@ -1,4 +1,4 @@
-import { ArrowUp, ArrowUpDown, ChevronDown, Sparkles } from 'lucide-solid'
+import { ArrowUp, ArrowUpDown, ChevronDown, GitBranch, Sparkles } from 'lucide-solid'
 import { createSignal, Show } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import type { GitSyncAction } from '../../lib/ipc'
@@ -15,6 +15,7 @@ interface GitCommitAreaProps {
   syncBlocked: boolean
   hasUpstream: boolean
   totalChanged: number
+  hasStagedFiles: boolean
   onCommitMessageChange: (message: string) => void
   onGenerateCommitMessage: () => void
   onCommit: (push: boolean) => void
@@ -22,6 +23,7 @@ interface GitCommitAreaProps {
   onCommitAmendChange: (value: boolean) => void
   onCommitSignoffChange: (value: boolean) => void
   onSync: (action: GitSyncAction) => void
+  onOpenHistory?: () => void
 }
 
 export function GitCommitArea(props: GitCommitAreaProps) {
@@ -29,7 +31,8 @@ export function GitCommitArea(props: GitCommitAreaProps) {
   const [syncMenuAnchor, setSyncMenuAnchor] = createSignal<DOMRect | null>(null)
   let syncBtnRef: HTMLButtonElement | undefined
 
-  const commitDisabled = () => props.isCommitting || !props.commitMessage.trim()
+  const commitDisabled = () =>
+    props.isCommitting || !props.commitMessage.trim() || !props.hasStagedFiles
   const canPull = () => !props.syncBlocked && props.hasUpstream && props.totalChanged === 0
 
   return (
@@ -76,6 +79,15 @@ export function GitCommitArea(props: GitCommitAreaProps) {
               }}
             >
               <ArrowUpDown size={14} />
+            </button>
+            <button
+              type="button"
+              class="git-icon-btn"
+              title="Open Git History"
+              aria-label="Open Git History"
+              onClick={props.onOpenHistory}
+            >
+              <GitBranch size={14} />
             </button>
             <Show when={syncMenuOpen() && syncMenuAnchor()}>
               {(anchor) => (

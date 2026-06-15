@@ -26,7 +26,7 @@ import { useAppPrefs } from './hooks/useAppPrefs'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from './lib/displayPreferences'
-import type { AppInfo, GitSyncAction } from './lib/ipc'
+import type { AppInfo, GitSyncAction, SessionListItem } from './lib/ipc'
 import type { KeybindingOverrides } from './lib/keybindings'
 
 export default function App() {
@@ -90,7 +90,7 @@ export default function App() {
     input: () => session.input,
     send: (prefix) => void session.send(prefix),
   })
-  const [gitPanelTab, setGitPanelTab] = createSignal<'changes' | 'history'>('changes')
+  const [gitPanelTab, setGitPanelTab] = createSignal<'changes'>('changes')
   // ── Git panel → TopBar bridge ──────────────────────────────────────────────
   // The active GitPanel surfaces its branch/upstream labels here so TopBar can
   // display them as clickable chips, and provides a toggleRefs callback so
@@ -249,6 +249,9 @@ export default function App() {
           )
         )
 
+        const [showGitHistory, setShowGitHistory] = createSignal(false)
+        const openGitHistory = () => setShowGitHistory(true)
+
         const visibleModels = () =>
           session.models.filter((m) => !hiddenModels().has(`${m.provider}/${m.id}`))
 
@@ -287,7 +290,9 @@ export default function App() {
               // ── Session tabs ──
               sessions={session.sessions}
               activeSessionPath={activeSessionPath()}
-              onSelectSession={(path: string) => void session.openExistingSession({ path } as any)}
+              onSelectSession={(path: string) =>
+                void session.openExistingSession({ path } as SessionListItem)
+              }
               onNewSession={() => void session.createNewSession()}
               onToggleHomescreen={() => setHomescreenOpen((v) => !v)}
             />
@@ -301,7 +306,7 @@ export default function App() {
                   selectedWorkspacePath={session.selectedWorkspacePath}
                   activeSessionPath={activeSessionPath()}
                   onSelectSession={(path: string) =>
-                    void session.openExistingSession({ path } as any)
+                    void session.openExistingSession({ path } as SessionListItem)
                   }
                   onNewSession={() => void session.createNewSession()}
                   onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
@@ -343,6 +348,7 @@ export default function App() {
                     onSyncLabelChange={setGitSyncLabel}
                     onSyncActionChange={setGitSyncAction}
                     onSyncMessageChange={setGitSyncMessage}
+                    onOpenHistory={openGitHistory}
                   />
 
                   <ConversationWorkspace
@@ -368,6 +374,8 @@ export default function App() {
                     diffIndex={diffIndex()}
                     fileSearchOpen={fileSearchOpen()}
                     fileFindOpen={fileFindOpen()}
+                    showGitHistory={showGitHistory()}
+                    onShowGitHistoryChange={setShowGitHistory}
                     onOpenFile={openFile}
                     onAddAttachedFile={addAttachedFile}
                     onRemoveAttachedFile={removeAttachedFile}
@@ -411,6 +419,7 @@ export default function App() {
                       onSyncLabelChange={setGitSyncLabel}
                       onSyncActionChange={setGitSyncAction}
                       onSyncMessageChange={setGitSyncMessage}
+                      onOpenHistory={openGitHistory}
                     />
                   </Show>
                 </div>

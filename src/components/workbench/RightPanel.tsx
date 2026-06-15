@@ -20,6 +20,7 @@ interface Props {
   onSyncLabelChange?: (label: string) => void
   onSyncActionChange?: (action: GitSyncAction | null) => void
   onSyncMessageChange?: (message: string | null) => void
+  onOpenHistory?: () => void
 }
 
 export function RightPanel(props: Props) {
@@ -44,7 +45,7 @@ export function RightPanel(props: Props) {
             class={`rp-sidebar-tab${sidebarTab() === 'files' ? ' is-active' : ''}`}
             onClick={() => setSidebarTab('files')}
           >
-            All files
+            Files
           </button>
         </div>
 
@@ -61,6 +62,7 @@ export function RightPanel(props: Props) {
               onSyncLabelChange={props.onSyncLabelChange}
               onSyncActionChange={props.onSyncActionChange}
               onSyncMessageChange={props.onSyncMessageChange}
+              onOpenHistory={props.onOpenHistory}
             />
           </Show>
 

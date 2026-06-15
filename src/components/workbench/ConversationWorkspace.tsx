@@ -1,4 +1,6 @@
-import { createMemo, Show } from 'solid-js'
+import { GitBranch, X } from 'lucide-solid'
+import { createEffect, createMemo, createSignal, Show } from 'solid-js'
+import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
@@ -10,6 +12,7 @@ import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
 import { FileTabBar } from '../FileTabBar'
 import { DiffViewer } from '../git/DiffViewer'
+import { GitHistoryTab } from '../git/GitHistoryTab'
 import { ResizeHandle } from '../ResizeHandle'
 import { SubagentFileWidget } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
@@ -40,6 +43,8 @@ interface ConversationWorkspaceProps {
   diffIndex: number
   fileSearchOpen: boolean
   fileFindOpen: boolean
+  showGitHistory: boolean
+  onShowGitHistoryChange: (show: boolean) => void
   onOpenFile: (path: string) => void
 
   onAddAttachedFile: (path: string) => void
@@ -62,10 +67,22 @@ interface ConversationWorkspaceProps {
 
 export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const activePreviewTab = createMemo(() => props.openFiles[props.activeFileIdx] ?? '')
+  const [historyActive, setHistoryActive] = createSignal(false)
+  createEffect(() => {
+    if (props.showGitHistory) setHistoryActive(true)
+    else setHistoryActive(false)
+  })
+  const gitHistoryState = useGitHistoryState({
+    activeTab: () => (historyActive() ? ('history' as const) : ('changes' as const)),
+    cwd: () => props.cwd,
+    isMounted: () => true,
+  })
 
   return (
     <div class="center-col">
-      <main class={`main-panel${props.openFiles.length > 0 ? ' main-panel--split' : ''}`}>
+      <main
+        class={`main-panel${props.openFiles.length > 0 || props.showGitHistory ? ' main-panel--split' : ''}`}
+      >
         <div class="main-panel-conversation">
           <ConversationPane
             messages={props.messages}
@@ -200,45 +217,104 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           />
         </div>
 
-        <Show when={props.openFiles.length > 0}>
+        <Show when={props.openFiles.length > 0 || props.showGitHistory}>
           <ResizeHandle direction="horizontal" onResize={props.onResizePreview} />
           <div class="main-panel-preview" style={{ width: `${props.previewWidth}px` }}>
-            <FileTabBar
-              files={props.openFiles}
-              activeIndex={props.activeFileIdx}
-              onSelect={props.onSelectFile}
-              onClose={props.onCloseFile}
-              onRequestFileSearch={props.onRequestFileSearch}
-            />
-            <Show
-              when={isDiffPreviewTab(activePreviewTab())}
-              fallback={
-                <FilePreviewPane
-                  relativePath={activePreviewTab()}
-                  cwd={props.cwd}
-                  workspaceName={props.workspaceName}
-                  background={props.fileSearchOpen}
-                  findOpen={props.fileFindOpen}
-                  onFindOpened={props.onFindOpened}
-                  onAddLineComment={props.onAddLineComment}
-                  onClose={() => props.onCloseFile(props.activeFileIdx)}
+            <div class="main-panel-preview-header">
+              <Show when={props.showGitHistory}>
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={historyActive()}
+                  class={`gh-btn${historyActive() ? ' gh-btn--active' : ''}`}
+                  title="Git History"
+                  onClick={() => setHistoryActive(true)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setHistoryActive(true)
+                    }
+                  }}
+                >
+                  <GitBranch size={13} />
+                  <span>History</span>
+                  <button
+                    type="button"
+                    class="ftb-tab-close"
+                    title="Close Git History"
+                    aria-label="Close Git History"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      props.onShowGitHistoryChange(false)
+                    }}
+                  >
+                    <X size={11} strokeWidth={2.2} />
+                  </button>
+                </div>
+              </Show>
+              <Show when={props.openFiles.length > 0}>
+                <FileTabBar
+                  files={props.openFiles}
+                  activeIndex={historyActive() ? -1 : props.activeFileIdx}
+                  onSelect={(index) => {
+                    setHistoryActive(false)
+                    props.onSelectFile(index)
+                  }}
+                  onClose={props.onCloseFile}
+                  onRequestFileSearch={props.onRequestFileSearch}
                 />
+              </Show>
+            </div>
+            <Show
+              when={historyActive()}
+              fallback={
+                <Show
+                  when={isDiffPreviewTab(activePreviewTab())}
+                  fallback={
+                    <FilePreviewPane
+                      relativePath={activePreviewTab()}
+                      cwd={props.cwd}
+                      workspaceName={props.workspaceName}
+                      background={props.fileSearchOpen}
+                      findOpen={props.fileFindOpen}
+                      onFindOpened={props.onFindOpened}
+                      onAddLineComment={props.onAddLineComment}
+                      onClose={() => props.onCloseFile(props.activeFileIdx)}
+                    />
+                  }
+                >
+                  <Show
+                    when={props.activeDiff}
+                    fallback={<div class="diff-empty">Loading diff…</div>}
+                  >
+                    {(diff) => (
+                      <DiffViewer
+                        diff={diff()}
+                        allFiles={props.diffFiles}
+                        currentIndex={props.diffIndex}
+                        onNavigate={props.onNavigateDiff}
+                        onClose={() => {
+                          props.onCloseDiff()
+                          props.onCloseFile(props.activeFileIdx)
+                        }}
+                      />
+                    )}
+                  </Show>
+                </Show>
               }
             >
-              <Show when={props.activeDiff} fallback={<div class="diff-empty">Loading diff…</div>}>
-                {(diff) => (
-                  <DiffViewer
-                    diff={diff()}
-                    allFiles={props.diffFiles}
-                    currentIndex={props.diffIndex}
-                    onNavigate={props.onNavigateDiff}
-                    onClose={() => {
-                      props.onCloseDiff()
-                      props.onCloseFile(props.activeFileIdx)
-                    }}
-                  />
-                )}
-              </Show>
+              <GitHistoryTab
+                history={gitHistoryState.history()}
+                historyQuery={gitHistoryState.historyQuery()}
+                historyLoading={gitHistoryState.historyLoading()}
+                historyError={gitHistoryState.historyError()}
+                selectedCommit={gitHistoryState.selectedCommit()}
+                graphColumnsByHash={gitHistoryState.graphColumnsByHash()}
+                maxGraphColumns={gitHistoryState.maxGraphColumns()}
+                onHistoryQueryChange={gitHistoryState.setHistoryQuery}
+                onLoadHistory={(query) => void gitHistoryState.loadHistory(query)}
+                onSelectCommit={gitHistoryState.setSelectedCommit}
+              />
             </Show>
           </div>
         </Show>

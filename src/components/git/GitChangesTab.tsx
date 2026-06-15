@@ -1,4 +1,3 @@
-import { Show } from 'solid-js'
 import type { GitChangedFile, GitSyncAction } from '../../lib/ipc'
 import { GitAgentBanner } from './GitAgentBanner'
 import { GitChangesList } from './GitChangesList'
@@ -34,6 +33,7 @@ interface GitChangesTabProps {
   onReviewAgentChanges: () => void
   onDismissAgentChanges: () => void
   onStageAll: () => void
+  onUnstageAll: () => void
   onShowAllChanges: () => void
   onFileClick: (file: GitChangedFile) => void
   onStageToggle: (file: GitChangedFile, event: Event) => void
@@ -44,6 +44,7 @@ interface GitChangesTabProps {
   onCommitAmendChange: (value: boolean) => void
   onCommitSignoffChange: (value: boolean) => void
   onSync: (action: GitSyncAction) => void
+  onOpenHistory?: () => void
 }
 
 export function GitChangesTab(props: GitChangesTabProps) {
@@ -55,44 +56,48 @@ export function GitChangesTab(props: GitChangesTabProps) {
         onReview={props.onReviewAgentChanges}
         onDismiss={props.onDismissAgentChanges}
       />
-      <GitChangesList
-        statusLoaded={props.statusLoaded}
-        totalChanged={props.totalChanged}
-        showingAgentFiles={props.showingAgentFiles}
-        stageableFiles={props.stageableFiles}
-        pinnedAgentFiles={props.pinnedAgentFiles}
-        conflictFiles={props.conflictFiles}
-        stagedFiles={props.stagedFiles}
-        unstagedFiles={props.unstagedFiles}
-        untrackedFiles={props.untrackedFiles}
-        loadingDiff={props.loadingDiff}
-        onStageAll={props.onStageAll}
-        onShowAllChanges={props.onShowAllChanges}
-        onFileClick={props.onFileClick}
-        onStageToggle={props.onStageToggle}
-      />
-      <Show when={props.statusLoaded && props.stagedFiles.length > 0}>
-        <GitCommitArea
-          commitMessage={props.commitMessage}
-          isCommitting={props.isCommitting}
-          isGeneratingMessage={props.isGeneratingMessage}
-          commitOptionsOpen={props.commitOptionsOpen}
-          commitAmend={props.commitAmend}
-          commitSignoff={props.commitSignoff}
-          commitError={props.commitError}
-          syncingAction={props.syncingAction}
-          syncBlocked={props.syncBlocked}
-          hasUpstream={props.hasUpstream}
+      <div class="git-changes-scroll">
+        <GitChangesList
+          statusLoaded={props.statusLoaded}
           totalChanged={props.totalChanged}
-          onCommitMessageChange={props.onCommitMessageChange}
-          onGenerateCommitMessage={props.onGenerateCommitMessage}
-          onCommit={props.onCommit}
-          onCommitOptionsOpenChange={props.onCommitOptionsOpenChange}
-          onCommitAmendChange={props.onCommitAmendChange}
-          onCommitSignoffChange={props.onCommitSignoffChange}
-          onSync={props.onSync}
+          showingAgentFiles={props.showingAgentFiles}
+          stageableFiles={props.stageableFiles}
+          pinnedAgentFiles={props.pinnedAgentFiles}
+          conflictFiles={props.conflictFiles}
+          stagedFiles={props.stagedFiles}
+          unstagedFiles={props.unstagedFiles}
+          untrackedFiles={props.untrackedFiles}
+          loadingDiff={props.loadingDiff}
+          onStageAll={props.onStageAll}
+          onUnstageAll={props.onUnstageAll}
+          onShowAllChanges={props.onShowAllChanges}
+          onFileClick={props.onFileClick}
+          onStageToggle={props.onStageToggle}
         />
-      </Show>
+      </div>
+
+      <GitCommitArea
+        commitMessage={props.commitMessage}
+        isCommitting={props.isCommitting}
+        isGeneratingMessage={props.isGeneratingMessage}
+        commitOptionsOpen={props.commitOptionsOpen}
+        commitAmend={props.commitAmend}
+        commitSignoff={props.commitSignoff}
+        commitError={props.commitError}
+        syncingAction={props.syncingAction}
+        syncBlocked={props.syncBlocked}
+        hasUpstream={props.hasUpstream}
+        totalChanged={props.totalChanged}
+        hasStagedFiles={props.stagedFiles.length > 0}
+        onCommitMessageChange={props.onCommitMessageChange}
+        onCommit={props.onCommit}
+        onGenerateCommitMessage={props.onGenerateCommitMessage}
+        onCommitOptionsOpenChange={props.onCommitOptionsOpenChange}
+        onCommitAmendChange={props.onCommitAmendChange}
+        onCommitSignoffChange={props.onCommitSignoffChange}
+        onSync={props.onSync}
+        onOpenHistory={props.onOpenHistory}
+      />
     </div>
   )
 }

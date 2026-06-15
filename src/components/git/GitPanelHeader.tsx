@@ -29,13 +29,6 @@ export function GitPanelHeader(props: GitPanelHeaderProps) {
         <div class="git-panel-tabs">
           <button
             type="button"
-            class={`git-panel-tab ${props.activeTab === 'history' ? 'is-active' : ''}`}
-            onClick={() => props.onActiveTabChange('history')}
-          >
-            History
-          </button>
-          <button
-            type="button"
             class={`git-panel-tab ${props.activeTab === 'changes' ? 'is-active' : ''}`}
             onClick={() => props.onActiveTabChange('changes')}
           >

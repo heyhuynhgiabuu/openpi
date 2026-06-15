@@ -1,10 +1,8 @@
 import { createEffect, createSignal, onMount, Show } from 'solid-js'
-import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import { useGitPanelDerived } from '../../hooks/useGitPanelDerived'
 import type { GitChangedFile, GitStatusResult, GitSyncAction } from '../../lib/ipc'
 import { GitChangesTab } from './GitChangesTab'
 import { GitConflictModal } from './GitConflictModal'
-import { GitHistoryTab } from './GitHistoryTab'
 import { GitPanelHeader } from './GitPanelHeader'
 import type { GitPanelProps, GitPanelTab } from './gitPanelTypes'
 
@@ -40,12 +38,6 @@ export function GitPanel(props: GitPanelProps) {
     props.onActiveTabChange?.(tab)
     setLocalActiveTab(tab)
   }
-
-  const historyState = useGitHistoryState({
-    activeTab,
-    cwd: () => props.cwd,
-    isMounted: () => mounted,
-  })
 
   onMount(() => {
     window.openpi.notifyGitPanelMounted()
@@ -135,6 +127,18 @@ export function GitPanel(props: GitPanelProps) {
     const unstaged = current.files.filter((f) => !f.staged && f.status !== 'U')
     for (const file of unstaged) {
       await window.openpi.git.stage(file.path)
+    }
+    const nextStatus = await window.openpi.git.getStatus()
+    if (nextStatus && mounted) setStatus(nextStatus)
+  }
+
+  const handleUnstageAll = async () => {
+    const current = status()
+    if (!current) return
+
+    const staged = current.files.filter((f) => f.staged)
+    for (const file of staged) {
+      await window.openpi.git.unstage(file.path)
     }
     const nextStatus = await window.openpi.git.getStatus()
     if (nextStatus && mounted) setStatus(nextStatus)
@@ -254,6 +258,7 @@ export function GitPanel(props: GitPanelProps) {
             setShowingAgentChanges(false)
           }}
           onStageAll={() => void handleStageAll()}
+          onUnstageAll={() => void handleUnstageAll()}
           onShowAllChanges={() => setShowingAgentChanges(false)}
           onFileClick={handleFileClick}
           onStageToggle={handleStageToggle}
@@ -264,22 +269,7 @@ export function GitPanel(props: GitPanelProps) {
           onCommitAmendChange={setCommitAmend}
           onCommitSignoffChange={setCommitSignoff}
           onSync={(action) => void handleSync(action)}
-        />
-      </Show>
-
-      <Show when={activeTab() === 'history'}>
-        <GitHistoryTab
-          history={historyState.history()}
-          historyQuery={historyState.historyQuery()}
-          historyLoading={historyState.historyLoading()}
-          historyError={historyState.historyError()}
-          selectedCommit={historyState.selectedCommit()}
-          graphColumnsByHash={historyState.graphColumnsByHash()}
-          maxGraphColumns={historyState.maxGraphColumns()}
-          onHistoryQueryChange={historyState.setHistoryQuery}
-          onLoadHistory={(query) => void historyState.loadHistory(query)}
-          onSelectCommit={historyState.setSelectedCommit}
-          onCommitFileClick={props.onCommitFileClick}
+          onOpenHistory={props.onOpenHistory}
         />
       </Show>
 

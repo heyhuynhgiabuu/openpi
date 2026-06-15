@@ -1,6 +1,6 @@
 import type { GitChangedFile, GitFileDiff, GitSyncAction } from '../../lib/ipc'
 
-export type GitPanelTab = 'changes' | 'history'
+export type GitPanelTab = 'changes'
 
 export interface GitPanelProps {
   style?: string | Record<string, string>
@@ -18,4 +18,5 @@ export interface GitPanelProps {
   onSyncLabelChange?: (label: string) => void
   onSyncActionChange?: (action: GitSyncAction | null) => void
   onSyncMessageChange?: (message: string | null) => void
+  onOpenHistory?: () => void
 }

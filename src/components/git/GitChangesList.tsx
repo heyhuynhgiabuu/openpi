@@ -14,12 +14,19 @@ interface GitChangesListProps {
   untrackedFiles: GitChangedFile[]
   loadingDiff: string | null
   onStageAll: () => void
+  onUnstageAll: () => void
   onShowAllChanges: () => void
   onFileClick: (file: GitChangedFile) => void
   onStageToggle: (file: GitChangedFile, event: Event) => void
 }
 
 export function GitChangesList(props: GitChangesListProps) {
+  const bulkAction = () => {
+    if (props.stageableFiles.length > 0) return 'stage'
+    if (props.stagedFiles.length > 0) return 'unstage'
+    return null
+  }
+
   return (
     <Show
       when={props.statusLoaded}
@@ -30,13 +37,23 @@ export function GitChangesList(props: GitChangesListProps) {
       </Show>
 
       <Show when={props.showingAgentFiles || props.totalChanged > 0}>
-        <Show when={props.stageableFiles.length > 0}>
-          <div class="git-worktree-actions">
-            <span>{props.stageableFiles.length} unstaged</span>
-            <button type="button" class="git-stage-all-btn" onClick={props.onStageAll}>
-              Stage All
-            </button>
-          </div>
+        <Show when={bulkAction()}>
+          {(action) => (
+            <div class="git-worktree-actions">
+              <span>
+                {action() === 'stage'
+                  ? `${props.stageableFiles.length} unstaged`
+                  : `${props.stagedFiles.length} staged`}
+              </span>
+              <button
+                type="button"
+                class="git-stage-all-btn"
+                onClick={() => (action() === 'stage' ? props.onStageAll() : props.onUnstageAll())}
+              >
+                {action() === 'stage' ? 'Stage All' : 'Unstage All'}
+              </button>
+            </div>
+          )}
         </Show>
 
         <Show when={props.showingAgentFiles && props.pinnedAgentFiles.length === 0}>

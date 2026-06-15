@@ -1,9 +1,10 @@
 import { createEffect, createMemo, createSignal } from 'solid-js'
-import type { GitPanelTab } from '../components/git/gitPanelTypes'
 import type { GitGraphColumn, GitHistoryCommit, GitHistoryResult } from '../lib/ipc'
 
+type GitHistoryLoaderTab = 'changes' | 'history'
+
 interface UseGitHistoryStateConfig {
-  activeTab: () => GitPanelTab
+  activeTab: () => GitHistoryLoaderTab
   cwd: () => string | null
   isMounted: () => boolean
 }
