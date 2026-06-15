@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import type { RemoteSessionUpdate } from '../../src/lib/ipc'
-import { goalUpdateSchema, IPC, planUpdateSchema } from '../../src/lib/ipc'
+import { IPC } from '../../src/lib/ipc'
 import type { PiSidecarHost } from '../pi/sidecarHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
 
@@ -129,48 +129,8 @@ export function startStatusWatchers(deps: StatusWatcherDeps): void {
     void checkSyncFile()
   }, 500)
 
-  const goalFile = path.join(os.homedir(), '.pi', 'agent', '.openpi-goal.json')
-  let lastGoalChecksum = ''
-
-  function checkGoalFile() {
-    try {
-      const raw = fs.readFileSync(goalFile, 'utf-8')
-      if (raw === lastGoalChecksum) return
-      lastGoalChecksum = raw
-      deps
-        .getMainWindow()
-        ?.webContents.send(IPC.GOAL_UPDATE, goalUpdateSchema.parse(JSON.parse(raw)))
-    } catch {
-      // file doesn't exist or parse error — ignore
-    }
-  }
-
-  const goalWatchTimer = setInterval(checkGoalFile, 1_000)
-  setTimeout(checkGoalFile, 600)
-
-  const planFile = path.join(os.homedir(), '.pi', 'agent', '.openpi-plan.json')
-  let lastPlanChecksum = ''
-
-  function checkPlanFile() {
-    try {
-      const raw = fs.readFileSync(planFile, 'utf-8')
-      if (raw === lastPlanChecksum) return
-      lastPlanChecksum = raw
-      deps
-        .getMainWindow()
-        ?.webContents.send(IPC.PLAN_UPDATE, planUpdateSchema.parse(JSON.parse(raw)))
-    } catch {
-      // file doesn't exist or parse error — ignore
-    }
-  }
-
-  const planWatchTimer = setInterval(checkPlanFile, 1_000)
-  setTimeout(checkPlanFile, 650)
-
   app.on('quit', () => {
     clearInterval(syncWatchTimer)
-    clearInterval(goalWatchTimer)
-    clearInterval(planWatchTimer)
     remoteRunning = false
     remoteSessionFile = null
   })

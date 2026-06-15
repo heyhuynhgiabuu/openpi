@@ -330,27 +330,6 @@ export const remoteSessionUpdateSchema = sessionHistoryPageSchema.extend({
 })
 export type RemoteSessionUpdate = z.infer<typeof remoteSessionUpdateSchema>
 
-export const goalUpdateSchema = z.object({
-  objective: z.string().nullable(),
-  status: z.string().nullable(),
-  tokensUsed: z.number(),
-  tokenBudget: z.number().nullable(),
-  timeUsedSeconds: z.number(),
-  timestamp: z.number(),
-})
-export type GoalUpdate = z.infer<typeof goalUpdateSchema>
-
-export const planItemStatusSchema = z.enum(['pending', 'in_progress', 'completed'])
-export const planItemSchema = z.object({
-  step: z.string().min(1),
-  status: planItemStatusSchema,
-})
-export const planUpdateSchema = z.object({
-  plan: z.array(planItemSchema),
-  timestamp: z.number(),
-})
-export type PlanUpdate = z.infer<typeof planUpdateSchema>
-
 // ─── Sub-agent file artifacts ───────────────────────────────────────────────
 
 export const subagentArtifactStatusSchema = z.enum(['running', 'completed', 'failed'])

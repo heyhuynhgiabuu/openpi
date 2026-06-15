@@ -28,7 +28,6 @@ import { useComposerKeybindings } from './composer/useComposerKeybindings'
 import { useComposerPickers } from './composer/useComposerPickers'
 import { useComposerTextareaKeyboard } from './composer/useComposerTextareaKeyboard'
 import { usePromptHistory } from './composer/usePromptHistory'
-import { GoalBanner } from './GoalBanner'
 
 export { formatSlashCommandInput } from './composer/helpers'
 
@@ -256,16 +255,6 @@ export const Composer: Component<ComposerProps> = (props) => {
 
         {/* ── Pending queue list ────────────────────────────────────── */}
         <QueueList steeringQueue={props.steeringQueue} followUpQueue={props.followUpQueue} />
-
-        {/* ── Goal banner ─────────────────────────────────────────────── */}
-        <GoalBanner
-          text={props.activeGoalText}
-          step={props.activeGoalStep}
-          elapsed={props.activeGoalElapsed}
-          progress={props.activeGoalProgress}
-          onDismiss={() => props.onSetActiveGoal(null)}
-          onAbort={props.onAbort}
-        />
 
         {/* ── Composer box ─────────────────────────────────────────────── */}
         <div

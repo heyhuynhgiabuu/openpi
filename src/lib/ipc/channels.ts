@@ -132,7 +132,5 @@ export const IPC = {
   FILE_FIND_SHORTCUT: 'openpi:file-find-shortcut',
   REMOTE_SESSION_STATUS: 'openpi:remote-session-status',
   REMOTE_SESSION_UPDATE: 'openpi:remote-session-update',
-  GOAL_UPDATE: 'openpi:goal-update',
-  PLAN_UPDATE: 'openpi:plan-update',
   ARTIFACT_UPDATE: 'openpi:artifact-update',
 } as const

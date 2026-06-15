@@ -187,11 +187,6 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             onSend={props.onSend}
             onShellSend={() => void props.session.sendShell()}
             onAbort={() => void window.openpi.abort()}
-            activeGoalText={props.session.activeGoalText}
-            activeGoalStep={props.session.activeGoalStep}
-            activeGoalElapsed={props.session.activeGoalElapsed}
-            activeGoalProgress={props.session.activeGoalProgress}
-            onSetActiveGoal={props.session.setActiveGoal}
             contextPercent={props.session.contextPercent}
             sessionStats={props.session.sessionStats}
             agentTps={props.session.agentRunMetrics?.tps ?? null}

@@ -1,8 +1,6 @@
 import { ipcRenderer } from 'electron'
 import type {
   ArtifactUpdate,
-  GoalUpdate,
-  PlanUpdate,
   RemoteSessionUpdate,
   SessionError,
   SessionEvent,
@@ -56,18 +54,6 @@ export const eventsApi = {
     const handler = (_: Electron.IpcRendererEvent, payload: RemoteSessionUpdate) => cb(payload)
     ipcRenderer.on(IPC.REMOTE_SESSION_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.REMOTE_SESSION_UPDATE, handler)
-  },
-
-  onGoalUpdate: (cb: (payload: GoalUpdate) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: GoalUpdate) => cb(payload)
-    ipcRenderer.on(IPC.GOAL_UPDATE, handler)
-    return () => ipcRenderer.removeListener(IPC.GOAL_UPDATE, handler)
-  },
-
-  onPlanUpdate: (cb: (payload: PlanUpdate) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: PlanUpdate) => cb(payload)
-    ipcRenderer.on(IPC.PLAN_UPDATE, handler)
-    return () => ipcRenderer.removeListener(IPC.PLAN_UPDATE, handler)
   },
 
   onArtifactUpdate: (cb: (payload: ArtifactUpdate) => void) => {

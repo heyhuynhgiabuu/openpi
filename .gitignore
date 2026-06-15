@@ -3,6 +3,7 @@
 .bv/
 .pi/tasks/
 .pi/tasks-config.json
+.pi/task-registry.json
 .pi/artifacts/
 
 # ── Dependencies ───────────────────────────────────────────────────────────

@@ -203,10 +203,6 @@ export function useOpenPiSession() {
 
     unsubs.push(window.openpi.onRemoteSessionUpdate(remoteSync.handleRemoteSessionUpdate))
 
-    unsubs.push(window.openpi.onGoalUpdate(remoteSync.handleGoalUpdate))
-
-    unsubs.push(window.openpi.onPlanUpdate(remoteSync.handlePlanUpdate))
-
     unsubs.push(
       window.openpi.onSessionReady((payload) => {
         batch(() => {
@@ -308,9 +304,6 @@ export function useOpenPiSession() {
     const promptPayload = buildSessionPromptPayload(input(), contextPrefix)
     const r = ready()
     if (!promptPayload.text || !r) return
-
-    // Detect /goal command from the raw input text and sync goal state
-    remoteSync.syncGoalFromInput(input())
 
     setInput('')
     if (textareaEl) textareaEl.style.height = 'auto'
@@ -514,18 +507,6 @@ export function useOpenPiSession() {
     get gitStats() {
       return gitStats()
     },
-    get activeGoalText() {
-      return remoteSync.activeGoalText()
-    },
-    get activeGoalStep() {
-      return remoteSync.activeGoalStep()
-    },
-    get activeGoalElapsed() {
-      return remoteSync.activeGoalElapsed()
-    },
-    get activeGoalProgress() {
-      return remoteSync.activeGoalProgress()
-    },
     get steeringQueue() {
       return steeringQueue()
     },
@@ -540,12 +521,6 @@ export function useOpenPiSession() {
     },
     get remoteSessionUpdatedAt() {
       return remoteSync.remoteSessionUpdatedAt()
-    },
-    get goalUpdate() {
-      return remoteSync.goalUpdate()
-    },
-    get planUpdate() {
-      return remoteSync.planUpdate()
     },
 
     get localActivityAt() {
@@ -621,9 +596,6 @@ export function useOpenPiSession() {
     forkFromMessage,
     submitAsk,
     dismissAsk,
-    setActiveGoal: remoteSync.setActiveGoal,
-    clearActiveGoal: remoteSync.clearActiveGoal,
-
     clearTasks: () => {
       trackers.clearAll()
     },
