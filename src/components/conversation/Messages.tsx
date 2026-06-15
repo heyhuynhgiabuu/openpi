@@ -1,4 +1,4 @@
-import { type Component, createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { type Component, createEffect, createMemo, For, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage } from '../../lib/ipc'
@@ -170,6 +170,8 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
           getText={getAllText}
           streaming={lastMsg()?.streaming}
           onFork={props.onFork}
+          modelName={[...props.messages].reverse().find((m) => m.modelName)?.modelName}
+          durationMs={props.messages.reduce((sum, m) => sum + (m.durationMs ?? 0), 0)}
         />
       </div>
     </div>
@@ -246,6 +248,8 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
           getText={() => props.message.text}
           streaming={props.message.streaming}
           onFork={props.onFork}
+          modelName={props.message.modelName}
+          durationMs={props.message.durationMs}
         />
       </div>
     </div>
