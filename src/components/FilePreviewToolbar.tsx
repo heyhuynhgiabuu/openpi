@@ -1,15 +1,13 @@
-import { Code2, FileText, Keyboard, PanelRight, Save, X } from 'lucide-solid'
+import { Code2, FileText, Keyboard, PanelRight, Save, Search, X } from 'lucide-solid'
 import { Show } from 'solid-js'
-import { FileIcon } from '../lib/fileIcons'
 import { isMacPlatform } from '../lib/shortcutFormat'
 import { EDITOR_THEMES, type EditorThemeId, isEditorThemeId } from './CodeMirrorEditor'
 import type { ViewMode } from './FilePreviewBody'
 
 export interface FilePreviewToolbarProps {
-  filename: string
-  parentName: string
   truncated: boolean
   isImage: boolean
+  isMarkdown: boolean
   isDirty: boolean
   saveStatus: 'idle' | 'saved' | 'error'
   formatOnSave: boolean
@@ -23,6 +21,7 @@ export interface FilePreviewToolbarProps {
   onFormatOnSaveToggle: () => void
   onEditorThemeChange: (theme: EditorThemeId) => void
   onVimModeToggle: () => void
+  onOpenFind: () => void
   onSave: () => void
   onToggleSplit: () => void
   onToggleMode: () => void
@@ -33,21 +32,19 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
   return (
     <div class="fv-topbar">
       <div class="fv-topbar-identity">
-        <FileIcon name={props.filename} size={14} />
-        <span class="fv-topbar-filename">{props.filename}</span>
-        <span class="fv-topbar-sep">/</span>
-        <span class="fv-topbar-parent">{props.parentName}</span>
         <Show when={props.truncated}>
-          <span class="fv-topbar-badge">truncated</span>
+          <span class="fv-topbar-badge">Truncated</span>
         </Show>
-        <Show when={!props.isImage && props.isDirty}>
-          <span class="fv-topbar-badge fv-topbar-badge--dirty">unsaved</span>
-        </Show>
-        <Show when={props.saveStatus === 'saved'}>
-          <span class="fv-topbar-badge fv-topbar-badge--saved">saved</span>
+        <Show when={!props.truncated}>
+          <Show when={props.isDirty}>
+            <span class="fv-topbar-badge fv-topbar-badge--dirty">Unsaved</span>
+          </Show>
+          <Show when={props.saveStatus === 'saved'}>
+            <span class="fv-topbar-badge">Saved</span>
+          </Show>
         </Show>
         <Show when={props.saveStatus === 'error'}>
-          <span class="fv-topbar-badge fv-topbar-badge--error">save failed</span>
+          <span class="fv-topbar-badge fv-topbar-badge--error">Error saving</span>
         </Show>
       </div>
 
@@ -68,6 +65,29 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
         </Show>
 
         <Show when={!props.isImage}>
+          <button
+            type="button"
+            class={`fv-tb-btn${props.vimMode ? ' fv-tb-btn--active' : ''}`}
+            title={props.vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
+            aria-pressed={props.vimMode}
+            onClick={() => props.onVimModeToggle()}
+          >
+            <Keyboard size={14} strokeWidth={1.8} />
+          </button>
+        </Show>
+
+        <Show when={!props.isImage}>
+          <button
+            type="button"
+            class="fv-tb-btn"
+            title={`Find (${isMacPlatform() ? '⌘F' : 'Ctrl+F'})`}
+            onClick={() => props.onOpenFind()}
+          >
+            <Search size={14} strokeWidth={1.8} />
+          </button>
+        </Show>
+
+        <Show when={!props.isImage}>
           <label class="fv-theme-select" title="Editor theme">
             <span class="fv-theme-select-label">Theme</span>
             <select
@@ -82,18 +102,6 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
               ))}
             </select>
           </label>
-        </Show>
-
-        <Show when={!props.isImage}>
-          <button
-            type="button"
-            class={`fv-tb-btn${props.vimMode ? ' fv-tb-btn--active' : ''}`}
-            title={props.vimMode ? 'Disable Vim mode' : 'Enable Vim mode'}
-            aria-pressed={props.vimMode}
-            onClick={() => props.onVimModeToggle()}
-          >
-            <Keyboard size={14} strokeWidth={1.8} />
-          </button>
         </Show>
 
         <Show when={!props.isImage}>
@@ -116,7 +124,7 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
           </button>
         </Show>
 
-        <Show when={!props.isImage}>
+        <Show when={props.isMarkdown}>
           <button
             type="button"
             class={`fv-tb-btn${props.mode === 'split' ? ' fv-tb-btn--active' : ''}`}
@@ -128,7 +136,7 @@ export function FilePreviewToolbar(props: FilePreviewToolbarProps) {
           </button>
         </Show>
 
-        <Show when={!props.isImage && props.mode !== 'split'}>
+        <Show when={props.isMarkdown && props.mode !== 'split'}>
           <button
             type="button"
             class={`fv-tb-btn${props.mode === 'preview' ? ' fv-tb-btn--active' : ''}`}

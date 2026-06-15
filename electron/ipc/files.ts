@@ -90,6 +90,11 @@ export function registerFileIpc(deps: FileIpcDeps): void {
       if (!approved) return
     }
     fs.writeFileSync(full, content, 'utf-8')
+    deps.getMainWindow()?.webContents.send(IPC.FILE_TREE_CHANGED)
+    try {
+      const git = await deps.getGitHost()
+      deps.getMainWindow()?.webContents.send(IPC.GIT_STATUS_CHANGED, await git.getGitStatus(cwd))
+    } catch {}
   })
 
   deps.ipcMain.handle(IPC.DELETE_FILE, async (event, raw: unknown): Promise<unknown> => {

@@ -102,12 +102,6 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
   const normalizedPath = createMemo(() => props.relativePath.replace(/\\/g, '/'))
   const pathParts = createMemo(() => normalizedPath().split('/'))
   const filename = createMemo(() => pathParts()[pathParts().length - 1] ?? props.relativePath)
-  const parentName = createMemo(() =>
-    pathParts().length >= 2
-      ? pathParts()[pathParts().length - 2] || props.workspaceName
-      : props.workspaceName
-  )
-
   const isImage = createMemo(() => isImageFile(filename()))
   const isMarkdown = createMemo(() => isMarkdownFile(filename()))
   const absPath = createMemo(() =>
@@ -351,10 +345,9 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
     >
       <div class="fv-modal fv-modal--embedded">
         <FilePreviewToolbar
-          filename={filename()}
-          parentName={parentName()}
           truncated={truncated()}
           isImage={isImage()}
+          isMarkdown={isMarkdown()}
           isDirty={isDirty()}
           saveStatus={saveStatus()}
           formatOnSave={formatOnSave()}
@@ -368,6 +361,7 @@ export function FilePreviewPane(props: FilePreviewPaneProps) {
           onFormatOnSaveToggle={() => setFormatOnSave((v) => !v)}
           onEditorThemeChange={(theme) => setEditorTheme(theme)}
           onVimModeToggle={() => setVimMode((v) => !v)}
+          onOpenFind={() => find.openFindBar(false)}
           onSave={() => void handleSave()}
           onToggleSplit={toggleSplit}
           onToggleMode={toggleMode}

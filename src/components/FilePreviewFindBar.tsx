@@ -1,12 +1,4 @@
-import {
-  ChevronDown,
-  ChevronUp,
-  PanelBottomOpen,
-  Replace,
-  ReplaceAll,
-  Search,
-  X,
-} from 'lucide-solid'
+import { ChevronDown, ChevronUp, PanelBottomOpen, Replace, ReplaceAll, X } from 'lucide-solid'
 import { Show } from 'solid-js'
 import { isMacPlatform } from '../lib/shortcutFormat'
 
@@ -64,7 +56,6 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
           <PanelBottomOpen size={13} strokeWidth={2} />
         </button>
 
-        <Search size={12} class="fv-find-icon" />
         <input
           ref={(el) => {
             _findEl = el
@@ -185,7 +176,7 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
       <Show when={props.findReplaceOpen}>
         <div class="fv-find-replace-row">
           <span class="fv-find-replace-indent" />
-          <Search size={12} class="fv-find-icon fv-find-icon--replace" />
+
           <input
             ref={(el) => {
               _replaceEl = el
