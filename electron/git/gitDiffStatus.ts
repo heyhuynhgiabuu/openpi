@@ -28,6 +28,48 @@ function effectiveStatus(index: string, workingDir: string): GitChangedFile['sta
   return 'M'
 }
 
+async function readGitText(
+  git: ReturnType<typeof simpleGit>,
+  spec: string
+): Promise<string | null> {
+  try {
+    return await git.raw(['show', spec])
+  } catch {
+    return null
+  }
+}
+
+function readWorkingText(cwd: string, filePath: string): string | null {
+  try {
+    const fullPath = path.join(cwd, filePath)
+    if (!fs.statSync(fullPath).isFile()) return null
+    return fs.readFileSync(fullPath, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+function countContentLines(contents: string): number {
+  if (!contents) return 0
+  return contents.endsWith('\n')
+    ? contents.split(/\r?\n/).length - 1
+    : contents.split(/\r?\n/).length
+}
+
+async function readDiffContents(
+  cwd: string,
+  git: ReturnType<typeof simpleGit>,
+  filePath: string,
+  source: 'working' | 'index'
+): Promise<Pick<GitFileDiff, 'oldContent' | 'newContent'>> {
+  const oldContent = (await readGitText(git, `HEAD:${filePath}`)) ?? ''
+  const newContent =
+    source === 'index'
+      ? ((await readGitText(git, `:${filePath}`)) ?? '')
+      : (readWorkingText(cwd, filePath) ?? '')
+  return { oldContent, newContent }
+}
+
 function resolveGitDir(cwd: string, gitDir: string): string {
   if (gitDir.startsWith('/')) return gitDir
   if (gitDir.startsWith('.')) return path.resolve(cwd, gitDir)
@@ -183,6 +225,25 @@ export async function getGitFileDiff(cwd: string, filePath: string): Promise<Git
     if (!raw.trim()) {
       const stagedRaw = await git.raw(['diff', '--staged', '--unified=3', '--', filePath])
       if (!stagedRaw.trim()) {
+        const status = await git.status().catch(() => null)
+        const isUntracked =
+          status?.files.some(
+            (file) =>
+              file.path === filePath && effectiveStatus(file.index, file.working_dir) === '?'
+          ) ?? false
+        const workingContent = readWorkingText(cwd, filePath)
+        if (isUntracked && workingContent !== null) {
+          return {
+            path: filePath,
+            rawPatch: '',
+            oldContent: '',
+            newContent: workingContent,
+            totalAdded: countContentLines(workingContent),
+            totalRemoved: 0,
+            isNew: true,
+            isDeleted: false,
+          }
+        }
         return {
           path: filePath,
           rawPatch: '',
@@ -196,6 +257,7 @@ export async function getGitFileDiff(cwd: string, filePath: string): Promise<Git
       return {
         path: filePath,
         rawPatch: stagedRaw,
+        ...(await readDiffContents(cwd, git, filePath, 'index')),
         totalAdded: added,
         totalRemoved: removed,
         isNew: false,
@@ -206,6 +268,7 @@ export async function getGitFileDiff(cwd: string, filePath: string): Promise<Git
     return {
       path: filePath,
       rawPatch: raw,
+      ...(await readDiffContents(cwd, git, filePath, 'working')),
       totalAdded: added,
       totalRemoved: removed,
       isNew: added > 0 && removed === 0,

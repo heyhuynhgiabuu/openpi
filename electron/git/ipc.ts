@@ -239,19 +239,22 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     }
   )
 
-  deps.ipcMain.handle(IPC.GIT_FILE_TREE, async (): Promise<FileTreeResult | null> => {
-    const cwd = requireCwd(deps)
-    if (!cwd) return null
-    const git = await deps.getGitHost()
-    const tree = git.getFileTree(cwd)
-    // Enrich tree with git status so the renderer can show M/A/D/R badges
-    const status = await git.getGitStatus(cwd)
-    const statusMap = new Map<string, string>()
-    for (const file of status.files) {
-      statusMap.set(file.path, file.status)
+  deps.ipcMain.handle(
+    IPC.GIT_FILE_TREE,
+    async (_event, cwdFromRenderer?: string): Promise<FileTreeResult | null> => {
+      const cwd = cwdFromRenderer ?? requireCwd(deps)
+      if (!cwd) return null
+      const git = await deps.getGitHost()
+      const tree = git.getFileTree(cwd)
+      // Enrich tree with git status so the renderer can show M/A/D/R badges
+      const status = await git.getGitStatus(cwd)
+      const statusMap = new Map<string, string>()
+      for (const file of status.files) {
+        statusMap.set(file.path, file.status)
+      }
+      return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
     }
-    return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
-  })
+  )
 
   deps.ipcMain.handle(
     IPC.GIT_GENERATE_COMMIT_MSG,

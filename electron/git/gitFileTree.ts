@@ -126,8 +126,22 @@ export function enrichTree(tree: FileTreeResult, statusMap: Map<string, string>)
   }
 }
 
+function toFileTreeChangeType(status: string | undefined): FileTreeNode['changeType'] {
+  switch (status) {
+    case 'M':
+    case 'A':
+    case 'D':
+    case 'R':
+      return status
+    case '?':
+      return 'A'
+    default:
+      return undefined
+  }
+}
+
 function enrichNode(node: FileTreeNode, statusMap: Map<string, string>): FileTreeNode {
-  const changeType = statusMap.get(node.path) as 'M' | 'A' | 'D' | 'R' | undefined
+  const changeType = toFileTreeChangeType(statusMap.get(node.path))
   return {
     ...node,
     changeType,

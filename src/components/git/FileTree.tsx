@@ -1,12 +1,8 @@
 /**
  * FileTree — workspace file browser for the Git panel "Files" tab.
  *
- * Tree structure: Zed-style connector rails and elbows instead of text glyphs.
- * Folder open/closed state is shown by the folder icon itself.
- * File icons are provided by fileIcons.tsx.
- *
- * Renderer is read-only: displays the file tree and emits file-click events.
- * Actual I/O lives in Electron main (getFileTree IPC).
+ * OpenCode-style tree: no root row, folder icons, indent guide lines,
+ * mono icons by default with full color on hover.
  */
 
 import { ContextMenu as KContextMenu } from '@kobalte/core/context-menu'
@@ -48,7 +44,22 @@ interface NodeProps {
   setActiveNodePath: (path: string | null) => void
 }
 
-function NodeName(props: NodeProps, isChanged: () => boolean) {
+function changeTypeClass(ct: string | undefined): string {
+  switch (ct) {
+    case 'A':
+      return ' is-added'
+    case 'M':
+      return ' is-modified'
+    case 'D':
+      return ' is-deleted'
+    case 'R':
+      return ' is-renamed'
+    default:
+      return ''
+  }
+}
+
+function NodeName(props: NodeProps, changeType: () => string | undefined) {
   if (props.renamingPath() === props.node.path) {
     return (
       <input
@@ -65,7 +76,7 @@ function NodeName(props: NodeProps, isChanged: () => boolean) {
   }
   return (
     <span
-      class={`ftree-name${isChanged() ? ' is-changed' : ''}`}
+      class={`ftree-name${changeType() ? ` is-changed${changeTypeClass(changeType())}` : ''}`}
       onDblClick={(e) => {
         e.stopPropagation()
         props.startRename(props.node)
@@ -78,7 +89,7 @@ function NodeName(props: NodeProps, isChanged: () => boolean) {
 
 function TreeNode(props: NodeProps) {
   const isExpanded = () => props.expanded.has(props.node.path)
-  const isChanged = () => props.changedPaths.has(props.node.path)
+  const isChanged = () => !!props.node.changeType
 
   return (
     <Show
@@ -86,8 +97,8 @@ function TreeNode(props: NodeProps) {
       fallback={
         <KContextMenu>
           <div
-            class="ftree-item"
-            style={{ '--indent': `${(props.parentLines.length + 1) * 16}px` }}
+            class={`ftree-item${isChanged() ? ` is-changed${changeTypeClass(props.node.changeType)}` : ''}`}
+            style={{ '--indent': `${props.parentLines.length * 16 + 8}px` }}
           >
             <KContextMenu.Trigger
               as="button"
@@ -100,7 +111,7 @@ function TreeNode(props: NodeProps) {
               }}
             >
               <FileIcon name={props.node.name} size={15} />
-              {NodeName(props, isChanged)}
+              {NodeName(props, () => props.node.changeType)}
               <Show when={props.node.changeType}>
                 <span class={`ftree-badge ftree-badge-${props.node.changeType}`}>
                   {props.node.changeType}
@@ -146,7 +157,10 @@ function TreeNode(props: NodeProps) {
       }
     >
       <KContextMenu>
-        <div class="ftree-item" style={{ '--indent': `${(props.parentLines.length + 1) * 16}px` }}>
+        <div
+          class={`ftree-item${isChanged() ? ` is-changed${changeTypeClass(props.node.changeType)}` : ''}`}
+          style={{ '--indent': `${props.parentLines.length * 16 + 8}px` }}
+        >
           <KContextMenu.Trigger
             as="button"
             type="button"
@@ -162,7 +176,12 @@ function TreeNode(props: NodeProps) {
                 ▸
               </span>
             </Show>
-            <span class={`ftree-name${isChanged() ? ' is-changed' : ''}`}>{props.node.name}</span>
+            <FolderIcon name={props.node.name} size={15} open={isExpanded()} />
+            <span
+              class={`ftree-name${isChanged() ? ` is-changed${changeTypeClass(props.node.changeType)}` : ''}`}
+            >
+              {props.node.name}
+            </span>
             <Show when={props.node.changeType}>
               <span class={`ftree-badge ftree-badge-${props.node.changeType}`}>
                 {props.node.changeType}
@@ -244,6 +263,8 @@ function TreeNode(props: NodeProps) {
 
 export function FileTree(props: FileTreeProps) {
   const [tree, setTree] = createSignal<FileTreeResult | null>(null)
+  const [isLoading, setIsLoading] = createSignal(false)
+  const [loadError, setLoadError] = createSignal<string | null>(null)
   const [expanded, setExpanded] = createSignal<Set<string>>(new Set())
   const [renamingPath, setRenamingPath] = createSignal<string | null>(null)
   const [renamingDraft, setRenamingDraft] = createSignal<string>('')
@@ -337,11 +358,41 @@ export function FileTree(props: FileTreeProps) {
   })
 
   const refreshTree = async (resetExpansion = false) => {
+    const cwd = props.cwd
     const currentRequest = ++requestId
-    const result = await window.openpi.git.getFileTree()
+    if (!cwd) {
+      setTree(null)
+      setIsLoading(false)
+      setLoadError(null)
+      return
+    }
+
+    setIsLoading(true)
+    setLoadError(null)
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const result = await window.openpi.git.getFileTree(cwd)
+        if (!mounted || currentRequest !== requestId) return
+        if (result) {
+          setTree(result)
+          setIsLoading(false)
+          if (resetExpansion) setExpanded(new Set<string>())
+          return
+        }
+      } catch (error) {
+        if (!mounted || currentRequest !== requestId) return
+        setTree(null)
+        setIsLoading(false)
+        setLoadError(error instanceof Error ? error.message : 'Could not load file tree')
+        return
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+
     if (!mounted || currentRequest !== requestId) return
-    setTree(result)
-    if (result && resetExpansion) setExpanded(new Set(['']))
+    setTree(null)
+    setIsLoading(false)
+    setLoadError('Could not load file tree')
   }
 
   onMount(() => {
@@ -354,7 +405,7 @@ export function FileTree(props: FileTreeProps) {
   createEffect(() => {
     const trigger = props.triggerCollapseAll
     if (trigger !== undefined && trigger > 0) {
-      void Promise.resolve().then(() => setExpanded(new Set([''])))
+      void Promise.resolve().then(() => setExpanded(new Set<string>()))
     }
   })
 
@@ -362,6 +413,8 @@ export function FileTree(props: FileTreeProps) {
     const cwd = props.cwd
     if (!cwd) {
       setTree(null)
+      setIsLoading(false)
+      setLoadError(null)
       requestId += 1
       return
     }
@@ -409,59 +462,49 @@ export function FileTree(props: FileTreeProps) {
   }
 
   const changedPaths = () => props.changedPaths ?? new Set<string>()
-  const isRootExpanded = () => expanded().has('')
-
   return (
     <Show
       when={tree()}
-      fallback={<div class="ftree-empty">{props.cwd ? 'Loading…' : 'No workspace'}</div>}
+      fallback={
+        <div class="ftree-empty">
+          {props.cwd ? (loadError() ?? (isLoading() ? 'Loading…' : 'No files')) : 'No workspace'}
+        </div>
+      }
     >
       {(resolvedTree) => (
         <div class="ftree-root">
-          <button
-            type="button"
-            class="ftree-row ftree-dir ftree-workspace-root"
-            onClick={() => toggle('')}
-          >
-            <span class="ftree-root-chevron">{isRootExpanded() ? '▾' : '▸'}</span>
-            <FolderIcon name={resolvedTree().rootName} size={15} open={isRootExpanded()} />
-            <span class="ftree-name">{resolvedTree().rootName}</span>
-          </button>
-
-          <Show when={isRootExpanded()}>
-            <For each={resolvedTree().children}>
-              {(child, idx) => (
-                <TreeNode
-                  node={child}
-                  isLast={idx() === resolvedTree().children.length - 1}
-                  parentLines={[]}
-                  changedPaths={changedPaths()}
-                  expanded={expanded()}
-                  onToggle={toggle}
-                  onFileClick={props.onFileClick}
-                  onDelete={deleteNode}
-                  onRename={startRename}
-                  onCopy={copyNode}
-                  onContextMenu={handleContextMenu}
-                  renamingPath={renamingPath}
-                  renamingDraft={renamingDraft}
-                  setRenamingDraft={setRenamingDraft}
-                  startRename={startRename}
-                  commitRename={commitRename}
-                  cancelRename={cancelRename}
-                  onRenameKeyDown={onRenameKeyDown}
-                  onRenameInputRef={(el) => {
-                    if (el) {
-                      el.focus()
-                      el.select()
-                    }
-                  }}
-                  activeNodePath={activeNodePath}
-                  setActiveNodePath={setActiveNodePath}
-                />
-              )}
-            </For>
-          </Show>
+          <For each={resolvedTree().children}>
+            {(child, idx) => (
+              <TreeNode
+                node={child}
+                isLast={idx() === resolvedTree().children.length - 1}
+                parentLines={[]}
+                changedPaths={changedPaths()}
+                expanded={expanded()}
+                onToggle={toggle}
+                onFileClick={props.onFileClick}
+                onDelete={deleteNode}
+                onRename={startRename}
+                onCopy={copyNode}
+                onContextMenu={handleContextMenu}
+                renamingPath={renamingPath}
+                renamingDraft={renamingDraft}
+                setRenamingDraft={setRenamingDraft}
+                startRename={startRename}
+                commitRename={commitRename}
+                cancelRename={cancelRename}
+                onRenameKeyDown={onRenameKeyDown}
+                onRenameInputRef={(el) => {
+                  if (el) {
+                    el.focus()
+                    el.select()
+                  }
+                }}
+                activeNodePath={activeNodePath}
+                setActiveNodePath={setActiveNodePath}
+              />
+            )}
+          </For>
         </div>
       )}
     </Show>

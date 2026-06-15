@@ -64,7 +64,7 @@ export function GitPanel(props: GitPanelProps) {
   createEffect(() => {
     props.onSyncLabelChange?.(derived.syncLabel())
   })
-  // Surface sync action + message to BottomBar via App.
+  // Surface sync action + message to the parent shell.
   createEffect(() => {
     props.onSyncActionChange?.(syncingAction())
   })
@@ -215,13 +215,15 @@ export function GitPanel(props: GitPanelProps) {
 
   return (
     <aside class="git-panel" style={props.style} data-side={props.side ?? 'right'}>
-      <GitPanelHeader
-        activeTab={activeTab()}
-        totalChanged={derived.totalChanged()}
-        status={status()}
-        onActiveTabChange={setActiveTab}
-        onDragHandleMouseDown={props.onDragHandleMouseDown}
-      />
+      <Show when={!props.hideHeader}>
+        <GitPanelHeader
+          activeTab={activeTab()}
+          totalChanged={derived.totalChanged()}
+          status={status()}
+          onActiveTabChange={setActiveTab}
+          onDragHandleMouseDown={props.onDragHandleMouseDown}
+        />
+      </Show>
 
       <Show when={activeTab() === 'changes'}>
         <GitChangesTab

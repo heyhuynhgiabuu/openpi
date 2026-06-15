@@ -67,7 +67,8 @@ export const gitApi = {
       ipcRenderer.on(IPC.FILE_TREE_CHANGED, handler)
       return () => ipcRenderer.removeListener(IPC.FILE_TREE_CHANGED, handler)
     },
-    getFileTree: (): Promise<FileTreeResult | null> => ipcRenderer.invoke(IPC.GIT_FILE_TREE),
+    getFileTree: (cwd: string): Promise<FileTreeResult | null> =>
+      ipcRenderer.invoke(IPC.GIT_FILE_TREE, cwd),
     generateCommitMessage: (): Promise<{ message: string } | null> =>
       ipcRenderer.invoke(IPC.GIT_GENERATE_COMMIT_MSG),
     onAgentChangedFiles: (cb: (payload: { count: number; files: GitChangedFile[] }) => void) => {

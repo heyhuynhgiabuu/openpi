@@ -24,6 +24,11 @@ type MaterialIconManifest = {
 
 const manifest = materialIcons as MaterialIconManifest
 
+/** material-icon-theme is missing plain .ts extension mapping — add it here. */
+const CUSTOM_EXTENSION_ICONS: Record<string, string> = {
+  ts: 'typescript',
+}
+
 const iconUrls = import.meta.glob('/node_modules/material-icon-theme/icons/*.svg', {
   eager: true,
   import: 'default',
@@ -69,6 +74,8 @@ function resolveFileIconUrl(name: string) {
   for (const candidate of extensionCandidates(normalized)) {
     const byExtension = iconKeyToUrl(manifest.fileExtensions[candidate])
     if (byExtension) return byExtension
+    const customKey = CUSTOM_EXTENSION_ICONS[candidate]
+    if (customKey) return iconKeyToUrl(customKey)
   }
 
   return iconKeyToUrl(manifest.file) ?? iconKeyToUrl('file')

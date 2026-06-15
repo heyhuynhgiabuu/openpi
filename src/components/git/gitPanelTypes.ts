@@ -6,6 +6,7 @@ export interface GitPanelProps {
   style?: string | Record<string, string>
   cwd: string | null
   activeTab?: GitPanelTab
+  hideHeader?: boolean
   onActiveTabChange?: (tab: GitPanelTab) => void
   onRequestFileSearch?: () => void
   onDiffOpen: (diff: GitFileDiff, files: GitChangedFile[], index: number) => void

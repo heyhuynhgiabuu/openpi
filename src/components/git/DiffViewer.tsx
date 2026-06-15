@@ -1,13 +1,13 @@
 /**
- * DiffViewer — side-by-side diff overlay.
+ * DiffViewer — Review tab diff viewer.
  *
- * Uses @pierre/diffs vanilla JS FileDiff component for robust side-by-side rendering,
+ * Uses @pierre/diffs vanilla JS FileDiff component for robust configurable rendering,
  * syntax highlighting via Shiki, and proper hunk structure.
  *
  * Authority: renderer only — no Git mutations here.
  */
 
-import { FileDiff, parsePatchFiles } from '@pierre/diffs'
+import { FileDiff, type FileDiffOptions, parseDiffFromFile, parsePatchFiles } from '@pierre/diffs'
 import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
 import type { GitChangedFile, GitFileDiff } from '../../lib/ipc'
 
@@ -17,6 +17,35 @@ interface DiffViewerProps {
   currentIndex: number
   onNavigate: (index: number) => void
   onClose: () => void
+}
+
+type DiffStyle = 'split' | 'unified'
+
+const DIFF_STYLE_STORAGE_KEY = 'openpi:review-diff-style'
+
+function readDiffStyle(): DiffStyle {
+  return window.localStorage.getItem(DIFF_STYLE_STORAGE_KEY) === 'unified' ? 'unified' : 'split'
+}
+
+function diffOptions(diffStyle: DiffStyle): FileDiffOptions<undefined> {
+  return {
+    diffStyle,
+    theme: 'pierre-dark',
+    themeType: 'dark',
+    preferredHighlighter: 'shiki-js',
+    disableFileHeader: true,
+    disableLineNumbers: false,
+    overflow: 'wrap',
+    diffIndicators: 'bars',
+    disableBackground: false,
+    hunkSeparators: 'line-info-basic',
+    collapsedContextThreshold: 3,
+    expansionLineCount: 80,
+    lineDiffType: 'word-alt',
+    maxLineDiffLength: 1000,
+    tokenizeMaxLineLength: 1000,
+    lineHoverHighlight: 'line',
+  }
 }
 
 // ─── Keyboard handler ──────────────────────────────────────────────────────
@@ -45,21 +74,26 @@ function useKeyboardNav(
 
 // ─── Pierre diff renderer ─────────────────────────────────────────────────
 
-function PierreDiffRenderer(props: { patch: string; filename: string }) {
+function PierreDiffRenderer(props: { diff: GitFileDiff; diffStyle: DiffStyle }) {
   let containerRef!: HTMLDivElement
-  let diffInstance: FileDiff | null = null
+  let diffInstance: FileDiff<undefined> | null = null
 
-  const renderDiff = (patch: string) => {
+  const renderDiff = (diff: GitFileDiff, style: DiffStyle) => {
     if (!containerRef) return
 
-    // parsePatchFiles takes a raw patch string and returns ParsedPatch[]
-    // each ParsedPatch has .files: FileDiffMetadata[]
     let fileDiff: ReturnType<typeof parsePatchFiles>[number]['files'][number] | undefined
     try {
-      const parsed = parsePatchFiles(patch)
-      fileDiff = parsed[0]?.files[0]
+      if (diff.oldContent !== undefined && diff.newContent !== undefined) {
+        fileDiff = parseDiffFromFile(
+          { name: diff.path, contents: diff.oldContent, cacheKey: `${diff.path}:old` },
+          { name: diff.path, contents: diff.newContent, cacheKey: `${diff.path}:new` }
+        )
+      } else {
+        const parsed = parsePatchFiles(diff.rawPatch)
+        fileDiff = parsed[0]?.files[0]
+      }
     } catch (err) {
-      console.warn('[DiffViewer] Failed to parse patch:', err)
+      console.warn('[DiffViewer] Failed to parse diff:', err)
       containerRef.innerHTML = '<div class="diff-empty">Unable to parse diff.</div>'
       return
     }
@@ -69,15 +103,11 @@ function PierreDiffRenderer(props: { patch: string; filename: string }) {
       return
     }
 
-    // Re-use existing instance if available, otherwise create new one
+    const options = diffOptions(style)
     if (!diffInstance) {
-      diffInstance = new FileDiff({
-        diffStyle: 'split', // side-by-side view
-        theme: 'pierre-dark', // built-in dark theme
-        themeType: 'dark',
-        expandUnchanged: false, // collapse large identical regions
-        disableFileHeader: true, // we render our own header above
-      })
+      diffInstance = new FileDiff(options)
+    } else {
+      diffInstance.setOptions(options)
     }
 
     try {
@@ -88,14 +118,11 @@ function PierreDiffRenderer(props: { patch: string; filename: string }) {
     }
   }
 
-  // Re-render when patch or filename changes.
+  // Re-render when diff data or display options change.
   // Use containerWrapper (not fileContainer) so @pierre/diffs creates its own
-  // <diffs-container> shadow host with the correct split-view layout semantics.
+  // <diffs-container> shadow host with the correct split/unified layout semantics.
   createEffect(() => {
-    const patch = props.patch
-    // filename read for reactivity — drives language detection in pierre
-    void props.filename
-    renderDiff(patch)
+    renderDiff(props.diff, props.diffStyle)
   })
 
   onCleanup(() => {
@@ -112,6 +139,11 @@ function PierreDiffRenderer(props: { patch: string; filename: string }) {
 
 export function DiffViewer(props: DiffViewerProps) {
   const [copyDone, setCopyDone] = createSignal(false)
+  const [diffStyle, setDiffStyle] = createSignal<DiffStyle>(readDiffStyle())
+
+  createEffect(() => {
+    window.localStorage.setItem(DIFF_STYLE_STORAGE_KEY, diffStyle())
+  })
 
   useKeyboardNav(
     () => props.currentIndex,
@@ -136,9 +168,14 @@ export function DiffViewer(props: DiffViewerProps) {
     p.pop()
     return p.join('/') || null
   }
+  const hasDiffData = () =>
+    Boolean(
+      props.diff.rawPatch ||
+        (props.diff.oldContent !== undefined && props.diff.newContent !== undefined)
+    )
 
   return (
-    <div class="diff-overlay" role="dialog" aria-label="Diff viewer">
+    <div class="diff-overlay" aria-label="Diff viewer">
       <div class="diff-header">
         <div class="diff-nav">
           <button
@@ -180,17 +217,37 @@ export function DiffViewer(props: DiffViewerProps) {
           </Show>
         </button>
 
-        <button type="button" class="diff-close-btn" onClick={props.onClose} title="Close (Esc)">
-          ✕
-        </button>
+        <div class="diff-actions" aria-label="Review display controls">
+          <div class="diff-style-toggle" role="group" aria-label="Diff layout">
+            <button
+              type="button"
+              class={`diff-toggle-btn${diffStyle() === 'split' ? ' is-active' : ''}`}
+              aria-pressed={diffStyle() === 'split'}
+              onClick={() => setDiffStyle('split')}
+            >
+              Split
+            </button>
+            <button
+              type="button"
+              class={`diff-toggle-btn${diffStyle() === 'unified' ? ' is-active' : ''}`}
+              aria-pressed={diffStyle() === 'unified'}
+              onClick={() => setDiffStyle('unified')}
+            >
+              Unified
+            </button>
+          </div>
+          <button type="button" class="diff-close-btn" onClick={props.onClose} title="Close (Esc)">
+            ✕
+          </button>
+        </div>
       </div>
 
       <div class="diff-body">
         <Show
-          when={props.diff.rawPatch}
+          when={hasDiffData()}
           fallback={<div class="diff-empty">No diff available for this file.</div>}
         >
-          <PierreDiffRenderer patch={props.diff.rawPatch} filename={props.diff.path} />
+          <PierreDiffRenderer diff={props.diff} diffStyle={diffStyle()} />
         </Show>
       </div>
     </div>
