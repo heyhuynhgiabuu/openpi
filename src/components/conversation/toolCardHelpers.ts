@@ -75,13 +75,32 @@ export function extractCommand(card: ToolCard): string {
 }
 
 export function extractEditPairs(card: ToolCard): EditPair[] {
+  // Pi SDK edit tool: args.edits = Array<{ oldText, newText }>
+  const edits = Array.isArray(card.args.edits) ? card.args.edits : []
+  if (edits.length > 0) {
+    return edits
+      .map((e: Record<string, unknown>) => ({
+        old: String(e.oldText ?? ''),
+        new: String(String(e.newText ?? '')),
+      }))
+      .filter((p: EditPair) => p.old || p.new)
+  }
+
+  // Legacy multiedit format: args.patches = Array<{ old, new }>
   const patches = Array.isArray(card.args.patches) ? card.args.patches : []
-  return patches
-    .map((p: Record<string, unknown>) => ({
-      old: String(p.old ?? ''),
-      new: String(String(p.new ?? p.new_str ?? '')),
-    }))
-    .filter((p: EditPair) => p.old || p.new)
+  if (patches.length > 0) {
+    return patches
+      .map((p: Record<string, unknown>) => ({
+        old: String(p.old ?? ''),
+        new: String(String(p.new ?? p.new_str ?? '')),
+      }))
+      .filter((p: EditPair) => p.old || p.new)
+  }
+
+  // Fallback: args has old/new directly (unstructured)
+  const singleOld = String(card.args.old ?? card.args.old_str ?? '')
+  const singleNew = String(card.args.new ?? card.args.new_str ?? '')
+  return singleOld || singleNew ? [{ old: singleOld, new: singleNew }] : []
 }
 
 export function extractWriteLines(card: ToolCard): string[] {

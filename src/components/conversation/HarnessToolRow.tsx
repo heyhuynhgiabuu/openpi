@@ -1,7 +1,6 @@
 import { type Component, createSignal, Show } from 'solid-js'
 import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { harnessActionForTool, parseGoalOutputSummary, parseHarnessTaskId } from './toolCardHelpers'
 
 type HarnessToolRowProps = {
@@ -30,18 +29,13 @@ export const HarnessToolRow: Component<HarnessToolRowProps> = (props) => {
   const label = () => harnessActionForTool(props.card.toolName)
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <button
         type="button"
         class="tool-ran-header"
         onClick={() => hasOutput() && setOpen((v) => !v)}
         style={{ cursor: hasOutput() ? 'pointer' : 'default' }}
       >
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
         <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
         <span class="harness-action-label">{label()}</span>
         <Show when={targetName()}>
@@ -70,7 +64,7 @@ export const HarnessToolRow: Component<HarnessToolRowProps> = (props) => {
           <span class="tool-streaming-dot">·</span>
         </Show>
         <Show when={hasOutput() && !props.card.streaming}>
-          <span class="tool-chevron" aria-hidden="true">
+          <span class="tool-chevron" data-open={open()} aria-hidden="true">
             {open() ? '⌄' : '›'}
           </span>
         </Show>

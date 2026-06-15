@@ -3,7 +3,6 @@ import { type Component, createSignal, Show } from 'solid-js'
 import { FileIcon } from '../../lib/fileIcons'
 import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { extractFilePath, isImagePath, localFileUrl } from './toolCardHelpers'
 
 type FileToolRowProps = {
@@ -20,18 +19,13 @@ export const FileToolRow: Component<FileToolRowProps> = (props) => {
   const hasExpandable = () => isImage() || hasText()
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <button
         type="button"
         class="tool-ran-header"
         onClick={() => hasExpandable() && setOpen((v) => !v)}
         style={{ cursor: hasExpandable() ? 'pointer' : 'default' }}
       >
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
         <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
         <span class="tool-file-chip">
           <FileIcon name={basename()} size={13} />
@@ -50,7 +44,7 @@ export const FileToolRow: Component<FileToolRowProps> = (props) => {
           <span class="tool-streaming-dot">·</span>
         </Show>
         <Show when={hasExpandable() && !props.card.streaming}>
-          <span class="tool-chevron" aria-hidden="true">
+          <span class="tool-chevron" data-open={open()} aria-hidden="true">
             {open() ? '⌄' : '›'}
           </span>
         </Show>

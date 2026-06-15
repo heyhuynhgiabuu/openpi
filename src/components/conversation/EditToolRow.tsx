@@ -1,10 +1,9 @@
 // biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: pre-existing tool-card file chip
-import { type Component, createEffect, createSignal, For, Show } from 'solid-js'
+import { type Component, createEffect, createSignal, For, onCleanup, Show } from 'solid-js'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import { FileIcon } from '../../lib/fileIcons'
 import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { extractEditPairs, extractFilePath, extractWriteLines } from './toolCardHelpers'
 
 type EditToolRowProps = {
@@ -16,6 +15,20 @@ type EditToolRowProps = {
 export const EditToolRow: Component<EditToolRowProps> = (props) => {
   const [open, setOpen] = createSignal(props.displayPreferences.expandEditToolParts)
   const [manualToggle, setManualToggle] = createSignal(false)
+
+  // Auto-switch between split (wide) and unified (narrow) diff view
+  const [diffWidth, setDiffWidth] = createSignal(0)
+  let diffContainerEl: HTMLDivElement | undefined
+  createEffect(() => {
+    const el = diffContainerEl
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setDiffWidth(e.contentRect.width)
+    })
+    ro.observe(el)
+    onCleanup(() => ro.disconnect())
+  })
+  const diffMode = () => (diffWidth() >= 500 ? 'split' : 'unified')
 
   // Sync preference → open state, but only while the user hasn't manually toggled this card
   createEffect(() => {
@@ -39,26 +52,21 @@ export const EditToolRow: Component<EditToolRowProps> = (props) => {
   }
 
   const hasContent = () =>
-    isWrite() ? writeLines().length > 0 : pairs().some((pair) => pair.old || pair.new)
+    isWrite()
+      ? writeLines().length > 0
+      : pairs().some((pair) => pair.old || pair.new) || !!props.card.output
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <button
         type="button"
         class="tool-ran-header"
         onClick={() => {
-          if (hasContent()) {
-            setManualToggle(true)
-            setOpen((v) => !v)
-          }
+          setManualToggle(true)
+          setOpen((v) => !v)
         }}
-        style={{ cursor: hasContent() ? 'pointer' : 'default' }}
+        style={{ cursor: 'pointer' }}
       >
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
         <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
         <span class="tool-file-chip">
           <FileIcon name={basename()} size={13} />
@@ -86,61 +94,105 @@ export const EditToolRow: Component<EditToolRowProps> = (props) => {
         <Show when={props.card.streaming}>
           <span class="tool-streaming-dot">·</span>
         </Show>
-        <Show when={hasContent() && !props.card.streaming}>
-          <span class="tool-chevron" aria-hidden="true">
+        <Show when={!props.card.streaming}>
+          <span class="tool-chevron" data-open={open()} aria-hidden="true">
             {open() ? '⌄' : '›'}
           </span>
         </Show>
       </button>
 
-      <Show when={open() && hasContent()}>
+      <Show when={open()}>
         <div class="tool-output-connector">
-          <div class="tool-diff-view">
-            <Show when={isWrite()}>
-              <For each={writeLines()}>
-                {(line) => (
-                  <div class="diff-line diff-added">
-                    <span class="diff-prefix" aria-hidden="true">
-                      +
-                    </span>
-                    <span class="diff-text">{line}</span>
-                  </div>
-                )}
-              </For>
-            </Show>
+          <Show when={!hasContent()}>
+            <pre class="edit-output">{props.card.output}</pre>
+          </Show>
+          <Show when={hasContent()}>
+            <div class="tool-diff-view" ref={diffContainerEl}>
+              <Show when={isWrite()}>
+                <For each={writeLines()}>
+                  {(line) => (
+                    <div class="diff-line diff-added">
+                      <span class="diff-prefix" aria-hidden="true">
+                        +
+                      </span>
+                      <span class="diff-text">{line}</span>
+                    </div>
+                  )}
+                </For>
+              </Show>
 
-            <Show when={!isWrite()}>
-              <For each={pairs()}>
-                {(pair, pairIndex) => (
-                  <div class="diff-pair">
-                    <For each={pair.old.split('\n')}>
-                      {(line) => (
-                        <div class="diff-line diff-removed">
-                          <span class="diff-prefix" aria-hidden="true">
-                            -
-                          </span>
-                          <span class="diff-text">{line}</span>
+              <Show when={!isWrite() && diffMode() === 'unified'}>
+                <For each={pairs()}>
+                  {(pair, pairIndex) => (
+                    <div class="diff-pair">
+                      <For each={pair.old.split('\n')}>
+                        {(line) => (
+                          <div class="diff-line diff-removed">
+                            <span class="diff-prefix" aria-hidden="true">
+                              -
+                            </span>
+                            <span class="diff-text">{line}</span>
+                          </div>
+                        )}
+                      </For>
+                      <For each={pair.new.split('\n')}>
+                        {(line) => (
+                          <div class="diff-line diff-added">
+                            <span class="diff-prefix" aria-hidden="true">
+                              +
+                            </span>
+                            <span class="diff-text">{line}</span>
+                          </div>
+                        )}
+                      </For>
+                      <Show when={pairIndex() < pairs().length - 1}>
+                        <div class="diff-pair-sep" />
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </Show>
+
+              <Show when={!isWrite() && diffMode() === 'split'}>
+                <For each={pairs()}>
+                  {(pair, pairIndex) => (
+                    <div class="diff-pair">
+                      <div class="diff-split-body">
+                        <div class="diff-split-side diff-split-old">
+                          <For each={pair.old.split('\n')}>
+                            {(line) => (
+                              <div class="diff-line diff-removed">
+                                <span class="diff-prefix" aria-hidden="true">
+                                  -
+                                </span>
+                                <span class="diff-text">{line}</span>
+                              </div>
+                            )}
+                          </For>
                         </div>
-                      )}
-                    </For>
-                    <For each={pair.new.split('\n')}>
-                      {(line) => (
-                        <div class="diff-line diff-added">
-                          <span class="diff-prefix" aria-hidden="true">
-                            +
-                          </span>
-                          <span class="diff-text">{line}</span>
+
+                        <div class="diff-split-side diff-split-new">
+                          <For each={pair.new.split('\n')}>
+                            {(line) => (
+                              <div class="diff-line diff-added">
+                                <span class="diff-prefix" aria-hidden="true">
+                                  +
+                                </span>
+                                <span class="diff-text">{line}</span>
+                              </div>
+                            )}
+                          </For>
                         </div>
-                      )}
-                    </For>
-                    <Show when={pairIndex() < pairs().length - 1}>
-                      <div class="diff-pair-sep" />
-                    </Show>
-                  </div>
-                )}
-              </For>
-            </Show>
-          </div>
+                      </div>
+                      <Show when={pairIndex() < pairs().length - 1}>
+                        <div class="diff-pair-sep" />
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </Show>
+            </div>
+          </Show>
         </div>
       </Show>
     </div>

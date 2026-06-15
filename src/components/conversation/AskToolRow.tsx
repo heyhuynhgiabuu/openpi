@@ -1,7 +1,6 @@
 import { type Component, Show } from 'solid-js'
 import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { parseAskQuestions } from './toolCardHelpers'
 
 type AskToolRowProps = {
@@ -14,13 +13,8 @@ export const AskToolRow: Component<AskToolRowProps> = (props) => {
   const isMulti = () => questions().some((q) => q.multiSelect)
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <div class="tool-ran-header ask-tool-compact-header">
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
         <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
         <span class="ask-question-badge">{isMulti() ? 'choose' : 'pick'}</span>
         <span class="ask-tool-compact-note">

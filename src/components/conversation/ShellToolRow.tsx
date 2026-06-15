@@ -1,7 +1,7 @@
 import { type Component, createEffect, createSignal, Show } from 'solid-js'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
+import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { extractCommand, MAX_CMD } from './toolCardHelpers'
 
 type ShellToolRowProps = {
@@ -24,7 +24,7 @@ export const ShellToolRow: Component<ShellToolRowProps> = (props) => {
   const hasOutput = () => !!props.card.output?.trim()
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <button
         type="button"
         class="tool-ran-header"
@@ -37,18 +37,13 @@ export const ShellToolRow: Component<ShellToolRowProps> = (props) => {
         title={isTruncated() ? cmd() : undefined}
         style={{ cursor: hasOutput() ? 'pointer' : 'default' }}
       >
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
-        <span class="tool-ran-label">Ran</span>
+        <span class="tool-ran-label">{labelForTool(props.card.toolName)}</span>
         <code class="tool-ran-cmd">{displayCmd()}</code>
         <Show when={props.card.streaming}>
           <span class="tool-streaming-dot">·</span>
         </Show>
         <Show when={hasOutput() && !props.card.streaming}>
-          <span class="tool-chevron" aria-hidden="true">
+          <span class="tool-chevron" data-open={open()} aria-hidden="true">
             {open() ? '⌄' : '›'}
           </span>
         </Show>

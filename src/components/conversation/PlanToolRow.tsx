@@ -1,6 +1,5 @@
 import { type Component, For, Show } from 'solid-js'
 import type { ToolCard } from '../../types/session'
-import { ToolTypeIcon } from './ToolIcon'
 import { parsePlanItems, planStatusLabel } from './toolCardHelpers'
 
 type PlanToolRowProps = {
@@ -17,13 +16,8 @@ export const PlanToolRow: Component<PlanToolRowProps> = (props) => {
   const inProgress = () => items().find((item) => item.status === 'in_progress')
 
   return (
-    <div class="tool-row">
+    <div class={`tool-row${props.card.isError ? ' is-error' : ''}`}>
       <div class="tool-ran-header plan-tool-header">
-        <ToolTypeIcon
-          toolName={props.card.toolName}
-          streaming={props.card.streaming}
-          isError={props.card.isError}
-        />
         <span class="tool-ran-label">Plan updated</span>
         <Show
           when={inProgress()}
