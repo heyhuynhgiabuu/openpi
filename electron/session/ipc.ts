@@ -62,6 +62,8 @@ function emptySessionStats(): SessionStats {
     cacheWriteTokens: 0,
     cost: 0,
     contextUsagePercent: null,
+    contextTokens: null,
+    contextWindow: null,
     sessionFile: null,
     sessionId: null,
     isStreaming: false,

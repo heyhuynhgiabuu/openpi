@@ -597,6 +597,8 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
             cacheWriteTokens: 0,
             cost: 0,
             contextUsagePercent: null,
+            contextTokens: null,
+            contextWindow: null,
             sessionFile: null,
             sessionId: null,
             isStreaming: false,
@@ -604,51 +606,29 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         })
         return
       }
-      const agent = state.session.agent
-      type AssistantMsg = {
-        role: string
-        usage?: {
-          input?: number
-          output?: number
-          cacheRead?: number
-          cacheWrite?: number
-          inputTokens?: number
-          outputTokens?: number
-          cacheReadTokens?: number
-          cacheWriteTokens?: number
-          cost?: { total?: number } | number
-        }
-      }
-      const msgs: AssistantMsg[] =
-        (agent as unknown as { state?: { messages?: AssistantMsg[] } }).state?.messages ?? []
-      let inputTokens = 0,
-        outputTokens = 0,
-        cacheReadTokens = 0,
-        cacheWriteTokens = 0,
-        cost = 0
-      for (const m of msgs) {
-        if (m.role !== 'assistant') continue
-        inputTokens += m.usage?.input ?? m.usage?.inputTokens ?? 0
-        outputTokens += m.usage?.output ?? m.usage?.outputTokens ?? 0
-        cacheReadTokens += m.usage?.cacheRead ?? m.usage?.cacheReadTokens ?? 0
-        cacheWriteTokens += m.usage?.cacheWrite ?? m.usage?.cacheWriteTokens ?? 0
-        const usageCost = m.usage?.cost
-        cost += typeof usageCost === 'number' ? usageCost : (usageCost?.total ?? 0)
-      }
+      // Use the Pi SDK's authoritative pre-computed stats —
+      // do NOT manually sum from agent.state.messages (wrong data source).
+      const sdkStats = state.session.getSessionStats()
+      // contextUsage gives current context window fill (what Pi TUI shows),
+      // NOT the cumulative session totals from getSessionStats().tokens.
+      const ctxUsage = sdkStats.contextUsage ?? state.session.getContextUsage()
       send({
         type: 'stats_result',
         requestId: cmd.requestId,
         stats: {
-          inputTokens,
-          outputTokens,
-          cacheReadTokens,
-          cacheWriteTokens,
-          cost,
-          contextUsagePercent: state.session.getContextUsage()?.percent ?? null,
-          sessionFile: state.session.sessionFile ?? null,
-          sessionId: state.session.sessionId ?? null,
+          inputTokens: sdkStats.tokens.input,
+          outputTokens: sdkStats.tokens.output,
+          cacheReadTokens: sdkStats.tokens.cacheRead,
+          cacheWriteTokens: sdkStats.tokens.cacheWrite,
+          cost: sdkStats.cost,
+          contextUsagePercent: ctxUsage?.percent ?? null,
+          contextTokens: ctxUsage?.tokens ?? null,
+          contextWindow: ctxUsage?.contextWindow ?? null,
+          sessionFile: sdkStats.sessionFile ?? state.session.sessionFile ?? null,
+          sessionId: sdkStats.sessionId ?? state.session.sessionId ?? null,
           isStreaming:
-            (agent as unknown as { state?: { isStreaming?: boolean } }).state?.isStreaming ?? false,
+            (state.session.agent as unknown as { state?: { isStreaming?: boolean } }).state
+              ?.isStreaming ?? false,
         },
       })
       break

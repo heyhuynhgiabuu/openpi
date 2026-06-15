@@ -129,6 +129,7 @@ export const IPC = {
   GET_OUTPUT_BUFFER: 'openpi:get-output-buffer',
   GIT_STATUS_CHANGED: 'openpi:git-status-changed',
   FILE_TREE_CHANGED: 'openpi:file-tree-changed',
+  FILE_FIND_SHORTCUT: 'openpi:file-find-shortcut',
   REMOTE_SESSION_STATUS: 'openpi:remote-session-status',
   REMOTE_SESSION_UPDATE: 'openpi:remote-session-update',
   GOAL_UPDATE: 'openpi:goal-update',

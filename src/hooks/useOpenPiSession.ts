@@ -20,6 +20,7 @@ import type {
   SessionEvent,
   SessionListItem,
   SessionReady,
+  SessionStats,
   WorkspaceSummaryInfo,
 } from '../lib/ipc'
 import { applySessionEvent } from '../lib/sessionEvents'
@@ -66,6 +67,7 @@ export function useOpenPiSession() {
   const [followUpQueue, setFollowUpQueue] = createSignal<string[]>([])
   const [sessionName, setSessionNameState] = createSignal<string | null>(null)
   const [contextPercent, setContextPercent] = createSignal<number | null>(null)
+  const [sessionStats, setSessionStats] = createSignal<SessionStats | null>(null)
   // ── Extension trackers (ask / subagents) ──────────────────────────
   const trackers = useExtensionTrackers()
   const subagentFiles = useSubagentFileTracker()
@@ -90,6 +92,7 @@ export function useOpenPiSession() {
     try {
       const stats = await window.openpi.getSessionStats()
       setContextPercent(stats.contextUsagePercent)
+      setSessionStats(stats)
     } catch {
       /* non-fatal */
     }
@@ -553,6 +556,9 @@ export function useOpenPiSession() {
     },
     get contextPercent() {
       return contextPercent()
+    },
+    get sessionStats() {
+      return sessionStats()
     },
     get thinkingLevel() {
       return thinkingLevel()

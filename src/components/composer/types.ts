@@ -1,5 +1,5 @@
 import type { FileLineComment } from '../../lib/fileLineComments'
-import type { ModelInfo, SkillItem } from '../../lib/ipc'
+import type { ModelInfo, SessionStats, SkillItem } from '../../lib/ipc'
 import type { GoalProgress, GoalStep } from '../GoalBanner'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
@@ -57,6 +57,8 @@ export interface ComposerProps {
   onSetActiveGoal: (text: string | null) => void
   /** 0-100 percentage of context window consumed. Null when unknown. */
   contextPercent?: number | null
+  /** Full session stats for the context popover. */
+  sessionStats?: SessionStats | null
   /** Last completed agent run tokens-per-second, Pi-compatible wall-clock TPS. */
   agentTps?: number | null
   /** Available subagent types for @mention autocomplete. */

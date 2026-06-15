@@ -75,4 +75,10 @@ export const eventsApi = {
     ipcRenderer.on(IPC.ARTIFACT_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC.ARTIFACT_UPDATE, handler)
   },
+
+  onFileFindShortcut: (fn: () => void) => {
+    const handler = () => fn()
+    ipcRenderer.on(IPC.FILE_FIND_SHORTCUT, handler)
+    return () => ipcRenderer.removeListener(IPC.FILE_FIND_SHORTCUT, handler)
+  },
 } as const

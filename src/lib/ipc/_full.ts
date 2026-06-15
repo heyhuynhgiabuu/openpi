@@ -102,6 +102,10 @@ export const sessionStatsSchema = z.object({
   cacheWriteTokens: z.number(),
   cost: z.number(),
   contextUsagePercent: z.number().nullable(),
+  /** Tokens currently in the context window (current sub-session, not cumulative). */
+  contextTokens: z.number().nullable(),
+  /** Context window size in tokens. */
+  contextWindow: z.number().nullable(),
   sessionFile: z.string().nullable(),
   sessionId: z.string().nullable(),
   isStreaming: z.boolean(),
@@ -698,8 +702,10 @@ export type GitStatusResult = z.infer<typeof gitStatusResultSchema>
 
 export const gitFileDiffSchema = z.object({
   path: z.string(),
-  /** Raw unified diff string from `git diff` — consumed directly by @pierre/diffs PatchDiff */
+  /** Raw unified diff string from `git diff` — fallback for patch-only rendering. */
   rawPatch: z.string(),
+  oldContent: z.string().optional(),
+  newContent: z.string().optional(),
   totalAdded: z.number(),
   totalRemoved: z.number(),
   isNew: z.boolean(),

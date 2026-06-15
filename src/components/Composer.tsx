@@ -420,7 +420,10 @@ export const Composer: Component<ComposerProps> = (props) => {
               {/* Context usage indicator */}
               <Show when={props.contextPercent !== null && props.contextPercent !== undefined}>
                 <span class="composer-toolbar-divider" aria-hidden />
-                <ContextUsageButton percent={props.contextPercent as number} />
+                <ContextUsageButton
+                  percent={props.contextPercent as number}
+                  stats={props.sessionStats}
+                />
               </Show>
 
               <Show
