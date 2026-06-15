@@ -84,6 +84,7 @@
     "solid-js": "^1.9.12",
     "strip-ansi": "^7.2.0",
     "tailwind-merge": "^3.3.0",
+    "tweakpane": "^4.0.5",
     "typebox": "~1.1.38",
     "virtua": "^0.49.1",
     "zod": "^3.25.28"

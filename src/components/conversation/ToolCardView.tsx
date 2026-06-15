@@ -22,22 +22,43 @@ export interface ToolCardViewProps {
 }
 
 export const ToolCardView: Component<ToolCardViewProps> = (props) => {
+  const shimmerClass = () =>
+    `tool-shimmer-scope${props.card.streaming ? ' is-tool-shimmering' : ''}`
+
   if (SHELL_TOOLS.has(props.card.toolName))
-    return <ShellToolRow card={props.card} displayPreferences={props.displayPreferences} />
+    return (
+      <div class={shimmerClass()}>
+        <ShellToolRow card={props.card} displayPreferences={props.displayPreferences} />
+      </div>
+    )
   if (EDIT_TOOLS.has(props.card.toolName)) {
     return (
-      <EditToolRow
-        card={props.card}
-        onFileClick={props.onFileClick}
-        displayPreferences={props.displayPreferences}
-      />
+      <div class={shimmerClass()}>
+        <EditToolRow
+          card={props.card}
+          onFileClick={props.onFileClick}
+          displayPreferences={props.displayPreferences}
+        />
+      </div>
     )
   }
   if (FILE_TOOLS.has(props.card.toolName)) {
-    return <FileToolRow card={props.card} onFileClick={props.onFileClick} />
+    return (
+      <div class={shimmerClass()}>
+        <FileToolRow card={props.card} onFileClick={props.onFileClick} />
+      </div>
+    )
   }
   if (ASK_TOOLS.has(props.card.toolName)) {
-    return <AskToolRow card={props.card} />
+    return (
+      <div class={shimmerClass()}>
+        <AskToolRow card={props.card} />
+      </div>
+    )
   }
-  return <GenericToolRow card={props.card} />
+  return (
+    <div class={shimmerClass()}>
+      <GenericToolRow card={props.card} />
+    </div>
+  )
 }

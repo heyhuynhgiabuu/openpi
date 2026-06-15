@@ -12,6 +12,7 @@ import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
 import { Homescreen } from './components/Homescreen'
 import { ResizeHandle } from './components/ResizeHandle'
+import { ToolShimmerPane } from './components/ToolShimmerPane'
 import { TopBar } from './components/TopBar'
 import { TerminalPanel } from './components/terminal/TerminalPanel'
 import { Welcome } from './components/Welcome'
@@ -433,6 +434,7 @@ export default function App() {
               </Show>
             </div>
 
+            <ToolShimmerPane />
             <AppOverlays
               cwd={cwd()}
               fileSearchOpen={fileSearchOpen()}
