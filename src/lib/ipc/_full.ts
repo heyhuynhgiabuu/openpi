@@ -346,8 +346,20 @@ export const subagentArtifactSchema = z.object({
 })
 export type SubagentArtifact = z.infer<typeof subagentArtifactSchema>
 
+export const todoListItemSchema = z.object({
+  text: z.string(),
+  checked: z.boolean(),
+})
+export const todoListFileSchema = z.object({
+  source: z.string(),
+  openCount: z.number(),
+  items: z.array(todoListItemSchema),
+})
+export type TodoListFile = z.infer<typeof todoListFileSchema>
+
 export const artifactUpdateSchema = z.object({
   artifacts: z.array(subagentArtifactSchema),
+  todoFiles: z.array(todoListFileSchema).default([]),
   timestamp: z.number(),
 })
 export type ArtifactUpdate = z.infer<typeof artifactUpdateSchema>

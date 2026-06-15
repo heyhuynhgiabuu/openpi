@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow } from 'electron'
-import type { ArtifactUpdate, SubagentArtifact } from '../../src/lib/ipc'
+import type { ArtifactUpdate, SubagentArtifact, TodoListFile } from '../../src/lib/ipc'
 import { IPC } from '../../src/lib/ipc/channels'
 
 export interface ArtifactWatcherDeps {
@@ -26,6 +26,11 @@ export interface ArtifactWatcherDeps {
 interface ArtifactSnapshot {
   mtimeMs: number
   artifact: SubagentArtifact
+}
+
+interface TodoSnapshot {
+  mtimeMs: number
+  todoFile: TodoListFile
 }
 
 const POLL_MS = 1000
@@ -64,6 +69,42 @@ function inferStatus(resultText: string | null): SubagentArtifact['status'] {
   return 'completed'
 }
 
+function parseTodoFile(file: string, artifactsDir: string): TodoSnapshot | null {
+  const read = safeRead(file)
+  if (!read) return null
+  const items = read.content
+    .split('\n')
+    .map((line) => line.match(/^\s*-\s+\[( |x|X)\]\s+(.+)\s*$/))
+    .filter((match): match is RegExpMatchArray => match !== null)
+    .map((match) => ({ text: match[2].trim(), checked: match[1].toLowerCase() === 'x' }))
+  if (items.length === 0) return null
+  return {
+    mtimeMs: read.mtimeMs,
+    todoFile: {
+      source: path.relative(artifactsDir, file),
+      openCount: items.filter((item) => !item.checked).length,
+      items,
+    },
+  }
+}
+
+function findTodoFiles(dir: string): string[] {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const files: string[] = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const todo = path.join(dir, entry.name, 'TODO.md')
+    if (fs.existsSync(todo)) files.push(todo)
+  }
+  return files
+}
+
 function readArtifact(taskDir: string): SubagentArtifact | null {
   const id = path.basename(taskDir)
   const contextFile = path.join(taskDir, 'CONTEXT.md')
@@ -97,6 +138,7 @@ function readArtifact(taskDir: string): SubagentArtifact | null {
 
 export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => void } {
   const snapshots = new Map<string, ArtifactSnapshot>()
+  const todoSnapshots = new Map<string, TodoSnapshot>()
   let lastRootMtime = 0
   let timer: NodeJS.Timeout | null = null
 
@@ -113,6 +155,9 @@ export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => v
       artifacts: [...snapshots.values()]
         .map((s) => s.artifact)
         .sort((a, b) => b.createdAt - a.createdAt),
+      todoFiles: [...todoSnapshots.values()]
+        .map((s) => s.todoFile)
+        .sort((a, b) => a.source.localeCompare(b.source)),
       timestamp: Date.now(),
     }
     win.webContents.send(IPC.ARTIFACT_UPDATE, payload)
@@ -121,15 +166,17 @@ export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => v
   function tick() {
     const dir = getArtifactsDir()
     if (!dir) {
-      if (snapshots.size > 0) {
+      if (snapshots.size > 0 || todoSnapshots.size > 0) {
         snapshots.clear()
+        todoSnapshots.clear()
         emit()
       }
       return
     }
     if (!fs.existsSync(dir)) {
-      if (snapshots.size > 0 || lastRootMtime !== 0) {
+      if (snapshots.size > 0 || todoSnapshots.size > 0 || lastRootMtime !== 0) {
         snapshots.clear()
+        todoSnapshots.clear()
         lastRootMtime = 0
         emit()
       }
@@ -137,7 +184,6 @@ export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => v
     }
 
     const rootMtime = dirMtime(dir)
-    if (rootMtime === lastRootMtime) return
     lastRootMtime = rootMtime
 
     let entries: string[]
@@ -173,6 +219,29 @@ export function startArtifactWatcher(deps: ArtifactWatcherDeps): { stop: () => v
 
     snapshots.clear()
     for (const [k, v] of next) snapshots.set(k, v)
+
+    const nextTodos = new Map<string, TodoSnapshot>()
+    for (const file of findTodoFiles(dir)) {
+      const todo = parseTodoFile(file, dir)
+      if (!todo) continue
+      const key = todo.todoFile.source
+      const prev = todoSnapshots.get(key)
+      if (
+        !prev ||
+        prev.mtimeMs !== todo.mtimeMs ||
+        prev.todoFile.openCount !== todo.todoFile.openCount
+      ) {
+        changed = true
+      }
+      nextTodos.set(key, todo)
+    }
+
+    for (const key of todoSnapshots.keys()) {
+      if (!nextTodos.has(key)) changed = true
+    }
+
+    todoSnapshots.clear()
+    for (const [key, value] of nextTodos) todoSnapshots.set(key, value)
 
     if (changed) emit()
   }

@@ -559,6 +559,9 @@ export function useOpenPiSession() {
     get artifacts() {
       return subagentFiles.artifacts()
     },
+    get todoFiles() {
+      return subagentFiles.todoFiles()
+    },
     clearArtifacts: () => subagentFiles.clear(),
 
     // Ref setters — pass as `ref={session.setBottomRef}` in JSX

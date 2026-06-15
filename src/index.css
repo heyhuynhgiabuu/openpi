@@ -13877,6 +13877,37 @@ body.panel-dragging {
   padding-right: 12px;
 }
 
+.todo-list-tray {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  padding: 8px 12px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.todo-list-tray__title {
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.todo-list-tray__items {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.todo-list-tray__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.todo-list-tray__item--done {
+  color: var(--ash);
+  text-decoration: line-through;
+}
+
 @keyframes widget-enter {
   from {
     opacity: 0;

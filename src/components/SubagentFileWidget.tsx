@@ -8,9 +8,9 @@
  * artifacts. Auto-collapses when all tasks are completed.
  */
 
-import { CheckCircle2, Circle, CircleAlert, Loader2, X } from 'lucide-solid'
+import { CheckCircle2, Circle, CircleAlert, Loader2, Square, SquareCheck, X } from 'lucide-solid'
 import { createMemo, createSignal, For, type JSX, Show } from 'solid-js'
-import type { SubagentArtifact } from '../lib/ipc/_full'
+import type { SubagentArtifact, TodoListFile } from '../lib/ipc/_full'
 
 interface SubagentFileWidgetProps {
   artifacts: SubagentArtifact[]
@@ -54,7 +54,7 @@ export function SubagentFileWidget(props: SubagentFileWidgetProps) {
 
   return (
     <Show when={visible().length > 0}>
-      <div class="subagent-file-widget" role="region" aria-label="Sub-agent tasks">
+      <section class="subagent-file-widget" aria-label="Sub-agent tasks">
         <header class="subagent-file-widget__header">
           <span class="subagent-file-widget__title">Sub-agent tasks</span>
           <button
@@ -92,7 +92,7 @@ export function SubagentFileWidget(props: SubagentFileWidgetProps) {
             )}
           </For>
         </ul>
-      </div>
+      </section>
     </Show>
   )
 }
@@ -104,6 +104,10 @@ export function SubagentFileWidget(props: SubagentFileWidgetProps) {
  */
 interface SubagentFileTrayProps {
   artifacts: SubagentArtifact[]
+}
+
+interface TodoListTrayProps {
+  todoFiles: TodoListFile[]
 }
 
 export function SubagentFileTray(props: SubagentFileTrayProps) {
@@ -124,6 +128,38 @@ export function SubagentFileTray(props: SubagentFileTrayProps) {
           )}
         </For>
       </div>
+    </Show>
+  )
+}
+
+export function TodoListTray(props: TodoListTrayProps) {
+  const files = createMemo(() => props.todoFiles)
+  const openCount = createMemo(() => files().reduce((sum, file) => sum + file.openCount, 0))
+
+  return (
+    <Show when={files().length > 0}>
+      <section class="todo-list-tray" aria-label="Active TODOs">
+        <div class="todo-list-tray__title">Active TODOs ({openCount()} open)</div>
+        <For each={files()}>
+          {(file) => (
+            <div class="todo-list-tray__source">
+              <div class="todo-list-tray__source-name">{file.source}</div>
+              <ul class="todo-list-tray__items">
+                <For each={file.items}>
+                  {(item) => (
+                    <li
+                      class={`todo-list-tray__item${item.checked ? ' todo-list-tray__item--done' : ''}`}
+                    >
+                      {item.checked ? <SquareCheck size={13} /> : <Square size={13} />}
+                      <span>{item.text}</span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+          )}
+        </For>
+      </section>
     </Show>
   )
 }

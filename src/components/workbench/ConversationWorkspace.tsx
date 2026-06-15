@@ -14,7 +14,7 @@ import { FileTabBar } from '../FileTabBar'
 import { DiffViewer } from '../git/DiffViewer'
 import { GitHistoryTab } from '../git/GitHistoryTab'
 import { ResizeHandle } from '../ResizeHandle'
-import { SubagentFileWidget } from '../SubagentFileWidget'
+import { SubagentFileWidget, TodoListTray } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
 
 type OpenPiSession = ReturnType<typeof useOpenPiSession>
@@ -107,6 +107,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
               artifacts={props.session.artifacts}
               onDismiss={() => props.session.clearArtifacts()}
             />
+            <TodoListTray todoFiles={props.session.todoFiles} />
             <Show when={props.session.askState}>
               {(state) => (
                 <AskWidget
