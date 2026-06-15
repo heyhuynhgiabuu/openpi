@@ -1,21 +1,33 @@
 # Changelog
 
-## [0.1.20] - 2026-06-14
-
-### Changed
-
-- **Pi coding agent SDK** — bumped `@earendil-works/pi-coding-agent` from `^0.74.0` to `~0.79.3`. Tilde pin (not caret) because 0.74.2 was silently republished without release notes; we don't want a stealth minor bump. Picks up the supply-chain hardening, project-trust gating, the new SDK surfaces (`session.extensionRunner` is now a public typed getter, `session.dispose()` is public, `OAuthLoginCallbacks.onDeviceCode` is required), Claude Fable 5, Claude Opus 4.8, GPT-5.4/5.5, MiniMax-M3, and the Ant Ling / NVIDIA NIM / Together AI providers. (c3b36a8)
-- **Node minimum** — pinned `engines.node` to `>=22.19.0 <23` to match Pi 0.75.0's floor. CI workflows now use `node-version: 22.19.0` explicitly. README updated. (c3b36a8)
+## [0.2.0] - 2026-06-16
 
 ### Added
 
-- **New provider display names** — Ant Ling, NVIDIA NIM, and Together AI are now visible by name in the model picker. The model picker reads from the SDK's `ModelRegistry` directly, so the new models (claude-fable-5, claude-opus-4.8, gpt-5.4, gpt-5.5, minimax-m3) appear automatically. (c3b36a8)
-- **Headless Codex device-code login** — the `onDeviceCode` OAuth callback required since Pi 0.77.0 is wired through the existing `provider_login_event` channel as a new `device_code` variant. UX for surfacing the URL + user code to the user is a follow-up; the event is emitted and typed end-to-end. (c3b36a8)
-- **Declared surface leaks** — `@earendil-works/pi-ai` (~0.79.3) and `typebox` (~1.1.38) are now direct dependencies, both with tilde pins matching the SDK. They were already imported in `electron/subagent/class.ts`, `electron/subagent/schemas.ts`, and `tests/sessionPrompt.test.ts` from Pi's nested `node_modules`; declaring them directly fixes the resolution and makes the dependency surface honest. (c3b36a8)
+- **Homescreen workbench layout** — replaced the old sidebar-first workspace with a homescreen, persistent right panel, wider welcome surface, and cleaner topbar session chrome. (f60dcc0, 751a9bb, a484529)
+- **Git history in the preview surface** — added a Changes-panel graph button that opens Git history as a center preview tab with normal tab activation/close behavior. (ab92bbf)
+- **Git changes workbench** — added a right-panel Git file tree, per-change-type coloring, diff preview flow, full-height changes body, persistent commit area, and Stage All / Unstage All bulk action behavior. (8de6dab, ab92bbf)
+- **File preview find controls** — added Cmd/Ctrl+F find bar support with wrap controls, plus a preview-toolbar search icon near the Vim toggle. (5bc9478, 21f3002)
+- **Conversation context and tool polish** — added context usage popover stats, model/duration message metadata, and cleaner tool row rendering. (bd06f4c, bb715f7, d088561)
+- **New provider display names** — Ant Ling, NVIDIA NIM, and Together AI are now visible by name in the model picker. New SDK models appear automatically through `ModelRegistry`. (d93aefd)
+- **Headless Codex device-code login** — wired the required `onDeviceCode` OAuth callback through the typed provider login event channel. (d93aefd)
+
+### Changed
+
+- **Pi coding agent SDK** — bumped `@earendil-works/pi-coding-agent` from `^0.74.0` to `~0.79.3`, including project-trust hardening, public `extensionRunner`, public `session.dispose()`, newer Anthropic/OpenAI models, MiniMax-M3, and additional providers. (d93aefd, 902675d)
+- **Node minimum** — pinned `engines.node` to `>=22.19.0 <23` to match Pi 0.75.0's floor. CI workflows use Node 22.19.0. (d93aefd)
+- **Subagent/tooling surface** — replaced stale Anthropic task-tool references with the OpenPi subagent/file-tracker path and removed the deleted goal/harness extension surface. (2dff5d6, a91eb32, 265fa3c, 7b0076d, cbd98c3, 8666613)
+- **File tree styling** — moved to grayscale-at-rest file icons, color on hover, git status badges, cleaner indentation, and refined context-menu/keybinding behavior. (e937605, d976576, f3ab8e7, c63c885, 2090d51, 64f6011, fc326f8, 24059b0, 5f42503)
+- **Workbench chrome** — refined right-panel tabs, file tabs, preview toolbar/find bar borders, model toggles, homescreen icon, and main preview/diff backgrounds. (879377e, d599706, 01c753e, a484529)
 
 ### Fixed
 
-- **Private-API poke in sidecar teardown** — `electron/pi/sidecar.ts` was reaching into the session via `(session as unknown as { extensionRunner: { hasHandlers, emit } })` to fire a `session_shutdown` event. Pi 0.79.3 exposes `session.extensionRunner` as a public typed getter, so the cast is gone and the reason parameter is now typed against the `SessionShutdownReason` union (`'quit' | 'reload' | 'new' | 'resume' | 'fork'`). Caught a latent bug in passing: the previous call site used the string `'session_replaced'` which was never a valid reason. (c3b36a8)
+- **File preview saves** — saving from CodeMirror now refreshes file-tree and Git-status observers so OpenPi surfaces update after edits. (21f3002)
+- **Markdown task lists** — TODO-style checklists (`- [ ]` / `- [x]`) now render as checkboxes in OpenPi markdown surfaces, including generated `TODO.md` files. (bf2624f)
+- **Private-API poke in sidecar teardown** — sidecar shutdown now uses Pi 0.79.3's public `session.extensionRunner` getter and a valid shutdown reason. (d93aefd)
+- **File tree actions** — replaced prompt-based rename UI with Kobalte context menu actions and fixed preview filename sync after rename. (e937605, e462ac19)
+- **Panel resizing and first-try UI feedback** — fixed file panel drag-resize sign and addressed the first review batch of workbench UI feedback. (bfaa14c, e6120f9)
+- **Conversation thinking display** — removed thinking-block chrome, wired the hide-thinking setting, and kept the thinking icon animation visible. (2002c5d, cee0bd2)
 
 ## [0.1.19] - 2026-05-27
 
