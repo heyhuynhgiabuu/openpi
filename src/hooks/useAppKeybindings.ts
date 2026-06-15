@@ -76,15 +76,6 @@ export function useAppKeybindings(options: UseAppKeybindingsOptions) {
         options.setTerminalOpen(() => true)
         options.setNewTerminalRequest((prev) => prev + 1)
       }),
-      {
-        id: 'goalLoop' as KeybindingActionId,
-        label: 'Goal / Harness Loop',
-        description: 'Set or continue a goal: inspect, classify, act, verify, and report next step',
-        keys: '',
-        run: () => {
-          window.openpi.sendPrompt('/goal ')
-        },
-      } satisfies PaletteCommand,
     ].filter((item): item is PaletteCommand => item != null)
   })
 

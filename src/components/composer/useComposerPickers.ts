@@ -87,13 +87,7 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
   })
 
   // Built-in slash commands (merged with prompt templates)
-  const BUILT_IN_SLASH_COMMANDS: SlashCommand[] = [
-    {
-      name: '/goal',
-      description: 'Set or continue a goal/harness loop',
-      argHint: '<objective, status, pause, resume, or clear>',
-    },
-  ]
+  const BUILT_IN_SLASH_COMMANDS: SlashCommand[] = []
 
   // All commands: built-ins first, then prompts sorted alphabetically
   const allCommands = createMemo<SlashCommand[]>(() => [

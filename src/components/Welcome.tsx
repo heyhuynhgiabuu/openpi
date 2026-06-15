@@ -43,7 +43,7 @@ export function Welcome(props: WelcomeProps) {
             <div class="welcome-step">
               <span class="welcome-step-num">2</span>
               <span>
-                Type <kbd>/goal</kbd> to set an objective, or just start chatting
+                Start chatting — Pi reads your project files and responds with full context
               </span>
             </div>
             <div class="welcome-step">

@@ -15,7 +15,7 @@ interface UseRemoteSessionSyncOptions {
   setError: (message: string | null) => void
 }
 
-export function useRemoteSessionSync(options: UseRemoteSessionSyncOptions) {
+export function useRemoteSessionSync(_options: UseRemoteSessionSyncOptions) {
   const [remoteSessionStatus, setRemoteSessionStatus] = createSignal<RemoteSessionStatus | null>(
     null
   )
