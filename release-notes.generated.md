@@ -25,7 +25,7 @@
 - **File preview saves** — saving from CodeMirror now refreshes file-tree and Git-status observers so OpenPi surfaces update after edits. (21f3002)
 - **Markdown task lists** — TODO-style checklists (`- [ ]` / `- [x]`) now render as checkboxes in OpenPi markdown surfaces, including generated `TODO.md` files. (bf2624f)
 - **Tool shimmer lifecycle** — tool names now shimmer for the full active agent run instead of flickering per individual tool card, and stop when the agent ends. (6c0d9ac, 9d9f121)
-- **Release workflow setup** — corrected `setup-node` indentation and the release job's Node 22.19.0 pin so CI and release jobs use the intended runtime. (<release-prep>)
+- **Release workflow setup** — corrected `setup-node` indentation and the release job's Node 22.19.0 pin so CI and release jobs use the intended runtime. (88a0d36)
 - **Private-API poke in sidecar teardown** — sidecar shutdown now uses Pi 0.79.3's public `session.extensionRunner` getter and a valid shutdown reason. (d93aefd)
 - **File tree actions** — replaced prompt-based rename UI with Kobalte context menu actions and fixed preview filename sync after rename. (e937605, e462ac19)
 - **Panel resizing and first-try UI feedback** — fixed file panel drag-resize sign and addressed the first review batch of workbench UI feedback. (bfaa14c, e6120f9)
