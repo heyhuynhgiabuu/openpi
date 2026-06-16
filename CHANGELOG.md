@@ -7,6 +7,8 @@
 - **Homescreen workbench layout** — replaced the old sidebar-first workspace with a homescreen, persistent right panel, wider welcome surface, and cleaner topbar session chrome. (f60dcc0, 751a9bb, a484529)
 - **Git history in the preview surface** — added a Changes-panel graph button that opens Git history as a center preview tab with normal tab activation/close behavior. (ab92bbf)
 - **Git changes workbench** — added a right-panel Git file tree, per-change-type coloring, diff preview flow, full-height changes body, persistent commit area, and Stage All / Unstage All bulk action behavior. (8de6dab, ab92bbf)
+- **Artifact TODO surfacing** — renders subagent artifact `TODO.md` files in the file widget, hides completed todo files, and keeps one active running todo file visible. (3a8bf41, 027fc28, d9d3acf)
+- **Tool-call name shimmer** — added a subtle text-only shimmer for visible tool call names while an agent run is active, with a slower 2.4s production pace and no visible config panel. (0f0121d, ba71265, 9d9f121, 627cb20)
 - **File preview find controls** — added Cmd/Ctrl+F find bar support with wrap controls, plus a preview-toolbar search icon near the Vim toggle. (5bc9478, 21f3002)
 - **Conversation context and tool polish** — added context usage popover stats, model/duration message metadata, and cleaner tool row rendering. (bd06f4c, bb715f7, d088561)
 - **New provider display names** — Ant Ling, NVIDIA NIM, and Together AI are now visible by name in the model picker. New SDK models appear automatically through `ModelRegistry`. (d93aefd)
@@ -24,6 +26,8 @@
 
 - **File preview saves** — saving from CodeMirror now refreshes file-tree and Git-status observers so OpenPi surfaces update after edits. (21f3002)
 - **Markdown task lists** — TODO-style checklists (`- [ ]` / `- [x]`) now render as checkboxes in OpenPi markdown surfaces, including generated `TODO.md` files. (bf2624f)
+- **Tool shimmer lifecycle** — tool names now shimmer for the full active agent run instead of flickering per individual tool card, and stop when the agent ends. (6c0d9ac, 9d9f121)
+- **Release workflow setup** — corrected `setup-node` indentation and the release job's Node 22.19.0 pin so CI and release jobs use the intended runtime. (<release-prep>)
 - **Private-API poke in sidecar teardown** — sidecar shutdown now uses Pi 0.79.3's public `session.extensionRunner` getter and a valid shutdown reason. (d93aefd)
 - **File tree actions** — replaced prompt-based rename UI with Kobalte context menu actions and fixed preview filename sync after rename. (e937605, e462ac19)
 - **Panel resizing and first-try UI feedback** — fixed file panel drag-resize sign and addressed the first review batch of workbench UI feedback. (bfaa14c, e6120f9)
