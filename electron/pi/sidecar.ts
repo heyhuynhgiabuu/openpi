@@ -99,7 +99,12 @@ function getModelRegistry() {
 }
 
 function invalidateModelRegistry(): void {
-  _modelRegistry = null
+  if (_modelRegistry) {
+    // Refresh the existing instance so extension-registered providers
+    // (registered during createAgentSession → bindCore) are preserved.
+    // Nulling + recreating would lose them since extensions only run once.
+    _modelRegistry.refresh()
+  }
 }
 
 function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
