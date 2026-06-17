@@ -1005,6 +1005,17 @@ export const promptTemplateSchema = z.object({
 })
 export type PromptTemplate = z.infer<typeof promptTemplateSchema>
 
+export const slashCommandSourceSchema = z.enum(['builtin', 'extension', 'prompt', 'skill'])
+export type SlashCommandSource = z.infer<typeof slashCommandSourceSchema>
+
+export const slashCommandItemSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  argHint: z.string().optional(),
+  source: slashCommandSourceSchema,
+})
+export type SlashCommandItem = z.infer<typeof slashCommandItemSchema>
+
 // ─── fff file search ────────────────────────────────────────────────────
 
 export const fffFileSearchRequestSchema = z.object({

@@ -89,6 +89,7 @@ export const IPC = {
   GET_FIRST_RUN: 'openpi:get-first-run',
   SEARCH_FILE_CONTENTS: 'openpi:search-file-contents',
   LIST_PROMPT_TEMPLATES: 'openpi:list-prompt-templates',
+  LIST_SLASH_COMMANDS: 'openpi:list-slash-commands',
   FFF_FILE_SEARCH: 'openpi:fff-file-search',
   FFF_GREP: 'openpi:fff-grep',
 

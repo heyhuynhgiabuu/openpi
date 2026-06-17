@@ -21,6 +21,7 @@ export type SidecarCommand =
   | { type: 'steer'; text: string; contextPrefix?: string }
   | { type: 'follow_up'; text: string; contextPrefix?: string }
   | { type: 'list_prompt_templates'; requestId: string; cwd?: string; workspaceTrusted?: boolean }
+  | { type: 'list_slash_commands'; requestId: string; cwd?: string; workspaceTrusted?: boolean }
   | { type: 'list_skills'; requestId: string; cwd?: string; workspaceTrusted?: boolean }
   | {
       type: 'read_skill_file'
@@ -60,6 +61,7 @@ export type SidecarMessage =
   | { type: 'settings_result'; requestId: string; result: unknown }
   | { type: 'providers_result'; requestId: string; providers: unknown[] }
   | { type: 'prompt_templates_result'; requestId: string; prompts: unknown[] }
+  | { type: 'slash_commands_result'; requestId: string; commands: unknown[] }
   | { type: 'skills_result'; requestId: string; skills: unknown[] }
   | { type: 'skill_file_result'; requestId: string; content: string | null }
   | { type: 'provider_login_event'; requestId: string; event: unknown }

@@ -1,11 +1,12 @@
 import fuzzysort from 'fuzzysort'
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
+import { mergeSlashCommandsForPicker } from '../../lib/composerSlashCommands'
 import {
   type FileMentionTrigger,
   findFileMentionTrigger,
   removeFileMentionToken,
 } from '../../lib/fileMentions'
-import type { FffFileResult, SkillItem } from '../../lib/ipc'
+import type { FffFileResult, SkillItem, SlashCommandItem } from '../../lib/ipc'
 import { formatSlashCommandInput } from './helpers'
 import type { SlashCommand } from './types'
 
@@ -64,40 +65,34 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
   const [slashOpen, setSlashOpen] = createSignal(false)
   const [slashQuery, setSlashQuery] = createSignal('')
   const [slashActiveIdx, setSlashActiveIdx] = createSignal(0)
-  const [promptCommands, setPromptCommands] = createSignal<SlashCommand[]>([])
+  const [sessionSlashCommands, setSessionSlashCommands] = createSignal<SlashCommand[]>([])
+  const [slashCommandsReloadNonce, setSlashCommandsReloadNonce] = createSignal(0)
 
-  // Load prompt templates (merged with built-ins for the combined command list)
+  onMount(() => {
+    const unsub = window.openpi.onSessionReady(() => {
+      setSlashCommandsReloadNonce((n) => n + 1)
+    })
+    onCleanup(unsub)
+  })
+
+  // Pi session commands: builtins, extension registerCommand, and prompt templates (not skills).
   createEffect(() => {
-    const currentCwd = config.cwd
-    void currentCwd
+    void config.cwd
+    void slashCommandsReloadNonce()
 
     void window.openpi
-      .listPromptTemplates()
-      .then((templates) => {
-        const cmds: SlashCommand[] = templates.map((t) => ({
-          name: `/${t.name}`,
-          description: t.description,
-          argHint: t.argHint,
-        }))
-        setPromptCommands(cmds)
+      .listSlashCommands()
+      .then((commands: SlashCommandItem[]) => {
+        setSessionSlashCommands(mergeSlashCommandsForPicker(commands))
       })
       .catch(() => {
-        /* not fatal */
+        setSessionSlashCommands([])
       })
   })
 
-  // Built-in slash commands (merged with prompt templates)
-  const BUILT_IN_SLASH_COMMANDS: SlashCommand[] = []
-
-  // All commands: built-ins first, then prompts sorted alphabetically
-  const allCommands = createMemo<SlashCommand[]>(() => [
-    ...BUILT_IN_SLASH_COMMANDS,
-    ...promptCommands(),
-  ])
-
   const filteredCmds = createMemo<SlashCommand[]>(() => {
     const q = slashQuery()
-    const cmds = allCommands()
+    const cmds = sessionSlashCommands()
     if (!q) return cmds
 
     const ql = q.toLowerCase()

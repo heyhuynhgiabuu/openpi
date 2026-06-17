@@ -12,6 +12,7 @@ import type {
   ProviderLoginEvent,
   SettingsResult,
   SkillItem,
+  SlashCommandItem,
   ThemeColors,
   ThemeTokens,
 } from '../../src/lib/ipc'
@@ -20,6 +21,8 @@ import { IPC } from '../../src/lib/ipc'
 export const resourcesApi = {
   listPromptTemplates: (): Promise<PromptTemplate[]> =>
     ipcRenderer.invoke(IPC.LIST_PROMPT_TEMPLATES),
+
+  listSlashCommands: (): Promise<SlashCommandItem[]> => ipcRenderer.invoke(IPC.LIST_SLASH_COMMANDS),
 
   getSettings: (): Promise<SettingsResult> => ipcRenderer.invoke(IPC.GET_SETTINGS),
   saveSettings: (scope: 'global' | 'project', settings: PiSettings): Promise<void> =>

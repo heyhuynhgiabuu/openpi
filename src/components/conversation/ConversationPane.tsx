@@ -6,6 +6,7 @@ import { VList, type VListHandle } from 'virtua/solid'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage, WorkspaceSummaryInfo } from '../../lib/ipc'
 import type { Message } from '../../types/session'
+import { ExtensionResponseCard } from './ExtensionResponseCard'
 import { AssistantMessageGroup } from './Messages'
 
 import { SystemMsg } from './SystemMessage'
@@ -24,7 +25,7 @@ type OtherEntry = {
 
 type RenderItem = AssistantGroup | OtherEntry
 
-type RenderRole = 'assistant' | 'user' | 'system'
+type RenderRole = 'assistant' | 'user' | 'system' | 'extension'
 
 function groupMessages(messages: Message[]): RenderItem[] {
   const result: RenderItem[] = []
@@ -53,6 +54,7 @@ function groupMessages(messages: Message[]): RenderItem[] {
 function getRenderRole(item: RenderItem): RenderRole {
   if (item.kind === 'assistant-group') return 'assistant'
   if (item.message.role === 'system') return 'system'
+  if (item.message.role === 'extension') return 'extension'
   return 'user'
 }
 
@@ -237,6 +239,10 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
 
     if (item.message.role === 'system') {
       return <SystemMsg message={item.message} />
+    }
+
+    if (item.message.role === 'extension') {
+      return <ExtensionResponseCard message={item.message} />
     }
 
     return <UserMessage message={item.message as SessionHistoryMessage} onFork={props.onFork} />

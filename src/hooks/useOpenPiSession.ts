@@ -325,7 +325,8 @@ export function useOpenPiSession() {
   const updateShellMessage = (id: string, result: BashExecutionResult | null, error?: string) => {
     setMessages((previous) =>
       previous.map((message) => {
-        if (message.id !== id || message.role === 'system') return message
+        if (message.id !== id || message.role === 'system' || message.role === 'extension')
+          return message
         const card = message.toolCards[0]
         if (!card) return message
         return {

@@ -1,4 +1,4 @@
-import type { Message, SystemMessage, ToolCard } from '../types/session'
+import type { ExtensionResponseMessage, Message, SystemMessage, ToolCard } from '../types/session'
 import type { SessionEvent } from './ipc'
 
 export function applySessionEvent(
@@ -39,6 +39,31 @@ export function applySessionEvent(
             modelName: currentModelName || undefined,
           },
         ]
+      }
+      if (msg.role === 'custom') {
+        const custom = msg as {
+          customType?: string
+          content?: unknown
+          details?: { level?: 'info' | 'warn' | 'error' }
+          display?: boolean
+          timestamp?: number
+        }
+        if (custom.display === false) return messages
+        const raw = contentToText(custom.content)
+        if (!raw.trim()) return messages
+        // Extension command output (e.g. /fff-health) renders as a
+        // distinct response card in the conversation, not as a user
+        // prompt or a code block in an assistant message.
+        const id = `ext-${custom.timestamp ?? Date.now()}`
+        const extMsg: ExtensionResponseMessage = {
+          id,
+          role: 'extension',
+          text: raw,
+          commandName: '',
+          level: custom.details?.level ?? 'info',
+          timestamp: custom.timestamp ?? Date.now(),
+        }
+        return [...messages, extMsg]
       }
       return messages
     }

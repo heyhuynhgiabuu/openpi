@@ -3,6 +3,7 @@ import { createStore, reconcile } from 'solid-js/store'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from '../../lib/displayPreferences'
 import type { SessionHistoryMessage } from '../../lib/ipc'
 import type { Message, SystemMessage, ToolCard } from '../../types/session'
+import { ExtensionResponseCard } from './ExtensionResponseCard'
 import { MarkdownContent } from './MarkdownContent'
 import { MessageActions } from './MessageActions'
 import { SystemMsg } from './SystemMessage'
@@ -267,6 +268,7 @@ export function renderMessage(
   displayPreferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES
 ) {
   if (message.role === 'system') return <SystemMsg message={message as SystemMessage} />
+  if (message.role === 'extension') return <ExtensionResponseCard message={message} />
   if (message.role === 'user')
     return <UserMessage message={message as SessionHistoryMessage} onFork={onFork} />
   return (

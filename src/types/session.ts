@@ -20,7 +20,21 @@ export type SystemMessage = {
   modifiedFiles?: string[]
 }
 
-export type Message = SessionHistoryMessage | SystemMessage
+/**
+ * Extension command response (e.g. /fff-health). Renders as a distinct
+ * response card in the conversation so it never gets confused with a
+ * user-sent prompt or a code block in an assistant message.
+ */
+export type ExtensionResponseMessage = {
+  id: string
+  role: 'extension'
+  text: string
+  commandName: string
+  level: 'info' | 'warn' | 'error'
+  timestamp: number
+}
+
+export type Message = SessionHistoryMessage | SystemMessage | ExtensionResponseMessage
 export type SortMode = NonNullable<SessionListOptions['sortBy']>
 export type GroupMode = NonNullable<SessionListOptions['groupBy']>
 

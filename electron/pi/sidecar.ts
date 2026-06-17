@@ -22,6 +22,8 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiSubagentTools } from '../subagent/manager'
+import { BUILTIN_SLASH_COMMANDS } from './builtinSlashCommands'
+import { createOpenPiExtensionUIContext } from './extensionUiContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -292,6 +294,37 @@ async function startSession(
     }),
   })
 
+  const extensionUiSinks = {
+    sessionEvent: (event: Record<string, unknown>) => {
+      send({ type: 'session_event', event })
+    },
+  }
+
+  try {
+    await session.bindExtensions({
+      uiContext: createOpenPiExtensionUIContext(extensionUiSinks),
+      mode: 'rpc',
+      commandContextActions: {
+        waitForIdle: () => session.agent.waitForIdle(),
+        newSession: async () => ({ cancelled: true }),
+        fork: async () => ({ cancelled: true }),
+        navigateTree: async () => ({ cancelled: true }),
+        switchSession: async () => ({ cancelled: true }),
+        reload: async () => {
+          await session.reload()
+        },
+      },
+      onError: (err) => {
+        outputLine('error', `[extension] ${err.extensionPath} (${err.event}): ${err.error}`)
+      },
+    })
+  } catch (err) {
+    outputLine(
+      'error',
+      `[openpi] bindExtensions failed: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     send({ type: 'session_event', event: event as Record<string, unknown> })
 
@@ -308,7 +341,11 @@ async function startSession(
     }
 
     if (ev.type === 'extension_error') {
-      outputLine('error', `[extension] ${String(ev.message ?? 'extension error')}`)
+      const extErr = ev as { extensionPath?: string; event?: string; error?: string }
+      outputLine(
+        'error',
+        `[extension] ${extErr.extensionPath ?? 'unknown'} (${extErr.event ?? 'error'}): ${extErr.error ?? 'extension error'}`
+      )
     }
 
     if (ev.type === 'auto_retry_end' && ev.success === false) {
@@ -385,8 +422,16 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
 
     case 'prompt': {
       if (!state) return
-      const promptText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
-      await state.session.prompt(promptText)
+      const trimmed = cmd.text.trim()
+      // Extension/builtin slash commands must go through prompt(), not
+      // sendUserMessage(). sendUserMessage() intentionally disables
+      // slash command handling for extension-injected messages.
+      if (trimmed.startsWith('/')) {
+        await state.session.prompt(trimmed)
+      } else {
+        const promptText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
+        await state.session.prompt(promptText)
+      }
       break
     }
 
@@ -414,6 +459,46 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         argHint: prompt.argumentHint,
       }))
       send({ type: 'prompt_templates_result', requestId: cmd.requestId, prompts })
+      break
+    }
+
+    case 'list_slash_commands': {
+      if (!state) {
+        send({ type: 'slash_commands_result', requestId: cmd.requestId, commands: [] })
+        break
+      }
+      const session = state.session
+      const commands: Array<{
+        name: string
+        description: string
+        argHint?: string
+        source: 'builtin' | 'extension' | 'prompt' | 'skill'
+      }> = []
+
+      for (const builtin of BUILTIN_SLASH_COMMANDS) {
+        commands.push({
+          name: builtin.name,
+          description: builtin.description,
+          source: 'builtin',
+        })
+      }
+      for (const command of session.extensionRunner.getRegisteredCommands()) {
+        commands.push({
+          name: command.invocationName,
+          description: command.description ?? '',
+          source: 'extension',
+        })
+      }
+      for (const template of session.promptTemplates) {
+        commands.push({
+          name: template.name,
+          description: template.description ?? '',
+          argHint: template.argumentHint,
+          source: 'prompt',
+        })
+      }
+
+      send({ type: 'slash_commands_result', requestId: cmd.requestId, commands })
       break
     }
 

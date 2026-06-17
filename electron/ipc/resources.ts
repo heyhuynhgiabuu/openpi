@@ -2,13 +2,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { IpcMain } from 'electron'
 import { z } from 'zod'
-import type { ListDirectoryResult, PromptTemplate, SkillItem } from '../../src/lib/ipc'
+import type {
+  ListDirectoryResult,
+  PromptTemplate,
+  SkillItem,
+  SlashCommandItem,
+} from '../../src/lib/ipc'
 import {
   IPC,
   listDirectoryRequestSchema,
   promptTemplateSchema,
   readSkillFileRequestSchema,
   skillItemSchema,
+  slashCommandItemSchema,
 } from '../../src/lib/ipc'
 import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
 
@@ -38,6 +44,19 @@ export function registerResourcesIpc(deps: ResourcesIpcDeps): void {
       .array(promptTemplateSchema)
       .parse(response.prompts)
       .sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  deps.ipcMain.handle(IPC.LIST_SLASH_COMMANDS, async (): Promise<SlashCommandItem[]> => {
+    const cwd = deps.activeWorkspacePath() ?? undefined
+    const response = await deps.requestSidecar<
+      Extract<SidecarMessage, { type: 'slash_commands_result' }>
+    >({
+      type: 'list_slash_commands',
+      requestId: deps.createRequestId(),
+      cwd,
+      workspaceTrusted: cwd ? deps.isWorkspaceTrusted(cwd) : false,
+    })
+    return z.array(slashCommandItemSchema).parse(response.commands)
   })
 
   deps.ipcMain.handle(IPC.LIST_SKILLS, async (): Promise<SkillItem[]> => {

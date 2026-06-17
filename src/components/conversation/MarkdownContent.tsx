@@ -33,6 +33,17 @@ function sanitizeMarkdownHtml(html: string): string {
   })
 }
 
+function stripCodeBlockBackgrounds(shikiHtml: string): string {
+  return shikiHtml.replace(/(<pre\b[^>]*\sstyle=")([^"]*)(")/gi, (_match, open, style, close) => {
+    const next = style
+      .split(';')
+      .map((decl: string) => decl.trim())
+      .filter((decl: string) => decl && !/^background(?:-color)?\s*:/i.test(decl))
+      .join('; ')
+    return next ? `${open}${next}${close}` : open.slice(0, -8)
+  })
+}
+
 /**
  * Resolve a fenced-code language alias to the shiki-registered id.
  * Shiki v3 handles js/ts natively but not py/sh/rb etc.
@@ -52,9 +63,10 @@ function wrapCodeBlock(shikiHtml: string, rawLang: string): string {
     rawLang && rawLang !== 'plaintext' && rawLang !== 'text'
       ? escapeHtml(rawLang.toLowerCase())
       : ''
+  const foregroundOnlyHtml = stripCodeBlockBackgrounds(shikiHtml)
   // Add line numbers to Shiki-generated <span class="line"> elements
   let lineNum = 0
-  const htmlWithLineNums = shikiHtml.replace(
+  const htmlWithLineNums = foregroundOnlyHtml.replace(
     /<span\s+class="([^"]*\bline\b[^"]*)"([^>]*)>/gi,
     (_match, classes: string, attrs: string) => {
       lineNum++
