@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1] - 2026-06-17
+
+- Surface Pi extension slash commands in the composer picker, including commands registered by extensions such as observational memory, pi-hermes-memory, and pi-pretty.
+- Execute slash commands through Pi native prompt path so extension commands run as commands instead of being sent to the model as normal prompts.
+- Bind OpenPi sidecar extension UI context and render `ctx.ui.notify()` output in the conversation as extension response cards.
+- Preserve extension-registered model providers when refreshing model configuration.
+- Bump `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` to `~0.79.6`.
+- Refresh the demo screenshot and refine conversation/picker surfaces, including transparent wrapping code blocks.
+
 ## [0.2.0] - 2026-06-16
 
 ### Added
