@@ -2193,7 +2193,7 @@ body.panel-dragging {
   border-radius: 8px;
   border: 1px solid var(--hairline);
   overflow: hidden;
-  background: var(--surface-soft);
+  background: transparent;
 }
 
 .code-block-header {
@@ -2201,7 +2201,7 @@ body.panel-dragging {
   align-items: center;
   justify-content: space-between;
   padding: 5px 12px;
-  background: rgba(128, 128, 128, 0.06);
+  background: transparent;
   border-bottom: 1px solid var(--hairline);
   min-height: 30px;
   gap: 8px;
@@ -2249,14 +2249,30 @@ body.panel-dragging {
   margin: 0;
   border: none;
   border-radius: 0;
-  overflow-x: auto;
+  overflow-x: visible;
   padding: 14px 16px;
+  background: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .code-block pre code {
   font-family: var(--font-code);
   font-size: 13px;
   line-height: 1.6;
   background: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.code-block .line {
+  display: block;
+  min-height: 1.6em;
+  padding-left: 3.6em;
+  text-indent: -3.6em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Line number element — always visible */
@@ -2269,6 +2285,7 @@ body.panel-dragging {
   color: var(--mute);
   opacity: 0.5;
   font-size: 0.9em;
+  text-indent: 0;
 }
 
 /* Bare <pre> blocks (plain-markdown fallback, no .code-block wrapper) */
@@ -2277,14 +2294,20 @@ body.panel-dragging {
   margin: 0.75em 0;
   border-radius: 4px;
   border: 1px solid var(--hairline);
-  overflow-x: auto;
-  background: var(--surface-soft);
+  overflow-x: visible;
+  background: transparent;
   padding: 12px 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .md-content pre code {
   font-family: var(--font-code);
   font-size: 13px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 /* Blockquote */
 .md-content blockquote {
@@ -4059,8 +4082,8 @@ body.panel-dragging {
   right: 0;
   z-index: 500;
   margin-bottom: 6px;
-  background: var(--surface-card);
-  border: 1px solid var(--hairline-strong);
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   box-shadow:
     0 -4px 24px rgba(0, 0, 0, 0.36),
@@ -4099,9 +4122,9 @@ body.panel-dragging {
 }
 /* Active item: vivid blue accent — matches reference app highlight */
 .slash-picker-item.is-active {
-  background: rgba(59, 130, 246, 0.18);
+  background: var(--surface-card);
   color: var(--ink);
-  outline: 1px solid rgba(59, 130, 246, 0.35);
+  outline: 1px solid var(--hairline-strong);
   outline-offset: -1px;
 }
 
@@ -4177,8 +4200,8 @@ body.panel-dragging {
 }
 .slash-picker-item.is-active .slash-picker-arghint {
   color: var(--graphite);
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.25);
+  background: var(--surface-raised);
+  border-color: var(--hairline-strong);
 }
 
 /* Footer bar (scope legend + keyboard hints) */
@@ -4201,8 +4224,8 @@ body.panel-dragging {
   right: 0;
   z-index: 520;
   margin-bottom: 6px;
-  background: var(--surface-card);
-  border: 1px solid var(--hairline-strong);
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   box-shadow:
     0 -4px 24px rgba(0, 0, 0, 0.36),
@@ -4276,7 +4299,7 @@ body.panel-dragging {
 
 .file-mention-item:hover,
 .file-mention-item.is-active {
-  background: var(--surface-raised);
+  background: var(--surface-card);
   color: var(--ink);
 }
 
@@ -4303,7 +4326,7 @@ body.panel-dragging {
   overflow: hidden;
   color: var(--ink-soft);
   font-size: 12.5px;
-  font-weight: 560;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4343,12 +4366,11 @@ body.panel-dragging {
 .mention-icon-agent {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
+  justify-content: left;
+  width: 12px;
+  height: 16px;
   border-radius: 4px;
-  background: var(--accent);
-  color: white;
+  color: var(--accent);
 }
 
 /* ─── Context file chips (attached files row) ─────────────────────────────── */
@@ -4357,8 +4379,7 @@ body.panel-dragging {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  padding: 8px 12px 4px;
-  border-bottom: 1px solid var(--hairline-soft);
+  padding: 8px 0 4px;
 }
 
 .ctx-chip {
@@ -4401,7 +4422,6 @@ body.panel-dragging {
 }
 .ctx-chip-remove:hover {
   color: var(--ink);
-  background: var(--surface-inset);
 }
 
 /* ─── Add-context (+) button ─────────────────────────────────────────────── */
@@ -13277,11 +13297,10 @@ body.panel-dragging {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  flex-shrink: 0;
   border-radius: 3px;
-  background: var(--accent);
-  color: white;
+  background: transparent;
+  color: var(--accent);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
