@@ -1,25 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import { buildCoreSlashCommands, findCoreCommand } from '../src/lib/coreCommands'
 
+function baseCtx() {
+  return {
+    sessionReady: true,
+    onCompact: () => {},
+    onReload: () => {},
+    onCopyLast: () => null,
+    onOpenModelPicker: () => {},
+    onOpenSettings: () => {},
+    onOpenLogin: () => {},
+    onLogout: () => {},
+    onNewSession: () => {},
+    onOpenResumeDialog: () => {},
+    onCycleThinking: () => {},
+    onCycleModel: () => {},
+    onSetSessionName: () => {},
+    onShowSessionInfo: () => {},
+    onShowError: () => {},
+    onPrefillInput: () => {},
+  }
+}
+
 describe('core slash commands', () => {
   it('builds a stable catalog with all OpenPi-handled commands', () => {
-    const list = buildCoreSlashCommands({
-      sessionReady: true,
-      onCompact: () => {},
-      onReload: () => {},
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
-      onSetSessionName: () => {},
-      onShowSessionInfo: () => {},
-      onShowError: () => {},
-    })
+    const list = buildCoreSlashCommands(baseCtx())
 
     const slashes = list.map((cmd) => cmd.slash).sort()
     expect(slashes).toEqual(
@@ -44,25 +49,10 @@ describe('core slash commands', () => {
   it('dispatches /compact to onCompact with the user-supplied instructions', () => {
     const calls: Array<{ kind: string; value: string | undefined }> = []
     const list = buildCoreSlashCommands({
-      sessionReady: true,
+      ...baseCtx(),
       onCompact: (instructions) => {
         calls.push({ kind: 'compact', value: instructions })
       },
-      onReload: () => {
-        calls.push({ kind: 'reload', value: undefined })
-      },
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
-      onSetSessionName: () => {},
-      onShowSessionInfo: () => {},
-      onShowError: () => {},
     })
 
     const compact = findCoreCommand(list, 'compact')!
@@ -74,23 +64,10 @@ describe('core slash commands', () => {
   it('returns true (handled) even when /compact has no argument', () => {
     const calls: Array<{ value: string | undefined }> = []
     const list = buildCoreSlashCommands({
-      sessionReady: true,
+      ...baseCtx(),
       onCompact: (instructions) => {
         calls.push({ value: instructions })
       },
-      onReload: () => {},
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
-      onSetSessionName: () => {},
-      onShowSessionInfo: () => {},
-      onShowError: () => {},
     })
 
     const compact = findCoreCommand(list, 'compact')!
@@ -101,20 +78,8 @@ describe('core slash commands', () => {
   it('shows an error when no session is active', () => {
     const errors: string[] = []
     const list = buildCoreSlashCommands({
+      ...baseCtx(),
       sessionReady: false,
-      onCompact: () => {},
-      onReload: () => {},
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
-      onSetSessionName: () => {},
-      onShowSessionInfo: () => {},
       onShowError: (msg) => errors.push(msg),
     })
 
@@ -123,58 +88,29 @@ describe('core slash commands', () => {
     expect(errors).toEqual(['No active session.'])
   })
 
-  it('rejects /name without a name argument', () => {
-    const errors: string[] = []
+  it('prefills /name with a trailing space when no argument is supplied', () => {
+    const prefills: string[] = []
     let saved: string | null = null
     const list = buildCoreSlashCommands({
-      sessionReady: true,
-      onCompact: () => {},
-      onReload: () => {},
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
+      ...baseCtx(),
       onSetSessionName: (name) => {
         saved = name
         return undefined
       },
-      onShowSessionInfo: () => {},
-      onShowError: (msg) => errors.push(msg),
+      onPrefillInput: (text) => prefills.push(text),
     })
 
     const name = findCoreCommand(list, 'name')!
     expect(name.onSelect('')).toBe(true)
     expect(saved).toBeNull()
-    expect(errors).toEqual(['Usage: /name <name>'])
+    expect(prefills).toEqual(['/name '])
 
     expect(name.onSelect('  my-feature  ')).toBe(true)
     expect(saved).toBe('my-feature')
   })
 
   it('returns null for unknown commands', () => {
-    const list = buildCoreSlashCommands({
-      sessionReady: true,
-      onCompact: () => {},
-      onReload: () => {},
-      onCopyLast: () => null,
-      onOpenModelPicker: () => {},
-      onOpenSettings: () => {},
-      onOpenLogin: () => {},
-      onLogout: () => {},
-      onNewSession: () => {},
-      onOpenResumeDialog: () => {},
-      onCycleThinking: () => {},
-      onCycleModel: () => {},
-      onSetSessionName: () => {},
-      onShowSessionInfo: () => {},
-      onShowError: () => {},
-    })
-
+    const list = buildCoreSlashCommands(baseCtx())
     expect(findCoreCommand(list, 'nonexistent')).toBeNull()
   })
 })

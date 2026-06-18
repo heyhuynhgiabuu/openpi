@@ -27,6 +27,8 @@ export interface CoreCommandContext {
   onSetSessionName: (name: string) => Promise<void> | void
   onShowSessionInfo: () => Promise<void> | void
   onShowError: (message: string) => void
+  /** Replace the current composer input with the given text (e.g. `/name `). */
+  onPrefillInput: (text: string) => void
 }
 
 /**
@@ -73,7 +75,9 @@ export function buildCoreSlashCommands(ctx: CoreCommandContext): CoreSlashComman
         }
         const name = arg.trim()
         if (!name) {
-          ctx.onShowError('Usage: /name <name>')
+          // No argument: pre-fill the input with `/name ` so the user can keep
+          // typing. This matches Pi TUI's UX for slash commands that take args.
+          ctx.onPrefillInput('/name ')
           return true
         }
         void ctx.onSetSessionName(name)

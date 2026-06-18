@@ -170,6 +170,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       onShowError: (msg) => {
         window.alert(msg)
       },
+      onPrefillInput: (text) => props.session.setInput(text),
     })
   )
 
