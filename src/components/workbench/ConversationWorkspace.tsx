@@ -1,6 +1,7 @@
 import { GitBranch, X } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
+import { useFileContentCache } from '../../hooks/useFileContentCache'
 import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
@@ -96,6 +97,8 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   createEffect(() => {
     if (props.activeDiff?.path) setReviewSource('git')
   })
+
+  const fileCache = useFileContentCache()
 
   const gitHistoryState = useGitHistoryState({
     activeTab: () => (historyActive() ? ('history' as const) : ('changes' as const)),
@@ -315,6 +318,11 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
                     onSourceChange={setReviewSource}
                     agentReview={props.agentReview}
                     requestedGitPath={props.activeDiff?.path ?? null}
+                    comments={props.lineComments}
+                    onAddComment={props.onAddLineComment}
+                    onRemoveComment={props.onRemoveLineComment}
+                    fileContentFor={fileCache.fileContentFor}
+                    ensureFileContent={fileCache.ensureFileContent}
                   />
                 </Show>
               }

@@ -28,11 +28,11 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
-- SolidJS workbench UI with session sidebar, workspace rail, conversation pane, model controls, steering/follow-up queues, command palette, customizations modal, terminal/output panel (multi-tab), Git panel, file tree/search, file viewer, and split diff viewer.
+- SolidJS workbench UI with session sidebar, workspace rail, conversation pane, model controls, steering/follow-up queues, command palette, customizations modal, terminal/output panel (multi-tab), Git panel, file tree/search, file viewer, split diff viewer, and unified Review tab.
 - Session/workspace read model in SQLite, last-workspace restore, session search/sort/group controls, pinned/archive flows, and new-session hero metadata (workspace path, Git branch, last modified).
 - Customizations inventory for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings; command palette (`⇧⌘P`).
 - **Goal/harness v2 loop**: `/goal` controller with 7 harness tools, product docs, story browser, decision records, test matrix.
-- **Conversation polish**: live token counter, code line numbers, streaming cursor fix, entry animation, responsive images.
+- **Conversation polish**: live token counter, code line numbers, streaming cursor fix, entry animation, responsive images, and composer line-comment context chips.
 - **File editor improvements**: CodeMirror 6 editor, format-on-save (Biome), word wrap toggle, FORMAT_FILE IPC, find-with-replace.
 - **Extensions UI**: enable/disable toggle per extension, preference persistence, reload button.
 - **Terminal tabs**: renameable tabs, add/close/switch, process exit indicators.
@@ -472,7 +472,7 @@ Acceptance criteria:
 
 Build notes:
 1. **Testing strategy execution** — close `docs/TEST_MATRIX.md` gaps; IPC Zod roundtrips, fake `AgentSession` fixtures, SQLite upserts, PTY smoke, permission tests.
-2. **Unified Review MVP** — shipped as a Review tab with Git changes / Last turn changes sources. Last-turn changes are snapshot-backed, coalesced per file, rendered as expandable file rows with proper diffs and Keep/Revert/Revert all. Later work: hunk-level review and richer merge UI.
+2. **Unified Review MVP** — shipped as a Review tab with Git changes / Last turn changes sources. Last-turn changes are snapshot-backed, coalesced per file, rendered as expandable file rows with proper diffs and Keep/Revert/Revert all. Review diffs now support OpenCode-style line comments: hover `+`, content-row click/drag selection, multi-line highlight, saved annotations, composer chips, and structured `<file_comment>` prompt context. Later work: hunk-level review and richer merge UI.
 3. **Live token/cost per turn** — conversation header during `message_update` / `turn_end`.
 4. **Session map v2** — tree UI over JSONL `parentId` / compaction entries.
 5. **Subagent/task cards** — richer cards for `Agent` / task tooling already in use.
@@ -482,7 +482,7 @@ Build notes:
 
 Acceptance criteria:
 - `npm test` covers IPC, session index, PTY, permission gates; TEST_MATRIX lint 0 missing evidence.
-- Agent tool edits can be reviewed in the unified Review tab as Last turn changes with safe snapshot-backed Keep/Revert/Revert all (P0 MVP shipped); hunk-level/pre-apply review remains future polish.
+- Agent tool edits can be reviewed in the unified Review tab as Last turn changes with safe snapshot-backed Keep/Revert/Revert all (P0 MVP shipped); diff line comments preserve selected file snippets as structured prompt context; hunk-level/pre-apply review remains future polish.
 - Turn-level token/cost visible while streaming (P0).
 - Session tree navigable with fork actions (P1).
 - No new features justified only by external “Codex replacement” or Kun stacks.

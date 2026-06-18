@@ -21,7 +21,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - **Built-in subagents:** `Agent` / `get_subagent_result` / `steer_subagent` on sidecar; Worker, Explorer, Scout, Planner, Reviewer profiles; `.pi/agents/*.md` discovery; @mention autocomplete; subagent status widget.
 - **Goal/harness:** `/goal` + plan files (`~/.pi/agent/.openpi-goal.json`, `.openpi-plan.json`); harness extension for build pipeline (global `~/.pi/agent/extensions/harness/`).
  - Conversation polish: live token counter (streaming), code line numbers, tool cards including `ask_user_question` modal.
- - Agent review: unified Review tab now has a source dropdown for `Git changes` vs `Last turn changes`; last-turn mode uses agent snapshots, file accordions, proper diff rendering, Keep/Revert/Revert all, and coalesces repeated edits per file.
+ - Agent review: unified Review tab now has a source dropdown for `Git changes` vs `Last turn changes`; last-turn mode uses agent snapshots, file accordions, proper diff rendering, Keep/Revert/Revert all, coalesces repeated edits per file, and supports diff line comments with hover `+`, content-row multi-select, saved annotations, composer chips, and structured `<file_comment>` prompt context.
  - CI: PR/main checks; tag-triggered beta releases (macOS/Windows/Linux). **Signing/notarization not configured.**
 
 ### Next (Phase 7 — see ROADMAP)

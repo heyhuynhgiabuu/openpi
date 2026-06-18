@@ -2,7 +2,7 @@ import { BookOpen, Bot, MessageSquare } from 'lucide-solid'
 import type { Component } from 'solid-js'
 import { FileIcon } from '../../lib/fileIcons'
 import type { FileLineComment } from '../../lib/fileLineComments'
-import { formatLineRange } from '../../lib/fileLineComments'
+import { formatCompactLineRange } from '../../lib/fileLineComments'
 import type { SkillItem } from '../../lib/ipc'
 
 type FileChipProps = { relPath: string; onRemove: () => void }
@@ -35,7 +35,7 @@ type LineCommentChipProps = { comment: FileLineComment; onRemove: () => void }
 export const LineCommentChip: Component<LineCommentChipProps> = (props) => {
   const parts = props.comment.path.split('/')
   const name = parts.pop() ?? props.comment.path
-  const range = () => formatLineRange(props.comment.startLine, props.comment.endLine)
+  const range = () => formatCompactLineRange(props.comment.startLine, props.comment.endLine)
   const commentPreview = () => props.comment.comment.replace(/\s+/g, ' ').trim()
 
   return (

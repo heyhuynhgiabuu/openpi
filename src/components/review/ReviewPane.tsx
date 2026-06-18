@@ -1,28 +1,26 @@
-import { FileDiff, type FileDiffOptions, parseDiffFromFile, parsePatchFiles } from '@pierre/diffs'
-import { ChevronDown, ChevronRight } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
-import type { AgentReviewChange, GitChangedFile, GitFileDiff } from '../../lib/ipc'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
+import type { AgentReviewChange, GitChangedFile } from '../../lib/ipc'
+import { ReviewFileCard } from './ReviewFileCard'
+import type { DiffStyle } from './reviewDiffRenderers'
 
 type ReviewSource = 'git' | 'last-turn'
-type DiffStyle = 'unified' | 'split'
+
 type GitDiffState =
   | { status: 'loading' }
-  | { status: 'loaded'; diff: GitFileDiff | null }
+  | { status: 'loaded'; diff: import('../../lib/ipc').GitFileDiff | null }
   | { status: 'error'; message: string }
 
-type AgentReviewController = {
+interface AgentReviewController {
   changes: AgentReviewChange[]
-  activeId: string | null
-  activeChange: AgentReviewChange | null
   error: string | null
-  setActiveId: (id: string) => void
   keep: (id: string) => Promise<void>
   revert: (id: string) => Promise<void>
   revertAll: () => Promise<void>
   clear: () => Promise<void>
 }
 
-type ReviewItem = {
+interface ReviewItem {
   id: string
   path: string
   statusLabel: string
@@ -39,102 +37,11 @@ interface ReviewPaneProps {
   onSourceChange: (source: ReviewSource) => void
   agentReview: AgentReviewController
   requestedGitPath?: string | null
-}
-
-const REVIEW_DIFF_BACKGROUND = 'var(--surface-card)'
-const REVIEW_DIFF_ADDITION_BACKGROUND =
-  'color-mix(in srgb, var(--surface-card) 36%, var(--success-soft) 64%)'
-const REVIEW_DIFF_ADDITION_NUMBER_BACKGROUND =
-  'color-mix(in srgb, var(--success-soft) 72%, var(--success-line) 28%)'
-const REVIEW_DIFF_DELETION_BACKGROUND =
-  'color-mix(in srgb, var(--surface-card) 34%, var(--error-soft) 66%)'
-const REVIEW_DIFF_DELETION_NUMBER_BACKGROUND =
-  'color-mix(in srgb, var(--error-soft) 70%, var(--error-line) 30%)'
-
-function applyReviewDiffTheme(node: HTMLElement) {
-  node.style.backgroundColor = REVIEW_DIFF_BACKGROUND
-  node.style.setProperty('--diffs-bg', REVIEW_DIFF_BACKGROUND)
-  node.style.setProperty('--diffs-light-bg', REVIEW_DIFF_BACKGROUND)
-  node.style.setProperty('--diffs-dark-bg', REVIEW_DIFF_BACKGROUND)
-  node.style.setProperty('--diffs-bg-addition-override', REVIEW_DIFF_ADDITION_BACKGROUND)
-  node.style.setProperty(
-    '--diffs-bg-addition-number-override',
-    REVIEW_DIFF_ADDITION_NUMBER_BACKGROUND
-  )
-  node.style.setProperty('--diffs-bg-deletion-override', REVIEW_DIFF_DELETION_BACKGROUND)
-  node.style.setProperty(
-    '--diffs-bg-deletion-number-override',
-    REVIEW_DIFF_DELETION_NUMBER_BACKGROUND
-  )
-
-  const shadowRoot = node.shadowRoot
-  if (!shadowRoot) return
-
-  let style = shadowRoot.querySelector<HTMLStyleElement>('style[data-openpi-review-theme]')
-  if (!style) {
-    style = document.createElement('style')
-    style.dataset.openpiReviewTheme = 'true'
-    shadowRoot.appendChild(style)
-  }
-
-  style.textContent = `
-    :host {
-      background-color: ${REVIEW_DIFF_BACKGROUND} !important;
-      --diffs-bg: ${REVIEW_DIFF_BACKGROUND} !important;
-      --diffs-light-bg: ${REVIEW_DIFF_BACKGROUND} !important;
-      --diffs-dark-bg: ${REVIEW_DIFF_BACKGROUND} !important;
-      --diffs-bg-addition-override: ${REVIEW_DIFF_ADDITION_BACKGROUND} !important;
-      --diffs-bg-addition-number-override: ${REVIEW_DIFF_ADDITION_NUMBER_BACKGROUND} !important;
-      --diffs-bg-deletion-override: ${REVIEW_DIFF_DELETION_BACKGROUND} !important;
-      --diffs-bg-deletion-number-override: ${REVIEW_DIFF_DELETION_NUMBER_BACKGROUND} !important;
-    }
-
-    pre,
-    code,
-    [data-diff],
-    [data-content],
-    [data-gutter] {
-      background-color: var(--diffs-bg) !important;
-    }
-
-    [data-line-type='change-addition']:is([data-line], [data-column-number], [data-gutter-buffer], [data-no-newline]) {
-      background-color: ${REVIEW_DIFF_ADDITION_BACKGROUND} !important;
-    }
-
-    [data-line-type='change-addition']:is([data-column-number], [data-gutter-buffer]) {
-      background-color: ${REVIEW_DIFF_ADDITION_NUMBER_BACKGROUND} !important;
-    }
-
-    [data-line-type='change-deletion']:is([data-line], [data-column-number], [data-gutter-buffer], [data-no-newline]) {
-      background-color: ${REVIEW_DIFF_DELETION_BACKGROUND} !important;
-    }
-
-    [data-line-type='change-deletion']:is([data-column-number], [data-gutter-buffer]) {
-      background-color: ${REVIEW_DIFF_DELETION_NUMBER_BACKGROUND} !important;
-    }
-  `
-}
-
-function diffOptions(diffStyle: DiffStyle): FileDiffOptions<undefined> {
-  return {
-    diffStyle,
-    theme: 'pierre-dark',
-    themeType: 'dark',
-    preferredHighlighter: 'shiki-js',
-    disableFileHeader: true,
-    disableLineNumbers: false,
-    overflow: 'wrap',
-    diffIndicators: 'bars',
-    disableBackground: false,
-    hunkSeparators: 'line-info-basic',
-    collapsedContextThreshold: 6,
-    expansionLineCount: 120,
-    lineDiffType: 'word-alt',
-    maxLineDiffLength: 1000,
-    tokenizeMaxLineLength: 1000,
-    lineHoverHighlight: 'line',
-    onPostRender: (node) => applyReviewDiffTheme(node),
-  }
+  comments: FileLineComment[]
+  onAddComment: (comment: NewFileLineComment) => void
+  onRemoveComment: (id: string) => void
+  fileContentFor: (path: string) => string | null
+  ensureFileContent: (path: string) => Promise<string | null>
 }
 
 function statusLabel(status: GitChangedFile['status'] | AgentReviewChange['status']): string {
@@ -146,100 +53,14 @@ function statusLabel(status: GitChangedFile['status'] | AgentReviewChange['statu
   return 'Modified'
 }
 
-function AgentDiffRenderer(props: { change: AgentReviewChange; diffStyle: DiffStyle }) {
-  let containerRef!: HTMLDivElement
-  let diffInstance: FileDiff<undefined> | null = null
-
-  createEffect(() => {
-    const change = props.change
-    if (!containerRef) return
-    try {
-      containerRef.replaceChildren()
-      const fileDiff = parseDiffFromFile(
-        {
-          name: change.path,
-          contents: change.beforeContent ?? '',
-          cacheKey: `${change.id}:before`,
-        },
-        { name: change.path, contents: change.afterContent ?? '', cacheKey: `${change.id}:after` }
-      )
-      if (!diffInstance) diffInstance = new FileDiff(diffOptions(props.diffStyle))
-      else diffInstance.setOptions(diffOptions(props.diffStyle))
-      diffInstance.render({ fileDiff, containerWrapper: containerRef, forceRender: true })
-    } catch {
-      containerRef.textContent = change.diff || 'Unable to render diff.'
-    }
-  })
-
-  onCleanup(() => {
-    diffInstance?.cleanUp()
-    diffInstance = null
-  })
-
-  return <div ref={containerRef!} class="review-diff-renderer" />
-}
-
-function GitDiffRenderer(props: {
-  path: string
-  state: GitDiffState | undefined
-  diffStyle: DiffStyle
-}) {
-  let containerRef!: HTMLDivElement
-  let diffInstance: FileDiff<undefined> | null = null
-
-  createEffect(() => {
-    const state = props.state
-    if (!containerRef) return
-    if (!state || state.status === 'loading') {
-      containerRef.textContent = 'Loading diff…'
-      return
-    }
-    if (state.status === 'error') {
-      containerRef.textContent = state.message
-      return
-    }
-    const diff = state.diff
-    if (!diff) {
-      containerRef.textContent = 'No diff available.'
-      return
-    }
-    try {
-      containerRef.replaceChildren()
-      const fileDiff =
-        diff.oldContent !== undefined && diff.newContent !== undefined
-          ? parseDiffFromFile(
-              { name: diff.path, contents: diff.oldContent, cacheKey: `${diff.path}:old` },
-              { name: diff.path, contents: diff.newContent, cacheKey: `${diff.path}:new` }
-            )
-          : parsePatchFiles(diff.rawPatch)[0]?.files[0]
-      if (!fileDiff) {
-        containerRef.textContent = 'No diff available.'
-        return
-      }
-      if (!diffInstance) diffInstance = new FileDiff(diffOptions(props.diffStyle))
-      else diffInstance.setOptions(diffOptions(props.diffStyle))
-      diffInstance.render({ fileDiff, containerWrapper: containerRef, forceRender: true })
-    } catch {
-      containerRef.textContent = diff.rawPatch || 'Unable to render diff.'
-    }
-  })
-
-  onCleanup(() => {
-    diffInstance?.cleanUp()
-    diffInstance = null
-  })
-
-  return <div ref={containerRef!} class="review-diff-renderer" />
-}
-
 export function ReviewPane(props: ReviewPaneProps) {
   const [diffStyle, setDiffStyle] = createSignal<DiffStyle>('unified')
   const [expandedPaths, setExpandedPaths] = createSignal<Set<string>>(new Set())
   const [gitFiles, setGitFiles] = createSignal<GitChangedFile[]>([])
   const [gitDiffs, setGitDiffs] = createSignal<Record<string, GitDiffState>>({})
-
   const [gitLoading, setGitLoading] = createSignal(false)
   const [gitError, setGitError] = createSignal<string | null>(null)
+  const [activeCommentPath, setActiveCommentPath] = createSignal<string | null>(null)
 
   const agentItems = createMemo<ReviewItem[]>(() =>
     props.agentReview.changes.map((change) => ({
@@ -330,6 +151,11 @@ export function ReviewPane(props: ReviewPaneProps) {
     ensureGitDiff(path)
   }
 
+  const activateComments = (path: string) => {
+    setActiveCommentPath(path)
+    void props.ensureFileContent(path)
+  }
+
   const collapseAll = () => setExpandedPaths(new Set<string>())
   const expandAll = () => setExpandedPaths(new Set(items().map((item) => item.path)))
   const allCollapsed = createMemo(() => expandedPaths().size === 0)
@@ -361,7 +187,7 @@ export function ReviewPane(props: ReviewPaneProps) {
 
         <div class="review-toolbar-spacer" />
 
-        <div class="review-toggle-group" role="group" aria-label="Diff layout">
+        <div class="review-toggle-group">
           <button
             type="button"
             class={`review-toggle-btn${diffStyle() === 'unified' ? ' is-active' : ''}`}
@@ -412,68 +238,25 @@ export function ReviewPane(props: ReviewPaneProps) {
             fallback={<div class="review-empty">No changes to review</div>}
           >
             <For each={items()}>
-              {(item) => {
-                const expanded = () => expandedPaths().has(item.path)
-                return (
-                  <article class={`review-file-card${expanded() ? ' is-expanded' : ''}`}>
-                    <button
-                      type="button"
-                      class="review-file-row"
-                      onClick={() => togglePath(item.path)}
-                      aria-expanded={expanded()}
-                    >
-                      <span class="review-file-chevron">
-                        <Show when={expanded()} fallback={<ChevronRight size={13} />}>
-                          <ChevronDown size={13} />
-                        </Show>
-                      </span>
-                      <span class="review-file-path">{item.path}</span>
-                      <span class={`review-file-status is-${item.statusLabel.toLowerCase()}`}>
-                        {item.statusLabel}
-                      </span>
-                      <span class="review-file-delta">
-                        <span class="git-delta-add">+{item.added}</span>{' '}
-                        <span class="git-delta-rem">−{item.removed}</span>
-                      </span>
-                    </button>
-
-                    <Show when={expanded()}>
-                      <div class="review-file-expanded">
-                        <Show when={props.source === 'last-turn' && item.agentChange}>
-                          {(change) => (
-                            <>
-                              <div class="review-file-actions">
-                                <button
-                                  type="button"
-                                  class="review-toolbar-btn"
-                                  onClick={() => void props.agentReview.keep(change().id)}
-                                >
-                                  Keep
-                                </button>
-                                <button
-                                  type="button"
-                                  class="review-toolbar-btn is-danger"
-                                  onClick={() => void props.agentReview.revert(change().id)}
-                                >
-                                  Revert
-                                </button>
-                              </div>
-                              <AgentDiffRenderer change={change()} diffStyle={diffStyle()} />
-                            </>
-                          )}
-                        </Show>
-                        <Show when={props.source === 'git'}>
-                          <GitDiffRenderer
-                            path={item.path}
-                            state={gitDiffs()[item.path]}
-                            diffStyle={diffStyle()}
-                          />
-                        </Show>
-                      </div>
-                    </Show>
-                  </article>
-                )
-              }}
+              {(item) => (
+                <ReviewFileCard
+                  item={item}
+                  source={props.source}
+                  expanded={expandedPaths().has(item.path)}
+                  diffStyle={diffStyle()}
+                  gitDiffState={gitDiffs()[item.path]}
+                  onToggle={() => togglePath(item.path)}
+                  onActivateComments={() => activateComments(item.path)}
+                  isCommentActive={activeCommentPath() === item.path}
+                  onKeep={async (id) => props.agentReview.keep(id)}
+                  onRevert={async (id) => props.agentReview.revert(id)}
+                  comments={props.comments}
+                  onAddComment={props.onAddComment}
+                  onRemoveComment={props.onRemoveComment}
+                  fileContentFor={props.fileContentFor}
+                  ensureFileContent={props.ensureFileContent}
+                />
+              )}
             </For>
           </Show>
         </Show>
