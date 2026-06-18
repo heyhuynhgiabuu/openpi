@@ -5007,7 +5007,7 @@ body.panel-dragging {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--hairline-soft);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--graphite);
@@ -12163,7 +12163,7 @@ body.panel-dragging {
 }
 .osp-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--graphite);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
 }
 
