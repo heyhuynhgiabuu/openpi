@@ -514,6 +514,35 @@ export const setSessionNameSchema = z.object({
 })
 export type SetSessionName = z.infer<typeof setSessionNameSchema>
 
+export const compactSessionSchema = z
+  .object({
+    customInstructions: z.string().min(1).max(2_000).optional(),
+  })
+  .optional()
+  .default({})
+export type CompactSession = z.infer<typeof compactSessionSchema>
+
+export const sessionInfoSchema = z.object({
+  sessionFile: z.string().nullable(),
+  sessionId: z.string().nullable(),
+  sessionName: z.string().nullable(),
+  model: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      provider: z.string(),
+      reasoning: z.boolean(),
+      contextWindow: z.number(),
+    })
+    .nullable(),
+  thinkingLevel: z.string().nullable(),
+  messageCount: z.number().int().nonnegative(),
+  contextUsagePercent: z.number().nullable(),
+  contextTokens: z.number().nullable(),
+  contextWindow: z.number().nullable(),
+})
+export type SessionInfo = z.infer<typeof sessionInfoSchema>
+
 export const forkSessionSchema = z.object({
   entryId: z.string().min(1),
 })

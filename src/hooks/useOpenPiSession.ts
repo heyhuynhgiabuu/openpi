@@ -422,6 +422,41 @@ export function useOpenPiSession() {
     }
   }
 
+  const compactSession = async (customInstructions?: string) => {
+    try {
+      await window.openpi.compactSession(customInstructions ? { customInstructions } : {})
+      // Pi SDK emits compaction_start/end events; renderer already shows them.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const reloadSession = async () => {
+    try {
+      await window.openpi.reloadSession()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const copyLastAssistantText = async (): Promise<string | null> => {
+    try {
+      return await window.openpi.copyLastAssistantText()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      return null
+    }
+  }
+
+  const getSessionInfo = async (): Promise<unknown | null> => {
+    try {
+      return await window.openpi.getSessionInfo()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      return null
+    }
+  }
+
   // ── Ask-user-question actions ─────────────────────────────────────────
   const submitAsk = async (formatted: string) => {
     trackers.clearAsk()
@@ -598,6 +633,10 @@ export function useOpenPiSession() {
     collapseAllGroups: sessionIndex.collapseAllGroups,
     setSessionName,
     forkFromMessage,
+    compactSession,
+    reloadSession,
+    copyLastAssistantText,
+    getSessionInfo,
     submitAsk,
     dismissAsk,
     clearTasks: () => {

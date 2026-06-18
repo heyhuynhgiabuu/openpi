@@ -7,6 +7,7 @@ import {
   createSignal,
   For,
   onCleanup,
+  onMount,
   Show,
 } from 'solid-js'
 import { isMacPlatform } from '../lib/shortcutFormat'
@@ -76,6 +77,7 @@ export const Composer: Component<ComposerProps> = (props) => {
     onAddSkill: props.onAddSkill,
     availableAgentTypes: props.availableAgentTypes,
     textareaEl: () => textareaEl,
+    coreCommands: props.coreCommands,
   })
 
   const { historyIndex, setHistoryIndex, setSavedDraft, historyBack, historyForward } =
@@ -160,6 +162,21 @@ export const Composer: Component<ComposerProps> = (props) => {
   const [modelSearch, setModelSearch] = createSignal('')
   let modelRef: HTMLDivElement | undefined
   let modelSearchRef: HTMLInputElement | undefined
+
+  // Allow external callers (e.g. /model slash command) to open the
+  // model picker without threading state through the whole tree.
+  onMount(() => {
+    const onOpen = () => {
+      setModelOpen(true)
+      setThinkingOpen(false)
+      setPickerOpen(false)
+      setSlashOpen(false)
+      setSkillOpen(false)
+      setTimeout(() => modelSearchRef?.focus(), 30)
+    }
+    document.addEventListener('openpi:open-model-picker', onOpen)
+    onCleanup(() => document.removeEventListener('openpi:open-model-picker', onOpen))
+  })
 
   // Thinking dropdown
   const [thinkingOpen, setThinkingOpen] = createSignal(false)

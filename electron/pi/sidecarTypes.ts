@@ -38,6 +38,10 @@ export type SidecarCommand =
   | { type: 'execute_bash'; requestId: string; command: string; excludeFromContext?: boolean }
   | { type: 'set_session_name'; name: string }
   | { type: 'fork_session'; entryId: string; requestId?: string }
+  | { type: 'compact'; customInstructions?: string; requestId: string }
+  | { type: 'reload_session'; requestId: string }
+  | { type: 'get_session_info'; requestId: string }
+  | { type: 'copy_last_assistant_text'; requestId: string }
   | { type: 'get_settings'; requestId: string }
   | { type: 'save_settings'; scope: 'global' | 'project'; settings: Record<string, unknown> }
   | { type: 'get_providers'; requestId: string }
@@ -65,6 +69,8 @@ export type SidecarMessage =
   | { type: 'stats_result'; requestId: string; stats: Record<string, unknown> }
   | { type: 'models_result'; requestId: string; models: unknown[] }
   | { type: 'bash_result'; requestId: string; result: unknown }
+  | { type: 'session_info_result'; requestId: string; info: SessionInfoPayload }
+  | { type: 'last_assistant_text_result'; requestId: string; text: string | null }
   | { type: 'settings_result'; requestId: string; result: unknown }
   | { type: 'providers_result'; requestId: string; providers: unknown[] }
   | { type: 'prompt_templates_result'; requestId: string; prompts: unknown[] }
@@ -93,4 +99,22 @@ export type SessionReadyPayload = {
     contextWindow: number
   } | null
   thinkingLevel: string | null
+}
+
+export type SessionInfoPayload = {
+  sessionFile: string | null
+  sessionId: string | null
+  sessionName: string | null
+  model: {
+    id: string
+    name: string
+    provider: string
+    reasoning: boolean
+    contextWindow: number
+  } | null
+  thinkingLevel: string | null
+  messageCount: number
+  contextUsagePercent: number | null
+  contextTokens: number | null
+  contextWindow: number | null
 }

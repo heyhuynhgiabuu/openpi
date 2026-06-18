@@ -1,6 +1,8 @@
 import fuzzysort from 'fuzzysort'
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from 'solid-js'
 import { mergeSlashCommandsForPicker } from '../../lib/composerSlashCommands'
+import type { CoreSlashCommand } from '../../lib/coreCommands'
+import { findCoreCommand } from '../../lib/coreCommands'
 import {
   type FileMentionTrigger,
   findFileMentionTrigger,
@@ -58,6 +60,8 @@ interface UseComposerPickersConfig {
   onAddSkill: (skill: SkillItem) => void
   availableAgentTypes?: { name: string; description: string }[]
   textareaEl?: () => HTMLTextAreaElement | undefined
+  /** OpenPi core slash commands. Intercepted before session command dispatch. */
+  coreCommands?: () => CoreSlashCommand[]
 }
 
 export function useComposerPickers(config: UseComposerPickersConfig): ComposerPickers {
@@ -90,9 +94,20 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
       })
   })
 
+  const coreCommandsAsPicker = (): SlashCommand[] => {
+    const list = config.coreCommands?.() ?? []
+    return list.map((cmd) => ({
+      name: cmd.name,
+      description: cmd.description,
+      argHint: cmd.argHint,
+    }))
+  }
+
   const filteredCmds = createMemo<SlashCommand[]>(() => {
     const q = slashQuery()
-    const cmds = sessionSlashCommands()
+    const session = sessionSlashCommands()
+    const core = coreCommandsAsPicker()
+    const cmds = [...core, ...session]
     if (!q) return cmds
 
     const ql = q.toLowerCase()
@@ -125,13 +140,39 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
   })
 
   const applySlashCommand = (cmd: SlashCommand) => {
+    setSlashOpen(false)
+    setFileMentionOpen(false)
+
+    // Core commands are handled by OpenPi itself (not by Pi). They run their
+    // action and clear the input. We do NOT submit them through session.prompt.
+    const coreList = config.coreCommands?.() ?? []
+    const invocation = cmd.name.startsWith('/') ? cmd.name.slice(1) : cmd.name
+    const core = findCoreCommand(coreList, invocation)
+    if (core) {
+      const trimmed = config.input().trim()
+      // The picker appends the slash name; treat anything after it as the arg.
+      const arg =
+        trimmed === core.name
+          ? ''
+          : trimmed.startsWith(`${core.name} `)
+            ? trimmed.slice(core.name.length + 1)
+            : ''
+      const handled = core.onSelect(arg)
+      if (handled === false) {
+        // Explicit fallback to session.prompt() path.
+        const newVal = formatSlashCommandInput(cmd.name)
+        config.onInput(newVal)
+      } else {
+        config.onInput('')
+      }
+      return
+    }
+
     // Pi SDK requires the leading `/` to recognise prompt templates and extension commands.
     // Without it, session.prompt() receives e.g. `review` instead of `/review` and
     // expandPromptTemplates check (`text.startsWith("/")`) skips expansion entirely.
     const newVal = formatSlashCommandInput(cmd.name)
     config.onInput(newVal)
-    setSlashOpen(false)
-    setFileMentionOpen(false)
     requestAnimationFrame(() => {
       const el = config.textareaEl?.()
       if (el) {

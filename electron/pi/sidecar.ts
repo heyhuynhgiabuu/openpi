@@ -619,6 +619,129 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       break
     }
 
+    case 'get_session_info': {
+      if (!state) {
+        send({
+          type: 'session_info_result',
+          requestId: cmd.requestId,
+          info: {
+            sessionFile: null,
+            sessionId: null,
+            sessionName: null,
+            model: null,
+            thinkingLevel: null,
+            messageCount: 0,
+            contextUsagePercent: null,
+            contextTokens: null,
+            contextWindow: null,
+          },
+        })
+        break
+      }
+      const session = state.session
+      const stats = session.getSessionStats()
+      const ctx = stats.contextUsage ?? session.getContextUsage()
+      const model = session.model as
+        | {
+            id: string
+            name: string
+            provider: string
+            reasoning?: boolean
+            contextWindow?: number
+          }
+        | undefined
+      const messages = (session.agent as { state?: { messages?: unknown[] } }).state?.messages ?? []
+      send({
+        type: 'session_info_result',
+        requestId: cmd.requestId,
+        info: {
+          sessionFile: stats.sessionFile ?? session.sessionFile ?? null,
+          sessionId: stats.sessionId ?? session.sessionId ?? null,
+          sessionName: session.sessionName ?? null,
+          model: model
+            ? {
+                id: model.id,
+                name: model.name,
+                provider: model.provider,
+                reasoning: model.reasoning ?? false,
+                contextWindow: model.contextWindow ?? 0,
+              }
+            : null,
+          thinkingLevel: (session.thinkingLevel as string | undefined) ?? null,
+          messageCount: messages.length,
+          contextUsagePercent: ctx?.percent ?? null,
+          contextTokens: ctx?.tokens ?? null,
+          contextWindow: ctx?.contextWindow ?? null,
+        },
+      })
+      break
+    }
+
+    case 'compact': {
+      if (!state) {
+        send({
+          type: 'error',
+          requestId: cmd.requestId,
+          message: 'No active session',
+        })
+        break
+      }
+      // Pi SDK's session.compact() emits `compaction_start` and
+      // `compaction_end` events. The session event bridge already
+      // forwards them to the renderer, so the UI updates naturally.
+      try {
+        await state.session.compact(cmd.customInstructions)
+      } catch (err) {
+        send({
+          type: 'error',
+          requestId: cmd.requestId,
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+      break
+    }
+
+    case 'reload_session': {
+      if (!state) {
+        send({
+          type: 'error',
+          requestId: cmd.requestId,
+          message: 'No active session',
+        })
+        break
+      }
+      // /reload re-reads keybindings, extensions, skills, prompts,
+      // and context files via the SDK's session.reload().
+      try {
+        await state.session.reload()
+      } catch (err) {
+        send({
+          type: 'error',
+          requestId: cmd.requestId,
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+      break
+    }
+
+    case 'copy_last_assistant_text': {
+      if (!state) {
+        send({
+          type: 'error',
+          requestId: cmd.requestId,
+          message: 'No active session',
+        })
+        break
+      }
+      const text = state.session.getLastAssistantText() ?? null
+      send({
+        type: 'last_assistant_text_result',
+        requestId: cmd.requestId,
+        text,
+      })
+      break
+    }
+
     case 'fork_session': {
       if (!state) return
 

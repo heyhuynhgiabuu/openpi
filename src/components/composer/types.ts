@@ -1,3 +1,4 @@
+import type { CoreSlashCommand } from '../../lib/coreCommands'
 import type { FileLineComment } from '../../lib/fileLineComments'
 import type { ModelInfo, SessionStats, SkillItem } from '../../lib/ipc'
 
@@ -56,4 +57,6 @@ export interface ComposerProps {
   agentTps?: number | null
   /** Available subagent types for @mention autocomplete. */
   availableAgentTypes?: { name: string; description: string }[]
+  /** OpenPi core slash commands (intercepted before Pi session dispatch). */
+  coreCommands?: () => CoreSlashCommand[]
 }

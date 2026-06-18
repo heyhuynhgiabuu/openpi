@@ -35,6 +35,10 @@ export const IPC = {
   SET_SESSION_NAME: 'openpi:set-session-name',
   FORK_SESSION: 'openpi:fork-session',
   GET_SESSION_TREE: 'openpi:get-session-tree',
+  COMPACT_SESSION: 'openpi:compact-session',
+  RELOAD_SESSION: 'openpi:reload-session',
+  GET_SESSION_INFO: 'openpi:get-session-info',
+  COPY_LAST_ASSISTANT_TEXT: 'openpi:copy-last-assistant-text',
 
   // PTY terminal (renderer → main)
   PTY_CREATE: 'openpi:pty-create',

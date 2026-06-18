@@ -3,6 +3,7 @@ import type {
   BashExecutionResult,
   OutputLine,
   SessionHistoryPage,
+  SessionInfo,
   SessionListItem,
   SessionReady,
   SessionStats,
@@ -10,11 +11,13 @@ import type {
   WorkspaceInfo,
 } from '../../src/lib/ipc'
 import {
+  compactSessionSchema,
   forkSessionSchema,
   IPC,
   newSessionSchema,
   openSessionSchema,
   sessionBashSchema,
+  sessionInfoSchema,
   sessionListOptionsSchema,
   sessionMessagesRequestSchema,
   sessionPromptSchema,
@@ -273,5 +276,63 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     const ready = deps.normalizeSessionReady(response.payload as SessionReady)
     deps.applySessionValues(ready)
     await deps.refreshSessionIndex()
+  })
+
+  deps.ipcMain.handle(IPC.COMPACT_SESSION, async (_event, raw: unknown) => {
+    if (!deps.getSessionState()) return
+    const { customInstructions } = compactSessionSchema.parse(raw)
+    await deps
+      .requestSidecar<
+        | Extract<SidecarMessage, { type: 'compaction_end' }>
+        | Extract<SidecarMessage, { type: 'error' }>
+      >({
+        type: 'compact',
+        requestId: deps.createRequestId(),
+        ...(customInstructions ? { customInstructions } : {}),
+      })
+      .catch((err) => {
+        // The Pi SDK emits `compaction_end` (success or with errorMessage)
+        // as a session event, so the renderer already sees the outcome.
+        // We swallow the request error here to avoid a noisy toast.
+        if (err && typeof err === 'object' && 'message' in err) return
+        throw err
+      })
+  })
+
+  deps.ipcMain.handle(IPC.RELOAD_SESSION, async () => {
+    if (!deps.getSessionState()) return
+    await deps.requestSidecar<
+      | Extract<SidecarMessage, { type: 'session_event' }>
+      | Extract<SidecarMessage, { type: 'error' }>
+    >({
+      type: 'reload_session',
+      requestId: deps.createRequestId(),
+    })
+  })
+
+  deps.ipcMain.handle(IPC.GET_SESSION_INFO, async (): Promise<SessionInfo | null> => {
+    if (!deps.getSessionState()) return null
+    const response = await deps.requestSidecar<
+      Extract<SidecarMessage, { type: 'session_info_result' }>
+    >({
+      type: 'get_session_info',
+      requestId: deps.createRequestId(),
+    })
+    return sessionInfoSchema.parse(response.info)
+  })
+
+  deps.ipcMain.handle(IPC.COPY_LAST_ASSISTANT_TEXT, async () => {
+    if (!deps.getSessionState()) return
+    const response = await deps.requestSidecar<
+      Extract<SidecarMessage, { type: 'last_assistant_text_result' }>
+    >({
+      type: 'copy_last_assistant_text',
+      requestId: deps.createRequestId(),
+    })
+    if (response.text) {
+      const { clipboard } = await import('electron')
+      clipboard.writeText(response.text)
+    }
+    return response.text
   })
 }

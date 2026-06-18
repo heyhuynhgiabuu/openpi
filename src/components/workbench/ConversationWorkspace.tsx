@@ -4,6 +4,7 @@ import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
 import { useFileContentCache } from '../../hooks/useFileContentCache'
 import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
+import { buildCoreSlashCommands, type CoreSlashCommand } from '../../lib/coreCommands'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
 import type { GitChangedFile, GitFileDiff, ModelInfo, SkillItem } from '../../lib/ipc'
@@ -99,6 +100,74 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   })
 
   const fileCache = useFileContentCache()
+
+  const coreCommands = createMemo<CoreSlashCommand[]>(() =>
+    buildCoreSlashCommands({
+      sessionReady: props.session.ready !== null,
+      onCompact: (customInstructions) => void props.session.compactSession(customInstructions),
+      onReload: () => void props.session.reloadSession(),
+      onCopyLast: () => props.session.copyLastAssistantText(),
+      onOpenModelPicker: () => {
+        document.dispatchEvent(new CustomEvent('openpi:open-model-picker'))
+      },
+      onOpenSettings: () => props.onManageModels(),
+      onOpenLogin: () => props.onConnectProvider(),
+      onLogout: () => props.onConnectProvider(),
+      onNewSession: () => void props.session.createNewSession(),
+      onOpenResumeDialog: () => window.openpi.openSession({ path: '' }).catch(() => {}),
+      onCycleThinking: () => {
+        const order = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+        const cur = props.session.thinkingLevel as (typeof order)[number]
+        const idx = order.indexOf(cur)
+        const next = order[(idx + 1) % order.length]
+        if (next) void props.session.selectThinkingLevel(next)
+      },
+      onCycleModel: () => {
+        const list = props.session.models
+        const cur = props.session.currentModel
+        if (!list.length) return
+        const idx = cur ? list.findIndex((m) => m.id === cur.id && m.provider === cur.provider) : -1
+        const next = list[(idx + 1) % list.length]
+        if (next) void props.session.selectModel(next)
+      },
+      onSetSessionName: (name) => void props.session.setSessionName(name),
+      onShowSessionInfo: async () => {
+        const info = (await props.session.getSessionInfo()) as {
+          sessionFile: string | null
+          sessionId: string | null
+          sessionName: string | null
+          model: { name: string; provider: string } | null
+          thinkingLevel: string | null
+          messageCount: number
+          contextUsagePercent: number | null
+          contextTokens: number | null
+          contextWindow: number | null
+        } | null
+        if (!info) {
+          return
+        }
+        const lines: string[] = []
+        if (info.sessionName) lines.push(`Name: ${info.sessionName}`)
+        if (info.sessionId) lines.push(`ID: ${info.sessionId}`)
+        if (info.sessionFile) lines.push(`File: ${info.sessionFile}`)
+        if (info.model) lines.push(`Model: ${info.model.name} (${info.model.provider})`)
+        if (info.thinkingLevel) lines.push(`Thinking: ${info.thinkingLevel}`)
+        lines.push(`Messages: ${info.messageCount}`)
+        if (info.contextUsagePercent != null) {
+          const pct = info.contextUsagePercent.toFixed(1)
+          const tokens =
+            info.contextTokens != null && info.contextWindow
+              ? ` (${info.contextTokens.toLocaleString()} / ${info.contextWindow.toLocaleString()} tokens)`
+              : ''
+          lines.push(`Context: ${pct}%${tokens}`)
+        }
+        window.alert(lines.join('\n'))
+      },
+      onShowError: (msg) => {
+        window.alert(msg)
+      },
+    })
+  )
 
   const gitHistoryState = useGitHistoryState({
     activeTab: () => (historyActive() ? ('history' as const) : ('changes' as const)),
@@ -243,6 +312,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
               { name: 'planner', description: 'Architecture and implementation plans' },
               { name: 'reviewer', description: 'Code review and debugging' },
             ]}
+            coreCommands={() => coreCommands()}
           />
         </div>
 

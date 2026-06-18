@@ -11,6 +11,7 @@ import type {
   PathProtectionResult,
   PickWorkspaceResult,
   SessionHistoryPage,
+  SessionInfo,
   SessionListItem,
   SessionListOptions,
   SessionStats,
@@ -82,4 +83,11 @@ export const sessionApi = {
     ipcRenderer.invoke(IPC.SET_SESSION_NAME, { name }),
   forkSession: (entryId: string): Promise<void> =>
     ipcRenderer.invoke(IPC.FORK_SESSION, { entryId }),
+
+  compactSession: (payload: { customInstructions?: string } = {}): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPACT_SESSION, payload),
+  reloadSession: (): Promise<void> => ipcRenderer.invoke(IPC.RELOAD_SESSION),
+  getSessionInfo: (): Promise<SessionInfo | null> => ipcRenderer.invoke(IPC.GET_SESSION_INFO),
+  copyLastAssistantText: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.COPY_LAST_ASSISTANT_TEXT),
 } as const
