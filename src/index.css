@@ -608,7 +608,9 @@ input::placeholder {
   color: var(--mute);
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .homescreen-left-add:hover {
   background: var(--surface-soft);
@@ -653,7 +655,7 @@ input::placeholder {
 /* ── Right column: Sessions ── */
 .homescreen-right {
   flex: 1;
-    max-width: 620px;
+  max-width: 620px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -681,7 +683,9 @@ input::placeholder {
   color: var(--ink);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .homescreen-search-input:focus {
   border-color: var(--accent);
@@ -1110,7 +1114,7 @@ body.panel-dragging {
   align-items: center;
   min-height: 20px;
   border: 1px solid var(--hairline);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-md);
   padding: 1px 8px;
   color: var(--graphite);
   font-size: 12px;
@@ -1146,7 +1150,7 @@ body.panel-dragging {
 }
 .button-primary:disabled {
   opacity: 0.35;
-    cursor: pointer;
+  cursor: pointer;
 }
 .button-ghost {
   min-height: 38px;
@@ -1333,12 +1337,6 @@ body.panel-dragging {
   padding: 10px 8px;
 }
 
-
-
-
-
-
-
 /* ─── Changelog modal ───────────────────────────────────────────────────── */
 .changelog-modal-overlay {
   position: fixed;
@@ -1465,7 +1463,6 @@ body.panel-dragging {
 .changelog-content a:hover {
   text-decoration: underline;
 }
-
 
 /* Menus */
 .menu-panel {
@@ -2514,13 +2511,15 @@ body.panel-dragging {
   padding: 1px 6px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: var(--surface-2, rgba(255,255,255,0.04));
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
   color: var(--graphite);
   font-size: 11px;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .system-msg-toggle:hover {
   background: var(--surface-card);
@@ -2582,7 +2581,7 @@ body.panel-dragging {
   border: 1px solid color-mix(in srgb, var(--amber, #d97706) 20%, transparent);
 }
 .system-msg-file-item--read {
-  background: var(--surface-2, rgba(255,255,255,0.04));
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
   color: var(--graphite);
   border: 1px solid var(--hairline);
 }
@@ -2712,7 +2711,7 @@ body.panel-dragging {
     transform 0.14s ease,
     color 0.14s ease;
 }
-.tool-chevron[data-open='true'] {
+.tool-chevron[data-open="true"] {
   font-size: 15px;
 }
 .tool-ran-header:hover .tool-chevron,
@@ -2869,7 +2868,11 @@ body.panel-dragging {
 
 .plan-tool-item--completed .plan-tool-step {
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--graphite-muted) 60%, transparent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--graphite-muted) 60%,
+    transparent
+  );
 }
 
 .plan-tool-item--in_progress {
@@ -2900,7 +2903,11 @@ body.panel-dragging {
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-lg, 14px);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 92%, transparent), var(--surface-card)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-raised) 92%, transparent),
+      var(--surface-card)
+    ),
     var(--surface-card);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
   backdrop-filter: blur(18px);
@@ -3047,7 +3054,11 @@ body.panel-dragging {
 .plan-dock-item--completed .plan-dock-step {
   color: var(--graphite-muted);
   text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--graphite-muted) 60%, transparent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--graphite-muted) 60%,
+    transparent
+  );
 }
 
 .plan-dock-status {
@@ -3477,7 +3488,6 @@ body.panel-dragging {
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  
 }
 .pq-row:last-child {
   border-bottom: none;
@@ -3590,7 +3600,6 @@ body.panel-dragging {
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.22);
 }
-
 
 /* ── Goal banner ──────────────────────────────────────────────────────────── */
 .goal-banner {
@@ -4793,7 +4802,9 @@ body.panel-dragging {
   padding: 4px 10px;
   border: 1px solid var(--hairline);
   border-radius: 5px;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .welcome-link:hover {
   border-color: var(--hairline-strong);
@@ -4880,7 +4891,7 @@ body.panel-dragging {
   grid-template-columns: 260px minmax(0, 1fr);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--canvas) 94%, black 6%);
+  background: var(--surface-soft);
   color: var(--ink);
   overflow: hidden;
   box-shadow: 0 28px 72px rgba(0, 0, 0, 0.42);
@@ -4892,13 +4903,10 @@ body.panel-dragging {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--scrim) 86%, black 14%);
+  background: var(--surface-soft);
   border-right: 1px solid var(--hairline);
 }
-.customizations-rail-head {
-  padding: 22px 18px 16px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
+
 .customizations-rail-head-top {
   display: flex;
   align-items: center;
@@ -4912,7 +4920,7 @@ body.panel-dragging {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px;
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -4973,7 +4981,6 @@ body.panel-dragging {
 .customizations-rail-brand {
   margin-top: auto;
   padding: 14px 10px 4px;
-  border-top: 1px solid var(--hairline-soft);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -5006,7 +5013,10 @@ body.panel-dragging {
   color: var(--graphite);
   font-size: 12px;
   cursor: pointer;
-  transition: background 100ms, color 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    color 100ms,
+    border-color 100ms;
 }
 .customizations-whats-new:hover {
   background: var(--surface-soft);
@@ -5072,7 +5082,7 @@ body.panel-dragging {
   min-height: 0;
   overflow-y: auto;
   padding: 18px 22px 22px;
-  background: var(--scrim);
+  background: var(--surface-soft);
 }
 .customizations-page-shell {
   width: min(100%, 1120px);
@@ -5096,9 +5106,8 @@ body.panel-dragging {
 .wizard-panel,
 .diagnostics-panel,
 .trust-banner {
-  border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
-  background: var(--canvas-warm);
+  background: var(--surface-soft);
 }
 .wizard-panel {
   padding: 16px;
@@ -5238,7 +5247,9 @@ body.panel-dragging {
   gap: 8px;
 }
 .diagnostics-panel {
-  padding: 14px 16px;
+  margin: 0 12px;
+  padding: 14px 20px;
+  background: var(--surface-card);
 }
 .diagnostics-list {
   display: flex;
@@ -5803,7 +5814,7 @@ body.panel-dragging {
   border-radius: 50%;
   background: #fff;
   transition: transform 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 .ext-toggle.is-on .ext-toggle-thumb {
   transform: translateX(10px);
@@ -5841,7 +5852,9 @@ body.panel-dragging {
   color: var(--mute);
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.12s ease, border-color 0.12s ease;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
 .ext-reload-btn:hover {
   color: var(--ink);
@@ -6699,8 +6712,16 @@ body.panel-dragging {
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(circle at 20% 0%, rgba(244, 169, 96, 0.055), transparent 34%),
-    radial-gradient(circle at 85% 0%, rgba(97, 175, 239, 0.045), transparent 30%),
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(244, 169, 96, 0.055),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 85% 0%,
+      rgba(97, 175, 239, 0.045),
+      transparent 30%
+    ),
     #0d0c0b;
 }
 
@@ -7530,7 +7551,9 @@ body.panel-dragging {
   border-radius: var(--r-xs);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   margin-top: 2px;
 }
 
@@ -8141,24 +8164,38 @@ body.panel-dragging {
   white-space: nowrap;
 }
 .git-tooltip-path {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-family:
+    "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
   font-size: 10.5px;
   color: var(--ink);
 }
 .git-tooltip-status {
   flex-shrink: 0;
   width: 12px;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-family:
+    "SF Mono", "Fira Code", "Cascadia Code", "JetBrains Mono", monospace;
   font-size: 10px;
   font-weight: 700;
   text-align: center;
 }
-.git-tooltip-status--M { color: #f0c674; }
-.git-tooltip-status--A { color: #8bc34a; }
-.git-tooltip-status--D { color: #e06c75; }
-.git-tooltip-status--R { color: #c678dd; }
-.git-tooltip-status--\? { color: #61afef; }
-.git-tooltip-status--U { color: #e5c07b; }
+.git-tooltip-status--M {
+  color: #f0c674;
+}
+.git-tooltip-status--A {
+  color: #8bc34a;
+}
+.git-tooltip-status--D {
+  color: #e06c75;
+}
+.git-tooltip-status--R {
+  color: #c678dd;
+}
+.git-tooltip-status--\? {
+  color: #61afef;
+}
+.git-tooltip-status--U {
+  color: #e5c07b;
+}
 .git-tooltip-overflow {
   color: var(--ash);
   font-style: italic;
@@ -8227,7 +8264,9 @@ body.panel-dragging {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .rp-sidebar-tab:last-child {
@@ -8243,7 +8282,6 @@ body.panel-dragging {
   color: var(--ink);
   background: var(--surface-card);
 }
-
 
 .rp-sidebar-content {
   flex: 1;
@@ -8300,7 +8338,6 @@ body.panel-dragging {
 
 /* ─── Hooks pane (inside customizations modal) ─────────────────────────── */
 
-
 /* ─── Hooks panel ───────────────────────────────────────────────────────────── */
 
 .hooks-panel {
@@ -8344,7 +8381,9 @@ body.panel-dragging {
   border-radius: var(--r-xs, 4px);
   color: var(--mute);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .hooks-panel-icon-btn:hover {
   background: var(--surface-soft);
@@ -8468,7 +8507,9 @@ body.panel-dragging {
   border: 1px solid var(--hairline);
   border-radius: var(--r-xs, 4px);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .hooks-toggle-btn.is-enabled {
   background: #22c55e;
@@ -8817,14 +8858,14 @@ body.panel-dragging {
   color: var(--ink);
 }
 
-
-
 /* File / folder icon: grayscale by default (mono look),
  * full color when hovering the tree pane OR when the file is changed. */
 .ftree-item img {
   filter: grayscale(1);
   opacity: 0.5;
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease;
 }
 .ftree-root:hover .ftree-item img,
 .ftree-item:hover img,
@@ -8838,7 +8879,7 @@ body.panel-dragging {
   position: relative;
 }
 .ftree-item.is-changed > .ftree-row > span:first-child::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   mix-blend-mode: color;
@@ -8873,7 +8914,9 @@ body.panel-dragging {
   color: var(--ash, #888);
   user-select: none;
   transform-origin: 50% 50%;
-  transition: transform 0.12s ease, color 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    color 0.12s ease;
 }
 .ftree-chevron.is-expanded {
   transform: rotate(90deg);
@@ -8936,10 +8979,18 @@ body.panel-dragging {
   border-radius: 3px;
   letter-spacing: 0.02em;
 }
-.ftree-badge-M { color: #f59e0b; }
-.ftree-badge-A { color: #22c55e; }
-.ftree-badge-D { color: #ef4444; }
-.ftree-badge-R { color: #3b82f6; }
+.ftree-badge-M {
+  color: #f59e0b;
+}
+.ftree-badge-A {
+  color: #22c55e;
+}
+.ftree-badge-D {
+  color: #ef4444;
+}
+.ftree-badge-R {
+  color: #3b82f6;
+}
 
 /* ─── CommandPalette ─────────────────────────────────────────────────────────────── */
 
@@ -9939,14 +9990,16 @@ body.panel-dragging {
   height: 26px;
   border-radius: 3px;
   color: var(--graphite);
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .fv-find-replace-btn:hover:not(:disabled) {
   background: var(--surface-soft);
   color: var(--ink);
 }
 .fv-find-replace-btn:disabled {
-  opacity: 0.30;
+  opacity: 0.3;
   cursor: default;
 }
 .fv-find-replace-note {
@@ -9969,7 +10022,9 @@ body.panel-dragging {
   border-radius: 3px;
   color: var(--ash);
   flex-shrink: 0;
-  transition: color 0.1s, background 0.1s;
+  transition:
+    color 0.1s,
+    background 0.1s;
 }
 .fv-find-replace-toggle:hover {
   background: var(--surface-soft);
@@ -11744,7 +11799,7 @@ body.panel-dragging {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--canvas);
+  background: transparent;
 }
 .osp-loading {
   padding: 28px 20px;
@@ -11761,8 +11816,7 @@ body.panel-dragging {
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
 .osp-topbar {
   flex-shrink: 0;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 0 12px 0;
 }
 .osp-title {
   font-size: 18px;
@@ -11786,7 +11840,7 @@ body.panel-dragging {
   align-items: center;
   gap: 5px;
   padding: 4px 12px;
-  border-radius: 100px;
+  border-radius: var(--r-md);
   border: 1px solid transparent;
   background: transparent;
   color: var(--ash);
@@ -11832,7 +11886,7 @@ body.panel-dragging {
 .osp-section {
   margin: 12px 12px 0;
   border-radius: var(--r-md);
-  background: var(--surface-soft);
+  background: var(--surface-card);
   overflow: hidden;
 }
 .osp-section + .osp-section {
@@ -11859,15 +11913,12 @@ body.panel-dragging {
   justify-content: space-between;
   gap: 24px;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
   transition: background 0.08s;
 }
 .osp-row:last-child,
 .osp-row.osp-row-last {
   border-bottom: none;
-}
-.osp-row:hover {
-  background: rgba(255, 255, 255, 0.018);
 }
 .osp-row.osp-row-override {
   background: rgba(251, 146, 60, 0.03);
@@ -12279,12 +12330,11 @@ body.panel-dragging {
 /* Footer */
 .osp-footer {
   flex-shrink: 0;
-  padding: 10px 20px;
+  padding: 10px 14px 0;
   font-size: 11px;
   color: var(--ash);
   line-height: 1.5;
-  border-top: 1px solid var(--hairline);
-  background: var(--canvas);
+  background: transparent;
 }
 .osp-footer code {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -13316,7 +13366,7 @@ body.panel-dragging {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 0 12px;
+  padding: 0 12px 12px;
   flex-shrink: 0;
 }
 
@@ -13495,19 +13545,18 @@ body.panel-dragging {
 
 /* ── Section (category group) ────────────────────────────────────────── */
 .kbd-section {
-  margin-bottom: 12px;
+  margin: 12px 14px;
   border-radius: var(--r-md);
   border: 1px solid var(--hairline);
-  background: var(--surface-soft);
+  background: var(--surface-card);
   overflow: hidden;
 }
 .kbd-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--hairline);
-  background: color-mix(in srgb, var(--surface-card) 86%, var(--canvas) 14%);
+  padding: 10px 20px;
+  color: var(--graphite);
 }
 .kbd-section-label {
   font-size: 11px;
@@ -13536,15 +13585,12 @@ body.panel-dragging {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--hairline-soft);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--hairline);
   transition: background 0.08s;
 }
 .kbd-row:last-child {
   border-bottom: none;
-}
-.kbd-row:hover {
-  background: rgba(255, 255, 255, 0.018);
 }
 .kbd-row.is-recording {
   background: rgba(59, 130, 246, 0.04);
@@ -13695,9 +13741,8 @@ body.panel-dragging {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 0 0;
+  padding: 10px 14px 0;
   margin-top: 12px;
-  border-top: 1px solid var(--hairline);
   font-size: 11px;
   color: var(--ash);
   flex-shrink: 0;
@@ -14029,13 +14074,16 @@ body.panel-dragging {
   cursor: pointer;
   padding: 0;
   opacity: 0;
-  transition: opacity 120ms, background 120ms, color 120ms;
+  transition:
+    opacity 120ms,
+    background 120ms,
+    color 120ms;
 }
 .task-widget-header:hover .task-widget-dismiss {
   opacity: 1;
 }
 .task-widget-dismiss:hover {
-  background: var(--hover, rgba(255,255,255,0.07));
+  background: var(--hover, rgba(255, 255, 255, 0.07));
   color: var(--ink);
 }
 .task-widget-chevron {
@@ -14170,13 +14218,16 @@ body.panel-dragging {
   cursor: pointer;
   padding: 0;
   opacity: 0;
-  transition: opacity 120ms, background 120ms, color 120ms;
+  transition:
+    opacity 120ms,
+    background 120ms,
+    color 120ms;
 }
 .subagent-widget-header:hover .subagent-widget-dismiss {
   opacity: 1;
 }
 .subagent-widget-dismiss:hover {
-  background: var(--hover, rgba(255,255,255,0.07));
+  background: var(--hover, rgba(255, 255, 255, 0.07));
   color: var(--ink);
 }
 .subagent-chevron {
@@ -14242,7 +14293,7 @@ body.panel-dragging {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #b8860b;  /* golden — distinct from agent blue and task green */
+  background: #b8860b; /* golden — distinct from agent blue and task green */
   animation: sa-pulse 2s infinite;
   flex-shrink: 0;
 }
@@ -14348,7 +14399,9 @@ body.panel-dragging {
   border-radius: 6px;
   cursor: pointer;
   border: 1px solid var(--hairline);
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
   font-size: 12.5px;
   line-height: 1.4;
 }
@@ -14373,7 +14426,9 @@ body.panel-dragging {
   justify-content: center;
   flex-shrink: 0;
   margin-top: 1px;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 
 .ask-widget-option.is-selected .ask-widget-opt-indicator {
@@ -14435,7 +14490,10 @@ body.panel-dragging {
   background: none;
   cursor: pointer;
   color: var(--ink-secondary);
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s,
+    border-color 0.1s;
 }
 
 .ask-widget-prev:hover,
@@ -14981,7 +15039,9 @@ body.panel-dragging {
   color: var(--ash, #888);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, background 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
 }
 .ftree-row-wrap:hover .ftree-more-btn,
 .ftree-row-wrap:focus-within .ftree-more-btn,
@@ -15112,7 +15172,8 @@ body.panel-dragging {
 .review-diff-renderer:hover,
 .review-diff-renderer:focus-within,
 .review-diff-renderer:active {
-  scrollbar-color: color-mix(in srgb, var(--hairline-strong) 64%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--hairline-strong) 64%, transparent)
+    transparent;
 }
 
 .review-file-list::-webkit-scrollbar,
@@ -15238,14 +15299,26 @@ body.panel-dragging {
      inherit into the diffs-container host and replace the default black bg. */
   --diffs-light-bg: var(--surface-card);
   --diffs-dark-bg: var(--surface-card);
-  --diffs-bg-buffer-override: color-mix(in srgb, var(--surface-card) 90%, var(--ink) 10%);
-  --diffs-bg-context-override: color-mix(in srgb, var(--surface-card) 96%, var(--ink) 4%);
+  --diffs-bg-buffer-override: color-mix(
+    in srgb,
+    var(--surface-card) 90%,
+    var(--ink) 10%
+  );
+  --diffs-bg-context-override: color-mix(
+    in srgb,
+    var(--surface-card) 96%,
+    var(--ink) 4%
+  );
   --diffs-bg-context-gutter-override: color-mix(
     in srgb,
     var(--surface-card) 92%,
     var(--ink) 8%
   );
-  --diffs-bg-separator-override: color-mix(in srgb, var(--surface-card) 88%, var(--ink) 12%);
+  --diffs-bg-separator-override: color-mix(
+    in srgb,
+    var(--surface-card) 88%,
+    var(--ink) 12%
+  );
   --diffs-bg-hover-override: var(--ink);
 }
 
