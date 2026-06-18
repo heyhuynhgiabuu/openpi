@@ -115,10 +115,9 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       onLogout: () => props.onConnectProvider(),
       onNewSession: () => void props.session.createNewSession(),
       onOpenResumeDialog: () => {
-        // The command palette lists all sessions and lets the user resume
-        // any of them. Dispatching a custom event avoids threading a new
-        // state prop through the tree just for this one entry point.
-        document.dispatchEvent(new CustomEvent('openpi:open-command-palette'))
+        // Open the homescreen overlay, which lists all sessions and
+        // workspaces — the natural place to pick something to resume.
+        document.dispatchEvent(new CustomEvent('openpi:open-homescreen'))
       },
       onCycleThinking: () => {
         const order = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const

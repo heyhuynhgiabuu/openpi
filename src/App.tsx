@@ -186,16 +186,16 @@ export default function App() {
       queueMicrotask(() => setFileFindOpen(true))
     })
 
-    // Allow slash commands (e.g. /resume) to open the command palette
-    // without threading a new prop through the entire tree.
-    const openPaletteViaEvent = () => setCommandPaletteOpen(true)
-    document.addEventListener('openpi:open-command-palette', openPaletteViaEvent)
+    // Allow slash commands (e.g. /resume) to open the homescreen
+    // overlay without threading a new prop through the entire tree.
+    const openHomescreenViaEvent = () => setHomescreenOpen(true)
+    document.addEventListener('openpi:open-homescreen', openHomescreenViaEvent)
 
     return () => {
       removePrefs()
       removeKeydown()
       removeFileFindShortcut?.()
-      document.removeEventListener('openpi:open-command-palette', openPaletteViaEvent)
+      document.removeEventListener('openpi:open-homescreen', openHomescreenViaEvent)
     }
   })
 
