@@ -13,6 +13,7 @@ import {
 import type * as GitHost from '../git/gitHost'
 import type * as CustomizationsHost from '../services/customizations'
 import { checkProtectedPath } from '../services/protectedPaths'
+import { setWorkspaceTrustSync } from '../services/workspaceTrustSync'
 import type { SessionIndexStore } from '../session/sessionIndex'
 
 interface ConfirmMutationOptions {
@@ -78,7 +79,11 @@ export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
           }
         }
       }
-      return workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
+      const result = workspaceTrustResultSchema.parse(sessionIndex.setWorkspaceTrust(cwd, trusted))
+      // Mirror the decision into the bridge's trust file so Pi's
+      // project_trust event handler can defer to the OpenPi UI.
+      setWorkspaceTrustSync(cwd, trusted ? 'trusted' : 'untrusted')
+      return result
     }
   )
 

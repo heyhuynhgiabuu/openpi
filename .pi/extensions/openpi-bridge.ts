@@ -31,16 +31,51 @@ const WIDGET_KEY = 'openpi-bridge'
 const BRIDGE_VERSION = 2
 
 type SyncPayload = {
-  pid?: number
-  app?: string
-  status?: 'running' | 'idle'
-  timestamp?: number
-  workspace?: string
-  sessionFile?: string | null
-  startedAt?: number
-  bridgeVersion?: number
-  previewMessages?: PreviewMessage[]
-  messageCount?: number
+  workspace: string
+  cursor?: number
+  preview: PreviewState
+  statusText: string | null
+  widgetLines: string[]
+  totalTokens: number
+  contextWindow: number
+  costUsd: number
+  agentTps: number
+  activeModel: string | null
+  thinkingLevel: string | null
+  sessionName: string | null
+  isRemote: boolean
+  remoteSessionId: string | null
+  sessionFile: string | null
+  sidebarTags: { open: string | null; activeSession: string | null }
+  resetOnNextTurn: boolean
+  isStreaming: boolean
+  contextUsagePercent: number | null
+  queueDepth: { steering: number; followUp: number }
+  modelOptions: Array<{ name: string; provider: string; id: string }>
+  providerCounts: Array<{ provider: string; modelCount: number }>
+}
+
+/**
+ * OpenPi's main process writes per-cwd workspace trust decisions into
+ * this file. The bridge reads it in the `project_trust` event handler.
+ * The file is a `{ [cwd]: 'trusted' | 'untrusted' }` map.
+ */
+const OPENPI_WORKSPACE_TRUST_PATH = path.join(
+  process.env.HOME ?? os.homedir(),
+  '.pi',
+  'agent',
+  '.openpi-workspace-trust.json'
+)
+
+function readWorkspaceTrustFor(cwd: string | undefined): 'trusted' | 'untrusted' | null {
+  if (!cwd) return null
+  try {
+    const raw = fs.readFileSync(OPENPI_WORKSPACE_TRUST_PATH, 'utf-8')
+    const map = JSON.parse(raw) as Record<string, 'trusted' | 'untrusted'>
+    return map[cwd] ?? null
+  } catch {
+    return null
+  }
 }
 
 type SessionEntry = {
@@ -216,6 +251,33 @@ export default function (pi: ExtensionAPI) {
 
   pi.on('session_start', (_event: unknown, ctx: ExtensionContext) => {
     startMirror(ctx)
+  })
+
+  // Pi 0.79.0 added the `project_trust` event so extensions can decide
+  // (or defer) trust for project-local resources before they load.
+  //
+  // OpenPi's source of truth for project trust is the workspace-trust
+  // gate in the main process. The main process writes the current
+  // decision for each cwd into `~/.pi/agent/.openpi-workspace-trust.json`.
+  // The bridge (which runs in the sidecar process) reads that file
+  // synchronously and answers Pi, so `ctx.isProjectTrusted()` reflects
+  // the OpenPi UI state for the cwd the event refers to.
+  //
+  // If the file is missing (e.g. before the main process has written
+  // it for this cwd), we return undefined so Pi falls back to its own
+  // `defaultProjectTrust` policy.
+  pi.on('project_trust', (event: unknown, ctx: ExtensionContext) => {
+    try {
+      const payload = event as { trust?: 'trusted' | 'untrusted'; cwd?: string } | undefined
+      const cwd = payload?.cwd ?? ctx.cwd
+      const decision = readWorkspaceTrustFor(cwd)
+      if (decision === 'trusted' || decision === 'untrusted') {
+        return { decision, reason: `OpenPi workspace trust: ${decision}` }
+      }
+      return undefined
+    } catch {
+      return undefined
+    }
   })
 
   pi.on('agent_start', (_event: unknown, ctx: ExtensionContext) => {
