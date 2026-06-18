@@ -42,7 +42,17 @@ async function main() {
   const pathTxt = path.join(electronDir, 'path.txt')
 
   function looksInstalled() {
-    if (!fs.existsSync(pathTxt) || !fs.existsSync(executable)) return false
+    if (!fs.existsSync(pathTxt)) return false
+    if (!fs.existsSync(executable)) {
+      console.warn('[ensure-electron] executable missing:', executable)
+      return false
+    }
+    try {
+      fs.accessSync(executable, fs.constants.X_OK)
+    } catch {
+      console.warn('[ensure-electron] fixing executable permission on', executable)
+      fs.chmodSync(executable, 0o755)
+    }
     if (platform === 'darwin') {
       const fw = path.join(
         electronDir,
@@ -56,6 +66,14 @@ async function main() {
       if (!fs.existsSync(fw)) return false
     }
     const v = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 20_000 })
+    if (v.status !== 0) {
+      console.warn(
+        '[ensure-electron] --version check failed:',
+        'status=' + v.status,
+        'signal=' + v.signal,
+        'stderr=' + (v.stderr ?? '').trim()
+      )
+    }
     return v.status === 0 && /^v\d/.test((v.stdout ?? '').trim())
   }
 
@@ -110,6 +128,11 @@ async function main() {
     fs.mkdirSync(path.join(electronDir, 'dist'), { recursive: true })
 
     const distDir = path.join(electronDir, 'dist')
+    try {
+      fs.chmodSync(distDir, 0o755)
+    } catch {
+      /* ok */
+    }
     const unzip = spawnSync('unzip', ['-q', zipPath, '-d', distDir], { stdio: 'inherit' })
     if (unzip.status !== 0) {
       const extractZip = (await import('extract-zip')).default
@@ -134,7 +157,29 @@ async function main() {
       }
     }
 
+    // Diagnostic: log what was extracted
+    try {
+      const entries = fs.readdirSync(distDir, { recursive: true, withFileTypes: true })
+      const files = entries
+        .filter((e) => e.isFile())
+        .map((e) => path.join(e.path.slice(distDir.length + 1), e.name))
+      console.log(
+        '[ensure-electron] dist files (' + files.length + '):',
+        files.slice(0, 20).join(', ')
+      )
+    } catch {
+      /* ok */
+    }
+
     fs.writeFileSync(pathTxt, platformPath)
+
+    // Make the binary executable — unzip may not preserve the permission bit
+    // on all CI runners (e.g. GitHub Actions Ubuntu 24.04).
+    try {
+      fs.chmodSync(executable, 0o755)
+    } catch {
+      /* binary may not exist yet if extraction failed */
+    }
 
     if (looksInstalled()) {
       const ver = spawnSync(executable, ['--version'], { encoding: 'utf8' })
@@ -160,6 +205,29 @@ async function main() {
     break
   }
 
+  try {
+    const entries = fs.readdirSync(path.join(electronDir, 'dist'), {
+      recursive: true,
+      withFileTypes: true,
+    })
+    console.error(
+      '[ensure-electron] dist contents:',
+      entries
+        .filter((e) => e.isFile() || e.name === 'electron')
+        .map((e) => e.name)
+        .slice(0, 30)
+        .join(', ')
+    )
+    if (fs.existsSync(executable)) {
+      const stat = fs.statSync(executable)
+      const mode = stat.mode.toString(8).slice(-3)
+      console.error('[ensure-electron]', executable, 'exists, mode=' + mode)
+    } else {
+      console.error('[ensure-electron]', executable, 'MISSING')
+    }
+  } catch {
+    /* ok */
+  }
   console.error(
     '[ensure-electron] Still broken after extract. Delete',
     cacheDir,
