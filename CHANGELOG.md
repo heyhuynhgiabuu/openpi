@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2] - 2026-06-20
+
+- Unified slash-command registry modeled on opencode's `command.tsx` pattern. `/compact`, `/name`, `/session`, `/reload`, `/copy`, `/new`, `/resume`, `/model`, `/scoped-models`, `/thinking`, `/settings`, `/login`, `/logout` are now handled by OpenPi itself instead of being hidden or sent to the model as plain chat. TUI-only builtins that cannot run in a desktop environment are no longer shown in the picker.
+- Default Trust Policy setting (`ask` / `always` / `never`) added to the Pi settings pane, backed by `SettingsManager.getDefaultProjectTrust() / setDefaultProjectTrust()`. Writes to `~/.pi/agent/settings.json`.
+- OpenPi workspace trust and Pi project trust are now wired through the bridge extension. The bridge registers a `pi.on('project_trust', ...)` handler that defers to the OpenPi workspace-trust gate (mirrored to `~/.pi/agent/.openpi-workspace-trust.json`). `ctx.isProjectTrusted()` now reflects the OpenPi UI state for all extensions, and falling back to `defaultProjectTrust` is honored when the file is missing.
+- Package install/remove/update on the sidecar now runs with `--ignore-scripts` (Pi 0.75.4 supply-chain hardening).
+- Bump bundled Pi from 0.79.6 to 0.79.7. Brings Pi 0.79.7's automatic theme mode, edit diff helpers, Vercel AI Gateway attribution, global `httpProxy`, Warp terminal image detection, and the in-place regression fixes from 0.79.5–0.79.7.
+- The "Install" button on the Pi update section now reinstalls the bundled `@earendil-works/pi-coding-agent@<latest>` in OpenPi's own `node_modules/` via the package manager OpenPi was installed with, then prompts to restart OpenPi. The previous `pi update --self` path failed for OpenPi users with *"This installation is not managed by a global npm install."* because Pi is bundled in OpenPi's own `node_modules/`, not installed as a global `pi` CLI.
+- Fix a SolidJS reactivity bug in the Customize modal's Pi Settings Pane: `FieldControl` captured the initial `props.value` into plain consts that never updated, so every field except the most-recently-set one rendered blank. The boolean toggle's onClick was also sending the stale initial value instead of the current state. (PR #4)
+- Move the "Default Trust Policy" select to the Pi Settings Pane (where it loads and saves through the same `~/.pi/agent/settings.json` path as every other Pi setting) and remove the "Hide Customizations Panel" toggle that gated access to the very modal that hosts the toggle.
+- `/name` without an argument now pre-fills the composer with `/name ` instead of showing a system alert dialog, matching Pi TUI's slash-command UX.
+- `/resume` opens the homescreen overlay (the natural place to browse and resume sessions) rather than the command palette or a broken direct-open.
+
 ## [0.2.1] - 2026-06-17
 
 - Surface Pi extension slash commands in the composer picker, including commands registered by extensions such as observational memory, pi-hermes-memory, and pi-pretty.
@@ -436,4 +449,17 @@ Initial public beta for early testers.
 - Added persistent Git/source-control panel with file tree, file search, diff viewer, and file viewer.
 - Added bottom terminal/output panel backed by Electron main and `node-pty`.
 - Added OpenPi app branding, runtime version metadata, icon packaging, CI, and tag-triggered beta builds.
+
+## [0.2.2] - 2026-06-18
+
+- Unified slash-command registry modeled on opencode's `command.tsx` pattern. `/compact`, `/name`, `/session`, `/reload`, `/copy`, `/new`, `/resume`, `/model`, `/scoped-models`, `/thinking`, `/settings`, `/login`, `/logout` are now handled by OpenPi itself instead of being hidden or sent to the model as plain chat. TUI-only built-ins that cannot run in a desktop environment are no longer shown in the picker.
+- Default Trust Policy setting (`ask` / `always` / `never`) added to the Pi settings pane, backed by `SettingsManager.getDefaultProjectTrust() / setDefaultProjectTrust()`. Writes to `~/.pi/agent/settings.json`.
+- OpenPi workspace trust and Pi project trust are now wired through the bridge extension. The bridge registers a `pi.on('project_trust', ...)` handler that defers to the OpenPi workspace-trust gate (mirrored to `~/.pi/agent/.openpi-workspace-trust.json`). `ctx.isProjectTrusted()` now reflects the OpenPi UI state for all extensions, and falling back to `defaultProjectTrust` is honored when the file is missing.
+- Package install/remove/update on the sidecar now runs with `--ignore-scripts` (Pi 0.75.4 supply-chain hardening).
+- Bump bundled Pi from 0.79.6 to 0.79.7. Brings Pi 0.79.7's automatic theme mode, edit diff helpers, Vercel AI Gateway attribution, global `httpProxy`, Warp terminal image detection, and the in-place regression fixes from 0.79.5–0.79.7.
+- The "Install" button on the Pi update section now reinstalls the bundled `@earendil-works/pi-coding-agent@<latest>` in OpenPi's own `node_modules/` via the package manager OpenPi was installed with, then prompts to restart OpenPi. The previous `pi update --self` path failed for OpenPi users with *"This installation is not managed by a global npm install."* because Pi is bundled in OpenPi's own `node_modules/`, not installed as a global `pi` CLI.
+- Fix a SolidJS reactivity bug in the Customize modal's Pi Settings Pane: `FieldControl` captured the initial `props.value` into plain consts that never updated, so every field except the most-recently-set one rendered blank. The boolean toggle's onClick was also sending the stale initial value instead of the current state. (PR #4)
+- Move the "Default Trust Policy" select to the Pi Settings Pane (where it loads and saves through the same `~/.pi/agent/settings.json` path as every other Pi setting) and remove the "Hide Customizations Panel" toggle that gated access to the very modal that hosts the toggle.
+- `/name` without an argument now pre-fills the composer with `/name ` instead of showing a system alert dialog, matching Pi TUI's slash-command UX.
+- `/resume` opens the homescreen overlay (the natural place to browse and resume sessions) rather than the command palette or a broken direct-open.
 
