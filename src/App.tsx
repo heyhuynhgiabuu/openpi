@@ -37,6 +37,9 @@ export default function App() {
   const agentReview = useAgentReviewChanges()
 
   const [customizationsOpen, setCustomizationsOpen] = createSignal(false)
+  const [customizationsInitialTab, setCustomizationsInitialTab] = createSignal<
+    import('./components/customizations/CustomizationsModal').ActiveTab | undefined
+  >(undefined)
   const [terminalOpen, setTerminalOpen] = createSignal(false)
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [gitPanelOpen, _setGitPanelOpen] = createSignal(false)
@@ -191,11 +194,26 @@ export default function App() {
     const openHomescreenViaEvent = () => setHomescreenOpen(true)
     document.addEventListener('openpi:open-homescreen', openHomescreenViaEvent)
 
+    // Allow slash commands (e.g. /settings) to open the customizations
+    // modal directly to a specific tab. The event detail carries the
+    // tab key (e.g. "settings", "extensions", "themes").
+    const openCustomizationsViaEvent = (event: Event) => {
+      const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab
+      if (tab === 'settings' || tab === 'general' || tab === 'keybindings') {
+        setCustomizationsInitialTab(tab)
+      } else {
+        setCustomizationsInitialTab(undefined)
+      }
+      setCustomizationsOpen(true)
+    }
+    document.addEventListener('openpi:open-customizations', openCustomizationsViaEvent)
+
     return () => {
       removePrefs()
       removeKeydown()
       removeFileFindShortcut?.()
       document.removeEventListener('openpi:open-homescreen', openHomescreenViaEvent)
+      document.removeEventListener('openpi:open-customizations', openCustomizationsViaEvent)
     }
   })
 
@@ -454,6 +472,7 @@ export default function App() {
               fileSearchOpen={fileSearchOpen()}
               commandPaletteOpen={commandPaletteOpen()}
               customizationsOpen={customizationsOpen()}
+              customizationsInitialTab={customizationsInitialTab()}
               connectProviderOpen={connectProviderOpen()}
               manageModelsOpen={manageModelsOpen()}
               archivePending={archive.archivePending()}

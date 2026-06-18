@@ -29,6 +29,8 @@ import { SettingsPane } from './SettingsPane'
 import { SkillsPane } from './SkillsPane'
 import { ThemesPane } from './ThemesPane'
 
+export type ActiveTab = CustomizationType | 'settings' | 'general' | 'keybindings'
+
 type CustomizationsModalProps = {
   open: boolean
   appName: string
@@ -39,9 +41,9 @@ type CustomizationsModalProps = {
   onClose: () => void
   onError: (message: string) => void
   cwd: string | null
+  /** When the modal opens, switch to this tab. Defaults to whatever was active last. */
+  initialTab?: ActiveTab
 }
-
-type ActiveTab = CustomizationType | 'settings' | 'general' | 'keybindings'
 
 type NavItem = {
   type: ActiveTab
@@ -95,6 +97,14 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
   const [activeType, setActiveType] = createSignal<ActiveTab>('extensions')
   const [loading, setLoading] = createSignal(false)
   const [changelogOpen, setChangelogOpen] = createSignal(false)
+
+  // When the modal is (re-)opened with a specific initial tab, switch to it.
+  // Used by slash commands like /settings to deep-link to a pane.
+  createEffect(() => {
+    if (props.open && props.initialTab) {
+      setActiveType(props.initialTab)
+    }
+  })
 
   let contentEl: HTMLElement | undefined
 

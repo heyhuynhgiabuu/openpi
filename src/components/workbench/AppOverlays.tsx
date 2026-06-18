@@ -1,7 +1,7 @@
 import { Show } from 'solid-js'
 import type { ModelInfo } from '../../lib/ipc'
 import { CommandPalette, type PaletteCommand } from '../CommandPalette'
-import { CustomizationsModal } from '../customizations/CustomizationsModal'
+import { type ActiveTab, CustomizationsModal } from '../customizations/CustomizationsModal'
 import { FileSearchModal } from '../git/FileSearchModal'
 import { ConnectProviderModal } from '../providers/ConnectProviderModal'
 import { ManageModelsModal } from '../providers/ManageModelsModal'
@@ -17,6 +17,7 @@ interface AppOverlaysProps {
   fileSearchOpen: boolean
   commandPaletteOpen: boolean
   customizationsOpen: boolean
+  customizationsInitialTab?: ActiveTab
   connectProviderOpen: boolean
   manageModelsOpen: boolean
   archivePending: ArchivePending | null
@@ -75,6 +76,7 @@ export function AppOverlays(props: AppOverlaysProps) {
         onClose={props.onCloseCustomizations}
         onError={props.onError}
         cwd={props.cwd}
+        initialTab={props.customizationsInitialTab}
       />
 
       <Show when={props.connectProviderOpen}>

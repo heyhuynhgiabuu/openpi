@@ -110,7 +110,11 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       onOpenModelPicker: () => {
         document.dispatchEvent(new CustomEvent('openpi:open-model-picker'))
       },
-      onOpenSettings: () => props.onManageModels(),
+      onOpenSettings: () => {
+        document.dispatchEvent(
+          new CustomEvent('openpi:open-customizations', { detail: { tab: 'settings' } })
+        )
+      },
       onOpenLogin: () => props.onConnectProvider(),
       onLogout: () => props.onConnectProvider(),
       onNewSession: () => void props.session.createNewSession(),
