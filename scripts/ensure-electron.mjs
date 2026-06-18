@@ -65,7 +65,10 @@ async function main() {
       )
       if (!fs.existsSync(fw)) return false
     }
-    const v = spawnSync(executable, ['--version'], { encoding: 'utf8', timeout: 20_000 })
+    const v = spawnSync(executable, ['--no-sandbox', '--version'], {
+      encoding: 'utf8',
+      timeout: 20_000,
+    })
     if (v.status !== 0) {
       console.warn(
         '[ensure-electron] --version check failed:',
@@ -182,7 +185,9 @@ async function main() {
     }
 
     if (looksInstalled()) {
-      const ver = spawnSync(executable, ['--version'], { encoding: 'utf8' })
+      const ver = spawnSync(executable, ['--no-sandbox', '--version'], {
+        encoding: 'utf8',
+      })
       console.log('[ensure-electron] OK', ver.stdout?.trim())
       return
     }
