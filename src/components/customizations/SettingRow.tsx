@@ -60,17 +60,17 @@ function FieldControl(props: {
   onChange: (v: unknown) => void
 }) {
   if (props.field.type === 'boolean') {
-    const on =
+    const on = () =>
       typeof props.value === 'boolean'
         ? props.value
         : ((props.field.default as boolean | undefined) ?? false)
     return (
       <button
         type="button"
-        class={`osp-toggle${on ? ' is-on' : ''}`}
-        onClick={() => props.onChange(!on)}
+        class={`osp-toggle${on() ? ' is-on' : ''}`}
+        onClick={() => props.onChange(!on())}
         role="switch"
-        aria-checked={on}
+        aria-checked={on()}
         aria-label={props.field.label}
       >
         <span class="osp-toggle-thumb" />
@@ -79,14 +79,14 @@ function FieldControl(props: {
   }
 
   if (props.field.type === 'select') {
-    const val =
+    const val = () =>
       props.value !== undefined && props.value !== null && props.value !== ''
         ? String(props.value)
         : ''
     return (
       <select
         class="osp-select"
-        value={val}
+        value={val()}
         onChange={(e) =>
           props.onChange(e.currentTarget.value === '' ? undefined : e.currentTarget.value)
         }
@@ -99,7 +99,7 @@ function FieldControl(props: {
   }
 
   if (props.field.type === 'number') {
-    const num =
+    const num = () =>
       props.value !== undefined && props.value !== null
         ? Number(props.value)
         : ((props.field.default as number | undefined) ?? 0)
@@ -107,7 +107,7 @@ function FieldControl(props: {
       <input
         class="osp-input osp-input-num"
         type="number"
-        value={num}
+        value={num()}
         min={props.field.min}
         max={props.field.max}
         step={props.field.step ?? 1}
@@ -119,7 +119,7 @@ function FieldControl(props: {
   }
 
   if (props.field.type === 'string') {
-    const str =
+    const str = () =>
       props.value !== undefined && props.value !== null && props.value !== ''
         ? String(props.value)
         : ''
@@ -127,7 +127,7 @@ function FieldControl(props: {
       <input
         class="osp-input"
         type="text"
-        value={str}
+        value={str()}
         placeholder={
           props.field.placeholder ?? (props.field.default ? String(props.field.default) : undefined)
         }
