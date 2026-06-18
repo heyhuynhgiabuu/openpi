@@ -888,6 +888,34 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       break
     }
 
+    case 'get_default_project_trust': {
+      if (!state) {
+        send({
+          type: 'default_project_trust_result',
+          requestId: cmd.requestId,
+          defaultProjectTrust: 'ask',
+        })
+        break
+      }
+      const agentDir = getAgentDir()
+      const settingsManager = SettingsManager.create(state.cwd, agentDir)
+      const value = settingsManager.getDefaultProjectTrust()
+      send({
+        type: 'default_project_trust_result',
+        requestId: cmd.requestId,
+        defaultProjectTrust: value,
+      })
+      break
+    }
+
+    case 'set_default_project_trust': {
+      if (!state) return
+      const agentDir = getAgentDir()
+      const settingsManager = SettingsManager.create(state.cwd, agentDir)
+      settingsManager.setDefaultProjectTrust(cmd.defaultProjectTrust)
+      break
+    }
+
     case 'get_providers': {
       const registry = getModelRegistry()
       const allModels = registry.getAll() as Array<{ provider: string }>

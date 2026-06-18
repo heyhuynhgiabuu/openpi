@@ -108,6 +108,8 @@ export const IPC = {
   // Settings
   GET_SETTINGS: 'openpi:get-settings',
   SAVE_SETTINGS: 'openpi:save-settings',
+  GET_DEFAULT_PROJECT_TRUST: 'openpi:get-default-project-trust',
+  SET_DEFAULT_PROJECT_TRUST: 'openpi:set-default-project-trust',
   OPEN_EXTERNAL: 'openpi:open-external',
   READ_THEME_COLORS: 'openpi:read-theme-colors',
   READ_THEME_TOKENS: 'openpi:read-theme-tokens',

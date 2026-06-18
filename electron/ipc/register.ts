@@ -4,6 +4,7 @@ import type * as GitHost from '../git/gitHost'
 import { registerGitIpc } from '../git/ipc'
 import { registerExtensionUiHandlers } from '../pi/extensionUiHost'
 import { registerProviderHandlers } from '../pi/providerHost'
+import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
 import { checkPiUpdate, installPiUpdate } from '../pi/updater'
 import type * as CustomizationsHost from '../services/customizations'
 import type * as FffHost from '../services/fffHost'
@@ -76,6 +77,11 @@ interface RegisterMainIpcHandlersDeps {
     detail: string
   }) => Promise<boolean>
   emitOutputLine: (line: OutputLine) => void
+  createRequestId: () => string
+  requestSidecar: <T extends SidecarMessage>(
+    message: SidecarCommand & { requestId: string }
+  ) => Promise<T>
+  sendSidecar: (message: SidecarCommand) => void
 }
 
 async function getCommitAgentContext(
@@ -153,6 +159,9 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     getCwd: () => getSessionState()?.cwd ?? null,
     getSettings,
     saveSettings: writeSettings,
+    createRequestId: deps.createRequestId,
+    requestSidecar: deps.requestSidecar,
+    sendSidecar: deps.sendSidecar,
   })
   registerSearchIpc({ ipcMain: deps.ipcMain, ensureFffInitialized: deps.ensureFffInitialized })
   registerResourcesIpc({

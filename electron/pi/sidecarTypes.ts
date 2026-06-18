@@ -44,6 +44,8 @@ export type SidecarCommand =
   | { type: 'copy_last_assistant_text'; requestId: string }
   | { type: 'get_settings'; requestId: string }
   | { type: 'save_settings'; scope: 'global' | 'project'; settings: Record<string, unknown> }
+  | { type: 'get_default_project_trust'; requestId: string }
+  | { type: 'set_default_project_trust'; defaultProjectTrust: 'ask' | 'always' | 'never' }
   | { type: 'get_providers'; requestId: string }
   | { type: 'set_provider_key'; provider: string; apiKey: string }
   | { type: 'remove_provider_key'; provider: string }
@@ -73,6 +75,11 @@ export type SidecarMessage =
   | { type: 'last_assistant_text_result'; requestId: string; text: string | null }
   | { type: 'settings_result'; requestId: string; result: unknown }
   | { type: 'providers_result'; requestId: string; providers: unknown[] }
+  | {
+      type: 'default_project_trust_result'
+      requestId: string
+      defaultProjectTrust: 'ask' | 'always' | 'never'
+    }
   | { type: 'prompt_templates_result'; requestId: string; prompts: unknown[] }
   | { type: 'slash_commands_result'; requestId: string; commands: unknown[] }
   | { type: 'skills_result'; requestId: string; skills: unknown[] }

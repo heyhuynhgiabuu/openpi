@@ -7,6 +7,7 @@ import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
+import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
 import { handleLocalFileProtocol, registerLocalFileScheme } from './services/localFileProtocol'
@@ -36,6 +37,7 @@ import {
   activeWorkspacePath,
   applySessionReady,
   clearSessionState,
+  createRequestId,
   ensurePiSidecarStarted,
   getPiSidecarHost,
   getSessionState,
@@ -180,6 +182,13 @@ function registerHandlers(): void {
     getPtyHost,
     confirmHighRiskMutation,
     emitOutputLine,
+    createRequestId,
+    requestSidecar: <T extends SidecarMessage>(message: SidecarCommand & { requestId: string }) =>
+      getPiSidecarHost()?.request<T>(message) ??
+      Promise.reject(new Error('Pi sidecar not running')),
+    sendSidecar: (message: SidecarCommand) => {
+      getPiSidecarHost()?.send(message)
+    },
   })
 }
 

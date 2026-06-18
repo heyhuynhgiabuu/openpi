@@ -46,6 +46,11 @@ export const terminalApi = {
   installPiUpdate: (latestVersion: string): Promise<PiUpdateInstallResult> =>
     ipcRenderer.invoke(IPC.INSTALL_PI_UPDATE, { latestVersion }),
 
+  getDefaultProjectTrust: (): Promise<'ask' | 'always' | 'never'> =>
+    ipcRenderer.invoke(IPC.GET_DEFAULT_PROJECT_TRUST),
+  setDefaultProjectTrust: (defaultProjectTrust: 'ask' | 'always' | 'never'): Promise<void> =>
+    ipcRenderer.invoke(IPC.SET_DEFAULT_PROJECT_TRUST, { defaultProjectTrust }),
+
   appUpdate: {
     check: (): Promise<AppUpdateStatus> => ipcRenderer.invoke(IPC.APP_UPDATE_CHECK),
     openRelease: (url: string): Promise<void> =>

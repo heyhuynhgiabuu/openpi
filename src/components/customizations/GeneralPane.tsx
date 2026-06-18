@@ -46,6 +46,8 @@ export function GeneralPane(props: GeneralPaneProps) {
     saveAppearance,
     resetAppearance,
     appearanceRows,
+    defaultProjectTrust,
+    changeDefaultProjectTrust,
   } = useGeneralPaneState(props)
   return (
     <div class="osp-root">
@@ -117,6 +119,35 @@ export function GeneralPane(props: GeneralPaneProps) {
             onCheck={checkForUpdates}
             onInstall={installUpdate}
           />
+
+          <section class="osp-section">
+            <header class="osp-section-head">
+              <div>
+                <div class="osp-section-title">Project trust</div>
+                <p class="osp-section-sub">
+                  Default policy when a project has no saved trust decision. Applies to loading
+                  project-local resources, instructions, and packages.
+                </p>
+              </div>
+            </header>
+            <div class="osp-pref-row">
+              <label class="osp-pref-label" for="osp-default-trust">
+                Default trust
+              </label>
+              <select
+                id="osp-default-trust"
+                class="osp-select"
+                value={defaultProjectTrust()}
+                onChange={(e) =>
+                  changeDefaultProjectTrust(e.currentTarget.value as 'ask' | 'always' | 'never')
+                }
+              >
+                <option value="ask">Ask every time</option>
+                <option value="always">Always trust</option>
+                <option value="never">Never trust</option>
+              </select>
+            </div>
+          </section>
         </div>
       </Show>
 
