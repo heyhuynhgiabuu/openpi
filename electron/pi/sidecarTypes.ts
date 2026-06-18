@@ -47,6 +47,13 @@ export type SidecarCommand =
   | { type: 'login_provider'; requestId: string; providerId: string }
   | { type: 'logout_provider'; providerId: string }
   | { type: 'resolve_provider_prompt'; providerId: string; value: string }
+  | {
+      type: 'extension_ui_response'
+      id: string
+      cancelled?: boolean
+      confirmed?: boolean
+      value?: string
+    }
   | { type: 'stop' }
 
 export type SidecarMessage =
@@ -66,6 +73,10 @@ export type SidecarMessage =
   | { type: 'skill_file_result'; requestId: string; content: string | null }
   | { type: 'provider_login_event'; requestId: string; event: unknown }
   | { type: 'output_append'; line: { level: string; text: string; ts: number } }
+  | {
+      type: 'extension_ui_request'
+      request: import('../../src/lib/extensionUiTypes').ExtensionUiRequest
+    }
   | { type: 'error'; requestId?: string; message: string }
   | { type: 'stopped' }
 

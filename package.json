@@ -25,7 +25,7 @@
     "release:major": "node scripts/release.mjs major",
     "release:prerelease": "node scripts/release.mjs prerelease",
     "brew:update": "node scripts/update-brew.mjs",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "node scripts/ensure-electron.mjs && electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

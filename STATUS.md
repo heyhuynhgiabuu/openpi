@@ -1,30 +1,44 @@
 # OpenPi — Current Status
 
-Surface state of the desktop workbench as of the latest release. Not a rule surface; for project rules see `AGENTS.md`.
+Surface state of the desktop workbench as of the latest release. Not a rule surface; for project rules see `AGENTS.md`. For direction and phases see `ROADMAP.md`.
 
-## Beta
+## Mission
 
-OpenPi is in active development. Core slices shipped:
+OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`): make sessions **visible** and **steerable**, keep the **MIT agent core** in Pi (not a second runtime), and treat the user as the **quality gate** — aligned with Pi’s minimal harness and inspectability goals. See **Philosophy** in `ROADMAP.md`.
 
-- Secure Electron main/preload boundary with typed IPC schemas and renderer-only UI authority.
-- Pi session host integration with streaming conversation, model controls, steering/follow-up queue visibility, abort, fork, and session rename flows.
-- Workspace/session sidebar with recent workspace restore, session search/sort/group controls, pinned/archive affordances, workspace hero metadata, and Git branch/last-modified summary.
-- Customizations modal for Extensions, Skills, Prompts, Themes, Packages, Settings, General preferences, and Keybindings, including the `⇧⌘P` Command Palette binding.
-- OpenCode-style command palette (`⇧⌘P`) searching commands, workspace files via `fff`, and historical sessions.
-- Main-owned Git source control panel, file tree/search, file viewer, and split diff viewer; renderer never runs Git directly.
-- Bottom terminal/output panel with multi-terminal tabs (renameable, add/close/switch), process exit indicators, and resizable panel backed by main-owned PTY lifecycle.
-- Dynamic app metadata exposed from Electron main for Welcome/customizations branding, OpenPi runtime icons, and tag-triggered beta CI/release workflows.
-- **Goal/harness loop** — `/goal` controller is powered by 5 local LLM-callable tools registered via the project harness extension: `get_goal`, `create_goal`, `update_goal`, `clear_goal`, `update_plan`. The tools write goal/plan state to `~/.pi/agent/.openpi-goal.json` and `.openpi-plan.json`; OpenPi's main process watches these files and reflects state in the renderer. The build-pipeline harness (`harness` tool, Planner → Generator → Evaluator loop) is provided by a global extension at `~/.pi/agent/extensions/harness/` and is not part of the project-local extension surface.
-- **Conversation polish** — live token counter during streaming, code block line numbers (toggle with Ln button), streaming cursor after all element types, responsive images, entry animation.
-- **File editor improvements** — format-on-save (Biome), word wrap toggle, Cmd+Shift+F opens find-with-replace, `FORMAT_FILE` IPC.
-- **Extensions UI** — enable/disable toggle switch per extension, preference persistence, reload button.
-- **Onboarding flow** — first-run detection, enhanced welcome screen with getting-started guide and external links.
-- **Goal status indicator** — persistent banner in composer header showing objective and running/idle step badge.
-- **Sub-agent file tracking** — OpenPi watches `.pi/artifacts/task-<id>/` for the global `task` delegator (provided by `~/.pi/agent/extensions/task/`) and renders in-flight and completed sub-agent runs in `<SubagentFileWidget>`. Replaces the previous in-memory tracking of the Anthropic-style `TaskCreate`/`TaskUpdate` tools, which is no longer used.
+## Beta (v0.2.1)
+
+### Shipped
+
+- Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
+- Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
+- Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings.
+- Command palette (`⇧⌘P`): commands, `fff` files, sessions.
+- Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
+- Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.
+- **Trust (Phase 6):** workspace trust, extension/package install confirms, protected paths, high-risk shell/Git mutation prompts, secret redaction, diagnostics export bundle, SQLite hardening.
+- **Built-in subagents:** `Agent` / `get_subagent_result` / `steer_subagent` on sidecar; Worker, Explorer, Scout, Planner, Reviewer profiles; `.pi/agents/*.md` discovery; @mention autocomplete; subagent status widget.
+- **Goal/harness:** `/goal` + plan files (`~/.pi/agent/.openpi-goal.json`, `.openpi-plan.json`); harness extension for build pipeline (global `~/.pi/agent/extensions/harness/`).
+ - Conversation polish: live token counter (streaming), code line numbers, tool cards including `ask_user_question` modal.
+ - Agent review: unified Review tab now has a source dropdown for `Git changes` vs `Last turn changes`; last-turn mode uses agent snapshots, file accordions, proper diff rendering, Keep/Revert/Revert all, and coalesces repeated edits per file.
+ - CI: PR/main checks; tag-triggered beta releases (macOS/Windows/Linux). **Signing/notarization not configured.**
+
+### Next (Phase 7 — see ROADMAP)
+
+- **P0:** TEST_MATRIX / test evidence, hunk-level/pre-apply diff polish, **live token/cost per turn** while streaming.
+
+- **P1:** Session tree map v2, subagent card polish.
+- **P2:** Plan overlay, workbench context bridge, auto-updater (after signing).
 
 ## Known constraints
 
-- macOS first. Other platforms untested.
-- `electron-builder` packaging only; no auto-update channel configured.
-- Single-user; no collaboration features.
-- Local-only; no cloud sync.
+- macOS primary; other platforms less tested.
+- Packaging via `electron-builder`; in-app auto-update not wired.
+- Single-user, local-only, no cloud sync.
+- Pi defaults to **YOLO**; OpenPi adds **optional** desktop policy rails — users can still install Pi [example extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) for TUI-style gates.
+
+## References
+
+- Pi posts: [coding agent](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/), [slow down](https://mariozechner.at/posts/2026-03-25-thoughts-on-slowing-the-fuck-down/), [Earendil](https://mariozechner.at/posts/2026-04-08-ive-sold-out/)
+- Upstream: [earendil-works/pi](https://github.com/earendil-works/pi), [pi.dev](https://pi.dev)

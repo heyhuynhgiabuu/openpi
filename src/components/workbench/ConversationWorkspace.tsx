@@ -1,5 +1,6 @@
 import { GitBranch, X } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
+import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
 import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
@@ -11,17 +12,19 @@ import { Composer } from '../Composer'
 import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
 import { FileTabBar } from '../FileTabBar'
-import { DiffViewer } from '../git/DiffViewer'
 import { GitHistoryTab } from '../git/GitHistoryTab'
 import { ResizeHandle } from '../ResizeHandle'
+import { ReviewPane } from '../review/ReviewPane'
 import { SubagentFileWidget, TodoListTray } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
 
 type OpenPiSession = ReturnType<typeof useOpenPiSession>
+type AgentReview = ReturnType<typeof useAgentReviewChanges>
 type ConversationMessages = Parameters<typeof ConversationPane>[0]['messages']
 
 interface ConversationWorkspaceProps {
   session: OpenPiSession
+  agentReview: AgentReview
   cwd: string
   workspaceName: string
   activeSessionPath: string | null
@@ -63,15 +66,37 @@ interface ConversationWorkspaceProps {
   onCloseDiff: () => void
   onRequestFileSearch: () => void
   onFindOpened: () => void
+  onOpenReviewTab: () => void
 }
 
 export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const activePreviewTab = createMemo(() => props.openFiles[props.activeFileIdx] ?? '')
+  const reviewChangeCount = createMemo(() => props.agentReview.changes.length)
   const [historyActive, setHistoryActive] = createSignal(false)
+  const [reviewSource, setReviewSource] = createSignal<'git' | 'last-turn'>('git')
+  let lastReviewChangeCount = 0
+
   createEffect(() => {
     if (props.showGitHistory) setHistoryActive(true)
     else setHistoryActive(false)
   })
+
+  createEffect(() => {
+    const count = reviewChangeCount()
+    if (count > lastReviewChangeCount) {
+      setReviewSource('last-turn')
+      setHistoryActive(false)
+      props.onOpenReviewTab()
+    } else if (count === 0 && reviewSource() === 'last-turn') {
+      setReviewSource('git')
+    }
+    lastReviewChangeCount = count
+  })
+
+  createEffect(() => {
+    if (props.activeDiff?.path) setReviewSource('git')
+  })
+
   const gitHistoryState = useGitHistoryState({
     activeTab: () => (historyActive() ? ('history' as const) : ('changes' as const)),
     cwd: () => props.cwd,
@@ -81,7 +106,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   return (
     <div class="center-col">
       <main
-        class={`main-panel${props.openFiles.length > 0 || props.showGitHistory ? ' main-panel--split' : ''}`}
+        class={`main-panel${props.openFiles.length > 0 || props.showGitHistory || reviewChangeCount() > 0 ? ' main-panel--split' : ''}`}
       >
         <div class="main-panel-conversation">
           <ConversationPane
@@ -284,23 +309,13 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
                     />
                   }
                 >
-                  <Show
-                    when={props.activeDiff}
-                    fallback={<div class="diff-empty">Loading diff…</div>}
-                  >
-                    {(diff) => (
-                      <DiffViewer
-                        diff={diff()}
-                        allFiles={props.diffFiles}
-                        currentIndex={props.diffIndex}
-                        onNavigate={props.onNavigateDiff}
-                        onClose={() => {
-                          props.onCloseDiff()
-                          props.onCloseFile(props.activeFileIdx)
-                        }}
-                      />
-                    )}
-                  </Show>
+                  <ReviewPane
+                    cwd={props.cwd}
+                    source={reviewSource()}
+                    onSourceChange={setReviewSource}
+                    agentReview={props.agentReview}
+                    requestedGitPath={props.activeDiff?.path ?? null}
+                  />
                 </Show>
               }
             >

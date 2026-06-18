@@ -24,6 +24,7 @@ import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiSubagentTools } from '../subagent/manager'
 import { BUILTIN_SLASH_COMMANDS } from './builtinSlashCommands'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
+import { fulfillExtensionUiPending } from './extensionUiPending'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -297,6 +298,11 @@ async function startSession(
   const extensionUiSinks = {
     sessionEvent: (event: Record<string, unknown>) => {
       send({ type: 'session_event', event })
+    },
+    postExtensionUiRequest: (
+      request: import('../../src/lib/extensionUiTypes').ExtensionUiRequest
+    ) => {
+      send({ type: 'extension_ui_request', request })
     },
   }
 
@@ -859,6 +865,16 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         resolver(cmd.value)
         _pendingOAuthPrompts.delete(cmd.providerId)
       }
+      break
+    }
+
+    case 'extension_ui_response': {
+      fulfillExtensionUiPending({
+        id: cmd.id,
+        cancelled: cmd.cancelled,
+        confirmed: cmd.confirmed,
+        value: cmd.value,
+      })
       break
     }
 

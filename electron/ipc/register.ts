@@ -2,6 +2,7 @@ import type { BrowserWindow, IpcMain } from 'electron'
 import type { OutputLine } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
 import { registerGitIpc } from '../git/ipc'
+import { registerExtensionUiHandlers } from '../pi/extensionUiHost'
 import { registerProviderHandlers } from '../pi/providerHost'
 import { checkPiUpdate, installPiUpdate } from '../pi/updater'
 import type * as CustomizationsHost from '../services/customizations'
@@ -40,6 +41,7 @@ import {
   startSession,
 } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
+import { registerAgentReviewIpc } from './agentReview'
 import { registerCustomizationsIpc } from './customizations'
 import { registerDiagnosticsIpc } from './diagnostics'
 import { registerFileIpc } from './files'
@@ -94,6 +96,7 @@ async function getCommitAgentContext(
 }
 
 export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void {
+  registerExtensionUiHandlers(deps.ipcMain)
   registerProviderHandlers()
   registerUpdateIpc({
     ipcMain: deps.ipcMain,
@@ -122,6 +125,10 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     getWorkbenchContext,
     updateTerminalOutput,
     updateVisibleFile,
+  })
+  registerAgentReviewIpc({
+    ipcMain: deps.ipcMain,
+    getCwd: () => getSessionState()?.cwd ?? null,
   })
   registerGitIpc({
     ipcMain: deps.ipcMain,

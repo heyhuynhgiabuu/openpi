@@ -77,7 +77,15 @@ export const IPC = {
   GIT_PANEL_MOUNTED: 'openpi:git-panel-mounted',
   GIT_GENERATE_COMMIT_MSG: 'openpi:git-generate-commit-msg',
 
+  // Agent review changes (renderer → main)
+  AGENT_REVIEW_LIST: 'openpi:agent-review-list',
+  AGENT_REVIEW_KEEP: 'openpi:agent-review-keep',
+  AGENT_REVIEW_REVERT: 'openpi:agent-review-revert',
+  AGENT_REVIEW_REVERT_ALL: 'openpi:agent-review-revert-all',
+  AGENT_REVIEW_CLEAR: 'openpi:agent-review-clear',
+
   // main → renderer
+
   AGENT_CHANGED_FILES: 'openpi:agent-changed-files',
   READ_FILE: 'openpi:read-file',
   WRITE_FILE: 'openpi:write-file',
@@ -114,6 +122,7 @@ export const IPC = {
   LOGOUT_PROVIDER: 'openpi:logout-provider',
   PROVIDER_LOGIN_EVENT: 'openpi:provider-login-event',
   RESOLVE_PROVIDER_PROMPT: 'openpi:resolve-provider-prompt',
+  RESOLVE_EXTENSION_UI: 'openpi:resolve-extension-ui',
   GET_CUSTOM_PROVIDERS: 'openpi:get-custom-providers',
   ADD_CUSTOM_PROVIDER: 'openpi:add-custom-provider',
   REMOVE_CUSTOM_PROVIDER: 'openpi:remove-custom-provider',
@@ -134,4 +143,6 @@ export const IPC = {
   REMOTE_SESSION_STATUS: 'openpi:remote-session-status',
   REMOTE_SESSION_UPDATE: 'openpi:remote-session-update',
   ARTIFACT_UPDATE: 'openpi:artifact-update',
+  EXTENSION_UI_REQUEST: 'openpi:extension-ui-request',
+  AGENT_REVIEW_CHANGED: 'openpi:agent-review-changed',
 } as const

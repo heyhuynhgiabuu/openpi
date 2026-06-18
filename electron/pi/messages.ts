@@ -3,6 +3,7 @@ import { type BrowserWindow, shell } from 'electron'
 import type { OutputLine, SessionReady } from '../../src/lib/ipc'
 import { IPC } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
+import { captureAgentReviewEvent, setAgentReviewWindow } from '../services/agentReview'
 import type {
   showSystemNotification as notifySystem,
   playSoundEffect as playSound,
@@ -45,7 +46,12 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
 
       case 'session_event': {
         const event = msg.event as SessionEventShape
+        const window = deps.getMainWindow()
+        setAgentReviewWindow(window)
         deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, msg.event)
+        if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
+          captureAgentReviewEvent(deps.resolveActiveCwd(), msg.event as Record<string, unknown>)
+        }
 
         if (event.type === 'agent_end') {
           setTimeout(() => {
@@ -121,6 +127,10 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
 
       case 'output_append':
         deps.emitOutputLine(msg.line as OutputLine)
+        return
+
+      case 'extension_ui_request':
+        deps.getMainWindow()?.webContents.send(IPC.EXTENSION_UI_REQUEST, msg.request)
         return
 
       case 'error':

@@ -31,6 +31,7 @@ function tabFileName(path: string): string {
 }
 
 function tabIconName(path: string): string {
+  if (path === 'openpi-diff://review') return '.git'
   return tabPath(path).split('/').pop() ?? path
 }
 

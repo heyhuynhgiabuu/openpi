@@ -121,6 +121,16 @@ Then double-click the app as normal. This will no longer be required once notari
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening issues or pull requests. Changes that cross renderer/main/Pi SDK boundaries need extra care and tests.
 
+## Star History
+
+<a href="https://www.star-history.com/#heyhuynhgiabuu/openpi&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=heyhuynhgiabuu/openpi&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=heyhuynhgiabuu/openpi&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=heyhuynhgiabuu/openpi&type=Date" />
+  </picture>
+</a>
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

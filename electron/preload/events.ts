@@ -1,4 +1,5 @@
 import { ipcRenderer } from 'electron'
+import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import type {
   ArtifactUpdate,
   RemoteSessionUpdate,
@@ -67,4 +68,13 @@ export const eventsApi = {
     ipcRenderer.on(IPC.FILE_FIND_SHORTCUT, handler)
     return () => ipcRenderer.removeListener(IPC.FILE_FIND_SHORTCUT, handler)
   },
+
+  onExtensionUiRequest: (cb: (request: ExtensionUiRequest) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, request: ExtensionUiRequest) => cb(request)
+    ipcRenderer.on(IPC.EXTENSION_UI_REQUEST, handler)
+    return () => ipcRenderer.removeListener(IPC.EXTENSION_UI_REQUEST, handler)
+  },
+
+  resolveExtensionUi: (response: ExtensionUiResponse): Promise<void> =>
+    ipcRenderer.invoke(IPC.RESOLVE_EXTENSION_UI, response),
 } as const

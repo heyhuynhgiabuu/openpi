@@ -43,6 +43,10 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
     selectPreviewTab(relPath)
   }
 
+  const openReviewTab = () => {
+    selectPreviewTab(makeDiffPreviewTab())
+  }
+
   const closeFile = (idx: number) => {
     const closing = openFiles()[idx]
     const newFiles = openFiles().filter((_, i) => i !== idx)
@@ -232,7 +236,9 @@ export function useAppFileManager(options: UseAppFileManagerOptions) {
     setFileFindOpen,
     // handlers
     openFile,
+    openReviewTab,
     closeFile,
+
     closeDeletedFilePreviews,
     renameFileInPreviews,
     addAttachedFile,

@@ -7,7 +7,7 @@ interface ExtensionResponseCardProps {
 }
 
 const levelBorder: Record<ExtensionResponseMessage['level'], string> = {
-  info: 'var(--accent, #6366f1)',
+  info: 'var(--hairline, #6366f1)',
   warn: '#d97706',
   error: '#dc2626',
 }
@@ -61,7 +61,7 @@ export const ExtensionResponseCard: Component<ExtensionResponseCardProps> = (pro
           padding: '10px 12px',
           background: 'transparent',
           border: '1px solid var(--hairline)',
-          'border-left': `3px solid ${levelBorder[props.message.level]}`,
+          'border-left': `1px solid ${levelBorder[props.message.level]}`,
           'border-radius': '6px',
           'font-family': 'var(--font-mono, ui-monospace, SFMono-Regular, monospace)',
           'font-size': '12.5px',

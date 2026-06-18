@@ -9,6 +9,7 @@
  *   - className  → class in SolidJS JSX
  */
 import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js'
+import { ExtensionUiOverlay } from './components/ExtensionUiOverlay'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
 import { Homescreen } from './components/Homescreen'
 import { ResizeHandle } from './components/ResizeHandle'
@@ -20,6 +21,7 @@ import { AppOverlays } from './components/workbench/AppOverlays'
 import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
 import { GitSidePanel } from './components/workbench/GitSidePanel'
 import { RightPanel } from './components/workbench/RightPanel'
+import { useAgentReviewChanges } from './hooks/useAgentReviewChanges'
 import { useAppArchive } from './hooks/useAppArchive'
 import { useAppFileManager } from './hooks/useAppFileManager'
 import { useAppKeybindings } from './hooks/useAppKeybindings'
@@ -32,6 +34,7 @@ import type { KeybindingOverrides } from './lib/keybindings'
 
 export default function App() {
   const session = useOpenPiSession()
+  const agentReview = useAgentReviewChanges()
 
   const [customizationsOpen, setCustomizationsOpen] = createSignal(false)
   const [terminalOpen, setTerminalOpen] = createSignal(false)
@@ -73,7 +76,9 @@ export default function App() {
     setActiveDiff,
     handleDiffOpen,
     openFile,
+    openReviewTab,
     closeFile,
+
     closeDeletedFilePreviews,
     renameFileInPreviews,
     addAttachedFile,
@@ -354,6 +359,7 @@ export default function App() {
 
                   <ConversationWorkspace
                     session={session}
+                    agentReview={agentReview}
                     cwd={cwd()}
                     workspaceName={workspaceName()}
                     activeSessionPath={activeSessionPath()}
@@ -378,6 +384,7 @@ export default function App() {
                     showGitHistory={showGitHistory()}
                     onShowGitHistoryChange={setShowGitHistory}
                     onOpenFile={openFile}
+                    onOpenReviewTab={openReviewTab}
                     onAddAttachedFile={addAttachedFile}
                     onRemoveAttachedFile={removeAttachedFile}
                     onAddLineComment={addLineComment}
@@ -468,6 +475,7 @@ export default function App() {
                 setConnectProviderOpen(true)
               }}
             />
+            <ExtensionUiOverlay />
           </div>
         )
       }}

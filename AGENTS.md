@@ -3,6 +3,7 @@
 **Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.79.3+).
 **Audience:** human developers and AI coding agents.
 **Related surfaces:**
+- `ROADMAP.md` — philosophy, phases, non-goals (read before proposing product scope).
 - `STATUS.md` — current feature status, beta surface, known constraints.
 - `~/.pi/agent/APPEND_SYSTEM.md` — global system prompt supplement (workflow routing, tool selection, persona). Loaded every turn. Project-local `.pi/APPEND_SYSTEM.md` is intentionally absent so the global takes effect.
 - `node_modules/@earendil-works/pi-coding-agent/` — installed SDK; see `## Pi Documentation Sources` below for the canonical doc table.
@@ -11,9 +12,13 @@
 
 ## Product Direction
 
-OpenPi is a desktop workbench for the Pi coding agent. It wraps Pi's session tree, agent events, extensions, skills, and customizations in an Electron + SolidJS UI — not a terminal emulator clone, not a VS Code replacement.
+OpenPi is a **local-first desktop workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`, upstream [earendil-works/pi](https://github.com/earendil-works/pi)). It **hosts the MIT agent in Electron main** and renders session tree, tools, Git, editor, and terminal — **not** a second agent runtime, **not** VS Code/Warp, **not** a Codex/Kun parity product.
 
-Target UX: sessions sidebar (workspace-grouped, token/cost badges, filter/sort popover) + agent conversation (model selector, tool cards, queue controls) + customizations panel (modal with AI wizard, Extensions/Skills/Prompts/Themes/Packages) + persistent Git source control panel (Changes/Files tabs, commit workflow) + split-pane diff viewer + bottom terminal panel (Output tab + Terminal tab) + OpenCode-style command palette for commands, files, and sessions.
+**For agents implementing features:** Pi is intentionally **minimal** (small prompt, four core tools, **YOLO by default**). Pi ships **without** built-in plan mode, todos, MCP, permission gates, or sub-agents — those belong in **user extensions** or documented Pi [examples](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions). OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate** — prefer review surfaces and Phase 7 P0 work (diff review before apply, test evidence) over velocity features (auto-commit stacks, agent armies, new builtins). **Do not** propose Kun runtimes, SDD wizards, senpi-style permission/todo forks in main, or influencer “extension stack” installers unless the user explicitly asks.
+
+**OpenPi-specific layer (already shipped — extend carefully):** sidecar `customTools` subagents (`Agent`, `get_subagent_result`, `steer_subagent`), goal/harness UI, main-process policy. New agent semantics should default to **Pi extensions**, not more host builtins.
+
+Target UX: sessions sidebar (workspace-grouped, token/cost) + conversation (steer/follow-up/abort, tool cards) + customizations modal + Git panel + split diff + terminal + command palette (`⇧⌘P`). Details: `ROADMAP.md` north star.
 
 ---
 
@@ -214,7 +219,9 @@ Core events to drive the UI:
 
 ### What Pi does NOT have built-in
 
-Pi intentionally ships without: MCP, permission gates, plan mode, background bash. OpenPi provides built-in subagents (see § OpenPi Subagent System) — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
+Pi intentionally ships without: MCP, permission gates, plan mode, background bash, **built-in sub-agents**. Do not assume these exist in the SDK or inject fake equivalents into Pi’s agent loop. Optional **desktop** policy (protected paths, high-risk shell/Git confirms) lives in **Electron main IPC** — not as Pi `registerTool` shims unless the user installs a Pi extension.
+
+**OpenPi exception:** built-in subagent `customTools` on the sidecar (see § OpenPi Subagent System) — a deliberate product layer; do not grow it into a senpi-style builtin catalog.
 
 ### Extensions
 
@@ -265,7 +272,7 @@ Mandatory defaults — not optional:
 
 ## OpenPi Subagent System
 
-Pi intentionally ships without: MCP, permission gates, plan mode, background bash. **OpenPi provides built-in subagents** — registered as `customTools` on the sidecar session, not as Pi extensions. All are buildable via extensions. OpenPi must not assume these exist or fake them at the Pi layer. If OpenPi needs permission gates, it implements them at the Electron main boundary — not by pretending Pi has them.
+Built-in subagents are **`customTools` on the sidecar** (not Pi core). Prefer **extensions** for new delegated workflows unless the user wants first-class OpenPi UI for a fixed tool shape.
 
 ### Architecture
 
@@ -289,7 +296,7 @@ Pi intentionally ships without: MCP, permission gates, plan mode, background bas
 
 ### Custom agents
 
-Subagents can be added under `~/.pi/agent/agents/<name>/` with an `AGENTS.md` frontmatter block:
+Discovery: `.pi/agents/*.md` (project) and `~/.pi/agent/agents/*.md` (global), with YAML frontmatter (`name`, `tools`, `model`, etc.). Example layout under `~/.pi/agent/agents/<name>/` may also use an `AGENTS.md` body:
 
 ```yaml
 ---
@@ -365,10 +372,11 @@ Never reimplement session tree, compaction, message queuing, or tool execution i
 2. **Small verified slices.** Build one vertical slice (renderer → IPC → main → Pi SDK) at a time. Verify before expanding.
 3. **Boundary-first type safety.** Zod at every IPC payload. TypeScript at every contract.
 4. **Preserve session tree semantics.** Never flatten JSONL trees into plain message arrays for persistence.
-5. **Permission before mutation.** Any action that writes files, applies patches, mutates Git state, executes shell commands, or runs extensions needs explicit policy in Electron main before execution.
-6. **No speculative work.** Build macOS first. Add platforms after core stability. No cloud, marketplace, or collaboration until local workflows are excellent.
-7. **File size limit — max 300 LOC per file.** Files over 300 lines must be refactored into smaller modules with clear single responsibilities. Extract helpers, constants, types, and subcomponents into separate files. Every file should have one obvious purpose. Exception: generated files, CSS, auto-detected/auto-configured files, and the project rule surface (`AGENTS.md`, `STATUS.md`) are exempt.
-8. **File naming — 1 word preferred, PascalCase for components, camelCase for modules.**
+5. **Permission before mutation.** OpenPi-owned writes (file IPC, Git stage/commit, high-risk shell forward) go through main-process policy. Pi tool execution remains **YOLO by default** in the SDK; do not reimplement senpi-style permission-system inside Pi unless via user extensions.
+6. **Human bottleneck over feature parity.** Ship inspect/review/test evidence (Phase 7 P0) before Codex/Kun/DODO parity features. One vertical slice per PR; user reviews agent output.
+7. **No speculative work.** macOS first. No cloud, curated marketplace, or collaboration until local workbench is excellent.
+8. **File size limit — max 300 LOC per file.** Files over 300 lines must be refactored into smaller modules with clear single responsibilities. Extract helpers, constants, types, and subcomponents into separate files. Every file should have one obvious purpose. Exception: generated files, CSS, auto-detected/auto-configured files, and the project rule surface (`AGENTS.md`, `STATUS.md`) are exempt.
+9. **File naming — 1 word preferred, PascalCase for components, camelCase for modules.**
    - **Components (.tsx)**: PascalCase, 1 word — `Sidebar.tsx`, `Composer.tsx`, `FileTree.tsx`. Not `sidebarPanel.tsx` or `FilePreviewPanel.tsx`.
    - **Hooks**: camelCase with `use` prefix — `useSession.ts`, `useFileTree.ts`.
    - **Utilities/helpers**: camelCase — `formatDate.ts`, `sessionEvents.ts`.
@@ -376,7 +384,7 @@ Never reimplement session tree, compaction, message queuing, or tool execution i
    - **Constants/config**: camelCase — `keybindings.ts`, `notificationPreferences.ts`.
    - **Test files**: match source file name + `.test.ts` — `Composer.test.tsx`.
    - **Exception**: files extending a framework contract keep the expected name (`vite.config.ts`, `electron-builder.json`).
-9. **TypeScript quality.**
+10. **TypeScript quality.**
    - **No `any`** — use `unknown` and narrow with type predicates or schema validation (Zod).
    - **Prefer `interface` over `type`** for object shapes (extends semantics, merged declarations, better error messages). Use `type` for unions, intersections, and aliases only.
    - **Exhaustive switches** — always include a `never` default to catch unhandled variants at compile time:
@@ -433,12 +441,15 @@ Before tagging, pushing, or claiming any version release:
 - Do not flatten Pi session trees into plain chat history.
 - Do not let renderer code be the patch, secret, or Git authority.
 - Do not import `@earendil-works/pi-coding-agent` in the renderer.
-- Do not implement permission gates at the Pi SDK layer — do it at the Electron main IPC boundary.
+- Do not implement Pi-core features (plan mode, todos, MCP, permission gates, sub-agents) **inside the SDK path** — use extensions or OpenPi’s documented exceptions (main policy, sidecar subagents).
+- Do not add a **second agent runtime** (Kun-style HTTP server) or fork `pi-coding-agent` like senpi.
+- Do not build **Codex/Kun/DODO “extension stack”** wizards, SDD/requirement-first wizards, Write mode, or phone/IM agents unless explicitly requested.
 - Do not silently install or enable third-party Pi packages.
 - Do not build a subprocess RPC client before proving SDK in main is insufficient.
 - Do not rewrite Pi's agent runtime, session manager, or tool execution.
 - Do not fork Warp or OpenWarp as the app base.
 - Do not ship `nodeIntegration: true` or disable `contextIsolation` as a convenience shortcut.
 - Do not use OpenCode/Copilot terminology for Pi's resources (Instructions → Prompts, Agents → Extensions, Hooks → Extension events, Plugins → Packages).
+- Do not add features justified only by competitor parity; check `ROADMAP.md` non-goals first.
 
 

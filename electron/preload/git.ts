@@ -1,5 +1,6 @@
 import { ipcRenderer } from 'electron'
 import type {
+  AgentReviewSummary,
   FffFileResult,
   FffGrepMatch,
   FileContent,
@@ -78,6 +79,22 @@ export const gitApi = {
       ) => cb(payload)
       ipcRenderer.on(IPC.AGENT_CHANGED_FILES, handler)
       return () => ipcRenderer.removeListener(IPC.AGENT_CHANGED_FILES, handler)
+    },
+  },
+
+  agentReview: {
+    list: (): Promise<AgentReviewSummary> => ipcRenderer.invoke(IPC.AGENT_REVIEW_LIST),
+    keep: (id: string): Promise<AgentReviewSummary> =>
+      ipcRenderer.invoke(IPC.AGENT_REVIEW_KEEP, { id }),
+    revert: (id: string): Promise<AgentReviewSummary> =>
+      ipcRenderer.invoke(IPC.AGENT_REVIEW_REVERT, { id }),
+    revertAll: (): Promise<AgentReviewSummary> => ipcRenderer.invoke(IPC.AGENT_REVIEW_REVERT_ALL),
+    clear: (): Promise<AgentReviewSummary> => ipcRenderer.invoke(IPC.AGENT_REVIEW_CLEAR),
+
+    onChanged: (cb: (payload: AgentReviewSummary) => void) => {
+      const handler = (_: Electron.IpcRendererEvent, payload: AgentReviewSummary) => cb(payload)
+      ipcRenderer.on(IPC.AGENT_REVIEW_CHANGED, handler)
+      return () => ipcRenderer.removeListener(IPC.AGENT_REVIEW_CHANGED, handler)
     },
   },
 

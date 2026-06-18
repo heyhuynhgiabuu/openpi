@@ -4050,10 +4050,9 @@ body.panel-dragging {
   align-items: center;
   height: 24px;
   padding: 0 6px;
-  border-radius: var(--r-sm);
-  color: var(--mute);
+  color: var(--ash);
   font-size: 11px;
-  font-weight: 560;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
@@ -4579,11 +4578,8 @@ body.panel-dragging {
 .remote-session-bar {
   box-sizing: border-box;
   width: min(860px, calc(100% - 36px));
-  margin: 0 auto 10px;
-  padding: 8px 13px;
-  border-radius: var(--r-lg);
-  background: var(--info-soft, rgba(59, 130, 246, 0.08));
-  border: 1px solid var(--info-line, rgba(59, 130, 246, 0.2));
+  padding-left: clamp(18px, 3vw, 42px);
+  padding-right: clamp(18px, 3vw, 42px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -14603,6 +14599,80 @@ body.panel-dragging {
   font-size: 11px;
 }
 
+/* ── Pi extension ctx.ui (confirm / select) — full-window, above workbench ── */
+.extension-ui-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 100000 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  pointer-events: all !important;
+}
+.extension-ui-overlay .ask-modal {
+  max-width: 480px;
+}
+.extension-ui-overlay .ask-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+}
+.extension-ui-overlay .ask-modal-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 16px 16px;
+}
+.extension-ui-overlay .ask-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2, #252525);
+  color: var(--ink);
+}
+.extension-ui-overlay .ask-btn-primary {
+  background: var(--accent, #3b82f6);
+  border-color: transparent;
+  color: #fff;
+}
+.extension-ui-overlay .ask-btn-ghost:hover,
+.extension-ui-overlay .ask-btn-primary:hover {
+  filter: brightness(1.08);
+}
+.extension-ui-overlay .ask-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.extension-ui-overlay .ask-option:hover {
+  background: var(--surface-2, #252525);
+}
+.extension-ui-overlay .ask-input {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-0, #111);
+  color: var(--ink);
+}
+.extension-ui-overlay .ask-textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: inherit;
+}
+
 /* ── Ask User Question Modal ─────────────────────────────────────────────── */
 .ask-overlay {
   position: absolute;
@@ -14921,4 +14991,266 @@ body.panel-dragging {
 .ftree-more-btn:hover {
   background: var(--ink-2, #1a1a1a);
   color: var(--text, #f0f0f0);
+}
+
+/* Unified Review pane */
+.review-pane {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.review-pane-toolbar {
+  min-height: 42px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  overflow: visible;
+}
+
+.review-source-select-wrap {
+  position: relative;
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 360px;
+  height: 28px;
+}
+
+.review-source-select {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--hairline) 80%, transparent);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.review-toolbar-spacer {
+  flex: 1 1 8px;
+  min-width: 0;
+}
+
+.review-toggle-group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--hairline) 76%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+}
+
+.review-toggle-btn,
+.review-toolbar-btn {
+  flex: 0 0 auto;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--mute);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.review-toggle-btn.is-active,
+.review-toolbar-btn:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.review-toolbar-btn.is-danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--hairline));
+}
+
+.review-toolbar-btn.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.review-error {
+  margin: 8px 10px 0;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 9px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  font-size: 11px;
+}
+
+.review-file-list {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  margin: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--hairline-strong) 72%, transparent);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface-card) 58%, transparent);
+}
+
+.review-file-list,
+.review-file-expanded,
+.review-diff-renderer {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.review-file-list:hover,
+.review-file-list:focus-within,
+.review-file-list:active,
+.review-file-expanded:hover,
+.review-file-expanded:focus-within,
+.review-file-expanded:active,
+.review-diff-renderer:hover,
+.review-diff-renderer:focus-within,
+.review-diff-renderer:active {
+  scrollbar-color: color-mix(in srgb, var(--hairline-strong) 64%, transparent) transparent;
+}
+
+.review-file-list::-webkit-scrollbar,
+.review-file-expanded::-webkit-scrollbar,
+.review-diff-renderer::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.review-file-list::-webkit-scrollbar-track,
+.review-file-expanded::-webkit-scrollbar-track,
+.review-diff-renderer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.review-file-list::-webkit-scrollbar-thumb,
+.review-file-expanded::-webkit-scrollbar-thumb,
+.review-diff-renderer::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.review-file-list:hover::-webkit-scrollbar-thumb,
+.review-file-list:focus-within::-webkit-scrollbar-thumb,
+.review-file-list:active::-webkit-scrollbar-thumb,
+.review-file-expanded:hover::-webkit-scrollbar-thumb,
+.review-file-expanded:focus-within::-webkit-scrollbar-thumb,
+.review-file-expanded:active::-webkit-scrollbar-thumb,
+.review-diff-renderer:hover::-webkit-scrollbar-thumb,
+.review-diff-renderer:focus-within::-webkit-scrollbar-thumb,
+.review-diff-renderer:active::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--hairline-strong) 64%, transparent);
+}
+
+.review-empty {
+  padding: 28px 12px;
+  color: var(--mute);
+  text-align: center;
+  font-size: 12px;
+}
+
+.review-file-card {
+  overflow: hidden;
+}
+
+.review-file-card.is-expanded {
+  border-color: var(--hairline);
+}
+
+.review-file-row {
+  padding: 0 9px;
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.review-file-row:hover {
+  background: var(--surface-card);
+}
+
+.review-file-chevron {
+  display: inline-flex;
+  color: var(--mute);
+}
+
+.review-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.review-file-status {
+  padding: 2px 6px;
+  color: var(--mute);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.review-file-status.is-added {
+  color: var(--success);
+}
+
+.review-file-status.is-deleted,
+.review-file-status.is-conflict {
+  color: var(--danger);
+}
+
+.review-file-delta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.review-file-expanded {
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 72%, transparent);
+}
+
+.review-file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 7px 0;
+}
+
+.review-diff-renderer {
+  min-height: 160px;
+  max-height: min(620px, 62vh);
+  overflow: auto;
+  background: var(--surface-card);
+
+  /* @pierre/diffs renders pre/code inside Shadow DOM. These theme variables
+     inherit into the diffs-container host and replace the default black bg. */
+  --diffs-light-bg: var(--surface-card);
+  --diffs-dark-bg: var(--surface-card);
+  --diffs-bg-buffer-override: color-mix(in srgb, var(--surface-card) 90%, var(--ink) 10%);
+  --diffs-bg-context-override: color-mix(in srgb, var(--surface-card) 96%, var(--ink) 4%);
+  --diffs-bg-context-gutter-override: color-mix(
+    in srgb,
+    var(--surface-card) 92%,
+    var(--ink) 8%
+  );
+  --diffs-bg-separator-override: color-mix(in srgb, var(--surface-card) 88%, var(--ink) 12%);
+  --diffs-bg-hover-override: var(--ink);
+}
+
+.review-diff-renderer .diffs-container,
+.review-diff-renderer diffs-container {
+  min-height: 160px;
+  background: var(--surface-card);
 }

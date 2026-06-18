@@ -739,6 +739,41 @@ export const gitSyncResultSchema = z.object({
 })
 export type GitSyncResult = z.infer<typeof gitSyncResultSchema>
 
+// ─── Agent post-tool review schemas ─────────────────────────────────────────
+
+export const agentReviewChangeStatusSchema = z.enum(['created', 'modified', 'deleted'])
+export type AgentReviewChangeStatus = z.infer<typeof agentReviewChangeStatusSchema>
+
+export const agentReviewChangeSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  status: agentReviewChangeStatusSchema,
+  createdAt: z.number(),
+  diff: z.string(),
+  beforeContent: z.string().nullable(),
+  afterContent: z.string().nullable(),
+  totalAdded: z.number(),
+  totalRemoved: z.number(),
+  truncated: z.boolean(),
+})
+export type AgentReviewChange = z.infer<typeof agentReviewChangeSchema>
+
+export const agentReviewSummarySchema = z.object({
+  changes: z.array(agentReviewChangeSchema),
+})
+export type AgentReviewSummary = z.infer<typeof agentReviewSummarySchema>
+
+export const agentReviewChangeRequestSchema = z.object({ id: z.string().min(1) })
+export type AgentReviewChangeRequest = z.infer<typeof agentReviewChangeRequestSchema>
+
+export const agentReviewClearRequestSchema = z
+  .object({ cwd: z.string().min(1).optional() })
+  .optional()
+  .default({})
+export type AgentReviewClearRequest = z.infer<typeof agentReviewClearRequestSchema>
+
 export const gitBranchRefSchema = z.object({
   name: z.string(),
   label: z.string(),

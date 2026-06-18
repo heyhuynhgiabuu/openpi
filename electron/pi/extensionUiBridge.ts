@@ -1,7 +1,10 @@
 export type ExtensionNotifyLevel = 'info' | 'warn' | 'error'
 
+import type { ExtensionUiRequest } from '../../src/lib/extensionUiTypes'
+
 export type ExtensionUiBridgeSinks = {
   sessionEvent: (event: Record<string, unknown>) => void
+  postExtensionUiRequest: (request: ExtensionUiRequest) => void
 }
 
 /** Mirror Pi TUI notify in the conversation stream. */

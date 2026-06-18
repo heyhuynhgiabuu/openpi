@@ -4,7 +4,11 @@ import { emitExtensionNotify } from '../electron/pi/extensionUiBridge'
 describe('extensionUiBridge', () => {
   it('emits custom message_start/end for conversation pane', () => {
     const sessionEvent = vi.fn()
-    emitExtensionNotify({ sessionEvent }, 'info', 'FFF v0.9.4\nGit: yes')
+    emitExtensionNotify(
+      { sessionEvent, postExtensionUiRequest: () => {} },
+      'info',
+      'FFF v0.9.4\nGit: yes'
+    )
 
     expect(sessionEvent).toHaveBeenCalledTimes(2)
     const start = sessionEvent.mock.calls[0]?.[0] as {
@@ -18,7 +22,7 @@ describe('extensionUiBridge', () => {
 
   it('skips empty notify text', () => {
     const sessionEvent = vi.fn()
-    emitExtensionNotify({ sessionEvent }, 'info', '   ')
+    emitExtensionNotify({ sessionEvent, postExtensionUiRequest: () => {} }, 'info', '   ')
     expect(sessionEvent).not.toHaveBeenCalled()
   })
 })
