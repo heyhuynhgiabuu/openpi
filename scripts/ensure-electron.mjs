@@ -85,49 +85,97 @@ async function main() {
   const cacheDir = path.join(cacheRoot, createHash('sha256').update(sha).digest('hex'))
   let zipPath = path.join(cacheDir, artifact)
 
+  // First attempt: use the existing cache or download fresh.
+  // If validation later fails, we wipe the cache dir and retry once.
   if (!fs.existsSync(zipPath)) {
-    const { downloadArtifact } = await import('@electron/get')
+    zipPath = await downloadFresh({
+      version,
+      artifactName: 'electron',
+      cacheRoot,
+      checksums,
+      platform,
+      arch,
+    })
+  }
+
+  // Run install + validate in a loop with at most one retry, so a corrupt
+  // cached zip from a previous failed run does not brick the whole pipeline.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    fs.rmSync(path.join(electronDir, 'dist'), { recursive: true, force: true })
     try {
-      zipPath = await downloadArtifact({
+      fs.unlinkSync(pathTxt)
+    } catch {
+      /* ok */
+    }
+    fs.mkdirSync(path.join(electronDir, 'dist'), { recursive: true })
+
+    const distDir = path.join(electronDir, 'dist')
+    const unzip = spawnSync('unzip', ['-q', zipPath, '-d', distDir], { stdio: 'inherit' })
+    if (unzip.status !== 0) {
+      const extractZip = (await import('extract-zip')).default
+      try {
+        await extractZip(zipPath, { dir: distDir })
+      } catch (err) {
+        console.error('[ensure-electron] extract failed (unzip + extract-zip):', err)
+        if (attempt === 1) {
+          console.warn('[ensure-electron] retrying with a fresh download')
+          fs.rmSync(cacheDir, { recursive: true, force: true })
+          zipPath = await downloadFresh({
+            version,
+            artifactName: 'electron',
+            cacheRoot,
+            checksums,
+            platform,
+            arch,
+          })
+          continue
+        }
+        process.exit(1)
+      }
+    }
+
+    fs.writeFileSync(pathTxt, platformPath)
+
+    if (looksInstalled()) {
+      const ver = spawnSync(executable, ['--version'], { encoding: 'utf8' })
+      console.log('[ensure-electron] OK', ver.stdout?.trim())
+      return
+    }
+
+    // Cached zip produced a binary that does not pass --version. Treat the
+    // cache as corrupt and retry with a fresh download.
+    if (attempt === 1) {
+      console.warn('[ensure-electron] validation failed; retrying with a fresh download')
+      fs.rmSync(cacheDir, { recursive: true, force: true })
+      zipPath = await downloadFresh({
         version,
         artifactName: 'electron',
-        force: true,
         cacheRoot,
         checksums,
         platform,
         arch,
       })
-    } catch (err) {
-      console.error('[ensure-electron] download failed:', err)
-      process.exit(1)
+      continue
     }
+    break
   }
 
-  const distDir = path.join(electronDir, 'dist')
-  const unzip = spawnSync('unzip', ['-q', zipPath, '-d', distDir], { stdio: 'inherit' })
-  if (unzip.status !== 0) {
-    const extractZip = (await import('extract-zip')).default
-    try {
-      await extractZip(zipPath, { dir: distDir })
-    } catch (err) {
-      console.error('[ensure-electron] extract failed (unzip + extract-zip):', err)
-      process.exit(1)
-    }
-  }
+  console.error(
+    '[ensure-electron] Still broken after extract. Delete',
+    cacheDir,
+    'and re-run npm install'
+  )
+  process.exit(1)
+}
 
-  fs.writeFileSync(pathTxt, platformPath)
-
-  if (!looksInstalled()) {
-    console.error(
-      '[ensure-electron] Still broken after extract. Delete',
-      cacheDir,
-      'and re-run npm install'
-    )
+async function downloadFresh(opts) {
+  const { downloadArtifact } = await import('@electron/get')
+  try {
+    return await downloadArtifact(opts)
+  } catch (err) {
+    console.error('[ensure-electron] download failed:', err)
     process.exit(1)
   }
-
-  const ver = spawnSync(executable, ['--version'], { encoding: 'utf8' })
-  console.log('[ensure-electron] OK', ver.stdout?.trim())
 }
 
 main().catch((err) => {
