@@ -62,9 +62,6 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
   const [checkingUpdates, setCheckingUpdates] = createSignal(false)
   const [installingUpdate, setInstallingUpdate] = createSignal(false)
   const [installOutput, setInstallOutput] = createSignal<string | null>(null)
-  const [defaultProjectTrust, setDefaultProjectTrust] = createSignal<'ask' | 'always' | 'never'>(
-    'ask'
-  )
   const [diagnosticsOutput, setDiagnosticsOutput] = createSignal<string | null>(null)
   const [copyingDiagnostics, setCopyingDiagnostics] = createSignal(false)
   const [openSoundMenu, setOpenSoundMenu] = createSignal<SoundPreferenceKey | null>(null)
@@ -78,10 +75,6 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
       loadNotificationPreferences(),
       loadSoundPreferences(),
       loadUpdatePreferences(),
-      window.openpi
-        .getDefaultProjectTrust()
-        .then(setDefaultProjectTrust)
-        .catch(() => undefined),
     ])
       .then(([displayPrefs, notificationPreferences, soundPreferences, updatePreferences]) => {
         setPrefs(displayPrefs)
@@ -223,13 +216,6 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
       .finally(() => setCheckingUpdates(false))
   }
 
-  const changeDefaultProjectTrust = (value: 'ask' | 'always' | 'never') => {
-    setDefaultProjectTrust(value)
-    void window.openpi.setDefaultProjectTrust(value).catch((err) => {
-      props.onError(err instanceof Error ? err.message : String(err))
-    })
-  }
-
   const installUpdate = () => {
     setInstallingUpdate(true)
     setInstallOutput(null)
@@ -300,8 +286,6 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
     checkingUpdates,
     installingUpdate,
     installOutput,
-    defaultProjectTrust,
-    changeDefaultProjectTrust,
     diagnosticsOutput,
     copyingDiagnostics,
     openSoundMenu,

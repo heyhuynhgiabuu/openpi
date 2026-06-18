@@ -156,6 +156,21 @@ export const SECTIONS: SettingSection[] = [
     ],
   },
   {
+    id: 'projectTrust',
+    label: 'Project Trust',
+    fields: [
+      {
+        key: 'defaultProjectTrust',
+        type: 'select',
+        label: 'Default Trust Policy',
+        description:
+          'How to handle project-local resources when there is no saved trust decision for the current workspace.',
+        options: ['ask', 'always', 'never'],
+        default: 'ask',
+      },
+    ],
+  },
+  {
     id: 'ui',
     label: 'UI & Display',
     fields: [
@@ -186,14 +201,6 @@ export const SECTIONS: SettingSection[] = [
         type: 'boolean',
         label: 'Collapse Changelog',
         description: 'Show condensed changelog after Pi updates',
-        default: false,
-      },
-      {
-        key: 'hideCustomizationsPanel',
-        type: 'boolean',
-        label: 'Hide Customizations Panel',
-        description:
-          'Disable the OpenPi Customizations modal entirely. Use this if you want OpenPi to be a UI for Pi without overriding Pi\u2019s own configuration.',
         default: false,
       },
       {
