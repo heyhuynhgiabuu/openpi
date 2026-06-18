@@ -205,19 +205,6 @@ export function CustomizationsModal(props: CustomizationsModalProps) {
             </Dialog.Description>
 
             <aside class="customizations-rail">
-              <div class="customizations-rail-head">
-                <div class="customizations-rail-head-top">
-                  <div class="eyebrow">Customize</div>
-                  <Dialog.CloseButton
-                    class="icon-button customizations-rail-close"
-                    aria-label="Close customizations"
-                    title="Close"
-                  >
-                    <X size={16} />
-                  </Dialog.CloseButton>
-                </div>
-              </div>
-
               <nav class="customizations-nav" aria-label="Customization sections">
                 <For each={NAV_GROUPS}>
                   {(group) => (
