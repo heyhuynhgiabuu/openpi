@@ -35,7 +35,7 @@ export function mergeSlashCommandsForPicker(dtos: SlashCommandDto[]): SlashComma
   const byName = new Map<string, { dto: SlashCommandDto; rank: number }>()
 
   for (const dto of dtos) {
-    if (isSkillSlashEntry(dto.name)) continue
+    if (dto.source === 'builtin' || isSkillSlashEntry(dto.name)) continue
     const item = slashCommandDtoToPickerItem(dto)
     const key = item.name.toLowerCase()
     const rank = SOURCE_RANK[dto.source] ?? 99

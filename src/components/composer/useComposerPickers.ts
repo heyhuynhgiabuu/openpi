@@ -75,7 +75,7 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
     onCleanup(unsub)
   })
 
-  // Pi session commands: builtins, extension registerCommand, and prompt templates (not skills).
+  // Pi session commands: extension registerCommand and prompt templates (not TUI-only builtins or skills).
   createEffect(() => {
     void config.cwd
     void slashCommandsReloadNonce()

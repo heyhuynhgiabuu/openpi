@@ -22,7 +22,6 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiSubagentTools } from '../subagent/manager'
-import { BUILTIN_SLASH_COMMANDS } from './builtinSlashCommands'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
 
@@ -138,6 +137,44 @@ function expandSkillCommandForContext(
   const body = stripFrontmatter(fs.readFileSync(skill.filePath, 'utf-8')).trim()
   const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`
   return { text: args ? `${skillBlock}\n\n${args}` : skillBlock, expanded: true }
+}
+
+function slashInvocationName(text: string): string | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('/')) return null
+  const name = trimmed.slice(1).split(/\s+/, 1)[0]?.trim()
+  return name || null
+}
+
+function isKnownSessionSlashCommand(
+  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
+  invocationName: string
+): boolean {
+  if (invocationName.startsWith('skill:')) {
+    const skillName = invocationName.slice('skill:'.length)
+    return session.resourceLoader.getSkills().skills.some((skill) => skill.name === skillName)
+  }
+  return (
+    session.extensionRunner
+      .getRegisteredCommands()
+      .some((command) => command.invocationName === invocationName) ||
+    session.promptTemplates.some((template) => template.name === invocationName)
+  )
+}
+
+function sendUnsupportedSlashCommand(invocationName: string): void {
+  send({
+    type: 'session_event',
+    event: {
+      type: 'message_start',
+      message: {
+        role: 'custom',
+        content: `/${invocationName} is not available in OpenPi. Extension commands and prompt templates are supported; TUI-only commands are hidden from the picker until they have desktop handlers.`,
+        details: { level: 'warn' },
+        timestamp: Date.now(),
+      },
+    },
+  })
 }
 
 /**
@@ -429,10 +466,12 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     case 'prompt': {
       if (!state) return
       const trimmed = cmd.text.trim()
-      // Extension/builtin slash commands must go through prompt(), not
-      // sendUserMessage(). sendUserMessage() intentionally disables
-      // slash command handling for extension-injected messages.
-      if (trimmed.startsWith('/')) {
+      const invocationName = slashInvocationName(trimmed)
+      if (invocationName) {
+        if (!isKnownSessionSlashCommand(state.session, invocationName)) {
+          sendUnsupportedSlashCommand(invocationName)
+          break
+        }
         await state.session.prompt(trimmed)
       } else {
         const promptText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
@@ -481,13 +520,6 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         source: 'builtin' | 'extension' | 'prompt' | 'skill'
       }> = []
 
-      for (const builtin of BUILTIN_SLASH_COMMANDS) {
-        commands.push({
-          name: builtin.name,
-          description: builtin.description,
-          source: 'builtin',
-        })
-      }
       for (const command of session.extensionRunner.getRegisteredCommands()) {
         commands.push({
           name: command.invocationName,
