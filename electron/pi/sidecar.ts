@@ -24,6 +24,7 @@ import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiSubagentTools } from '../subagent/manager'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
+import { enforceIgnoreScriptsEnv } from './safePackageManager'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,10 @@ let _cachedResourceLoader: {
 const _pendingOAuthPrompts = new Map<string, (v: string) => void>()
 
 // ─── Port ─────────────────────────────────────────────────────────────────────
+
+// Align with Pi 0.75.4 supply-chain hardening: skip lifecycle scripts on every
+// npm/pnpm/yarn invocation the SDK performs. Safe to call at module load.
+enforceIgnoreScriptsEnv()
 
 type ParentPort = {
   postMessage(msg: unknown): void
