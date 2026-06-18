@@ -219,18 +219,29 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
   const installUpdate = () => {
     setInstallingUpdate(true)
     setInstallOutput(null)
+    const status = updateStatus()
+    const target = status?.latestVersion
+    if (!target) {
+      setInstallOutput('No update available. Click "Check for updates" first.')
+      setInstallingUpdate(false)
+      return
+    }
     void window.openpi
-      .installPiUpdate()
+      .installPiUpdate(target)
       .then((result) => {
         setInstallOutput(
-          result.output || (result.ok ? 'Update command completed.' : 'Update command failed.')
+          result.message ??
+            result.output ??
+            (result.ok ? 'Update command completed.' : 'Update command failed.')
         )
         markSaved('installPiUpdate')
-        if (result.ok && updatePrefs().showReleaseNotesAfterUpdate) openLatestReleaseNotes()
-        void window.openpi
-          .checkPiUpdate()
-          .then(setUpdateStatus)
-          .catch(() => undefined)
+        if (result.ok) {
+          if (updatePrefs().showReleaseNotesAfterUpdate) openLatestReleaseNotes()
+          void window.openpi
+            .checkPiUpdate()
+            .then(setUpdateStatus)
+            .catch(() => undefined)
+        }
       })
       .catch((err) => props.onError(err instanceof Error ? err.message : String(err)))
       .finally(() => setInstallingUpdate(false))

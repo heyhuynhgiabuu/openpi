@@ -87,26 +87,97 @@ export async function checkPiUpdate(): Promise<PiUpdateCheckResult> {
 }
 
 /**
- * Run `pi update --self` to update the bundled Pi CLI.
+ * Update the bundled Pi SDK by reinstalling `@earendil-works/pi-coding-agent@<latest>`
+ * in OpenPi's own `node_modules/`. A full app restart is required to pick
+ * up the new SDK code.
+ *
+ * OpenPi does not depend on a global `pi` CLI (it imports the SDK directly),
+ * so `pi update --self` does not apply to the bundled install — running it
+ * for a user without a separately-installed `pi` CLI surfaces
+ * 'This installation is not managed by a global npm install' and
+ * nothing changes on disk. We instead drive the package manager
+ * OpenPi itself was installed with.
  */
-export async function installPiUpdate(): Promise<PiUpdateInstallResult> {
-  const command = process.platform === 'win32' ? 'pi.cmd' : 'pi'
-  try {
-    const { stdout, stderr } = await execFileAsync(command, ['update', '--self'], {
-      timeout: 5 * 60 * 1000,
-      maxBuffer: 1024 * 1024,
+export async function installPiUpdate(latestVersion: string): Promise<PiUpdateInstallResult> {
+  const appPath = app.getAppPath()
+  const pkgManager = detectPackageManager(appPath)
+  if (!pkgManager) {
+    return piUpdateInstallResultSchema.parse({
+      ok: false,
+      requiresRestart: false,
+      output: '',
+      message:
+        'Could not detect a package manager (npm/pnpm/yarn/bun) for this OpenPi install. Update OpenPi itself to get a newer Pi.',
     })
-    return piUpdateInstallResultSchema.parse({ ok: true, output: `${stdout}${stderr}`.trim() })
+  }
+  return installBundledPi(pkgManager, latestVersion, appPath)
+}
+
+function detectPackageManager(
+  appPath: string,
+  hasOnPathFn: (bin: string) => boolean = hasOnPath
+): 'npm' | 'pnpm' | 'yarn' | 'bun' | null {
+  if (fs.existsSync(path.join(appPath, 'pnpm-lock.yaml'))) return 'pnpm'
+  if (fs.existsSync(path.join(appPath, 'yarn.lock'))) return 'yarn'
+  if (fs.existsSync(path.join(appPath, 'bun.lockb'))) return 'bun'
+  if (fs.existsSync(path.join(appPath, 'package-lock.json'))) return 'npm'
+  // No lockfile — fall back to the first package manager on PATH.
+  for (const candidate of ['npm', 'pnpm', 'yarn', 'bun'] as const) {
+    if (hasOnPathFn(candidate)) return candidate
+  }
+  return null
+}
+
+function hasOnPath(bin: string): boolean {
+  try {
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
+    execFileSync('which', [bin], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const __test = { detectPackageManager, hasOnPath }
+
+async function installBundledPi(
+  pkgManager: 'npm' | 'pnpm' | 'yarn' | 'bun',
+  latestVersion: string,
+  appPath: string
+): Promise<PiUpdateInstallResult> {
+  const spec = `@earendil-works/pi-coding-agent@${latestVersion}`
+  const args =
+    pkgManager === 'npm'
+      ? ['install', '--ignore-scripts', '--no-audit', '--no-fund', spec]
+      : pkgManager === 'pnpm'
+        ? ['add', '--ignore-scripts', spec]
+        : pkgManager === 'yarn'
+          ? ['add', '--ignore-scripts', spec]
+          : ['add', spec] // bun add does not support --ignore-scripts; bun install runs scripts off by default
+  try {
+    const { stdout, stderr } = await execFileAsync(pkgManager, args, {
+      cwd: appPath,
+      timeout: 5 * 60 * 1000,
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, NPM_CONFIG_FUND: 'false' },
+    })
+    const output = `${stdout}${stderr}`.trim()
+    return piUpdateInstallResultSchema.parse({
+      ok: true,
+      requiresRestart: true,
+      output,
+      message: `Pi ${latestVersion} installed. Restart OpenPi to use it.`,
+    })
   } catch (err) {
-    const error = err as { code?: unknown; stdout?: unknown; stderr?: unknown; message?: unknown }
+    const error = err as { stdout?: unknown; stderr?: unknown; message?: unknown }
     const output = [error.stdout, error.stderr, error.message]
       .filter((part): part is string => typeof part === 'string' && part.length > 0)
       .join('\n')
-    const missingCliMessage =
-      'Pi CLI executable was not found on PATH. OpenPi package install/remove uses the bundled Pi SDK, but self-update requires the standalone `pi` CLI. Install it or expose it on PATH, then run `pi update --self`.'
     return piUpdateInstallResultSchema.parse({
       ok: false,
-      output: error.code === 'ENOENT' ? missingCliMessage : output || 'pi update --self failed.',
+      requiresRestart: false,
+      output,
+      message: `Failed to install Pi ${latestVersion}: ${(error.message as string | undefined) ?? output.split('\n').pop() ?? 'unknown error'}`,
     })
   }
 }

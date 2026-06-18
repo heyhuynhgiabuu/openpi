@@ -686,6 +686,13 @@ export type PiUpdateCheckResult = z.infer<typeof piUpdateCheckResultSchema>
 export const piUpdateInstallResultSchema = z.object({
   ok: z.boolean(),
   output: z.string(),
+  /**
+   * True when the install updated a file under node_modules and a full app
+   * restart is required for the new Pi version to take effect.
+   */
+  requiresRestart: z.boolean().default(false),
+  /** Translated, user-facing message — useful when `ok: false`. */
+  message: z.string().optional(),
 })
 export type PiUpdateInstallResult = z.infer<typeof piUpdateInstallResultSchema>
 

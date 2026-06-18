@@ -43,7 +43,8 @@ export const terminalApi = {
   playSoundEffect: (sound: string): Promise<void> =>
     ipcRenderer.invoke(IPC.PLAY_SOUND_EFFECT, { sound }),
   checkPiUpdate: (): Promise<PiUpdateCheckResult> => ipcRenderer.invoke(IPC.CHECK_PI_UPDATE),
-  installPiUpdate: (): Promise<PiUpdateInstallResult> => ipcRenderer.invoke(IPC.INSTALL_PI_UPDATE),
+  installPiUpdate: (latestVersion: string): Promise<PiUpdateInstallResult> =>
+    ipcRenderer.invoke(IPC.INSTALL_PI_UPDATE, { latestVersion }),
 
   appUpdate: {
     check: (): Promise<AppUpdateStatus> => ipcRenderer.invoke(IPC.APP_UPDATE_CHECK),

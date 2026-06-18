@@ -38,9 +38,13 @@ export function registerUpdateIpc(deps: UpdateIpcDeps): void {
     return deps.checkPiUpdate()
   })
 
-  deps.ipcMain.handle(IPC.INSTALL_PI_UPDATE, async (): Promise<PiUpdateInstallResult> => {
-    return deps.installPiUpdate()
-  })
+  deps.ipcMain.handle(
+    IPC.INSTALL_PI_UPDATE,
+    async (_event, raw: unknown): Promise<PiUpdateInstallResult> => {
+      const { latestVersion } = z.object({ latestVersion: z.string().min(1) }).parse(raw)
+      return deps.installPiUpdate(latestVersion)
+    }
+  )
 
   deps.ipcMain.handle(IPC.APP_UPDATE_CHECK, async (): Promise<AppUpdateStatus> => {
     const status = appUpdateStatusSchema.parse(await deps.checkForAppUpdate())
