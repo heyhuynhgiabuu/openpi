@@ -114,7 +114,12 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
       onOpenLogin: () => props.onConnectProvider(),
       onLogout: () => props.onConnectProvider(),
       onNewSession: () => void props.session.createNewSession(),
-      onOpenResumeDialog: () => window.openpi.openSession({ path: '' }).catch(() => {}),
+      onOpenResumeDialog: () => {
+        // The command palette lists all sessions and lets the user resume
+        // any of them. Dispatching a custom event avoids threading a new
+        // state prop through the tree just for this one entry point.
+        document.dispatchEvent(new CustomEvent('openpi:open-command-palette'))
+      },
       onCycleThinking: () => {
         const order = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
         const cur = props.session.thinkingLevel as (typeof order)[number]

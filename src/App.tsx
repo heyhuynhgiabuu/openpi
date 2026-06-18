@@ -185,10 +185,17 @@ export default function App() {
       setFileFindOpen(false)
       queueMicrotask(() => setFileFindOpen(true))
     })
+
+    // Allow slash commands (e.g. /resume) to open the command palette
+    // without threading a new prop through the entire tree.
+    const openPaletteViaEvent = () => setCommandPaletteOpen(true)
+    document.addEventListener('openpi:open-command-palette', openPaletteViaEvent)
+
     return () => {
       removePrefs()
       removeKeydown()
       removeFileFindShortcut?.()
+      document.removeEventListener('openpi:open-command-palette', openPaletteViaEvent)
     }
   })
 
