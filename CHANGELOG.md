@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.3] - 2026-06-19
+
+- Usage dashboard with activity heatmap, model leaderboard, and provider market share.
+- Daily stacked model chart with mouse tracking and hover day preview.
+- Provider share chart with interactive dimming and shared active state.
+- Chart-matching color swatches in model and provider cards.
+- Stable rank-based color assignment from OpenCode palette.
+- Renamed "Top models" tab to "Models", "By provider" to "Market share".
+- Simplified KPI cards: removed streak, peak day, duplicate per-session rows.
+- Removed weekly/cumulative heatmap modes; heatmap is daily-only with hover drawer.
+- 90-day range now computes real per-session metrics (not fallback).
+- Fixed model swatch color index offset between featured and rest cards.
+- Fixed `Missing named parameter` error in `readModelUsageBetween`.
+- Fixed activity drawer clipping by using viewport-relative positioning.
+
 ## [0.2.2] - 2026-06-20
 
 - Unified slash-command registry modeled on opencode's `command.tsx` pattern. `/compact`, `/name`, `/session`, `/reload`, `/copy`, `/new`, `/resume`, `/model`, `/scoped-models`, `/thinking`, `/settings`, `/login`, `/logout` are now handled by OpenPi itself instead of being hidden or sent to the model as plain chat. TUI-only builtins that cannot run in a desktop environment are no longer shown in the picker.
