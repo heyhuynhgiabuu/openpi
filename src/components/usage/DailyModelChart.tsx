@@ -135,6 +135,7 @@ export function DailyModelChart(props: Props) {
     >
       <div
         class="usage-daily-chart"
+        role="none"
         onMouseLeave={handleLeave}
         onClick={() => {
           setHoveredColIdx(null)
@@ -190,6 +191,9 @@ export function DailyModelChart(props: Props) {
             {(col, i) => (
               <div
                 class={`usage-daily-chart-col${hoveredColIdx() === i() ? ' is-hovered' : ''}`}
+                role="button"
+                tabIndex={-1}
+                onKeyDown={() => {}}
                 onMouseMove={(e) => handleBarMouseMove(i(), e)}
                 onMouseLeave={() => setHoveredModel(null)}
                 onClick={(e) => e.stopPropagation()}
@@ -201,6 +205,9 @@ export function DailyModelChart(props: Props) {
                         class={`usage-daily-chart-seg${
                           activeModelKey() && activeModelKey() !== seg.modelKey ? ' is-dimmed' : ''
                         }${activeModelKey() === seg.modelKey ? ' is-pinned' : ''}`}
+                        role="button"
+                        tabIndex={-1}
+                        onKeyDown={() => {}}
                         style={{
                           height: `${Math.max(seg.share * 100, seg.share > 0 ? 1.5 : 0)}%`,
                           background:

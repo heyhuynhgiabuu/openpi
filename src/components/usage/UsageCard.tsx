@@ -199,7 +199,7 @@ export function UsageCard(props: Props) {
             </p>
           </Show>
         </div>
-        <div class="usage-range-tabs usage-range-tabs--hero" role="group" aria-label="Time range">
+        <fieldset class="usage-range-tabs usage-range-tabs--hero" aria-label="Time range">
           <For each={RANGE_KEYS}>
             {(key) => (
               <button
@@ -211,7 +211,7 @@ export function UsageCard(props: Props) {
               </button>
             )}
           </For>
-        </div>
+        </fieldset>
       </header>
 
       <Show
@@ -510,7 +510,7 @@ export function UsageCard(props: Props) {
                   · updated {formatRelativeGenerated(summary().generatedAt)}
                 </Show>
               </p>
-              <div class="usage-export-actions" role="group" aria-label="Export usage">
+              <fieldset class="usage-export-actions" aria-label="Export usage">
                 <button
                   type="button"
                   class="usage-export-btn"
@@ -525,7 +525,7 @@ export function UsageCard(props: Props) {
                 >
                   Export CSV
                 </button>
-              </div>
+              </fieldset>
             </footer>
           </>
         )}
