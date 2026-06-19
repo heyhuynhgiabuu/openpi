@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { UsageSummary } from '../src/lib/ipc'
 import { buildUsageCsvContent } from '../src/components/usage/usageExport'
+import type { UsageSummary } from '../src/lib/ipc'
 
 const emptyTotals = {
   inputTokens: 0,

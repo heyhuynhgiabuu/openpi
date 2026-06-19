@@ -37,7 +37,7 @@ function tabIconName(path: string): string {
 
 export function FileTabBar(props: FileTabBarProps) {
   return (
-    <div class="ftb-bar" aria-label="Open files">
+    <div class="ftb-bar" role="region" aria-label="Open files">
       <div class="ftb-tabs" role="tablist">
         <For each={props.files}>
           {(file, i) => (

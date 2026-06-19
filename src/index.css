@@ -16204,14 +16204,14 @@ body.panel-dragging {
 
 /* ── Pi extension ctx.ui (confirm / select) — full-window, above workbench ── */
 .extension-ui-overlay {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 100000 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 24px !important;
-  background: rgba(0, 0, 0, 0.55) !important;
-  pointer-events: all !important;
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: all;
 }
 .extension-ui-overlay .ask-modal {
   max-width: 480px;
