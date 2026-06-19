@@ -6,6 +6,8 @@ import type {
   SessionListItem,
   SessionListOptions,
   SessionTreeResponse,
+  UsageSummary,
+  UsageSummaryRequest,
   WorkspaceInfo,
   WorkspaceTrustResult,
 } from '../../src/lib/ipc'
@@ -36,6 +38,9 @@ import {
 } from './sessionQueries'
 import { countBranches } from './sessionTree'
 import { buildSessionTree } from './sessionTreeBuilder'
+import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './sessionUsage'
+
+const USAGE_INDEX_VERSION = 3
 
 export class SessionIndexStore {
   private readonly db: Database.Database
@@ -113,6 +118,10 @@ export class SessionIndexStore {
     return _listSessions(this.db, options, activeSessionPath, workspacePath)
   }
 
+  getUsageSummary(request: UsageSummaryRequest = {}): UsageSummary {
+    return _getUsageSummary(this.db, request)
+  }
+
   // ── Individual session queries ───────────────────────────────────────────────
 
   getSessionWorkspace(sessionPath: string): string | null {
@@ -184,9 +193,15 @@ export class SessionIndexStore {
 
     // Fast path: skip full JSONL parse when the file hasn't changed.
     const existing = this.db
-      .prepare('select file_mtime from sessions where path = ?')
-      .get(info.path) as { file_mtime: number } | undefined
-    if (existing && existing.file_mtime >= newMtime) return
+      .prepare('select file_mtime, usage_index_version from sessions where path = ?')
+      .get(info.path) as { file_mtime: number; usage_index_version: number } | undefined
+    if (
+      existing &&
+      existing.file_mtime >= newMtime &&
+      existing.usage_index_version >= USAGE_INDEX_VERSION
+    ) {
+      return
+    }
 
     // Invalidate bounded history page cache for this session — it changed.
     this.invalidateMessageCache(info.path)
@@ -216,38 +231,40 @@ export class SessionIndexStore {
 
     this.db
       .prepare(`
-      insert into sessions(
-        path, session_id, cwd, workspace_path, title, created_at, updated_at,
-        message_count, first_message, all_messages_text, parent_session_path,
-        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-        cost, entry_count, branch_count, last_model, file_mtime
-      ) values (
-        @path, @sessionId, @cwd, @workspacePath, @title, @createdAt, @updatedAt,
-        @messageCount, @firstMessage, @allMessagesText, @parentSessionPath,
-        @inputTokens, @outputTokens, @cacheReadTokens, @cacheWriteTokens,
-        @cost, @entryCount, @branchCount, @lastModel, @fileMtime
-      )
-      on conflict(path) do update set
-        session_id = excluded.session_id,
-        cwd = excluded.cwd,
-        workspace_path = excluded.workspace_path,
-        title = excluded.title,
-        created_at = excluded.created_at,
-        updated_at = excluded.updated_at,
-        message_count = excluded.message_count,
-        first_message = excluded.first_message,
-        all_messages_text = excluded.all_messages_text,
-        parent_session_path = excluded.parent_session_path,
-        input_tokens = excluded.input_tokens,
-        output_tokens = excluded.output_tokens,
-        cache_read_tokens = excluded.cache_read_tokens,
-        cache_write_tokens = excluded.cache_write_tokens,
-        cost = excluded.cost,
-        entry_count = excluded.entry_count,
-        branch_count = excluded.branch_count,
-        last_model = excluded.last_model,
-        file_mtime = excluded.file_mtime
-    `)
+        insert into sessions(
+          path, session_id, cwd, workspace_path, title, created_at, updated_at,
+          message_count, first_message, all_messages_text, parent_session_path,
+          input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+          cost, entry_count, branch_count, last_model, file_mtime, usage_index_version
+        ) values (
+          @path, @sessionId, @cwd, @workspacePath, @title, @createdAt, @updatedAt,
+          @messageCount, @firstMessage, @allMessagesText, @parentSessionPath,
+          @inputTokens, @outputTokens, @cacheReadTokens, @cacheWriteTokens,
+          @cost, @entryCount, @branchCount, @lastModel, @fileMtime, @usageIndexVersion
+        )
+        on conflict(path) do update set
+          session_id = excluded.session_id,
+          cwd = excluded.cwd,
+          workspace_path = excluded.workspace_path,
+          title = excluded.title,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          message_count = excluded.message_count,
+          first_message = excluded.first_message,
+          all_messages_text = excluded.all_messages_text,
+          parent_session_path = excluded.parent_session_path,
+          input_tokens = excluded.input_tokens,
+          output_tokens = excluded.output_tokens,
+          cache_read_tokens = excluded.cache_read_tokens,
+          cache_write_tokens = excluded.cache_write_tokens,
+          cost = excluded.cost,
+          entry_count = excluded.entry_count,
+          branch_count = excluded.branch_count,
+          last_model = excluded.last_model,
+          file_mtime = excluded.file_mtime,
+          usage_index_version = excluded.usage_index_version
+      `)
+
       .run({
         path: info.path,
         sessionId:
@@ -269,26 +286,55 @@ export class SessionIndexStore {
         branchCount,
         lastModel: lastModelId,
         fileMtime: newMtime,
+        usageIndexVersion: USAGE_INDEX_VERSION,
       })
 
-    // Index entries for tree traversal
+    // Index entries for tree traversal and usage capture.
+    const usageByEntryId = usageMetricsByEntryId(entries)
     const upsertEntry = this.db.prepare(`
-      insert into session_entries(session_path, entry_id, parent_id, type, timestamp)
-      values (@sessionPath, @entryId, @parentId, @type, @timestamp)
-      on conflict(session_path, entry_id) do update set
-        parent_id = excluded.parent_id,
-        type = excluded.type,
-        timestamp = excluded.timestamp
-    `)
+          insert into session_entries(
+            session_path, entry_id, parent_id, type, timestamp,
+            input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+          total_tokens, duration_ms, cost, model, provider
+        ) values (
+          @sessionPath, @entryId, @parentId, @type, @timestamp,
+          @inputTokens, @outputTokens, @cacheReadTokens, @cacheWriteTokens,
+          @totalTokens, @durationMs, @cost, @model, @provider
+        )
+          on conflict(session_path, entry_id) do update set
+
+            parent_id = excluded.parent_id,
+            type = excluded.type,
+            timestamp = excluded.timestamp,
+            input_tokens = excluded.input_tokens,
+            output_tokens = excluded.output_tokens,
+            cache_read_tokens = excluded.cache_read_tokens,
+            cache_write_tokens = excluded.cache_write_tokens,
+            total_tokens = excluded.total_tokens,
+            duration_ms = excluded.duration_ms,
+            cost = excluded.cost,
+            model = excluded.model,
+            provider = excluded.provider
+      `)
 
     const insertMany = this.db.transaction(() => {
       for (const entry of entries) {
+        const usage = usageByEntryId.get(entry.id)
         upsertEntry.run({
           sessionPath: info.path,
           entryId: entry.id,
           parentId: entry.parentId ?? null,
           type: entry.type,
           timestamp: entry.timestamp ?? new Date().toISOString(),
+          inputTokens: usage?.inputTokens ?? 0,
+          outputTokens: usage?.outputTokens ?? 0,
+          cacheReadTokens: usage?.cacheReadTokens ?? 0,
+          cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
+          totalTokens: usage?.totalTokens ?? 0,
+          durationMs: usage?.durationMs ?? 0,
+          cost: usage?.cost ?? 0,
+          model: usage?.model ?? '',
+          provider: usage?.provider ?? '',
         })
       }
     })

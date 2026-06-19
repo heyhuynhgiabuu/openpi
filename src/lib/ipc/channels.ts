@@ -17,6 +17,7 @@ export const IPC = {
   SET_MODEL: 'openpi:set-model',
   SET_THINKING: 'openpi:set-thinking',
   GET_SESSION_STATS: 'openpi:get-session-stats',
+  GET_USAGE_SUMMARY: 'openpi:get-usage-summary',
   GET_WORKSPACES: 'openpi:get-workspaces',
   GET_SESSIONS: 'openpi:get-sessions',
   GET_SESSION_MESSAGES: 'openpi:get-session-messages',

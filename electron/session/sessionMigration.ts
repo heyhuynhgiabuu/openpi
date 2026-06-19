@@ -25,24 +25,37 @@ export function runMigrations(db: Database.Database): void {
       cache_read_tokens integer not null default 0,
       cache_write_tokens integer not null default 0,
       cost real not null default 0,
-      entry_count integer not null default 0,
-      branch_count integer not null default 0,
-      last_model text not null default '',
-      file_mtime integer not null default 0,
-      foreign key(workspace_path) references workspaces(path)
-    );
+        entry_count integer not null default 0,
+        branch_count integer not null default 0,
+        last_model text not null default '',
+        file_mtime integer not null default 0,
+        usage_index_version integer not null default 0,
+        foreign key(workspace_path) references workspaces(path)
+      );
 
-    create table if not exists session_entries (
-      session_path text not null,
-      entry_id text not null,
-      parent_id text,
-      type text not null,
-      timestamp text not null,
-      primary key(session_path, entry_id),
-      foreign key(session_path) references sessions(path) on delete cascade
-    );
+      create table if not exists session_entries (
+        session_path text not null,
+        entry_id text not null,
+        parent_id text,
+        type text not null,
+        timestamp text not null,
+        input_tokens integer not null default 0,
+        output_tokens integer not null default 0,
+        cache_read_tokens integer not null default 0,
+        cache_write_tokens integer not null default 0,
+        total_tokens integer not null default 0,
+          duration_ms integer not null default 0,
+          cost real not null default 0,
+        model text not null default '',
+        provider text not null default '',
+        primary key(session_path, entry_id),
 
-    create index if not exists idx_sessions_workspace on sessions(workspace_path);
+
+        foreign key(session_path) references sessions(path) on delete cascade
+      );
+
+      create index if not exists idx_sessions_workspace on sessions(workspace_path);
+
     create index if not exists idx_sessions_created on sessions(created_at);
     create index if not exists idx_sessions_updated on sessions(updated_at);
     create index if not exists idx_session_entries_parent on session_entries(session_path, parent_id);
@@ -58,8 +71,19 @@ export function runMigrations(db: Database.Database): void {
   const addColumns: Array<[string, string]> = [
     ['sessions', "add column last_model text not null default ''"],
     ['sessions', 'add column file_mtime integer not null default 0'],
+    ['sessions', 'add column usage_index_version integer not null default 0'],
+    ['session_entries', 'add column input_tokens integer not null default 0'],
+    ['session_entries', 'add column output_tokens integer not null default 0'],
+    ['session_entries', 'add column cache_read_tokens integer not null default 0'],
+    ['session_entries', 'add column cache_write_tokens integer not null default 0'],
+    ['session_entries', 'add column total_tokens integer not null default 0'],
+    ['session_entries', 'add column duration_ms integer not null default 0'],
+    ['session_entries', 'add column cost real not null default 0'],
+    ['session_entries', "add column model text not null default ''"],
+    ['session_entries', "add column provider text not null default ''"],
     ['workspaces', 'add column trusted_at text'],
   ]
+
   for (const [table, clause] of addColumns) {
     try {
       db.exec(`alter table ${table} ${clause}`)

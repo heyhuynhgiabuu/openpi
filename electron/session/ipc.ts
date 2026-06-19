@@ -8,6 +8,7 @@ import type {
   SessionReady,
   SessionStats,
   SessionTreeResponse,
+  UsageSummary,
   WorkspaceInfo,
 } from '../../src/lib/ipc'
 import {
@@ -23,11 +24,13 @@ import {
   sessionPromptSchema,
   sessionTreeRequestSchema,
   setSessionNameSchema,
+  usageSummaryRequestSchema,
 } from '../../src/lib/ipc'
 import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
 import { highRiskShellReason } from '../services/shellEnv'
 import type { SessionState } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
+import { emptyUsageSummary } from '../session/sessionUsage'
 
 interface ConfirmMutationOptions {
   title: string
@@ -190,6 +193,19 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     })
     return response.stats as SessionStats
   })
+
+  deps.ipcMain.handle(
+    IPC.GET_USAGE_SUMMARY,
+    async (_event, raw: unknown): Promise<UsageSummary> => {
+      const request = usageSummaryRequestSchema.parse(raw)
+      const sessionIndex = deps.getSessionIndex()
+      if (!sessionIndex) return emptyUsageSummary(request)
+
+      const activeSessionPath = deps.getSessionState()?.sessionFile ?? null
+      await sessionIndex.refreshSessions(activeSessionPath, request.workspacePath)
+      return sessionIndex.getUsageSummary(request)
+    }
+  )
 
   deps.ipcMain.handle(IPC.GET_WORKSPACES, async (): Promise<WorkspaceInfo[]> => {
     return deps.getSessionIndex()?.listWorkspaces() ?? []

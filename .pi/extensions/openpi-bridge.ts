@@ -60,8 +60,8 @@ type SyncPayload = {
  * this file. The bridge reads it in the `project_trust` event handler.
  * The file is a `{ [cwd]: 'trusted' | 'untrusted' }` map.
  */
-const OPENPI_WORKSPACE_TRUST_PATH = path.join(
-  process.env.HOME ?? os.homedir(),
+const OPENPI_WORKSPACE_TRUST_PATH = join(
+  process.env.HOME ?? homedir(),
   '.pi',
   'agent',
   '.openpi-workspace-trust.json'
@@ -70,7 +70,7 @@ const OPENPI_WORKSPACE_TRUST_PATH = path.join(
 function readWorkspaceTrustFor(cwd: string | undefined): 'trusted' | 'untrusted' | null {
   if (!cwd) return null
   try {
-    const raw = fs.readFileSync(OPENPI_WORKSPACE_TRUST_PATH, 'utf-8')
+    const raw = readFileSync(OPENPI_WORKSPACE_TRUST_PATH, 'utf-8')
     const map = JSON.parse(raw) as Record<string, 'trusted' | 'untrusted'>
     return map[cwd] ?? null
   } catch {
