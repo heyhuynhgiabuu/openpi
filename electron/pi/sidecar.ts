@@ -13,16 +13,16 @@ import os from 'node:os'
 import path from 'node:path'
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
 import {
-  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
-  ModelRegistry,
+  ModelRuntime,
   SessionManager,
   SettingsManager,
 } from '@earendil-works/pi-coding-agent'
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
+import { answerApiKeyPrompt, toProviderLoginEvent, toProviderPromptEvent } from './providerAuth'
 import { enforceIgnoreScriptsEnv } from './safePackageManager'
 import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from './staleCtx'
 
@@ -42,14 +42,18 @@ type SessionState = {
 }
 
 let state: SessionState | null = null
-let _authStorage: ReturnType<typeof AuthStorage.create> | null = null
-let _modelRegistry: ReturnType<typeof ModelRegistry.create> | null = null
+let _modelRuntimePromise: Promise<ModelRuntime> | null = null
 let _cachedResourceLoader: {
   cwd: string
   workspaceTrusted: boolean
   loader: InstanceType<typeof DefaultResourceLoader>
 } | null = null
-const _pendingOAuthPrompts = new Map<string, (v: string) => void>()
+interface PendingProviderPrompt {
+  resolve: (value: string) => void
+  cancel: (reason?: unknown) => void
+}
+
+const _pendingOAuthPrompts = new Map<string, PendingProviderPrompt>()
 
 // ─── Port ─────────────────────────────────────────────────────────────────────
 
@@ -94,24 +98,54 @@ function getAgentDir(): string {
   return path.join(os.homedir(), '.pi', 'agent')
 }
 
-function getAuthStorage() {
+function getModelRuntime(): Promise<ModelRuntime> {
   const agentDir = getAgentDir()
-  _authStorage ??= AuthStorage.create(path.join(agentDir, 'auth.json'))
-  return _authStorage
+  _modelRuntimePromise ??= ModelRuntime.create({
+    authPath: path.join(agentDir, 'auth.json'),
+    modelsPath: path.join(agentDir, 'models.json'),
+  })
+  return _modelRuntimePromise
 }
 
-function getModelRegistry() {
-  _modelRegistry ??= ModelRegistry.create(getAuthStorage(), path.join(getAgentDir(), 'models.json'))
-  return _modelRegistry
+async function invalidateModelRuntime(): Promise<void> {
+  if (!_modelRuntimePromise) return
+  const modelRuntime = await _modelRuntimePromise
+  // Refresh the existing runtime so extension-registered providers are preserved.
+  await modelRuntime.refresh({ allowNetwork: false })
 }
 
-function invalidateModelRegistry(): void {
-  if (_modelRegistry) {
-    // Refresh the existing instance so extension-registered providers
-    // (registered during createAgentSession → bindCore) are preserved.
-    // Nulling + recreating would lose them since extensions only run once.
-    _modelRegistry.refresh()
-  }
+function requestProviderAuthInput(
+  requestId: string,
+  providerId: string,
+  prompt: Parameters<typeof toProviderPromptEvent>[0]
+): Promise<string> {
+  send({ type: 'provider_login_event', requestId, event: toProviderPromptEvent(prompt) })
+  return new Promise<string>((resolve, reject) => {
+    const cleanup = () => {
+      prompt.signal?.removeEventListener('abort', onAbort)
+      if (_pendingOAuthPrompts.get(providerId) === pending) {
+        _pendingOAuthPrompts.delete(providerId)
+      }
+    }
+    const pending: PendingProviderPrompt = {
+      resolve: (value) => {
+        cleanup()
+        resolve(value)
+      },
+      cancel: (reason) => {
+        cleanup()
+        reject(
+          reason instanceof Error ? reason : new Error('Provider authentication prompt cancelled.')
+        )
+      },
+    }
+    const onAbort = () => pending.cancel(prompt.signal?.reason)
+
+    _pendingOAuthPrompts.get(providerId)?.cancel()
+    _pendingOAuthPrompts.set(providerId, pending)
+    if (prompt.signal?.aborted) onAbort()
+    else prompt.signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
@@ -270,9 +304,9 @@ async function emitSessionShutdown(
   reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
 ): Promise<void> {
   try {
-    // Pi 0.79.3 exposes `session.extensionRunner` as a public typed getter.
+    // `session.extensionRunner` is a public typed getter in the Pi SDK.
     // `emit` iterates registered handlers; no-op when none are subscribed.
-    // TODO(upgrade/pi-0.79.3 follow-up): register a `pi.on('project_trust', ...)` handler
+    // TODO(project-trust): register a `pi.on('project_trust', ...)` handler
     // in `.pi/extensions/openpi-bridge.ts` that defers to our workspace-trust gate.
     // That requires a synchronous channel from the extension process to the sidecar.
     await session.extensionRunner.emit({ type: 'session_shutdown', reason })
@@ -305,8 +339,7 @@ async function startSession(
   }
 
   const agentDir = getAgentDir()
-  const authStorage = getAuthStorage()
-  const modelRegistry = getModelRegistry()
+  const modelRuntime = await getModelRuntime()
   const fileSettingsManager = SettingsManager.create(cwd, agentDir)
   const workspaceTrusted = opts.workspaceTrusted ?? false
   const settingsManager = workspaceTrusted
@@ -329,8 +362,7 @@ async function startSession(
     cwd,
     agentDir,
     sessionManager,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     settingsManager,
     resourceLoader,
   })
@@ -614,7 +646,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
 
     case 'set_model': {
       if (!state) return
-      const model = getModelRegistry().find(cmd.provider, cmd.modelId)
+      const model = (await getModelRuntime()).getModel(cmd.provider, cmd.modelId)
       if (!model) return
       await state.session.setModel(model)
       break
@@ -865,21 +897,13 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     }
 
     case 'get_models': {
-      const models = await getModelRegistry().getAvailable()
-      const mapped = (
-        models as Array<{
-          id: string
-          name: string
-          provider: string
-          reasoning?: boolean
-          contextWindow?: number
-        }>
-      ).map((m) => ({
-        id: m.id,
-        name: m.name,
-        provider: m.provider,
-        reasoning: m.reasoning ?? false,
-        contextWindow: m.contextWindow ?? 0,
+      const models = await (await getModelRuntime()).getAvailable()
+      const mapped = models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        reasoning: model.reasoning ?? false,
+        contextWindow: model.contextWindow ?? 0,
       }))
       send({ type: 'models_result', requestId: cmd.requestId, models: mapped })
       break
@@ -943,119 +967,82 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     }
 
     case 'get_providers': {
-      const registry = getModelRegistry()
-      const allModels = registry.getAll() as Array<{ provider: string }>
+      const modelRuntime = await getModelRuntime()
+      await modelRuntime.getAvailable()
+      const credentialTypes = new Map(
+        (await modelRuntime.listCredentials()).map(({ providerId, type }) => [providerId, type])
+      )
       const providerModelCounts = new Map<string, number>()
-      for (const m of allModels) {
-        providerModelCounts.set(m.provider, (providerModelCounts.get(m.provider) ?? 0) + 1)
+      for (const model of modelRuntime.getModels()) {
+        providerModelCounts.set(model.provider, (providerModelCounts.get(model.provider) ?? 0) + 1)
       }
-      const providers = []
-      for (const [providerId, count] of providerModelCounts) {
-        const status = registry.getProviderAuthStatus(providerId)
-        const displayName = registry.getProviderDisplayName(providerId)
-        const cred = getAuthStorage().get(providerId)
-        const credentialType =
-          cred?.type === 'oauth'
-            ? 'oauth'
-            : cred?.type === 'api_key'
-              ? 'api_key'
-              : status.source === 'environment'
-                ? 'env'
-                : undefined
-        providers.push({
-          id: providerId,
-          displayName,
+      const providers = modelRuntime.getProviders().map((provider) => {
+        const status = modelRuntime.getProviderAuthStatus(provider.id)
+        const storedType = credentialTypes.get(provider.id)
+        const credentialType = storedType
+          ? storedType
+          : status.source === 'environment'
+            ? 'env'
+            : status.configured
+              ? 'other'
+              : undefined
+        const authMethods: Array<'api_key' | 'oauth'> = []
+        if (provider.auth.apiKey?.login) authMethods.push('api_key')
+        if (provider.auth.oauth) authMethods.push('oauth')
+        return {
+          id: provider.id,
+          displayName: provider.name,
           configured: status.configured,
-          modelCount: count,
+          modelCount: providerModelCounts.get(provider.id) ?? 0,
           source: status.source,
           credentialType,
-        })
-      }
+          authMethods,
+        }
+      })
       send({ type: 'providers_result', requestId: cmd.requestId, providers })
       break
     }
 
     case 'set_provider_key': {
-      getAuthStorage().set(cmd.provider, { type: 'api_key', key: cmd.apiKey })
-      invalidateModelRegistry()
+      const modelRuntime = await getModelRuntime()
+      const promptState = { keyUsed: false }
+      await modelRuntime.login(cmd.provider, 'api_key', {
+        prompt: async (prompt) =>
+          answerApiKeyPrompt({
+            prompt,
+            apiKey: cmd.apiKey,
+            providerName: modelRuntime.getProvider(cmd.provider)?.name ?? cmd.provider,
+            state: promptState,
+          }),
+        notify: () => {},
+      })
+      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
       break
     }
 
     case 'remove_provider_key': {
-      getAuthStorage().remove(cmd.provider)
-      invalidateModelRegistry()
+      await (await getModelRuntime()).logout(cmd.provider)
+      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
       break
     }
 
     case 'invalidate_models': {
-      invalidateModelRegistry()
+      await invalidateModelRuntime()
       break
     }
 
     case 'login_provider': {
       try {
-        await getAuthStorage().login(cmd.providerId, {
-          onAuth: ({ url, instructions }: { url: string; instructions?: string }) => {
+        const modelRuntime = await getModelRuntime()
+        await modelRuntime.login(cmd.providerId, 'oauth', {
+          prompt: (prompt) => requestProviderAuthInput(cmd.requestId, cmd.providerId, prompt),
+          notify: (event) =>
             send({
               type: 'provider_login_event',
               requestId: cmd.requestId,
-              event: { type: 'auth', url, instructions },
-            })
-          },
-          onProgress: (message: string) => {
-            send({
-              type: 'provider_login_event',
-              requestId: cmd.requestId,
-              event: { type: 'progress', message },
-            })
-          },
-          onPrompt: (prompt: {
-            message: string
-            placeholder?: string
-            allowEmpty?: boolean
-          }): Promise<string> => {
-            send({
-              type: 'provider_login_event',
-              requestId: cmd.requestId,
-              event: { type: 'prompt', ...prompt },
-            })
-            return new Promise<string>((resolve) => {
-              _pendingOAuthPrompts.set(cmd.providerId, resolve)
-            })
-          },
-          onSelect: (selectPrompt: {
-            message: string
-            options: { id: string; label: string }[]
-          }): Promise<string | undefined> => {
-            send({
-              type: 'provider_login_event',
-              requestId: cmd.requestId,
-              event: { type: 'select', ...selectPrompt },
-            })
-            return new Promise<string | undefined>((resolve) => {
-              _pendingOAuthPrompts.set(cmd.providerId, (v) => resolve(v || undefined))
-            })
-          },
-          onDeviceCode: (info: {
-            userCode: string
-            verificationUri: string
-            intervalSeconds?: number
-            expiresInSeconds?: number
-          }) => {
-            send({
-              type: 'provider_login_event',
-              requestId: cmd.requestId,
-              event: {
-                type: 'device_code',
-                verificationUri: info.verificationUri,
-                userCode: info.userCode,
-                intervalSeconds: info.intervalSeconds,
-                expiresInSeconds: info.expiresInSeconds,
-              },
-            })
-          },
+              event: toProviderLoginEvent(event),
+            }),
         })
-        invalidateModelRegistry()
         send({ type: 'provider_login_event', requestId: cmd.requestId, event: { type: 'success' } })
       } catch (err) {
         send({
@@ -1068,17 +1055,14 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     }
 
     case 'logout_provider': {
-      getAuthStorage().logout(cmd.providerId)
-      invalidateModelRegistry()
+      await (await getModelRuntime()).logout(cmd.providerId)
+      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
       break
     }
 
     case 'resolve_provider_prompt': {
       const resolver = _pendingOAuthPrompts.get(cmd.providerId)
-      if (resolver) {
-        resolver(cmd.value)
-        _pendingOAuthPrompts.delete(cmd.providerId)
-      }
+      resolver?.resolve(cmd.value)
       break
     }
 

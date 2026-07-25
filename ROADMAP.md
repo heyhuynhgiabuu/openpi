@@ -75,7 +75,7 @@ Still beta-blocking:
 ┌───────────▼──────────────────────────────────────┐
 │ Pi SDK (@earendil-works/pi-coding-agent)         │
 │  AgentSession · SessionManager · ResourceLoader  │
-│  AuthStorage · ModelRegistry · extensions        │
+│  ModelRuntime · credentials · extensions         │
 │  tools · compaction · session tree (JSONL v3)    │
 └──────────────────────────────────────────────────┘
 ```
@@ -128,14 +128,15 @@ Roadmap implications:
 
 ---
 
-## Pi Integration Reality (v0.74.0)
+## Pi Integration Reality (v0.82.1)
 
 These facts must drive implementation. Do not guess or approximate.
 
 ### SDK primary path
 ```typescript
-import { createAgentSession, SessionManager, AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
-const { session } = await createAgentSession({ sessionManager: SessionManager.create(cwd) });
+import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+const modelRuntime = await ModelRuntime.create();
+const { session } = await createAgentSession({ modelRuntime, sessionManager: SessionManager.create(cwd) });
 session.subscribe((event) => { /* AgentSessionEvent stream */ });
 await session.prompt("...");
 ```
@@ -211,7 +212,7 @@ Build:
 - Secure preload bridge with typed, Zod-validated IPC channel map
 - `SessionHost` in Electron main: creates Pi `AgentSession`, pipes `AgentSessionEvent` stream to renderer via IPC, handles prompt/steer/followUp/abort commands
 - Basic agent conversation view: streaming text, thinking blocks, tool execution cards (name + expandable output)
-- Model selector using `ModelRegistry.getAvailable()`
+- Model selector using `ModelRuntime.getAvailable()`
 - Token/cost display from `turn_end` usage events
 - Abort button wired to `session.abort()`
 - Workspace folder picker (uses `cwd` for Pi session)

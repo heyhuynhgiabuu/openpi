@@ -21,7 +21,6 @@ import {
   type LoginPhase,
   type ModelRow,
   POPULAR_PROVIDER_IDS,
-  SUBSCRIPTION_IDS,
   SUBSCRIPTION_PROVIDERS,
   type View,
   validateForm,
@@ -88,25 +87,29 @@ export function ConnectProviderModal(props: Props) {
         provider.id.toLowerCase().includes(q)
     )
   })
-  const popular = createMemo(() =>
+  const apiKeyProviders = createMemo(() =>
     filtered().filter(
-      (provider) => POPULAR_PROVIDER_IDS.has(provider.id) && !SUBSCRIPTION_IDS.has(provider.id)
+      (provider) => provider.authMethods.includes('api_key') && provider.credentialType !== 'oauth'
     )
   )
+  const popular = createMemo(() =>
+    apiKeyProviders().filter((provider) => POPULAR_PROVIDER_IDS.has(provider.id))
+  )
   const other = createMemo(() =>
-    filtered().filter(
-      (provider) => !POPULAR_PROVIDER_IDS.has(provider.id) && !SUBSCRIPTION_IDS.has(provider.id)
-    )
+    apiKeyProviders().filter((provider) => !POPULAR_PROVIDER_IDS.has(provider.id))
   )
   const visibleSubscriptions = createMemo(() => {
     const q = search().toLowerCase()
-    return SUBSCRIPTION_PROVIDERS.filter(
-      (provider) =>
+    return SUBSCRIPTION_PROVIDERS.filter((provider) => {
+      const info = providers().find((candidate) => candidate.id === provider.id)
+      if (!info?.authMethods.includes('oauth') || info.credentialType === 'api_key') return false
+      return (
         !q ||
         provider.name.toLowerCase().includes(q) ||
         provider.provider.toLowerCase().includes(q) ||
         provider.id.toLowerCase().includes(q)
-    )
+      )
+    })
   })
 
   const openCustomForm = () => {

@@ -24,7 +24,7 @@ OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session t
 
 - **Pi sessions in a desktop shell** — session sidebar, workspace grouping, model selector, conversation stream, tool cards, and token/cost metadata.
 - **Command palette** — `Shift+Cmd+P` searches commands, files, and sessions.
-- **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About.
+- **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About. Provider setup supports API keys plus Pi 0.82 account sign-in for OpenRouter, Kimi Code, xAI, Anthropic, OpenAI Codex, and GitHub Copilot.
 - **Source control** — persistent Git panel, file tree, search, split diff viewer, and file viewer, with mutations owned by Electron main.
 - **Terminal/output panel** — local PTY lifecycle through Electron main, not the renderer.
 - **Pi-task delegation** — [`@heyhuynhgiabuu/pi-task`](https://github.com/heyhuynhgiabuu/pi-task) `task` tool (foreground/background, durable `conversation_id`). OpenPi tracks task state from `.pi/task-session-history.json` and resolves sub-sessions under `.pi/artifacts/tasks/sessions/`. Copy `.pi/settings.json.example` to `.pi/settings.json` (or run `pi install npm:@heyhuynhgiabuu/pi-task`) before delegating. A bundled skill at `.pi/skills/task-tool/SKILL.md` teaches the model the correct `task_id` rules.

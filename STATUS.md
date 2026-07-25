@@ -13,7 +13,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
 - Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
 - Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
-- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.82 `ModelRuntime` authentication with API-key and supported account-login flows.
 - Command palette (`⇧⌘P`): commands, `fff` files, sessions.
 - Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
 - Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.

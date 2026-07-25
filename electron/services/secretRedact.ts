@@ -12,8 +12,8 @@
  *     project-specific env var names found in workspace config).
  *
  * Intentional scope limits:
- *   - Does NOT inspect Pi AuthStorage or model API keys — those are owned by the
- *     Pi SDK's AuthStorage and never flow through OpenPi-owned code paths.
+ *   - Does NOT inspect Pi ModelRuntime credentials or model API keys — those are
+ *     owned by the Pi SDK credential store and never flow through diagnostics.
  *   - Does NOT redact Pi session JSONL content — Pi produces that content and
  *     it is surfaced read-only in the renderer history view.
  *   - The redaction regex list is conservative: false negatives are acceptable

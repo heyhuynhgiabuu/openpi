@@ -1,4 +1,4 @@
-import { getModel, getProviders } from '@earendil-works/pi-ai'
+import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { UsageModelBucket } from '../../lib/ipc'
 
 /** USD per 1M tokens (pi-ai model catalog). */
@@ -10,35 +10,51 @@ export type TokenRates = {
 }
 
 const M = 1_000_000
+let pricingCatalog: Map<string, Map<string, TokenRates>> | null = null
+
+function getPricingCatalog(): Map<string, Map<string, TokenRates>> {
+  if (pricingCatalog) return pricingCatalog
+
+  pricingCatalog = new Map()
+  for (const provider of getBuiltinProviders()) {
+    const models = new Map<string, TokenRates>()
+    for (const model of getBuiltinModels(provider)) {
+      models.set(model.id, model.cost)
+    }
+    pricingCatalog.set(provider, models)
+  }
+  return pricingCatalog
+}
 
 export function warmUsagePricingCatalog(): void {
-  getProviders()
+  getPricingCatalog()
 }
 
 export function resolveTokenRatesSync(modelId: string, provider?: string): TokenRates | null {
   const id = modelId.trim()
   if (!id) return null
 
+  const catalog = getPricingCatalog()
   const candidates: Array<{ provider: string; id: string }> = []
   if (provider) {
     candidates.push({ provider, id })
     if (!id.includes('/')) candidates.push({ provider, id: `${provider}/${id}` })
   }
-  for (const p of getProviders()) {
-    candidates.push({ provider: p, id })
+  for (const catalogProvider of catalog.keys()) {
+    candidates.push({ provider: catalogProvider, id })
     if (id.includes('/')) {
       const tail = id.split('/').pop()
-      if (tail) candidates.push({ provider: p, id: tail })
+      if (tail) candidates.push({ provider: catalogProvider, id: tail })
     }
   }
 
   const seen = new Set<string>()
-  for (const c of candidates) {
-    const key = `${c.provider}:${c.id}`
+  for (const candidate of candidates) {
+    const key = `${candidate.provider}:${candidate.id}`
     if (seen.has(key)) continue
     seen.add(key)
-    const model = getModel(c.provider as Parameters<typeof getModel>[0], c.id as never)
-    if (model?.cost) return model.cost
+    const rates = catalog.get(candidate.provider)?.get(candidate.id)
+    if (rates) return rates
   }
   return null
 }
@@ -75,11 +91,11 @@ export function estimateCacheSavingsUsd(
 export function sumCacheSavingsForModels(models: UsageModelBucket[]): number | null {
   let total = 0
   let any = false
-  for (const m of models) {
-    const rates = resolveTokenRatesSync(m.model, m.provider)
-    const s = estimateCacheSavingsUsd(m, rates)
-    if (s != null) {
-      total += s
+  for (const model of models) {
+    const rates = resolveTokenRatesSync(model.model, model.provider)
+    const savings = estimateCacheSavingsUsd(model, rates)
+    if (savings != null) {
+      total += savings
       any = true
     }
   }

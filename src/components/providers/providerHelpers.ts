@@ -37,9 +37,28 @@ export const SUBSCRIPTION_PROVIDERS = [
     description: 'Use your GitHub Copilot subscription',
     note: 'Requires active Copilot subscription. If model is unsupported, enable it in VS Code first.',
   },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter Account',
+    provider: 'OpenRouter',
+    description: 'Sign in without manually copying an API key',
+    note: 'OpenRouter OAuth creates an API key controlled by your account.',
+  },
+  {
+    id: 'kimi-coding',
+    name: 'Kimi Code Subscription',
+    provider: 'Moonshot AI',
+    description: 'Use your Kimi Code subscription',
+    note: 'Uses Kimi device authorization with automatic token refresh.',
+  },
+  {
+    id: 'xai',
+    name: 'SuperGrok or X Premium',
+    provider: 'xAI',
+    description: 'Use your xAI subscription',
+    note: 'Signs in through xAI device authorization.',
+  },
 ]
-
-export const SUBSCRIPTION_IDS = new Set(SUBSCRIPTION_PROVIDERS.map((p) => p.id))
 
 export const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   anthropic: 'Direct access to Claude models via API key',

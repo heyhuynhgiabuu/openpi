@@ -98,12 +98,18 @@ export function registerProviderHandlers(): void {
 
   ipcMain.handle(IPC.SET_PROVIDER_KEY, async (_event, raw: unknown): Promise<void> => {
     const { provider, apiKey } = setProviderKeySchema.parse(raw)
-    requirePiSidecar().send({ type: 'set_provider_key', provider, apiKey })
+    const requestId = createRequestId()
+    await requirePiSidecar().request<Extract<SidecarMessage, { type: 'provider_mutation_result' }>>(
+      { type: 'set_provider_key', requestId, provider, apiKey }
+    )
   })
 
   ipcMain.handle(IPC.REMOVE_PROVIDER_KEY, async (_event, raw: unknown): Promise<void> => {
     const { provider } = removeProviderKeySchema.parse(raw)
-    requirePiSidecar().send({ type: 'remove_provider_key', provider })
+    const requestId = createRequestId()
+    await requirePiSidecar().request<Extract<SidecarMessage, { type: 'provider_mutation_result' }>>(
+      { type: 'remove_provider_key', requestId, provider }
+    )
   })
 
   // ── OAuth subscription login ───────────────────────────────────────────────
@@ -115,7 +121,10 @@ export function registerProviderHandlers(): void {
 
   ipcMain.handle(IPC.LOGOUT_PROVIDER, async (_event, raw: unknown): Promise<void> => {
     const { providerId } = logoutProviderSchema.parse(raw)
-    requirePiSidecar().send({ type: 'logout_provider', providerId })
+    const requestId = createRequestId()
+    await requirePiSidecar().request<Extract<SidecarMessage, { type: 'provider_mutation_result' }>>(
+      { type: 'logout_provider', requestId, providerId }
+    )
   })
 
   ipcMain.handle(IPC.RESOLVE_PROVIDER_PROMPT, (_event, raw: unknown): void => {

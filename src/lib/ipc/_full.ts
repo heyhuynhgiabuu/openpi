@@ -463,6 +463,7 @@ export const providerInfoSchema = z.object({
   modelCount: z.number(),
   source: z.string().optional(),
   credentialType: z.enum(['api_key', 'oauth', 'env', 'other']).optional(),
+  authMethods: z.array(z.enum(['api_key', 'oauth'])).default([]),
 })
 export type ProviderInfo = z.infer<typeof providerInfoSchema>
 

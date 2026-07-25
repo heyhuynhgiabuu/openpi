@@ -42,7 +42,7 @@ async function buildDiagnosticsBundle(
   const dbPath = path.join(app.getPath('userData'), 'openpi.sqlite')
   const notes = [
     'Secrets and sensitive paths are redacted in Electron main before this bundle reaches the renderer.',
-    'Pi AuthStorage-owned provider credentials are not read or exported by OpenPi.',
+    'Pi ModelRuntime-owned provider credentials are not read or exported by OpenPi.',
   ]
 
   let resources: Record<string, unknown> | null = null

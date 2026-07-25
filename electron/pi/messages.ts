@@ -120,9 +120,15 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         return
 
       case 'provider_login_event': {
-        const event = msg.event as { type?: string; url?: string }
-        if (event.type === 'auth' && typeof event.url === 'string') {
-          void shell.openExternal(event.url)
+        const event = msg.event as { type?: string; url?: string; verificationUri?: string }
+        const externalUrl =
+          event.type === 'auth'
+            ? event.url
+            : event.type === 'device_code'
+              ? event.verificationUri
+              : undefined
+        if (typeof externalUrl === 'string') {
+          void shell.openExternal(externalUrl)
         }
         deps.getMainWindow()?.webContents.send(IPC.PROVIDER_LOGIN_EVENT, msg.event)
         return

@@ -47,11 +47,11 @@ export type SidecarCommand =
   | { type: 'get_default_project_trust'; requestId: string }
   | { type: 'set_default_project_trust'; defaultProjectTrust: 'ask' | 'always' | 'never' }
   | { type: 'get_providers'; requestId: string }
-  | { type: 'set_provider_key'; provider: string; apiKey: string }
-  | { type: 'remove_provider_key'; provider: string }
+  | { type: 'set_provider_key'; requestId: string; provider: string; apiKey: string }
+  | { type: 'remove_provider_key'; requestId: string; provider: string }
   | { type: 'invalidate_models' }
   | { type: 'login_provider'; requestId: string; providerId: string }
-  | { type: 'logout_provider'; providerId: string }
+  | { type: 'logout_provider'; requestId: string; providerId: string }
   | { type: 'resolve_provider_prompt'; providerId: string; value: string }
   | {
       type: 'extension_ui_response'
@@ -75,6 +75,7 @@ export type SidecarMessage =
   | { type: 'last_assistant_text_result'; requestId: string; text: string | null }
   | { type: 'settings_result'; requestId: string; result: unknown }
   | { type: 'providers_result'; requestId: string; providers: unknown[] }
+  | { type: 'provider_mutation_result'; requestId: string }
   | {
       type: 'default_project_trust_result'
       requestId: string

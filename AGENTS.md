@@ -1,6 +1,6 @@
 # OpenPi Project Rules
 
-**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.79.3+).
+**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.82.1+).
 **Audience:** human developers and AI coding agents.
 **Related surfaces:**
 - `ROADMAP.md` — philosophy, phases, non-goals (read before proposing product scope).
@@ -53,17 +53,15 @@ For current feature status, beta surface, and known constraints, see `STATUS.md`
 // Electron main process
 import {
   createAgentSession,
+  ModelRuntime,
   SessionManager,
-  AuthStorage,
-  ModelRegistry,
-  DefaultResourceLoader,
 } from "@earendil-works/pi-coding-agent";
 
+const modelRuntime = await ModelRuntime.create();
 const { session } = await createAgentSession({
   cwd: workspacePath,
   sessionManager: SessionManager.create(workspacePath),
-  authStorage: AuthStorage.create(),
-  modelRegistry: ModelRegistry.create(authStorage),
+  modelRuntime,
 });
 
 session.subscribe((event: AgentSessionEvent) => {
