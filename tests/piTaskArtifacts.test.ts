@@ -12,8 +12,8 @@ import { normalizeTaskHistoryStatus } from '../electron/services/piTaskStatus'
 describe('pi-task JSON state helpers', () => {
   it('resolves a sub-session JSONL path by task id', () => {
     const dir = mkdtempSync(join(tmpdir(), 'openpi-task-artifacts-'))
-    mkdirSync(join(dir, 'sessions', 'mqzjxmuo-6c34'), { recursive: true })
-    writeFileSync(join(dir, 'sessions', 'mqzjxmuo-6c34', 'session.jsonl'), '{}\n')
+    mkdirSync(join(dir, 'tasks', 'sessions', 'mqzjxmuo-6c34'), { recursive: true })
+    writeFileSync(join(dir, 'tasks', 'sessions', 'mqzjxmuo-6c34', 'session.jsonl'), '{}\n')
 
     expect(resolveSubSessionPath(dir, 'mqzjxmuo-6c34')).toContain('session.jsonl')
   })

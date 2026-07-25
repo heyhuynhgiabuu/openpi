@@ -3,17 +3,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 function resolveTaskSessionFile(cwd: string, taskId: string): string | null {
-  const dir = path.join(cwd, '.pi', 'artifacts', 'sessions', taskId)
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
-    const file = entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
-      .map((entry) => path.join(dir, entry.name))
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0]
-    return file ?? null
-  } catch {
-    return null
+  const sessionRoots = [
+    path.join(cwd, '.pi', 'artifacts', 'tasks', 'sessions'),
+    path.join(cwd, '.pi', 'artifacts', 'sessions'),
+  ]
+  for (const root of sessionRoots) {
+    const dir = path.join(root, taskId)
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      const file = entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
+        .map((entry) => path.join(dir, entry.name))
+        .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0]
+      if (file) return file
+    } catch {}
   }
+  return null
 }
 
 function assistantStopReason(line: string): string | null | undefined {

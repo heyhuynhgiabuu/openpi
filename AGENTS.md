@@ -16,7 +16,7 @@ OpenPi is a **local-first desktop workbench** for [Pi](https://pi.dev) (`@earend
 
 **For agents implementing features:** Pi is intentionally **minimal** (small prompt, four core tools, **YOLO by default**). Pi ships **without** built-in plan mode, todos, MCP, permission gates, or sub-agents — those belong in **user extensions** or documented Pi [examples](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions). OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate** — prefer review surfaces and Phase 7 P0 work (diff review before apply, test evidence) over velocity features (auto-commit stacks, agent armies, new builtins). **Do not** propose Kun runtimes, SDD wizards, senpi-style permission/todo forks in main, or influencer “extension stack” installers unless the user explicitly asks.
 
-**Delegation:** use the **`@heyhuynhgiabuu/pi-task`** Pi package (`task` tool, `.pi/artifacts/TASKS.md`). OpenPi does not register built-in `Agent` customTools. Main-process policy remains OpenPi-owned.
+**Delegation:** use the **`@heyhuynhgiabuu/pi-task`** Pi package (`task` tool, task-history JSON, and sub-session JSONL). OpenPi does not register built-in `Agent` customTools. Main-process policy remains OpenPi-owned.
 
 `task_id` must be a pi-task generated short ID (base36-timestamp-short) or a `conversation_id` you supplied. Full UUIDs (old `Agent` tool) are rejected by pi-task.
 
@@ -280,9 +280,9 @@ Install **`npm:@heyhuynhgiabuu/pi-task`** in Pi settings/packages. OpenPi surfac
 
 | Layer | File(s) | Role |
 |---|---|---|
-| **Artifacts** | `electron/services/piTaskArtifacts.ts`, `electron/services/artifactWatcher.ts` | Parse `.pi/artifacts/TASKS.md` + `task-sessions.json`; emit `ARTIFACT_UPDATE` |
+| **Task history** | `electron/services/piTaskArtifacts.ts`, `src/hooks/useOpenPiSession.ts` | Read `.pi/task-session-history.json` and resolve `.pi/artifacts/tasks/sessions/` sub-sessions |
 | **Live tool rows** | `src/lib/extensionTrackers.ts` (`TaskTracker`), `SubagentWidget.tsx` | Track in-flight `task` tool calls from session events |
-| **Tray** | `SubagentFileWidget.tsx`, `useSubagentFileTracker.ts` | Show running tasks from `TASKS.md` |
+| **Artifact tray** | `electron/services/artifactWatcher.ts`, `SubagentFileWidget.tsx` | Surface project `TODO*.md` artifacts; it is not pi-task runtime state |
 
 Agent definitions for `task` come from pi-task bundled agents plus `.pi/agents/*.md` / `~/.pi/agent/agents/*.md` (pi-task precedence rules).
 

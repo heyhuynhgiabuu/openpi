@@ -27,7 +27,7 @@ OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session t
 - **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About.
 - **Source control** — persistent Git panel, file tree, search, split diff viewer, and file viewer, with mutations owned by Electron main.
 - **Terminal/output panel** — local PTY lifecycle through Electron main, not the renderer.
-- **Pi-task delegation** — [`@heyhuynhgiabuu/pi-task`](https://github.com/heyhuynhgiabuu/pi-task) `task` tool (foreground/background, durable `conversation_id`, `TASKS.md` registry). OpenPi watches `.pi/artifacts/TASKS.md` and shows running tasks in the workbench. Copy `.pi/settings.json.example` to `.pi/settings.json` (or run `pi install npm:@heyhuynhgiabuu/pi-task`) before delegating. A bundled skill at `.pi/skills/task-tool/SKILL.md` teaches the model the correct `task_id` rules.
+- **Pi-task delegation** — [`@heyhuynhgiabuu/pi-task`](https://github.com/heyhuynhgiabuu/pi-task) `task` tool (foreground/background, durable `conversation_id`). OpenPi tracks task state from `.pi/task-session-history.json` and resolves sub-sessions under `.pi/artifacts/tasks/sessions/`. Copy `.pi/settings.json.example` to `.pi/settings.json` (or run `pi install npm:@heyhuynhgiabuu/pi-task`) before delegating. A bundled skill at `.pi/skills/task-tool/SKILL.md` teaches the model the correct `task_id` rules.
 - **Subagent widget** — live status tray with elapsed timer, expandable detail panel, real-time activity stream, and completion notification banner.
 - **@mention autocomplete** — `@` in composer shows subagents and files with visual chips, capital-case display, and keyboard navigation.
 - **Agent prompt tuning** — tool description tells Pi to delegate on `@agent_name` patterns; prompts with explicit subagent identity headers.
@@ -45,7 +45,7 @@ See [`AGENTS.md`](AGENTS.md) for the full project rules and [`ROADMAP.md`](ROADM
 
 ## Install with Homebrew
 
-Recommended for macOS beta users:
+Recommended for macOS beta users on Apple silicon or Intel Macs:
 
 ```sh
 brew tap heyhuynhgiabuu/openpi

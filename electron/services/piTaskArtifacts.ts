@@ -2,9 +2,9 @@
  * Helpers for `@heyhuynhgiabuu/pi-task` JSON state under `.pi/`.
  *
  * Canonical layout:
- *   .pi/artifacts/task-sessions.json          — conversation_id → { task_id }
- *   .pi/artifacts/sessions/<taskId>/*.jsonl  — sub-session created by a task
- *   .pi/task-session-history.json            — task status/session metadata
+ *   .pi/artifacts/task-sessions.json               — conversation_id → { task_id }
+ *   .pi/artifacts/tasks/sessions/<taskId>/*.jsonl  — sub-session created by a task
+ *   .pi/task-session-history.json                  — task status/session metadata
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -21,15 +21,10 @@ export { findTaskIdForToolCall, MAX_TIME_DELTA_MS }
 export const PI_TASK_SHORT_ID = /^[A-Za-z0-9._-]{1,80}$/
 
 export function getSubSessionDir(artifactsDir: string, taskId: string): string {
-  return path.join(artifactsDir, 'sessions', taskId)
+  return path.join(artifactsDir, 'tasks', 'sessions', taskId)
 }
 
-export function resolveSubSessionPath(artifactsDir: string, taskId: string): string | null {
-  if (!PI_TASK_SHORT_ID.test(taskId)) return null
-  const historyPath = resolveHistorySessionRef(artifactsDir, taskId)
-  if (historyPath !== null) return historyPath
-
-  const dir = getSubSessionDir(artifactsDir, taskId)
+function findSessionFile(dir: string): string | null {
   let entries: string[]
   try {
     entries = fs.readdirSync(dir)
@@ -38,6 +33,17 @@ export function resolveSubSessionPath(artifactsDir: string, taskId: string): str
   }
   const file = entries.find((name) => name.endsWith('.jsonl'))
   return file ? path.join(dir, file) : null
+}
+
+export function resolveSubSessionPath(artifactsDir: string, taskId: string): string | null {
+  if (!PI_TASK_SHORT_ID.test(taskId)) return null
+  const historyPath = resolveHistorySessionRef(artifactsDir, taskId)
+  if (historyPath !== null) return historyPath
+
+  return (
+    findSessionFile(getSubSessionDir(artifactsDir, taskId)) ??
+    findSessionFile(path.join(artifactsDir, 'sessions', taskId))
+  )
 }
 
 function resolveHistorySessionRef(artifactsDir: string, taskId: string): string | null {
@@ -71,32 +77,34 @@ function resolveHistorySessionRef(artifactsDir: string, taskId: string): string 
 }
 
 export function resolveMostRecentSubSessionPath(artifactsDir: string): string | null {
-  const root = path.join(artifactsDir, 'sessions')
-  let taskDirs: string[]
-  try {
-    taskDirs = fs.readdirSync(root)
-  } catch {
-    return null
-  }
+  const roots = [path.join(artifactsDir, 'tasks', 'sessions'), path.join(artifactsDir, 'sessions')]
   let best: { file: string; mtimeMs: number } | null = null
-  for (const taskId of taskDirs) {
-    if (!PI_TASK_SHORT_ID.test(taskId)) continue
-    const dir = path.join(root, taskId)
-    let files: string[]
+  for (const root of roots) {
+    let taskDirs: string[]
     try {
-      files = fs.readdirSync(dir)
+      taskDirs = fs.readdirSync(root)
     } catch {
       continue
     }
-    for (const name of files) {
-      if (!name.endsWith('.jsonl')) continue
-      const file = path.join(dir, name)
+    for (const taskId of taskDirs) {
+      if (!PI_TASK_SHORT_ID.test(taskId)) continue
+      const dir = path.join(root, taskId)
+      let files: string[]
       try {
-        const stat = fs.statSync(file)
-        if (best === null || stat.mtimeMs > best.mtimeMs) {
-          best = { file, mtimeMs: stat.mtimeMs }
-        }
-      } catch {}
+        files = fs.readdirSync(dir)
+      } catch {
+        continue
+      }
+      for (const name of files) {
+        if (!name.endsWith('.jsonl')) continue
+        const file = path.join(dir, name)
+        try {
+          const stat = fs.statSync(file)
+          if (best === null || stat.mtimeMs > best.mtimeMs) {
+            best = { file, mtimeMs: stat.mtimeMs }
+          }
+        } catch {}
+      }
     }
   }
   return best?.file ?? null

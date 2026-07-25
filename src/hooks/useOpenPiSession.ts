@@ -72,10 +72,7 @@ export function useOpenPiSession() {
   const [queueMode, setQueueMode] = createSignal<QueueMode>('prompt')
   const [parentStack, setParentStack] = createSignal<Array<ParentStackEntry>>([])
   const [taskHistory, setTaskHistory] = createSignal<TaskHistoryEntry[]>([])
-  const isSubSession = createMemo<boolean>(() => {
-    const file = ready()?.sessionFile
-    return typeof file === 'string' && file.includes('/.pi/artifacts/sessions/')
-  })
+  const isSubSession = createMemo<boolean>(() => isSubSessionPath(ready()?.sessionFile))
   // Tracks whether the user just sent a fresh prompt (not a steer/followup).
   // Used to limit auto-steer activation to explicit user-initiated prompts only,
   // so intermediate agent_start events (e.g. after steer delivery) don't override
@@ -372,7 +369,7 @@ export function useOpenPiSession() {
   /**
    * Navigate to the sub-session that pi-task created for `taskId`.
    *
-   * Resolves the JSONL file at `<cwd>/.pi/artifacts/sessions/<taskId>/`,
+   * Resolves the JSONL file at `<cwd>/.pi/artifacts/tasks/sessions/<taskId>/`,
    * pushes the current session onto the parent stack, and opens the sub-session
    * via the standard `openSession` IPC (which does a full session replace —
    * the same path used by the sidebar, so the pi-task runner is replaced cleanly).

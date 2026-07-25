@@ -15,7 +15,7 @@ describe('task history status resolver', () => {
   })
 
   it('maps terminal error-like history statuses to error', () => {
-    for (const status of ['cancelled', 'failed', 'timeout']) {
+    for (const status of ['cancelled', 'aborted', 'failed', 'timeout']) {
       expect(resolveTaskStatusFromHistory([{ id: 'task-1', status }], 'task-1')).toBe('error')
     }
   })

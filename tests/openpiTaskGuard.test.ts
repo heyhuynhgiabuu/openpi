@@ -14,7 +14,7 @@ const PI_TASK_ID_RE = /^[0-9a-z]+-[0-9a-z]{3,8}$/i
 const CONVERSATION_ID_RE = /^[A-Za-z0-9._-]{1,80}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-const TERMINAL_STATUSES = new Set(['done', 'cancelled', 'timeout', 'failed'])
+const TERMINAL_STATUSES = new Set(['done', 'cancelled', 'aborted', 'timeout', 'failed'])
 
 function looksLikeUuid(s: unknown): boolean {
   if (typeof s !== 'string') return false
@@ -114,6 +114,13 @@ describe('openpi-task-guard', () => {
   it('strips a well-formed task_id that is in the history as done', () => {
     const result = applyGuard({ agent_type: 'scout', task_id: 'mqzhz574-b765' }, {}, [
       { id: 'mqzhz574-b765', status: 'done' },
+    ])
+    expect(result.task_id).toBeUndefined()
+  })
+
+  it('strips a well-formed task_id that is in the history as aborted', () => {
+    const result = applyGuard({ agent_type: 'scout', task_id: 'mqzhz574-b765' }, {}, [
+      { id: 'mqzhz574-b765', status: 'aborted' },
     ])
     expect(result.task_id).toBeUndefined()
   })

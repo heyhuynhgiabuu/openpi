@@ -39,7 +39,7 @@ Done so far:
 - **Harness lint pre-commit hook** and full docs/ product documentation directory.
 - Runtime OpenPi branding: app name/version from Electron main, shared metadata, OpenPi icon set.
 - CI/CD baseline: PR/main verification, tag-triggered beta release across macOS/Windows/Linux.
-- **Pi-task delegation UI**: artifact watcher + tray for `@heyhuynhgiabuu/pi-task` (`TASKS.md`, `task-sessions.json`). No built-in `Agent` customTools on the sidecar — delegation is the pi-task package.
+- **Pi-task delegation UI**: task-history polling and sub-session navigation for `@heyhuynhgiabuu/pi-task` (`task-session-history.json`, `task-sessions.json`, `artifacts/tasks/sessions/`). No built-in `Agent` customTools on the sidecar — delegation is the pi-task package.
 - **Custom agent discovery**: `.pi/agents/*.md` + `~/.pi/agent/agents/*.md` files with full frontmatter support (display_name, tools, disallowed_tools, model, thinking, max_turns, prompt_mode, isolated, enabled). Project > global > builtin priority with workspace-trust gating for project agents.
 - **Subagent widget**: live status tray with Bot icon, elapsed timer, expandable detail panel (ID/status/turns/tools/4K result preview), background completion notification banner. Status bugfixes: onToolEnd no longer overwrites background status; clearFinished preserves background agents.
 - **@mention autocomplete**: `@` in composer shows subagents + files with section headers, Bot icon in accent box, capital-case display, keyboard navigation across combined list. Agent chip replaces raw text; `@name` prepended invisibly on send.

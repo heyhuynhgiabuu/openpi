@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { isSubSessionPath } from '../src/lib/subSessionNavigation'
 
 describe('isSubSessionPath', () => {
-  it('returns true for paths under .pi/artifacts/sessions/', () => {
+  it('returns true for paths under the current pi-task session directory', () => {
     expect(
       isSubSessionPath(
-        '/Users/me/proj/.pi/artifacts/sessions/mqzbadgj-3a1e/2026-06-29T14-27-08-162Z_019f13c6.jsonl'
+        '/Users/me/proj/.pi/artifacts/tasks/sessions/mqzbadgj-3a1e/2026-06-29T14-27-08-162Z_019f13c6.jsonl'
       )
     ).toBe(true)
   })

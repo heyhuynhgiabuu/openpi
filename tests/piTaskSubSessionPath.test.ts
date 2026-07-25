@@ -33,7 +33,7 @@ describe('PI_TASK_SHORT_ID', () => {
 describe('getSubSessionDir', () => {
   it('joins artifacts dir, "sessions" and the taskId', () => {
     const dir = getSubSessionDir('/tmp/foo/.pi/artifacts', 'mqzbadgj-3a1e')
-    expect(dir).toBe(path.join('/tmp/foo/.pi/artifacts', 'sessions', 'mqzbadgj-3a1e'))
+    expect(dir).toBe(path.join('/tmp/foo/.pi/artifacts', 'tasks', 'sessions', 'mqzbadgj-3a1e'))
   })
 })
 

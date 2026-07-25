@@ -10,8 +10,8 @@
  * the user loses the work).
  *
  * We cannot fix the model, but the Pi SDK `tool_call` event lets us
- * patch `event.input` before the tool runs. Rules (matches pi-task
- * v0.2.0 contract):
+ * patch `event.input` before the tool runs. Rules match the pi-task
+ * v0.3.7 contract:
  *
  * 1. Fresh task = no `task_id` AND no `conversation_id`. A `task_id`
  *    on a fresh call is always a hallucination.
@@ -45,7 +45,7 @@ const CONVERSATION_ID = /^[A-Za-z0-9._-]{1,80}$/
 
 // Terminal status values — if a task is in the history with one of
 // these, the model recycling its id is a hallucination, not a resume.
-const TERMINAL_STATUSES = new Set(['done', 'cancelled', 'timeout', 'failed'])
+const TERMINAL_STATUSES = new Set(['done', 'cancelled', 'aborted', 'timeout', 'failed'])
 
 function loadConversationRegistry(cwd: string): Record<string, { task_id?: string }> {
   const file = join(cwd, '.pi', 'artifacts', 'task-sessions.json')

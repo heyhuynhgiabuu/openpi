@@ -36,6 +36,7 @@ export function resolveTaskStatusFromHistory(
     case 'done':
       return 'done'
     case 'cancelled':
+    case 'aborted':
     case 'failed':
     case 'timeout':
       return 'error'
