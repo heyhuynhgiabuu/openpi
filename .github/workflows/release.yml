@@ -20,16 +20,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS
-            os: macos-latest
+          # Build native modules on their target architecture. Cross-compiling would
+          # leave better-sqlite3 and optional native dependencies at the host ABI.
+          - name: macOS ARM64
+            os: macos-14
+            arch: arm64
+          - name: macOS Intel
+            os: macos-15-intel
+            arch: x64
           - name: Windows
             # Pinned to windows-2022 (VS2022): windows-latest is being redirected to
             # windows-2025-vs2026 (VS2026) which node-gyp ≤12.3 does not recognise,
             # causing electron-builder's internal npmRebuild to fail on better-sqlite3.
             # Revisit when node-gyp ships VS2026 support (upstream PR #3240).
             os: windows-2022
+            arch: x64
           - name: Linux
             os: ubuntu-latest
+            arch: x64
     env:
       # Signing and notarization are enabled when the Apple/Windows secrets are configured.
       # Public beta builds run unsigned when the secrets are absent.
@@ -78,7 +86,7 @@ jobs:
         # CSC_KEY_PASSWORD — and replace this step with a conditional signing env block.
         # Do NOT pass CSC_LINK/APPLE_ID as empty env vars: electron-builder treats any
         # non-unset CSC_LINK as "certificate configured" and fails signing on empty values.
-        run: npx electron-builder --config electron-builder.json --publish never
+        run: npx electron-builder --config electron-builder.json --${{ matrix.arch }} --publish never
 
       - name: Verify packaged artifacts (minimum size checks)
         shell: bash
@@ -209,27 +217,32 @@ jobs:
       - name: Update Homebrew tap
         if: ${{ env.BREW_TAP_TOKEN != '' }}
         run: |
-          DMG=$(find dist-artifacts -name "*-arm64.dmg" | head -1)
-          if [ -z "$DMG" ]; then
-            echo "No arm64 DMG found in dist-artifacts — skipping Homebrew tap update"
-            exit 0
+          ARM64_DMG=$(find dist-artifacts -name "*-arm64.dmg" | head -1)
+          X64_DMG=$(find dist-artifacts -name "*-x64.dmg" | head -1)
+          if [ -z "$ARM64_DMG" ] || [ -z "$X64_DMG" ]; then
+            echo "Missing arm64 or x64 macOS DMG — refusing to update the Homebrew tap"
+            exit 1
           fi
-          echo "Updating Homebrew tap with $DMG"
-          node scripts/update-brew.mjs "${{ github.ref_name }}" "$DMG"
+          echo "Updating Homebrew tap with $ARM64_DMG and $X64_DMG"
+          node scripts/update-brew.mjs "${{ github.ref_name }}" "$ARM64_DMG" "$X64_DMG"
 
-      - name: Verify Homebrew tap reflects new version
+      - name: Verify Homebrew tap reflects both macOS architectures
         if: ${{ env.BREW_TAP_TOKEN != '' }}
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          echo "Verifying tap has version $VERSION..."
+          echo "Verifying tap has both macOS installers for $VERSION..."
           TAP_CONTENT=$(curl -sL \
             -H "Authorization: Bearer $BREW_TAP_TOKEN" \
             "https://api.github.com/repos/heyhuynhgiabuu/homebrew-openpi/contents/Casks/openpi.rb" \
             | python3 -c "import sys,json,base64; d=json.load(sys.stdin); print(base64.b64decode(d['content']).decode())")
-          if echo "$TAP_CONTENT" | grep -q "version \"$VERSION\""; then
-            echo "✓ Homebrew tap correctly reflects version $VERSION"
-          else
-            echo "::warning::Homebrew tap does not appear to reflect version $VERSION — manual update may be needed"
-            echo "$TAP_CONTENT"
-          fi
+          for expected in "version \"$VERSION\"" "OpenPi-#{version}-arm64.dmg" "OpenPi-#{version}-x64.dmg"; do
+            case "$TAP_CONTENT" in
+              *"$expected"*) ;;
+              *)
+                echo "::error::Homebrew tap is missing: $expected"
+                exit 1
+                ;;
+            esac
+          done
+          echo "✓ Homebrew tap correctly reflects both macOS architectures"

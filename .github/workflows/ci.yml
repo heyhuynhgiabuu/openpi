@@ -43,9 +43,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # windows-latest redirects to windows-2025-vs2026 (VS2026) which node-gyp ≤12.3
-        # does not support; pin to windows-2022 until upstream PR #3240 ships.
-        os: [macos-latest, ubuntu-latest, windows-2022]
+        # Verify both supported macOS architectures. macos-14 is Apple silicon;
+        # macos-15-intel is Intel. Keep Windows pinned until node-gyp supports VS2026.
+        os: [macos-14, macos-15-intel, ubuntu-latest, windows-2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
