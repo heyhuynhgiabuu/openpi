@@ -85,7 +85,11 @@ export type SidecarMessage =
   | { type: 'slash_commands_result'; requestId: string; commands: unknown[] }
   | { type: 'skills_result'; requestId: string; skills: unknown[] }
   | { type: 'skill_file_result'; requestId: string; content: string | null }
-  | { type: 'provider_login_event'; requestId: string; event: unknown }
+  | {
+      type: 'provider_login_event'
+      requestId: string
+      event: import('../../src/lib/ipc').ProviderLoginEvent
+    }
   | { type: 'output_append'; line: { level: string; text: string; ts: number } }
   | {
       type: 'extension_ui_request'

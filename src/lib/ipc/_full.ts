@@ -468,20 +468,40 @@ export const providerInfoSchema = z.object({
 export type ProviderInfo = z.infer<typeof providerInfoSchema>
 
 // OAuth login event streamed from main → renderer during login flow
-export type ProviderLoginEvent =
-  | { type: 'auth'; url: string; instructions?: string }
-  | { type: 'progress'; message: string }
-  | { type: 'prompt'; message: string; placeholder?: string; allowEmpty?: boolean }
-  | { type: 'select'; message: string; options: { id: string; label: string }[] }
-  | {
-      type: 'device_code'
-      verificationUri: string
-      userCode: string
-      intervalSeconds?: number
-      expiresInSeconds?: number
-    }
-  | { type: 'success' }
-  | { type: 'error'; message: string }
+const providerWebUrlSchema = z.string().refine((value) => {
+  if (!URL.canParse(value)) return false
+  return ['http:', 'https:'].includes(new URL(value).protocol)
+})
+
+export const providerLoginEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('auth'),
+    url: providerWebUrlSchema,
+    instructions: z.string().optional(),
+  }),
+  z.object({ type: z.literal('progress'), message: z.string() }),
+  z.object({
+    type: z.literal('prompt'),
+    message: z.string(),
+    placeholder: z.string().optional(),
+    allowEmpty: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal('select'),
+    message: z.string(),
+    options: z.array(z.object({ id: z.string(), label: z.string() })),
+  }),
+  z.object({
+    type: z.literal('device_code'),
+    verificationUri: providerWebUrlSchema,
+    userCode: z.string(),
+    intervalSeconds: z.number().optional(),
+    expiresInSeconds: z.number().optional(),
+  }),
+  z.object({ type: z.literal('success') }),
+  z.object({ type: z.literal('error'), message: z.string() }),
+])
+export type ProviderLoginEvent = z.infer<typeof providerLoginEventSchema>
 
 export const setProviderKeySchema = z.object({
   provider: z.string().min(1),

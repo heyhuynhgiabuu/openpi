@@ -1,3 +1,7 @@
+overrides:
+  'brace-expansion@>=5.0.0 <5.0.8': 5.0.8
+  'protobufjs@>=7.5.0 <7.6.5': 7.6.5
+  'ws@>=8.0.0 <8.21.1': 8.21.1
 allowBuilds:
   '@google/genai': set this to true or false
   better-sqlite3: set this to true or false

@@ -8,6 +8,7 @@ import type {
   showSystemNotification as notifySystem,
   playSoundEffect as playSound,
 } from '../services/notificationHost'
+import { routeProviderLoginEvent } from './providerEvents'
 import type { SidecarMessage } from './sidecar'
 import { isStaleExtensionCtxEvent } from './staleCtx'
 
@@ -119,20 +120,13 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         void deps.refreshSessionIndex()
         return
 
-      case 'provider_login_event': {
-        const event = msg.event as { type?: string; url?: string; verificationUri?: string }
-        const externalUrl =
-          event.type === 'auth'
-            ? event.url
-            : event.type === 'device_code'
-              ? event.verificationUri
-              : undefined
-        if (typeof externalUrl === 'string') {
-          void shell.openExternal(externalUrl)
-        }
-        deps.getMainWindow()?.webContents.send(IPC.PROVIDER_LOGIN_EVENT, msg.event)
+      case 'provider_login_event':
+        routeProviderLoginEvent(msg.event, {
+          openExternal: (url) => shell.openExternal(url),
+          emit: (event) => deps.getMainWindow()?.webContents.send(IPC.PROVIDER_LOGIN_EVENT, event),
+          emitError: (message) => deps.emitSessionError(message),
+        })
         return
-      }
 
       case 'output_append':
         deps.emitOutputLine(msg.line as OutputLine)

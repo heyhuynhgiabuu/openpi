@@ -1,4 +1,4 @@
-import type { AuthEvent, AuthPrompt } from '@earendil-works/pi-ai'
+import type { AuthEvent, AuthInteraction, AuthPrompt } from '@earendil-works/pi-ai'
 import type { ProviderLoginEvent } from '../../src/lib/ipc'
 
 type PromptLoginEvent =
@@ -39,6 +39,65 @@ export function toProviderPromptEvent(prompt: AuthPrompt): PromptLoginEvent {
     message: prompt.message,
     placeholder: prompt.placeholder,
     allowEmpty: prompt.type !== 'secret',
+  }
+}
+
+interface PendingProviderPrompt {
+  resolve: (value: string) => void
+  cancel: (reason?: unknown) => void
+}
+
+export class ProviderAuthBridge {
+  private readonly pendingByProvider = new Map<string, PendingProviderPrompt>()
+
+  constructor(private readonly send: (requestId: string, event: ProviderLoginEvent) => void) {}
+
+  createInteraction(requestId: string, providerId: string): AuthInteraction {
+    return {
+      notify: (event) => this.send(requestId, toProviderLoginEvent(event)),
+      prompt: (prompt) => this.requestInput(requestId, providerId, prompt),
+    }
+  }
+
+  resolve(providerId: string, value: string): boolean {
+    const pending = this.pendingByProvider.get(providerId)
+    if (!pending) return false
+    pending.resolve(value)
+    return true
+  }
+
+  private requestInput(requestId: string, providerId: string, prompt: AuthPrompt): Promise<string> {
+    this.send(requestId, toProviderPromptEvent(prompt))
+    return new Promise<string>((resolve, reject) => {
+      const cleanup = () => {
+        prompt.signal?.removeEventListener('abort', onAbort)
+        if (this.pendingByProvider.get(providerId) === pending) {
+          this.pendingByProvider.delete(providerId)
+        }
+      }
+      const pending: PendingProviderPrompt = {
+        resolve: (value) => {
+          cleanup()
+          resolve(value)
+        },
+        cancel: (reason) => {
+          cleanup()
+          reject(
+            reason instanceof Error
+              ? reason
+              : new Error('Provider authentication prompt cancelled.')
+          )
+        },
+      }
+      const onAbort = () => pending.cancel(prompt.signal?.reason)
+
+      this.pendingByProvider
+        .get(providerId)
+        ?.cancel(new Error('Provider authentication prompt replaced.'))
+      this.pendingByProvider.set(providerId, pending)
+      if (prompt.signal?.aborted) onAbort()
+      else prompt.signal?.addEventListener('abort', onAbort, { once: true })
+    })
   }
 }
 

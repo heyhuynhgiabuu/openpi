@@ -83,6 +83,8 @@ npm test           # Vitest
 npm run build      # Electron/Vite production build
 ```
 
+Provider-authentication changes must also pass the [provider authentication smoke test](docs/provider-auth-smoke.md) with redacted, credential-free evidence.
+
 Package a local unsigned beta build:
 
 ```bash

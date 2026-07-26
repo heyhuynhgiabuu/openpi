@@ -26,7 +26,7 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function sanitizeMarkdownHtml(html: string): string {
+export function sanitizeMarkdownHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ['button', 'input', 'file_comment', 'selected_code', 'comment'],
     ADD_ATTR: [

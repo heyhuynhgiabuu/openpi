@@ -22,7 +22,7 @@ import {
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
-import { answerApiKeyPrompt, toProviderLoginEvent, toProviderPromptEvent } from './providerAuth'
+import { answerApiKeyPrompt, ProviderAuthBridge } from './providerAuth'
 import { enforceIgnoreScriptsEnv } from './safePackageManager'
 import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from './staleCtx'
 
@@ -48,12 +48,6 @@ let _cachedResourceLoader: {
   workspaceTrusted: boolean
   loader: InstanceType<typeof DefaultResourceLoader>
 } | null = null
-interface PendingProviderPrompt {
-  resolve: (value: string) => void
-  cancel: (reason?: unknown) => void
-}
-
-const _pendingOAuthPrompts = new Map<string, PendingProviderPrompt>()
 
 // ─── Port ─────────────────────────────────────────────────────────────────────
 
@@ -114,39 +108,9 @@ async function invalidateModelRuntime(): Promise<void> {
   await modelRuntime.refresh({ allowNetwork: false })
 }
 
-function requestProviderAuthInput(
-  requestId: string,
-  providerId: string,
-  prompt: Parameters<typeof toProviderPromptEvent>[0]
-): Promise<string> {
-  send({ type: 'provider_login_event', requestId, event: toProviderPromptEvent(prompt) })
-  return new Promise<string>((resolve, reject) => {
-    const cleanup = () => {
-      prompt.signal?.removeEventListener('abort', onAbort)
-      if (_pendingOAuthPrompts.get(providerId) === pending) {
-        _pendingOAuthPrompts.delete(providerId)
-      }
-    }
-    const pending: PendingProviderPrompt = {
-      resolve: (value) => {
-        cleanup()
-        resolve(value)
-      },
-      cancel: (reason) => {
-        cleanup()
-        reject(
-          reason instanceof Error ? reason : new Error('Provider authentication prompt cancelled.')
-        )
-      },
-    }
-    const onAbort = () => pending.cancel(prompt.signal?.reason)
-
-    _pendingOAuthPrompts.get(providerId)?.cancel()
-    _pendingOAuthPrompts.set(providerId, pending)
-    if (prompt.signal?.aborted) onAbort()
-    else prompt.signal?.addEventListener('abort', onAbort, { once: true })
-  })
-}
+const providerAuthBridge = new ProviderAuthBridge((requestId, event) => {
+  send({ type: 'provider_login_event', requestId, event })
+})
 
 function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
   send({ type: 'output_append', line: { level, text, ts: Date.now() } })
@@ -1034,15 +998,11 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     case 'login_provider': {
       try {
         const modelRuntime = await getModelRuntime()
-        await modelRuntime.login(cmd.providerId, 'oauth', {
-          prompt: (prompt) => requestProviderAuthInput(cmd.requestId, cmd.providerId, prompt),
-          notify: (event) =>
-            send({
-              type: 'provider_login_event',
-              requestId: cmd.requestId,
-              event: toProviderLoginEvent(event),
-            }),
-        })
+        await modelRuntime.login(
+          cmd.providerId,
+          'oauth',
+          providerAuthBridge.createInteraction(cmd.requestId, cmd.providerId)
+        )
         send({ type: 'provider_login_event', requestId: cmd.requestId, event: { type: 'success' } })
       } catch (err) {
         send({
@@ -1060,11 +1020,9 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       break
     }
 
-    case 'resolve_provider_prompt': {
-      const resolver = _pendingOAuthPrompts.get(cmd.providerId)
-      resolver?.resolve(cmd.value)
+    case 'resolve_provider_prompt':
+      providerAuthBridge.resolve(cmd.providerId, cmd.value)
       break
-    }
 
     case 'extension_ui_response': {
       fulfillExtensionUiPending({
