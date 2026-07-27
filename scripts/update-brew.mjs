@@ -73,11 +73,12 @@ export function renderCask(version, arm64Sha256, x64Sha256) {
 
   on_arm do
     sha256 "${arm64Sha256}"
+
     url "https://github.com/${OWNER}/openpi/releases/download/v#{version}/OpenPi-#{version}-arm64.dmg"
   end
-
   on_intel do
     sha256 "${x64Sha256}"
+
     url "https://github.com/${OWNER}/openpi/releases/download/v#{version}/OpenPi-#{version}-x64.dmg"
   end
 
