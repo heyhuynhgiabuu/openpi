@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { renderMacUpdateMetadata } from '../scripts/updateMetadata.mjs'
+import { expectedMacNativePackages, hasMacArchitecture } from '../scripts/verifyMacPackage.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const releaseWorkflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8')
@@ -23,6 +24,25 @@ describe('release artifact contract', () => {
     expect(releaseWorkflow).toContain(`OpenPi-$VERSION-\${{ matrix.arch }}.$ext`)
     expect(releaseWorkflow).toMatch(/name: macOS ARM64[\s\S]*extensions: "dmg zip"/)
     expect(releaseWorkflow).toMatch(/name: macOS Intel[\s\S]*extensions: "dmg zip"/)
+  })
+
+  it('verifies packaged macOS native dependencies match the target architecture', () => {
+    expect(releaseWorkflow).toContain(
+      `node scripts/verifyMacPackage.mjs "$VERSION" "\${{ matrix.arch }}"`
+    )
+    expect(expectedMacNativePackages('arm64')).toEqual([
+      '@ff-labs/fff-bin-darwin-arm64',
+      '@lydell/node-pty-darwin-arm64',
+      '@yuuang/ffi-rs-darwin-arm64',
+    ])
+    expect(expectedMacNativePackages('x64')).toEqual([
+      '@ff-labs/fff-bin-darwin-x64',
+      '@lydell/node-pty-darwin-x64',
+      '@yuuang/ffi-rs-darwin-x64',
+    ])
+    expect(hasMacArchitecture('Mach-O 64-bit bundle arm64', 'arm64')).toBe(true)
+    expect(hasMacArchitecture('Mach-O 64-bit bundle x86_64', 'arm64')).toBe(false)
+    expect(hasMacArchitecture('Mach-O 64-bit bundle x86_64', 'x64')).toBe(true)
   })
 
   it('creates one combined macOS updater manifest and does not merge per-arch manifests', () => {

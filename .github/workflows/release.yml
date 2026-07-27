@@ -135,6 +135,13 @@ jobs:
 
           echo "All required artifacts passed minimum-size verification."
 
+      - name: Verify macOS package architecture
+        if: ${{ startsWith(matrix.name, 'macOS') }}
+        shell: bash
+        run: |
+          VERSION="${{ steps.release_meta.outputs.version }}"
+          node scripts/verifyMacPackage.mjs "$VERSION" "${{ matrix.arch }}"
+
       - name: Remove per-architecture macOS update metadata
         if: ${{ startsWith(matrix.name, 'macOS') }}
         shell: bash

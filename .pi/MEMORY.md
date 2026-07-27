@@ -12,3 +12,4 @@
 - Electron's macOS updater requires ZIP artifacts. Native arm64/x64 jobs must discard colliding per-architecture `latest-mac.yml` files and publish one combined manifest containing both architecture-named ZIPs.
 - Scope `BREW_TAP_TOKEN` to Homebrew-only steps; do not expose it as a publish-job environment variable.
 - Release prep is verified and commit-ready. Tagging remains blocked on `docs/provider-auth-smoke.md`, version promotion, and explicit approval.
+- An x64 Electron cross-package made from an arm64 pnpm install can silently include arm64 optional native modules. Release jobs must inspect both Electron and unpacked fff/node-pty/ffi-rs Mach-O binaries on their native runner before upload; use `file -b` so architecture-bearing paths cannot create false positives.
