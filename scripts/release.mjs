@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { pathToFileURL } from 'node:url'
 
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/
 
@@ -125,27 +126,45 @@ function releaseNotes(args, version) {
   )
 }
 
+export function updateChangelogText(current, version, date, notes) {
+  if (current.includes(`## [${version}]`)) throw new Error(`CHANGELOG.md already has ${version}`)
+
+  const entryHeading = `## [${version}] - ${date}`
+  const unreleasedHeading = '## [Unreleased]'
+  const unreleasedStart = current.indexOf(unreleasedHeading)
+  if (unreleasedStart < 0) {
+    return `${current.trim()}\n\n${entryHeading}\n\n${notes.trim()}\n`
+  }
+
+  const bodyStart = unreleasedStart + unreleasedHeading.length
+  const nextVersionStart = current.indexOf('\n## [', bodyStart)
+  const bodyEnd = nextVersionStart < 0 ? current.length : nextVersionStart
+  const unreleasedBody = current.slice(bodyStart, bodyEnd).trim()
+  const suppliedNotes = notes.trim()
+  const publishedBody =
+    suppliedNotes === unreleasedBody
+      ? unreleasedBody
+      : [suppliedNotes, unreleasedBody].filter(Boolean).join('\n\n')
+  const prefix = current.slice(0, bodyStart).trimEnd()
+  const suffix = nextVersionStart < 0 ? '' : current.slice(nextVersionStart).trimStart()
+
+  return `${prefix}\n\n${entryHeading}\n\n${publishedBody}\n${suffix ? `\n${suffix}` : ''}`
+}
+
 function updateChangelog(version, notes) {
   const changelogPath = 'CHANGELOG.md'
   const today = new Date().toISOString().slice(0, 10)
-  const entry = `## [${version}] - ${today}\n\n${notes.trim()}\n\n`
 
   if (!fs.existsSync(changelogPath)) {
-    fs.writeFileSync(changelogPath, `# Changelog\n\n## [Unreleased]\n\n${entry}`)
+    fs.writeFileSync(
+      changelogPath,
+      `# Changelog\n\n## [Unreleased]\n\n## [${version}] - ${today}\n\n${notes.trim()}\n`
+    )
     return
   }
 
   const current = fs.readFileSync(changelogPath, 'utf8')
-  if (current.includes(`## [${version}]`)) throw new Error(`CHANGELOG.md already has ${version}`)
-  if (!current.includes('## [Unreleased]')) {
-    fs.writeFileSync(changelogPath, `${current.trim()}\n\n${entry}`)
-    return
-  }
-
-  fs.writeFileSync(
-    changelogPath,
-    current.replace('## [Unreleased]\n', `## [Unreleased]\n\n${entry}`)
-  )
+  fs.writeFileSync(changelogPath, updateChangelogText(current, version, today, notes))
 }
 
 function main() {
@@ -180,9 +199,12 @@ function main() {
   console.log(`\nCreated ${tag}. Push with:\n  git push origin main --follow-tags`)
 }
 
-try {
-  main()
-} catch (error) {
-  console.error(`release failed: ${error.message}`)
-  process.exit(1)
+const entrypoint = process.argv[1]
+if (entrypoint && import.meta.url === pathToFileURL(entrypoint).href) {
+  try {
+    main()
+  } catch (error) {
+    console.error(`release failed: ${error.message}`)
+    process.exit(1)
+  }
 }

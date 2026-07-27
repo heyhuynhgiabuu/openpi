@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "dev.openpi.app",
   "productName": "OpenPi",
+  "artifactName": "${productName}-${version}-${arch}.${ext}",
   "asar": true,
   "asarUnpack": [
     "node_modules/@ff-labs/**",
@@ -28,7 +29,7 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "icons/icon.icns",
-    "target": ["dmg"]
+    "target": ["dmg", "zip"]
   },
   "linux": {
     "category": "Development",

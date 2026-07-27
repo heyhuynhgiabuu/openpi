@@ -25,9 +25,11 @@ jobs:
           - name: macOS ARM64
             os: macos-14
             arch: arm64
+            extensions: "dmg zip"
           - name: macOS Intel
             os: macos-15-intel
             arch: x64
+            extensions: "dmg zip"
           - name: Windows
             # Pinned to windows-2022 (VS2022): windows-latest is being redirected to
             # windows-2025-vs2026 (VS2026) which node-gyp ≤12.3 does not recognise,
@@ -35,9 +37,11 @@ jobs:
             # Revisit when node-gyp ships VS2026 support (upstream PR #3240).
             os: windows-2022
             arch: x64
+            extensions: "exe"
           - name: Linux
             os: ubuntu-latest
             arch: x64
+            extensions: "AppImage"
     env:
       # Signing and notarization are enabled when the Apple/Windows secrets are configured.
       # Public beta builds run unsigned when the secrets are absent.
@@ -46,6 +50,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Validate release version
+        id: release_meta
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          LOCK_VERSION=$(node -p "require('./package-lock.json').version")
+          ROOT_LOCK_VERSION=$(node -p "require('./package-lock.json').packages[''].version")
+          if [ "$VERSION" != "$PACKAGE_VERSION" ] || [ "$VERSION" != "$LOCK_VERSION" ] || [ "$VERSION" != "$ROOT_LOCK_VERSION" ]; then
+            echo "::error::Tag version $VERSION does not match package metadata ($PACKAGE_VERSION, $LOCK_VERSION, $ROOT_LOCK_VERSION)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -100,25 +119,28 @@ jobs:
 
           MIN_BYTES=1048576  # 1 MB minimum — guards against empty/truncated output
 
-          fail=0
-          while IFS= read -r -d '' artifact; do
+          for ext in ${{ matrix.extensions }}; do
+            artifact="$RELEASE_DIR/OpenPi-$VERSION-${{ matrix.arch }}.$ext"
+            if [ ! -f "$artifact" ]; then
+              echo "::error::Missing required release artifact: $artifact"
+              exit 1
+            fi
             size=$(wc -c < "$artifact")
             if [ "$size" -lt "$MIN_BYTES" ]; then
-              echo "FAIL: $artifact is only ${size} bytes (expected >= ${MIN_BYTES})"
-              fail=1
-            else
-              echo "OK:   $artifact (${size} bytes)"
+              echo "::error::$artifact is only ${size} bytes (expected >= ${MIN_BYTES})"
+              exit 1
             fi
-          done < <(find "$RELEASE_DIR" -maxdepth 1 \
-            \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.exe" \) \
-            -print0 2>/dev/null || true)
+            echo "OK: $artifact (${size} bytes)"
+          done
 
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::One or more packaged artifacts failed the minimum-size check."
-            exit 1
-          fi
+          echo "All required artifacts passed minimum-size verification."
 
-          echo "All artifacts passed minimum-size verification."
+      - name: Remove per-architecture macOS update metadata
+        if: ${{ startsWith(matrix.name, 'macOS') }}
+        shell: bash
+        run: |
+          VERSION="${{ steps.release_meta.outputs.version }}"
+          rm -f "release/$VERSION/latest-mac.yml"
 
       - name: Generate per-platform checksums
         shell: bash
@@ -138,7 +160,7 @@ jobs:
           echo "" >> "$CHECKSUMS_FILE"
 
           find "$RELEASE_DIR" -maxdepth 1 \
-            \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.exe" \) \
+            \( -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.exe" \) \
             | sort | while IFS= read -r f; do
             if command -v sha256sum &>/dev/null; then
               sha256sum "$f" | sed "s|$RELEASE_DIR/||" >> "$CHECKSUMS_FILE"
@@ -155,23 +177,29 @@ jobs:
         with:
           name: openpi-${{ matrix.name }}-${{ github.ref_name }}
           path: |
-            release/**/OpenPi*.dmg
-            release/**/*.AppImage
-            release/**/*.exe
-            release/**/*.blockmap
-            release/**/latest*.yml
-            release/**/checksums-*.txt
+            release/${{ steps.release_meta.outputs.version }}/OpenPi-${{ steps.release_meta.outputs.version }}-${{ matrix.arch }}.*
+            release/${{ steps.release_meta.outputs.version }}/latest*.yml
+            release/${{ steps.release_meta.outputs.version }}/checksums-*.txt
           if-no-files-found: error
 
   publish:
     name: Publish GitHub release
     needs: build
     runs-on: ubuntu-latest
-    env:
-      BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v5
+
+      - name: Detect Homebrew tap credentials
+        id: brew_status
+        env:
+          BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$BREW_TAP_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Generate release notes from changelog
         run: node scripts/extract-release-notes.mjs "${{ github.ref_name }}" release-notes.generated.md
@@ -181,6 +209,17 @@ jobs:
         with:
           path: dist-artifacts
           merge-multiple: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Generate combined macOS update metadata
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          node scripts/updateMetadata.mjs "$VERSION" dist-artifacts
 
       - name: Merge platform checksums into combined checksums.txt
         run: |
@@ -197,11 +236,6 @@ jobs:
           echo "=== Combined checksums.txt ==="
           cat "$COMBINED"
 
-      - name: Setup Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2.2.1
         with:
@@ -210,12 +244,14 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             dist-artifacts/**
 
       - name: Update Homebrew tap
-        if: ${{ env.BREW_TAP_TOKEN != '' }}
+        if: ${{ steps.brew_status.outputs.enabled == 'true' }}
+        env:
+          BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
         run: |
           ARM64_DMG=$(find dist-artifacts -name "*-arm64.dmg" | head -1)
           X64_DMG=$(find dist-artifacts -name "*-x64.dmg" | head -1)
@@ -227,7 +263,9 @@ jobs:
           node scripts/update-brew.mjs "${{ github.ref_name }}" "$ARM64_DMG" "$X64_DMG"
 
       - name: Verify Homebrew tap reflects both macOS architectures
-        if: ${{ env.BREW_TAP_TOKEN != '' }}
+        if: ${{ steps.brew_status.outputs.enabled == 'true' }}
+        env:
+          BREW_TAP_TOKEN: ${{ secrets.BREW_TAP_TOKEN }}
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"

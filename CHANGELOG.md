@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Intel macOS builds** — tagged releases now build native Apple silicon and Intel installers, normal CI verifies both runner architectures, and the Homebrew cask selects the correct installer. (`09f4039`)
+- **Pi 0.82 provider sign-in** — provider setup supports OpenRouter, Kimi Code, xAI, Anthropic, OpenAI Codex, and GitHub Copilot account-login flows alongside API keys. (`079b086`)
+- **Provider authentication smoke guide** — added a live-account release checklist with credential-free evidence rules for browser, device-code, manual-code, cancellation, logout, and restart behavior. (`d40edf2`)
+
+### Changed
+
+- **Pi SDK 0.82.1** — migrated provider and model state to Pi's shared `ModelRuntime`, preserving extension-registered providers across credential refreshes. (`079b086`)
+- **pi-task 0.3.7 compatibility** — task history, terminal states, and sub-session navigation now follow pi-task's current artifact contracts while retaining legacy session-path fallback. (`2dd93f6`)
+
+### Fixed
+
+- **Provider login lifecycle** — prompt cancellation, duplicate prompt replacement, optional manual-code input, logout acknowledgement, and provider refresh now remain synchronized across the sidecar, Electron main, and renderer. (`d40edf2`)
+- **Provider event boundary** — malformed login events are rejected before renderer delivery, and only valid HTTP(S) authentication URLs may open externally. (`d40edf2`)
+- **Markdown sanitization and updater dependencies** — updated DOMPurify and electron-updater and added regressions for executable markup and unsafe attributes. (`d40edf2`)
+- **Release artifact validation** — tagged builds now reject package-version mismatches, missing installers, wrong architecture names, and unmatched release uploads.
+- **macOS update metadata** — release builds include architecture-specific ZIP updates and publish one combined manifest that selects the correct Apple silicon or Intel download.
+- **Release credential scope** — the Homebrew tap token is available only to the tap detection, update, and verification steps.
+
+### Beta caveats
+
+- Real provider account flows still require the redacted manual smoke checklist before release.
+- `npm audit --omit=dev` retains one high-severity `brace-expansion@5.0.7` finding inside Pi 0.82.1's published shrinkwrap; pnpm's production audit has no findings.
+
 ## [0.2.4] - 2026-06-30
 
 - ### Added

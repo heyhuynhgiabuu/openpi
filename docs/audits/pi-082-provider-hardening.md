@@ -15,7 +15,7 @@ Date: 2026-07-26
 ## Verification
 
 - TypeScript typecheck passes.
-- 61 test files / 332 tests pass.
+- 63 test files / 342 tests pass.
 - Production build passes with pre-existing bundle-size and mixed-import warnings.
 - Provider authentication cannot be exercised against real accounts in automated verification; use `docs/provider-auth-smoke.md` before release.
 
