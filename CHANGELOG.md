@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-27
+
 ### Added
 
 - **Intel macOS builds** — tagged releases now build native Apple silicon and Intel installers, normal CI verifies both runner architectures, and the Homebrew cask selects the correct installer. (`09f4039`)
