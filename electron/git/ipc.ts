@@ -180,7 +180,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     const parsed = gitDiffRequestSchema.parse(raw)
     const cwd = resolveGitCwd(deps) ?? parsed.cwd
     if (!cwd) {
-      console.warn('[openpi:git] GIT_DIFF no cwd (path=${parsed.path})')
+      console.warn(`[openpi:git] GIT_DIFF no cwd (path=${parsed.path})`)
       return null
     }
     const git = await deps.getGitHost()
