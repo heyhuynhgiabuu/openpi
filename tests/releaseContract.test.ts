@@ -10,6 +10,14 @@ const builderConfig = JSON.parse(
   readFileSync(resolve(root, 'electron-builder.json'), 'utf8')
 ) as Record<string, unknown>
 
+function matrixEntry(name: string): string {
+  const marker = `          - name: ${name}`
+  const start = releaseWorkflow.indexOf(marker)
+  if (start < 0) throw new Error(`Missing release matrix entry: ${name}`)
+  const next = releaseWorkflow.indexOf('\n          - name:', start + marker.length)
+  return releaseWorkflow.slice(start, next < 0 ? undefined : next)
+}
+
 describe('release artifact contract', () => {
   it('validates the tag version and uploads only that version directory', () => {
     expect(releaseWorkflow).toContain('package-lock.json')
@@ -21,9 +29,18 @@ describe('release artifact contract', () => {
 
   it('requires exact installer names for every target architecture', () => {
     expect(builderConfig.artifactName).toBe(`\${productName}-\${version}-\${arch}.\${ext}`)
-    expect(releaseWorkflow).toContain(`OpenPi-$VERSION-\${{ matrix.arch }}.$ext`)
-    expect(releaseWorkflow).toMatch(/name: macOS ARM64[\s\S]*extensions: "dmg zip"/)
-    expect(releaseWorkflow).toMatch(/name: macOS Intel[\s\S]*extensions: "dmg zip"/)
+    expect(releaseWorkflow).toContain(`OpenPi-$VERSION-\${{ matrix.artifactArch }}.$ext`)
+    const expectedArches = [
+      ['macOS ARM64', 'arm64', 'arm64'],
+      ['macOS Intel', 'x64', 'x64'],
+      ['Windows', 'x64', 'x64'],
+      ['Linux', 'x64', 'x86_64'],
+    ] as const
+    for (const [name, buildArch, artifactArch] of expectedArches) {
+      const entry = matrixEntry(name)
+      expect(entry).toContain(`\n            arch: ${buildArch}\n`)
+      expect(entry).toContain(`\n            artifactArch: ${artifactArch}\n`)
+    }
   })
 
   it('verifies packaged macOS native dependencies match the target architecture', () => {

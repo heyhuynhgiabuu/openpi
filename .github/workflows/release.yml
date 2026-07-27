@@ -25,10 +25,12 @@ jobs:
           - name: macOS ARM64
             os: macos-14
             arch: arm64
+            artifactArch: arm64
             extensions: "dmg zip"
           - name: macOS Intel
             os: macos-15-intel
             arch: x64
+            artifactArch: x64
             extensions: "dmg zip"
           - name: Windows
             # Pinned to windows-2022 (VS2022): windows-latest is being redirected to
@@ -37,10 +39,13 @@ jobs:
             # Revisit when node-gyp ships VS2026 support (upstream PR #3240).
             os: windows-2022
             arch: x64
+            artifactArch: x64
             extensions: "exe"
           - name: Linux
             os: ubuntu-latest
             arch: x64
+            # electron-builder uses the Linux convention in generated artifact names.
+            artifactArch: x86_64
             extensions: "AppImage"
     env:
       # Signing and notarization are enabled when the Apple/Windows secrets are configured.
@@ -120,7 +125,7 @@ jobs:
           MIN_BYTES=1048576  # 1 MB minimum — guards against empty/truncated output
 
           for ext in ${{ matrix.extensions }}; do
-            artifact="$RELEASE_DIR/OpenPi-$VERSION-${{ matrix.arch }}.$ext"
+            artifact="$RELEASE_DIR/OpenPi-$VERSION-${{ matrix.artifactArch }}.$ext"
             if [ ! -f "$artifact" ]; then
               echo "::error::Missing required release artifact: $artifact"
               exit 1
@@ -184,7 +189,7 @@ jobs:
         with:
           name: openpi-${{ matrix.name }}-${{ github.ref_name }}
           path: |
-            release/${{ steps.release_meta.outputs.version }}/OpenPi-${{ steps.release_meta.outputs.version }}-${{ matrix.arch }}.*
+            release/${{ steps.release_meta.outputs.version }}/OpenPi-${{ steps.release_meta.outputs.version }}-${{ matrix.artifactArch }}.*
             release/${{ steps.release_meta.outputs.version }}/latest*.yml
             release/${{ steps.release_meta.outputs.version }}/checksums-*.txt
           if-no-files-found: error
