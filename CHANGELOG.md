@@ -20,6 +20,7 @@
 - **Provider login lifecycle** — prompt cancellation, duplicate prompt replacement, optional manual-code input, logout acknowledgement, and provider refresh now remain synchronized across the sidecar, Electron main, and renderer. (`d40edf2`)
 - **Provider event boundary** — malformed login events are rejected before renderer delivery, and only valid HTTP(S) authentication URLs may open externally. (`d40edf2`)
 - **Markdown sanitization and updater dependencies** — updated DOMPurify and electron-updater and added regressions for executable markup and unsafe attributes. (`d40edf2`)
+- **Git diff diagnostics** — no-workspace warnings now include the requested path instead of printing a literal placeholder. ([#6](https://github.com/heyhuynhgiabuu/openpi/pull/6))
 - **Release artifact validation** — tagged builds now reject package-version mismatches, missing installers, wrong architecture names, and unmatched release uploads, including electron-builder's `x86_64` Linux naming convention.
 - **macOS update metadata** — release builds include architecture-specific ZIP updates and publish one combined manifest that selects the correct Apple silicon or Intel download.
 - **Release credential scope** — the Homebrew tap token is available only to the tap detection, update, and verification steps.
