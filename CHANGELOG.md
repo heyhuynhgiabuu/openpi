@@ -24,7 +24,7 @@
 
 ### Beta caveats
 
-- Real provider account flows still require the redacted manual smoke checklist before release.
+- Real provider account flows were not executed for this release; automated coverage validates OpenPi's authentication bridge, not external OAuth or device-code services.
 - `npm audit --omit=dev` retains one high-severity `brace-expansion@5.0.7` finding inside Pi 0.82.1's published shrinkwrap; pnpm's production audit has no findings.
 
 ## [0.2.4] - 2026-06-30
