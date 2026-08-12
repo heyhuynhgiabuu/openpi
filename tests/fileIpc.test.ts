@@ -52,7 +52,7 @@ describe('file IPC command safety', () => {
 
   it('passes a hostile filename as one formatter argument without a shell', async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-format-'))
-    const relativePath = 'name"; touch compromised; #.ts'
+    const relativePath = 'name & echo compromised.ts'
     const fullPath = path.join(tempDir, relativePath)
     fs.writeFileSync(fullPath, 'const value=1\n', 'utf-8')
     execFileSyncMock.mockReturnValue('const value = 1\n')

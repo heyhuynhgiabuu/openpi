@@ -1,3 +1,5 @@
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 interface PreparedStatement {
@@ -81,26 +83,28 @@ describe('SessionIndexStore production adapter', () => {
 
   it('runs the production workspace upsert with canonical parameters', () => {
     const { store, db } = createStore()
+    const workspacePath = path.join(os.tmpdir(), 'openpi-tests', 'project')
 
-    expect(store.upsertWorkspace('/home/user/project')).toBe('/home/user/project')
+    expect(store.upsertWorkspace(workspacePath)).toBe(workspacePath)
 
     const statement = statementContaining(db, 'insert into workspaces')
     expect(statement.run).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/home/user/project', displayName: 'project' })
+      expect.objectContaining({ path: workspacePath, displayName: 'project' })
     )
     store.close()
   })
 
   it('runs the production trust update and returns its domain result', () => {
     const { store, db } = createStore()
+    const workspacePath = path.join(os.tmpdir(), 'openpi-tests', 'project')
 
-    const result = store.setWorkspaceTrust('/home/user/project', true)
+    const result = store.setWorkspaceTrust(workspacePath, true)
 
-    expect(result.cwd).toBe('/home/user/project')
+    expect(result.cwd).toBe(workspacePath)
     expect(result.trusted).toBe(true)
     expect(result.trustedAt).toEqual(expect.any(String))
     expect(statementContaining(db, 'update workspaces set trusted_at').run).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/home/user/project', trustedAt: expect.any(String) })
+      expect.objectContaining({ path: workspacePath, trustedAt: expect.any(String) })
     )
     store.close()
   })
