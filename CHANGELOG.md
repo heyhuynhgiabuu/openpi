@@ -2,29 +2,6 @@
 
 ## [Unreleased]
 
-## [0.2.8] - 2026-08-12
-
-v0.2.8 carries forward the v0.2.7 security and reliability work after that tag's Windows release job failed before publication.
-
-### Added
-
-- **Boundary regression coverage** — added a real Electron/Playwright smoke test plus production-adapter and IPC regressions for workspace, session, PTY, Git, file, and sidecar paths.
-- **Validated sidecar protocol** — sidecar commands, responses, and Pi session events now reject malformed or mismatched messages before reaching the app UI.
-
-### Changed
-
-- **Desktop security hardening** — privileged IPC accepts only the trusted renderer, pins privileged operations to main-owned workspaces, rejects symlink and traversal escapes, and formats files without shell interpolation.
-- **Session lifecycle reliability** — session replacements are serialized, stale responses are discarded, and failed replacements restore the prior session.
-- **UI and startup cleanup** — improved keyboard and assistive-technology semantics, split usage modules, and lazy-loaded the Homescreen.
-
-### Fixed
-
-- **Windows release validation** — security and session-index regressions now use Windows-legal hostile filenames and platform-native absolute paths, allowing the cross-platform release matrix to exercise the same assertions on Windows, macOS, and Linux.
-
-### Beta caveats
-
-- macOS notarization and Windows code signing remain unconfigured. Coverage reporting and live provider authentication smoke tests remain pending.
-
 ## [0.2.7] - 2026-08-12
 
 ### Added
