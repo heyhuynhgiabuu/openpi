@@ -6,7 +6,7 @@ Surface state of the desktop workbench as of the latest release. Not a rule surf
 
 OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`): make sessions **visible** and **steerable**, keep the **MIT agent core** in Pi (not a second runtime), and treat the user as the **quality gate** — aligned with Pi’s minimal harness and inspectability goals. See **Philosophy** in `ROADMAP.md`.
 
-## Beta (v0.2.7)
+## Beta (v0.2.8)
 
 ### Shipped
 
