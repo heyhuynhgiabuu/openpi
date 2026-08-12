@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-08-12
+
+### Added
+
+- **Boundary regression coverage** — added a real Electron/Playwright smoke test for renderer hydration, context isolation, sandboxing, and Node access, plus production-adapter and IPC regressions for workspace, session, PTY, Git, and sidecar paths.
+- **Validated sidecar protocol** — sidecar commands, responses, and Pi session events now have runtime schemas that reject malformed or mismatched messages before they reach the app UI.
+
+### Changed
+
+- **Desktop security hardening** — privileged IPC now accepts only the trusted renderer, pins Git, PTY, search, file, and session operations to main-owned workspaces, rejects symlink/traversal escapes, and formats files without shell interpolation.
+- **Session lifecycle reliability** — session replacements are serialized across active requests, active state is suspended during reload/fork, stale responses are discarded, and failed replacements restore the prior session.
+- **UI and performance cleanup** — improved dialog, navigation, session, tab, chart, and diff semantics for keyboard and assistive technology use; split usage modules and lazy-loaded the Homescreen to reduce the initial renderer payload.
+- **Documentation synchronization** — updated the README, STATUS, and ROADMAP for the supervised Pi 0.84.1 sidecar, shipped trust controls, v0.2.7 beta status, and the real Electron smoke command.
+
+### Beta caveats
+
+- **Beta distribution and coverage** — macOS notarization and Windows code signing remain unconfigured, and coverage reporting is unavailable until `@vitest/coverage-v8` is installed. Live provider OAuth, device-code, and manual-code flows remain unverified with real credentials.
+
 ## [0.2.6] - 2026-08-12
 
 ### Added

@@ -24,7 +24,7 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 ---
 
-## Current Status (beta) — v0.2.6
+## Current Status (beta) — v0.2.7
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
