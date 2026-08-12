@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { type BrowserWindow, shell } from 'electron'
 import type { OutputLine, SessionReady } from '../../src/lib/ipc'
-import { IPC } from '../../src/lib/ipc'
+import { IPC, sessionEventSchema } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
 import { captureAgentReviewEvent, setAgentReviewWindow } from '../services/agentReview'
 import type {
@@ -9,7 +9,7 @@ import type {
   playSoundEffect as playSound,
 } from '../services/notificationHost'
 import { routeProviderLoginEvent } from './providerEvents'
-import type { SidecarMessage } from './sidecar'
+import { sidecarMessageSchema } from './sidecarContracts'
 import { isStaleExtensionCtxEvent } from './staleCtx'
 
 interface SidecarMessageDeps {
@@ -34,7 +34,10 @@ interface SessionEventShape {
 }
 
 export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
-  return function handleSidecarMessage(msg: SidecarMessage): void {
+  return function handleSidecarMessage(raw: unknown): void {
+    const parsedMessage = sidecarMessageSchema.safeParse(raw)
+    if (!parsedMessage.success) return
+    const msg = parsedMessage.data
     switch (msg.type) {
       case 'ready':
       case 'stopped':
@@ -47,14 +50,16 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
       }
 
       case 'session_event': {
-        if (isStaleExtensionCtxEvent(msg.event)) return
+        const parsedEvent = sessionEventSchema.safeParse(msg.event)
+        if (!parsedEvent.success) return
+        if (isStaleExtensionCtxEvent(parsedEvent.data)) return
 
-        const event = msg.event as SessionEventShape
+        const event = parsedEvent.data as SessionEventShape
         const window = deps.getMainWindow()
         setAgentReviewWindow(window)
-        deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, msg.event)
+        deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, parsedEvent.data)
         if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
-          captureAgentReviewEvent(deps.resolveActiveCwd(), msg.event as Record<string, unknown>)
+          captureAgentReviewEvent(deps.resolveActiveCwd(), parsedEvent.data)
         }
 
         if (event.type === 'agent_end') {

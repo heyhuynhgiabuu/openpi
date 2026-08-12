@@ -8,11 +8,10 @@
  *   - Early return pattern → <Show when={session.ready}> control flow
  *   - className  → class in SolidJS JSX
  */
-import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, lazy, onMount, Show, Suspense } from 'solid-js'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ExtensionUiOverlay } from './components/ExtensionUiOverlay'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
-import { Homescreen } from './components/Homescreen'
 import { ResizeHandle } from './components/ResizeHandle'
 import { ToolShimmerPane } from './components/ToolShimmerPane'
 import { TopBar } from './components/TopBar'
@@ -32,6 +31,10 @@ import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from './lib/displayPreferences'
 import type { AppInfo, GitSyncAction, SessionListItem } from './lib/ipc'
 import type { KeybindingOverrides } from './lib/keybindings'
+
+const Homescreen = lazy(() =>
+  import('./components/Homescreen').then((module) => ({ default: module.Homescreen }))
+)
 
 export default function App() {
   const session = useOpenPiSession()
@@ -356,20 +359,22 @@ export default function App() {
             <div class="workbench" ref={setWorkbenchRef}>
               {/* ── Homescreen (full-width overlay) ── */}
               <Show when={homescreenOpen()}>
-                <Homescreen
-                  sessions={session.sessions}
-                  workspaces={session.workspaces}
-                  selectedWorkspacePath={session.selectedWorkspacePath}
-                  activeSessionPath={activeSessionPath()}
-                  onSelectSession={(path: string) =>
-                    void session.openExistingSession({ path } as SessionListItem)
-                  }
-                  onNewSession={() => void session.createNewSession()}
-                  onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
-                  onOpenWorkspace={() => void session.openWorkspace()}
-                  onDeleteSession={requestDeleteSession}
-                  onClose={() => setHomescreenOpen(false)}
-                />
+                <Suspense fallback={<div class="homescreen-loading">Loading sessions…</div>}>
+                  <Homescreen
+                    sessions={session.sessions}
+                    workspaces={session.workspaces}
+                    selectedWorkspacePath={session.selectedWorkspacePath}
+                    activeSessionPath={activeSessionPath()}
+                    onSelectSession={(path: string) =>
+                      void session.openExistingSession({ path } as SessionListItem)
+                    }
+                    onNewSession={() => void session.createNewSession()}
+                    onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
+                    onOpenWorkspace={() => void session.openWorkspace()}
+                    onDeleteSession={requestDeleteSession}
+                    onClose={() => setHomescreenOpen(false)}
+                  />
+                </Suspense>
               </Show>
 
               {/* ── Normal workspace (hidden when homescreen is open) ── */}

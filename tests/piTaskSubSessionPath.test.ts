@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   getSubSessionDir,
   PI_TASK_SHORT_ID,
+  readTaskSessionHistory,
   resolveSubSessionPath,
 } from '../electron/services/piTaskArtifacts'
 
@@ -12,6 +13,25 @@ function makeArtifactsDir(): string {
   const root = mkdtempSync(path.join(tmpdir(), 'openpi-artifacts-'))
   return path.join(root, '.pi', 'artifacts')
 }
+
+describe('readTaskSessionHistory', () => {
+  it('does not follow a workspace .pi symlink', () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'openpi-history-workspace-'))
+    const outside = mkdtempSync(path.join(tmpdir(), 'openpi-history-outside-'))
+    writeFileSync(
+      path.join(outside, 'task-session-history.json'),
+      JSON.stringify([{ id: 'secret-task', status: 'done' }])
+    )
+    symlinkSync(outside, path.join(workspace, '.pi'))
+
+    try {
+      expect(readTaskSessionHistory(workspace)).toEqual([])
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('PI_TASK_SHORT_ID', () => {
   it('accepts valid pi-task short ids (lowercase alphanumeric + dash)', () => {
@@ -70,6 +90,23 @@ describe('resolveSubSessionPath', () => {
       expect([a, b]).toContain(resolved)
     } finally {
       rmSync(artifactsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not resolve through a symlinked sessions directory', () => {
+    const artifactsDir = makeArtifactsDir()
+    const outside = mkdtempSync(path.join(tmpdir(), 'openpi-artifacts-outside-'))
+    const taskDir = path.join(outside, 'mqzbadgj-3a1e')
+    mkdirSync(taskDir, { recursive: true })
+    writeFileSync(path.join(taskDir, 'leaked.jsonl'), '{}\n')
+    mkdirSync(artifactsDir, { recursive: true })
+    symlinkSync(outside, path.join(artifactsDir, 'sessions'))
+
+    try {
+      expect(resolveSubSessionPath(artifactsDir, 'mqzbadgj-3a1e')).toBeNull()
+    } finally {
+      rmSync(path.dirname(path.dirname(artifactsDir)), { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
     }
   })
 

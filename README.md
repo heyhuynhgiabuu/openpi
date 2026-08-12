@@ -6,7 +6,7 @@ A desktop workbench for the [Pi coding agent](https://github.com/earendil-works/
 [![Release](https://img.shields.io/github/v/release/heyhuynhgiabuu/openpi?include_prereleases&label=release)](https://github.com/heyhuynhgiabuu/openpi/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-OpenPi wraps Pi's sessions, agent events, customizations, file search, source control, diffs, and terminals in a local Electron app. It is not a fork of Pi's agent runtime; OpenPi hosts `@earendil-works/pi-coding-agent` in Electron main and presents it with a desktop UI.
+OpenPi wraps Pi's sessions, agent events, customizations, file search, source control, diffs, and terminals in a local Electron app. It is not a fork of Pi's agent runtime; OpenPi hosts `@earendil-works/pi-coding-agent` in a main-supervised sidecar and presents it with a desktop UI.
 
 ![OpenPi desktop workbench screenshot](media/demo.png)
 
@@ -24,10 +24,10 @@ OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session t
 
 - **Pi sessions in a desktop shell** — session sidebar, workspace grouping, model selector, conversation stream, tool cards, and token/cost metadata.
 - **Command palette** — `Shift+Cmd+P` searches commands, files, and sessions.
-- **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About. Provider setup supports API keys plus Pi 0.82 account sign-in for OpenRouter, Kimi Code, xAI, Anthropic, OpenAI Codex, and GitHub Copilot.
+- **Customizations** — manage Pi Extensions, Skills, Prompts, Themes, Packages, Models, General settings, Notifications, Keybindings, Updates, and About. Provider setup supports API keys plus Pi 0.84.1 account sign-in for OpenRouter, Kimi Code, xAI, Anthropic, OpenAI Codex, and GitHub Copilot.
 - **Source control** — persistent Git panel, file tree, search, split diff viewer, and file viewer, with mutations owned by Electron main.
 - **Terminal/output panel** — local PTY lifecycle through Electron main, not the renderer.
-- **Pi-task delegation** — [`@heyhuynhgiabuu/pi-task`](https://github.com/heyhuynhgiabuu/pi-task) `task` tool (foreground/background, durable `conversation_id`). OpenPi tracks task state from `.pi/task-session-history.json` and resolves sub-sessions under `.pi/artifacts/tasks/sessions/`. Copy `.pi/settings.json.example` to `.pi/settings.json` (or run `pi install npm:@heyhuynhgiabuu/pi-task`) before delegating. A bundled skill at `.pi/skills/task-tool/SKILL.md` teaches the model the correct `task_id` rules.
+- **Pi-task delegation** — [`@heyhuynhgiabuu/pi-task`](https://github.com/heyhuynhgiabuu/pi-task) `task` tool (foreground/background, durable `conversation_id`). OpenPi tracks task state from `.pi/task-session-history.json` and resolves sub-sessions under `.pi/artifacts/tasks/sessions/`. Copy `.pi/settings.json.example` to `.pi/settings.json` (or run `pi install npm:@heyhuynhgiabuu/pi-task`) before delegating. The bundled `openpi-task-guard` extension rejects invalid or stale task IDs.
 - **Subagent widget** — live status tray with elapsed timer, expandable detail panel, real-time activity stream, and completion notification banner.
 - **@mention autocomplete** — `@` in composer shows subagents and files with visual chips, capital-case display, and keyboard navigation.
 - **Agent prompt tuning** — tool description tells Pi to delegate on `@agent_name` patterns; prompts with explicit subagent identity headers.
@@ -38,7 +38,7 @@ OpenPi builds on Pi's SDK instead of reimplementing the agent runtime, session t
 OpenPi follows three hard boundaries:
 
 1. **Renderer renders only.** It collects intent and displays state. It does not access the filesystem, shell, Git, SQLite, secrets, or Pi internals directly.
-2. **Electron main owns desktop authority.** IPC handlers validate payloads with Zod and perform privileged actions: Pi SDK hosting, PTY, Git, SQLite, file search, app metadata, and native dialogs.
+2. **Electron main owns desktop authority.** IPC handlers validate payloads with Zod and perform privileged actions: sidecar supervision, PTY, Git, SQLite, file search, app metadata, and native dialogs.
 3. **Pi SDK owns agent semantics.** Session trees, compaction, queues, tools, extensions, providers, and model behavior remain Pi's responsibility.
 
 See [`AGENTS.md`](AGENTS.md) for the full project rules and [`ROADMAP.md`](ROADMAP.md) for the beta roadmap.
@@ -80,6 +80,7 @@ npm run dev
 npm run lint       # Biome checks
 npm run typecheck  # TypeScript
 npm test           # Vitest
+npm run test:e2e   # real Electron smoke via Playwright
 npm run build      # Electron/Vite production build
 ```
 
@@ -116,7 +117,7 @@ xattr -rd com.apple.quarantine /Applications/OpenPi.app
 Then double-click the app as normal. This will no longer be required once notarization is configured.
 
 - macOS notarization and Windows code signing are not configured yet.
-- Permission gates, workspace trust hardening, protected-path policy, and keychain-backed secrets are still active roadmap items.
+- Workspace trust, protected-path policy, high-risk confirmations, and keychain-backed secrets are shipped; broader rollout still depends on signing/notarization and continued security regression coverage.
 - Some custom-widget accessibility diagnostics are warning-level while the desktop UI matures; concrete label/button checks remain enforced.
 
 ## Contributing

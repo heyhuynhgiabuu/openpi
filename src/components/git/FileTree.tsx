@@ -75,13 +75,7 @@ function NodeName(props: NodeProps, changeType: () => string | undefined) {
     )
   }
   return (
-    <span
-      class={`ftree-name${changeType() ? ` is-changed${changeTypeClass(changeType())}` : ''}`}
-      onDblClick={(e) => {
-        e.stopPropagation()
-        props.startRename(props.node)
-      }}
-    >
+    <span class={`ftree-name${changeType() ? ` is-changed${changeTypeClass(changeType())}` : ''}`}>
       {props.node.name}
     </span>
   )
@@ -109,6 +103,7 @@ function TreeNode(props: NodeProps) {
                 props.setActiveNodePath(props.node.path)
                 props.onFileClick?.(props.node.path)
               }}
+              onDblClick={() => props.startRename(props.node)}
             >
               <FileIcon name={props.node.name} size={15} />
               {NodeName(props, () => props.node.changeType)}

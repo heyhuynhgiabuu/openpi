@@ -10,6 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, type UtilityProcess, utilityProcess } from 'electron'
 import type { SidecarCommand, SidecarMessage } from './sidecar'
+import { sidecarCommandSchema, sidecarMessageSchema } from './sidecarContracts'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -24,6 +25,50 @@ type PendingRequest = {
   resolve: (msg: SidecarMessage) => void
   reject: (err: Error) => void
   timeout: NodeJS.Timeout
+  expectedTypes: ReadonlySet<SidecarMessage['type']>
+}
+
+function expectedResponseTypes(command: SidecarCommand): ReadonlySet<SidecarMessage['type']> {
+  switch (command.type) {
+    case 'start_session':
+    case 'reload_session':
+    case 'fork_session':
+      return new Set(['session_ready'])
+    case 'get_stats':
+      return new Set(['stats_result'])
+    case 'get_models':
+      return new Set(['models_result'])
+    case 'execute_bash':
+      return new Set(['bash_result'])
+    case 'compact':
+      return new Set(['compact_result'])
+    case 'get_session_info':
+      return new Set(['session_info_result'])
+    case 'copy_last_assistant_text':
+      return new Set(['last_assistant_text_result'])
+    case 'get_settings':
+      return new Set(['settings_result'])
+    case 'get_default_project_trust':
+      return new Set(['default_project_trust_result'])
+    case 'get_providers':
+      return new Set(['providers_result'])
+    case 'set_provider_key':
+    case 'remove_provider_key':
+    case 'logout_provider':
+      return new Set(['provider_mutation_result'])
+    case 'login_provider':
+      return new Set(['provider_login_event'])
+    case 'list_prompt_templates':
+      return new Set(['prompt_templates_result'])
+    case 'list_slash_commands':
+      return new Set(['slash_commands_result'])
+    case 'list_skills':
+      return new Set(['skills_result'])
+    case 'read_skill_file':
+      return new Set(['skill_file_result'])
+    default:
+      throw new Error(`Sidecar command does not support request correlation: ${command.type}`)
+  }
 }
 
 function isUtilityProcess(child: SidecarProcess): child is UtilityProcess {
@@ -56,12 +101,18 @@ function findNodeExecutable(): string | null {
   return null
 }
 
+function requestIdFromUnknown(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || !('requestId' in value)) return undefined
+  return typeof value.requestId === 'string' ? value.requestId : undefined
+}
+
 function sendToSidecar(child: SidecarProcess, command: SidecarCommand): void {
+  const parsedCommand = sidecarCommandSchema.parse(command)
   if (isUtilityProcess(child)) {
-    child.postMessage(command)
+    child.postMessage(parsedCommand)
     return
   }
-  child.send(command)
+  child.send(parsedCommand)
 }
 
 export class PiSidecarHost {
@@ -140,7 +191,22 @@ export class PiSidecarHost {
     })
 
     child.on('message', (msg: unknown) => {
-      const message = msg as SidecarMessage
+      const parsedMessage = sidecarMessageSchema.safeParse(msg)
+      if (!parsedMessage.success) {
+        const requestId = requestIdFromUnknown(msg)
+        const pending = requestId ? this.pendingRequests.get(requestId) : undefined
+        if (requestId && pending) {
+          clearTimeout(pending.timeout)
+          this.pendingRequests.delete(requestId)
+          pending.reject(new Error('Pi sidecar returned a malformed response'))
+        }
+        this.onMessage({
+          type: 'output_append',
+          line: { level: 'error', text: '[sidecar] rejected malformed message', ts: Date.now() },
+        })
+        return
+      }
+      const message = parsedMessage.data
       const requestId = 'requestId' in message ? message.requestId : undefined
       if (requestId) {
         const pending = this.pendingRequests.get(requestId)
@@ -149,9 +215,28 @@ export class PiSidecarHost {
           this.pendingRequests.delete(requestId)
           if (message.type === 'error' || message.type === 'session_error') {
             pending.reject(new Error(message.message))
+          } else if (!pending.expectedTypes.has(message.type)) {
+            pending.reject(
+              new Error(`Pi sidecar returned ${message.type} for an incompatible request`)
+            )
           } else {
             pending.resolve(message)
           }
+          return
+        }
+        if (
+          message.type === 'session_ready' ||
+          message.type === 'session_error' ||
+          message.type === 'error'
+        ) {
+          this.onMessage({
+            type: 'output_append',
+            line: {
+              level: 'warn',
+              text: '[sidecar] ignored an orphaned session replacement result',
+              ts: Date.now(),
+            },
+          })
           return
         }
       }
@@ -235,6 +320,7 @@ export class PiSidecarHost {
         resolve: (msg) => resolve(msg as T),
         reject,
         timeout,
+        expectedTypes: expectedResponseTypes(command),
       })
       sendToSidecar(this.child!, command)
     })
@@ -251,7 +337,8 @@ export class PiSidecarHost {
       }, 4000)
 
       const cleanup = (msg: unknown) => {
-        if ((msg as SidecarMessage).type === 'stopped') {
+        const parsedMessage = sidecarMessageSchema.safeParse(msg)
+        if (parsedMessage.success && parsedMessage.data.type === 'stopped') {
           clearTimeout(timeout)
           resolve()
         }

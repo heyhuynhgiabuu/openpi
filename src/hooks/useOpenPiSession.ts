@@ -18,7 +18,6 @@ import type {
   BashExecutionResult,
   ModelInfo,
   SessionEvent,
-  SessionListItem,
   SessionReady,
   SessionStats,
   WorkspaceSummaryInfo,
@@ -33,6 +32,7 @@ import {
 } from '../lib/taskHistory'
 import { isValidPiTaskId } from '../lib/taskToolHelpers'
 import type { Message, ToolCard } from '../types/session'
+import { createSessionNavigation, type ParentStackEntry } from './sessionNavigation'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
 
@@ -40,13 +40,6 @@ function taskHistorySignature(entries: TaskHistoryEntry[]): string {
   return entries
     .map((entry) => `${entry.id}:${entry.status ?? ''}:${entry.startedAt ?? ''}`)
     .join('|')
-}
-
-/** A snapshot of the session we navigated away from, used to power "Back to parent". */
-interface ParentStackEntry {
-  path: string
-  name: string | null
-  cwd: string
 }
 
 export { isSubSessionPath }
@@ -354,66 +347,15 @@ export function useOpenPiSession() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  const openWorkspace = async () => {
-    setError(null)
-    await window.openpi.pickWorkspace()
-    await sessionIndex.loadSessionIndex()
-  }
-
-  const openExistingSession = async (session: SessionListItem) => {
-    setError(null)
-    setParentStack([])
-    await window.openpi.openSession({ path: session.path })
-  }
-
-  /**
-   * Navigate to the sub-session that pi-task created for `taskId`.
-   *
-   * Resolves the JSONL file at `<cwd>/.pi/artifacts/tasks/sessions/<taskId>/`,
-   * pushes the current session onto the parent stack, and opens the sub-session
-   * via the standard `openSession` IPC (which does a full session replace —
-   * the same path used by the sidebar, so the pi-task runner is replaced cleanly).
-   *
-   * Returns `false` when the exact sub-session file cannot be resolved
-   * (e.g. the task id has not landed in history yet, or the sub-session
-   * was deleted). Do not fall back to the most recent sub-session: fast
-   * first-clicks would open stale/old task sessions.
-   */
-  const openSubSession = async (taskId: string | null): Promise<boolean> => {
-    const current = ready()
-    const cwd = current?.cwd
-    if (!cwd || !taskId) return false
-    const path = await window.openpi.resolveSubSessionPath({ cwd, taskId })
-    if (!path) return false
-    const stack = parentStack()
-    const currentPath = current.sessionFile
-    if (currentPath && (stack.length === 0 || stack[stack.length - 1]?.path !== currentPath)) {
-      setParentStack([...stack, { path: currentPath, name: current.sessionName ?? null, cwd }])
-    }
-    setError(null)
-    await window.openpi.openSession({ path })
-    return true
-  }
-
-  /**
-   * Pop the most recent parent off the stack and open it. No-op when the
-   * stack is empty.
-   */
-  const popToParent = async (): Promise<void> => {
-    const stack = parentStack()
-    const target = stack[stack.length - 1]
-    if (!target) return
-    setParentStack(stack.slice(0, -1))
-    setError(null)
-    await window.openpi.openSession({ path: target.path })
-  }
-
-  const createNewSession = async (mode?: 'local' | 'worktree', baseBranch?: string) => {
-    setError(null)
-    const cwd = sessionIndex.selectedWorkspaceForQuery() ?? ready()?.cwd
-    if (!cwd) return
-    await window.openpi.newSession(cwd, mode, baseBranch)
-  }
+  const { openWorkspace, openExistingSession, openSubSession, popToParent, createNewSession } =
+    createSessionNavigation({
+      api: window.openpi,
+      getReady: ready,
+      getParentStack: parentStack,
+      setParentStack,
+      setError,
+      sessionIndex,
+    })
 
   const send = async (contextPrefix?: string) => {
     const promptPayload = buildSessionPromptPayload(input(), contextPrefix)

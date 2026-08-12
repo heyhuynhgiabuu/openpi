@@ -1,4 +1,4 @@
-import { Show } from 'solid-js'
+import { createEffect, Show } from 'solid-js'
 
 type Props = {
   open: boolean
@@ -11,22 +11,31 @@ type Props = {
 }
 
 export function ConfirmDialog(props: Props) {
+  let dialog: HTMLDialogElement | undefined
+
+  createEffect(() => {
+    if (props.open && !dialog?.open) dialog?.showModal()
+    if (!props.open && dialog?.open) dialog.close()
+  })
+
   return (
     <Show when={props.open}>
-      <div
+      <dialog
+        ref={dialog}
         class="confirm-dialog-backdrop"
-        role="presentation"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) props.onCancel()
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        onCancel={(event) => {
+          event.preventDefault()
+          props.onCancel()
         }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) props.onCancel()
+        }}
+        onKeyDown={() => undefined}
       >
-        <div
-          class="confirm-dialog"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="confirm-dialog-title"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div class="confirm-dialog">
           <div class="confirm-dialog-header">
             <span id="confirm-dialog-title" class="confirm-dialog-title">
               {props.title}
@@ -50,7 +59,7 @@ export function ConfirmDialog(props: Props) {
             </button>
           </div>
         </div>
-      </div>
+      </dialog>
     </Show>
   )
 }

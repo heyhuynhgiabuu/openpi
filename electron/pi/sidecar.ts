@@ -23,8 +23,11 @@ import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
 import { answerApiKeyPrompt, ProviderAuthBridge, providerLoginFailureEvent } from './providerAuth'
+import { handleResourceCommand, isResourceCommand } from './resourceCommands'
 import { enforceIgnoreScriptsEnv } from './safePackageManager'
 import { teardownSession } from './sessionTeardown'
+import { createSidecarCommandQueue } from './sidecarCommandQueue'
+import { sidecarCommandSchema } from './sidecarContracts'
 import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from './staleCtx'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -293,17 +296,27 @@ async function startSession(
     workspaceTrusted?: boolean
   } = {}
 ): Promise<void> {
+  // Validate fork identity before disposing the active session so malformed or
+  // stale renderer entry IDs cannot leave the sidecar without a session.
+  let preparedForkFile: string | undefined
+  if (opts.sessionFile && opts.forkEntryId) {
+    const preflightManager = SessionManager.open(opts.sessionFile, undefined, cwd)
+    preparedForkFile = preflightManager.createBranchedSession(opts.forkEntryId) ?? undefined
+    if (!preparedForkFile) throw new Error(`Cannot fork: entry not found (${opts.forkEntryId})`)
+  }
+
   // Dispose previous session — emit session_shutdown first so extensions
   // (e.g. pi-task polling) clear timers and drop captured `pi` before ctx invalidates.
   if (state) {
-    state.unsubscribe()
+    const previous = state
+    state = null
+    previous.unsubscribe()
     const shutdownReason: 'new' | 'resume' | 'fork' = opts.forkEntryId
       ? 'fork'
       : opts.sessionFile
         ? 'resume'
         : 'new'
-    await stopSession(state.session, shutdownReason)
-    state = null
+    await stopSession(previous.session, shutdownReason)
   }
 
   const agentDir = getAgentDir()
@@ -313,16 +326,11 @@ async function startSession(
   const settingsManager = workspaceTrusted
     ? fileSettingsManager
     : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
-  let sessionManager = opts.sessionFile
-    ? SessionManager.open(opts.sessionFile, undefined, cwd)
-    : SessionManager.create(cwd)
-
-  if (opts.sessionFile && opts.forkEntryId) {
-    const branchedSessionFile = sessionManager.createBranchedSession(opts.forkEntryId)
-    if (branchedSessionFile) {
-      sessionManager = SessionManager.open(branchedSessionFile, undefined, cwd)
-    }
-  }
+  const sessionManager = preparedForkFile
+    ? SessionManager.open(preparedForkFile, undefined, cwd)
+    : opts.sessionFile
+      ? SessionManager.open(opts.sessionFile, undefined, cwd)
+      : SessionManager.create(cwd)
 
   const resourceLoader = await getResourceLoader(cwd, workspaceTrusted)
 
@@ -443,22 +451,44 @@ async function startSession(
 
 // ─── Command handler ────────────────────────────────────────────────────────────
 
+const queueCommand = createSidecarCommandQueue(handleCommand)
+
 parentPort.on('message', (message) => {
-  const cmd = (
-    message && typeof message === 'object' && 'data' in message
-      ? (message as { data: unknown }).data
-      : message
-  ) as SidecarCommand
-  void handleCommand(cmd).catch((err) => {
+  const rawCommand =
+    message && typeof message === 'object' && 'data' in message ? message.data : message
+  const parsedCommand = sidecarCommandSchema.safeParse(rawCommand)
+  if (!parsedCommand.success) {
+    const requestId =
+      rawCommand &&
+      typeof rawCommand === 'object' &&
+      'requestId' in rawCommand &&
+      typeof rawCommand.requestId === 'string'
+        ? rawCommand.requestId
+        : undefined
+    send({ type: 'error', requestId, message: 'Invalid sidecar command' })
+    return
+  }
+  const cmd: SidecarCommand = parsedCommand.data
+  void queueCommand(cmd).catch((err) => {
     send({
       type: 'error',
-      requestId: cmd && typeof cmd === 'object' && 'requestId' in cmd ? cmd.requestId : undefined,
+      requestId: 'requestId' in cmd ? cmd.requestId : undefined,
       message: err instanceof Error ? err.message : String(err),
     })
   })
 })
 
 async function handleCommand(cmd: SidecarCommand): Promise<void> {
+  if (isResourceCommand(cmd)) {
+    await handleResourceCommand(cmd, {
+      getCwd: () => state?.cwd ?? null,
+      getSession: () => state?.session ?? null,
+      getResourceLoader,
+      send,
+    })
+    return
+  }
+
   switch (cmd.type) {
     case 'start_session': {
       try {
@@ -506,91 +536,6 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       if (!state) return
       const followUpText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
       await state.session.followUp(followUpText)
-      break
-    }
-
-    case 'list_prompt_templates': {
-      const cwd = cmd.cwd ?? state?.cwd ?? process.cwd()
-      const workspaceTrusted = cmd.workspaceTrusted ?? false
-      const loader = await getResourceLoader(cwd, workspaceTrusted)
-      const prompts = loader.getPrompts().prompts.map((prompt) => ({
-        name: prompt.name,
-        description: prompt.description,
-        argHint: prompt.argumentHint,
-      }))
-      send({ type: 'prompt_templates_result', requestId: cmd.requestId, prompts })
-      break
-    }
-
-    case 'list_slash_commands': {
-      if (!state) {
-        send({ type: 'slash_commands_result', requestId: cmd.requestId, commands: [] })
-        break
-      }
-      const session = state.session
-      const commands: Array<{
-        name: string
-        description: string
-        argHint?: string
-        source: 'builtin' | 'extension' | 'prompt' | 'skill'
-      }> = []
-
-      for (const command of session.extensionRunner.getRegisteredCommands()) {
-        commands.push({
-          name: command.invocationName,
-          description: command.description ?? '',
-          source: 'extension',
-        })
-      }
-      for (const template of session.promptTemplates) {
-        commands.push({
-          name: template.name,
-          description: template.description ?? '',
-          argHint: template.argumentHint,
-          source: 'prompt',
-        })
-      }
-
-      send({ type: 'slash_commands_result', requestId: cmd.requestId, commands })
-      break
-    }
-
-    case 'list_skills': {
-      const cwd = cmd.cwd ?? state?.cwd ?? process.cwd()
-      const workspaceTrusted = cmd.workspaceTrusted ?? false
-      const loader = await getResourceLoader(cwd, workspaceTrusted)
-      const skills = loader.getSkills().skills.map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        path: skill.baseDir,
-        scope: skill.sourceInfo.scope === 'project' ? 'project' : 'user',
-        tags: [],
-      }))
-      send({ type: 'skills_result', requestId: cmd.requestId, skills })
-      break
-    }
-
-    case 'read_skill_file': {
-      const cwd = cmd.cwd ?? state?.cwd ?? process.cwd()
-      const workspaceTrusted = cmd.workspaceTrusted ?? false
-      const loader = await getResourceLoader(cwd, workspaceTrusted)
-      const requested = path.resolve(cmd.path)
-      const skill = loader
-        .getSkills()
-        .skills.find((candidate) => path.resolve(candidate.filePath) === requested)
-      if (!skill) {
-        send({ type: 'skill_file_result', requestId: cmd.requestId, content: null })
-        break
-      }
-      try {
-        send({
-          type: 'skill_file_result',
-          requestId: cmd.requestId,
-          content: fs.readFileSync(skill.filePath, 'utf-8'),
-        })
-      } catch {
-        send({ type: 'skill_file_result', requestId: cmd.requestId, content: null })
-      }
       break
     }
 
@@ -706,6 +651,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       // forwards them to the renderer, so the UI updates naturally.
       try {
         await state.session.compact(cmd.customInstructions)
+        send({ type: 'compact_result', requestId: cmd.requestId })
       } catch (err) {
         send({
           type: 'error',
@@ -773,7 +719,10 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     }
 
     case 'fork_session': {
-      if (!state) return
+      if (!state) {
+        send({ type: 'error', requestId: cmd.requestId, message: 'No active session' })
+        return
+      }
 
       // Resolve the fork entry ID.
       //
@@ -810,6 +759,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         sessionFile: state.session.sessionFile ?? undefined,
         forkEntryId,
         requestId: cmd.requestId,
+        workspaceTrusted: cmd.workspaceTrusted,
       })
       break
     }

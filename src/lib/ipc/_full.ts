@@ -133,71 +133,6 @@ export const sessionStatsSchema = z.object({
 })
 export type SessionStats = z.infer<typeof sessionStatsSchema>
 
-export const usageSummaryRequestSchema = z
-  .object({
-    workspacePath: z.string().min(1).optional(),
-    days: z.number().int().positive().max(366).optional(),
-  })
-  .optional()
-  .default({})
-export type UsageSummaryRequest = z.infer<typeof usageSummaryRequestSchema>
-
-export const usageTotalsSchema = z.object({
-  inputTokens: z.number(),
-  outputTokens: z.number(),
-  cacheReadTokens: z.number(),
-  cacheWriteTokens: z.number(),
-  totalTokens: z.number(),
-  durationMs: z.number(),
-  cost: z.number(),
-  turnCount: z.number(),
-  sessionCount: z.number(),
-  cacheHitRate: z.number().nullable().optional(),
-})
-export type UsageTotals = z.infer<typeof usageTotalsSchema>
-
-export const usageDaySchema = usageTotalsSchema.extend({
-  date: z.string(),
-})
-export type UsageDay = z.infer<typeof usageDaySchema>
-
-export const usageModelBucketSchema = usageTotalsSchema.extend({
-  model: z.string(),
-  provider: z.string().optional(),
-})
-export type UsageModelBucket = z.infer<typeof usageModelBucketSchema>
-
-export const usageDayModelSchema = usageTotalsSchema.extend({
-  date: z.string(),
-  model: z.string(),
-  provider: z.string().optional(),
-})
-export type UsageDayModel = z.infer<typeof usageDayModelSchema>
-
-export const usageSummarySchema = z.object({
-  generatedAt: z.string(),
-  workspacePath: z.string().nullable(),
-  days: z.number(),
-  lifetime: usageTotalsSchema.extend({
-    activeDays: z.number(),
-    longestTaskMs: z.number().nullable(),
-  }),
-  today: usageTotalsSchema,
-  last7Days: usageTotalsSchema,
-  last30Days: usageTotalsSchema,
-  currentStreakDays: z.number(),
-  longestStreakDays: z.number(),
-  peakDay: usageDaySchema.nullable(),
-  daily: z.array(usageDaySchema),
-  models: z.array(usageModelBucketSchema),
-  dailyModels: z.array(usageDayModelSchema),
-  previousRange: z.object({
-    days: z.number(),
-    models: z.array(usageModelBucketSchema),
-  }),
-})
-export type UsageSummary = z.infer<typeof usageSummarySchema>
-
 // ─── Workspace + session index ─────────────────────────────────────────────
 
 export const workspaceInfoSchema = z.object({
@@ -600,14 +535,142 @@ export const sessionReadySchema = z.object({
 export type SessionReady = z.infer<typeof sessionReadySchema>
 
 // ─── SESSION_EVENT payload ───────────────────────────────────────────────────
-// We forward Pi's AgentSessionEvent over IPC as a plain JSON object.
-// The renderer receives it as-is and discriminates on `type`.
+// Validate stable event envelopes while leaving Pi-owned payloads opaque.
 
-export const sessionEventSchema = z
-  .object({
-    type: z.string(),
-  })
-  .passthrough()
+const sessionEventBaseSchema = z.object({ type: z.string().min(1) }).passthrough()
+const requiredOpaqueSchema = z.custom<unknown>((value) => value !== undefined, {
+  message: 'Required event field',
+})
+const sessionEventKnownSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('agent_start') }).passthrough(),
+  z
+    .object({
+      type: z.literal('agent_end'),
+      messages: z.array(z.unknown()),
+      willRetry: z.boolean(),
+    })
+    .passthrough(),
+  z.object({ type: z.literal('agent_settled') }).passthrough(),
+  z.object({ type: z.literal('turn_start') }).passthrough(),
+  z
+    .object({
+      type: z.literal('turn_end'),
+      message: requiredOpaqueSchema,
+      toolResults: z.array(z.unknown()),
+    })
+    .passthrough(),
+  z.object({ type: z.literal('message_start'), message: requiredOpaqueSchema }).passthrough(),
+  z
+    .object({
+      type: z.literal('message_update'),
+      message: requiredOpaqueSchema,
+      assistantMessageEvent: requiredOpaqueSchema,
+    })
+    .passthrough(),
+  z.object({ type: z.literal('message_end'), message: requiredOpaqueSchema }).passthrough(),
+  z
+    .object({
+      type: z.literal('tool_execution_start'),
+      toolCallId: z.string(),
+      toolName: z.string(),
+      args: requiredOpaqueSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('tool_execution_update'),
+      toolCallId: z.string(),
+      toolName: z.string(),
+      args: requiredOpaqueSchema,
+      partialResult: requiredOpaqueSchema,
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('tool_execution_end'),
+      toolCallId: z.string(),
+      toolName: z.string(),
+      result: requiredOpaqueSchema,
+      isError: z.boolean(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('queue_update'),
+      steering: z.array(z.string()),
+      followUp: z.array(z.string()),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('compaction_start'),
+      reason: z.enum(['manual', 'threshold', 'overflow']),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('compaction_end'),
+      reason: z.enum(['manual', 'threshold', 'overflow']),
+      result: z.unknown().optional(),
+      aborted: z.boolean(),
+      willRetry: z.boolean(),
+      errorMessage: z.string().optional(),
+    })
+    .passthrough(),
+  z.object({ type: z.literal('entry_appended'), entry: requiredOpaqueSchema }).passthrough(),
+  z.object({ type: z.literal('session_info_changed'), name: z.string().optional() }).passthrough(),
+  z.object({ type: z.literal('thinking_level_changed'), level: z.string() }).passthrough(),
+  z
+    .object({
+      type: z.literal('auto_retry_start'),
+      attempt: z.number(),
+      maxAttempts: z.number(),
+      delayMs: z.number(),
+      errorMessage: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('auto_retry_end'),
+      success: z.boolean(),
+      attempt: z.number(),
+      finalError: z.string().optional(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('summarization_retry_scheduled'),
+      attempt: z.number(),
+      maxAttempts: z.number(),
+      delayMs: z.number(),
+      errorMessage: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('summarization_retry_attempt_start'),
+      source: z.enum(['branchSummary', 'compaction']),
+      reason: z.enum(['manual', 'threshold', 'overflow']).optional(),
+    })
+    .passthrough(),
+  z.object({ type: z.literal('summarization_retry_finished') }).passthrough(),
+  z.object({
+    type: z.literal('bash_execution_update'),
+    id: z.string().optional(),
+    delta: z.string(),
+  }),
+])
+
+const knownSessionEventTypes: ReadonlySet<string> = new Set(
+  sessionEventKnownSchema.options.map((schema) => schema.shape.type.value)
+)
+const extensionSessionEventSchema = sessionEventBaseSchema.superRefine((event, context) => {
+  if (knownSessionEventTypes.has(event.type)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Malformed known session event' })
+  }
+})
+
+export const sessionEventSchema = z.union([sessionEventKnownSchema, extensionSessionEventSchema])
 export type SessionEvent = z.infer<typeof sessionEventSchema>
 
 // ─── SESSION_ERROR payload ───────────────────────────────────────────────────

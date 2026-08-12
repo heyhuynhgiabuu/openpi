@@ -12,13 +12,16 @@ type PtyHostInstance = InstanceType<typeof PtyHost>
 
 interface PtyIpcDeps {
   ipcMain: IpcMain
+  getCwd: () => string | null
   hasPtyHost: () => boolean
   getPtyHost: () => Promise<PtyHostInstance>
 }
 
 export function registerPtyIpc(deps: PtyIpcDeps): void {
   deps.ipcMain.handle(IPC.PTY_CREATE, async (_event, raw: unknown): Promise<string> => {
-    const { cwd, cols, rows } = ptyCreateSchema.parse(raw)
+    const { cols, rows } = ptyCreateSchema.parse(raw)
+    const cwd = deps.getCwd()
+    if (!cwd) throw new Error('No active workspace')
     return (await deps.getPtyHost()).create(cwd, cols, rows)
   })
 

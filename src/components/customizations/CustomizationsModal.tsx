@@ -9,7 +9,6 @@ import {
   ToggleLeft,
   WandSparkles,
   Wrench,
-  X,
 } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import type {

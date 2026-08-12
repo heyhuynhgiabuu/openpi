@@ -37,7 +37,7 @@ export type SidecarCommand =
   | { type: 'get_models'; requestId: string }
   | { type: 'execute_bash'; requestId: string; command: string; excludeFromContext?: boolean }
   | { type: 'set_session_name'; name: string }
-  | { type: 'fork_session'; entryId: string; requestId?: string }
+  | { type: 'fork_session'; entryId: string; workspaceTrusted: boolean; requestId?: string }
   | { type: 'compact'; customInstructions?: string; requestId: string }
   | { type: 'reload_session'; requestId: string }
   | { type: 'get_session_info'; requestId: string }
@@ -71,6 +71,7 @@ export type SidecarMessage =
   | { type: 'stats_result'; requestId: string; stats: Record<string, unknown> }
   | { type: 'models_result'; requestId: string; models: unknown[] }
   | { type: 'bash_result'; requestId: string; result: unknown }
+  | { type: 'compact_result'; requestId: string }
   | { type: 'session_info_result'; requestId: string; info: SessionInfoPayload }
   | { type: 'last_assistant_text_result'; requestId: string; text: string | null }
   | { type: 'settings_result'; requestId: string; result: unknown }

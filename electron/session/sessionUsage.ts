@@ -7,6 +7,7 @@ import type {
   UsageSummaryRequest,
   UsageTotals,
 } from '../../src/lib/ipc'
+import { resolveTokenRates } from '../services/modelPricing'
 import type { SessionEntry } from './sessionEntries'
 import {
   durationFrom,
@@ -255,6 +256,7 @@ function readModelUsage(
   return rows.map((row) => ({
     model: row.model,
     provider: row.provider || undefined,
+    rates: resolveTokenRates(row.model, row.provider || undefined),
     ...rowToTotals(row),
   }))
 }
@@ -297,6 +299,7 @@ function readModelUsageBetween(
   return rows.map((row) => ({
     model: row.model,
     provider: row.provider || undefined,
+    rates: resolveTokenRates(row.model, row.provider || undefined),
     ...rowToTotals(row),
   }))
 }

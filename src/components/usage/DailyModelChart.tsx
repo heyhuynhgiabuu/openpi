@@ -189,25 +189,21 @@ export function DailyModelChart(props: Props) {
         >
           <For each={columns()}>
             {(col, i) => (
+              // biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only updates this role=img chart's visual tooltip
               <div
+                role="presentation"
                 class={`usage-daily-chart-col${hoveredColIdx() === i() ? ' is-hovered' : ''}`}
-                role="button"
-                tabIndex={-1}
-                onKeyDown={() => {}}
-                onMouseMove={(e) => handleBarMouseMove(i(), e)}
+                onMouseMove={(event) => handleBarMouseMove(i(), event)}
                 onMouseLeave={() => setHoveredModel(null)}
-                onClick={(e) => e.stopPropagation()}
               >
                 <div class="usage-daily-chart-stack">
                   <For each={col.segments}>
                     {(seg) => (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only highlights a visual chart segment
                       <div
                         class={`usage-daily-chart-seg${
                           activeModelKey() && activeModelKey() !== seg.modelKey ? ' is-dimmed' : ''
                         }${activeModelKey() === seg.modelKey ? ' is-pinned' : ''}`}
-                        role="button"
-                        tabIndex={-1}
-                        onKeyDown={() => {}}
                         style={{
                           height: `${Math.max(seg.share * 100, seg.share > 0 ? 1.5 : 0)}%`,
                           background:

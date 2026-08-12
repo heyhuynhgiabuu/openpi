@@ -75,33 +75,47 @@ function requireCwd(deps: GitIpcDeps): string | null {
  * shipping a patch that targets a different file than the user clicked on.
  */
 function assertHunkTargetsFile(hunkPatch: string, filePath: string): void {
-  const normalizedExpected = filePath.replace(/^\.\//, '').trim()
+  const normalizedExpected = filePath.replace(/^\.\//, '')
+  const pathSegments = normalizedExpected.split('/')
+  if (
+    normalizedExpected.length === 0 ||
+    normalizedExpected !== normalizedExpected.trim() ||
+    path.isAbsolute(normalizedExpected) ||
+    path.win32.isAbsolute(normalizedExpected) ||
+    normalizedExpected.includes('\\') ||
+    pathSegments.some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`Hunk patch has an unsafe file path: ${filePath}`)
+  }
   const lines = hunkPatch.split(/\r?\n/)
-  let sawNewPath = false
+  const diffHeaders = lines.filter((line) => line.startsWith('diff --git '))
+  if (diffHeaders.length !== 1) {
+    throw new Error('Hunk patch must target exactly one file')
+  }
+  const expectedDiffHeader = `diff --git a/${normalizedExpected} b/${normalizedExpected}`
+  if (diffHeaders[0] !== expectedDiffHeader) {
+    throw new Error('Hunk patch diff header does not match the requested file')
+  }
   let sawOldPath = false
+  let sawNewPath = false
   for (const line of lines) {
-    if (line.startsWith('diff --git ')) {
-      // Once we hit a new diff header, we only care about subsequent target lines
-      if (sawNewPath) return // past the first diff header, stop
-      continue
-    }
+    if (line.startsWith('diff --git ')) continue
     if (line.startsWith('new file mode') || line.startsWith('deleted file mode')) {
       // Allowed; target check still applies below
     }
     if (line.startsWith('rename from ')) {
       // Source path: must equal filePath
       const src = line.slice('rename from '.length).trim()
-      if (path.basename(src) !== path.basename(normalizedExpected)) {
+      if (src !== normalizedExpected) {
         throw new Error(
           `Hunk patch rename source does not match requested file (expected ${normalizedExpected}, got ${src})`
         )
       }
-      sawOldPath = true
       continue
     }
     if (line.startsWith('rename to ')) {
       const dst = line.slice('rename to '.length).trim()
-      if (path.basename(dst) !== path.basename(normalizedExpected)) {
+      if (dst !== normalizedExpected) {
         throw new Error(
           `Hunk patch rename target does not match requested file (expected ${normalizedExpected}, got ${dst})`
         )
@@ -111,19 +125,12 @@ function assertHunkTargetsFile(hunkPatch: string, filePath: string): void {
     }
     if (line.startsWith('--- ')) {
       const src = line.slice(4).trim()
-      // Skip the /dev/null case
-      if (src === '/dev/null') {
-        sawOldPath = true
-        continue
+      if (src !== '/dev/null' && src !== `a/${normalizedExpected}`) {
+        throw new Error(
+          `Hunk patch source path does not match requested file (expected ${normalizedExpected}, got ${src})`
+        )
       }
-      if (src.startsWith('a/')) {
-        if (src.slice(2) !== normalizedExpected) {
-          throw new Error(
-            `Hunk patch source path does not match requested file (expected ${normalizedExpected}, got ${src.slice(2)})`
-          )
-        }
-        sawOldPath = true
-      }
+      sawOldPath = true
       continue
     }
     if (line.startsWith('+++ ')) {
@@ -141,12 +148,10 @@ function assertHunkTargetsFile(hunkPatch: string, filePath: string): void {
         )
       }
       sawNewPath = true
-      // Once we see the new path line, we've verified the first file in the patch
-      return
     }
   }
-  if (!sawNewPath) {
-    throw new Error('Hunk patch missing +++ header (no target file)')
+  if (!sawOldPath || !sawNewPath) {
+    throw new Error('Hunk patch is missing an old or new file header')
   }
 }
 
@@ -158,27 +163,24 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     void deps.restartGitMonitoring(cwd)
   })
 
-  deps.ipcMain.handle(
-    IPC.GIT_STATUS,
-    async (_event, cwdFromRenderer?: string): Promise<GitStatusResult | null> => {
-      const cwd = cwdFromRenderer ?? resolveGitCwd(deps)
-      console.log('[openpi:git] GIT_STATUS cwd=', cwd, 'fromRenderer=', !!cwdFromRenderer)
-      if (!cwd) return null
-      try {
-        const git = await deps.getGitHost()
-        const result = await git.getGitStatus(cwd)
-        console.log('[openpi:git] GIT_STATUS success, files=', result?.files?.length)
-        return result
-      } catch (err) {
-        console.error('[openpi:git-status] error for cwd', cwd, err)
-        return null
-      }
+  deps.ipcMain.handle(IPC.GIT_STATUS, async (): Promise<GitStatusResult | null> => {
+    const cwd = resolveGitCwd(deps)
+    console.log('[openpi:git] GIT_STATUS cwd=', cwd)
+    if (!cwd) return null
+    try {
+      const git = await deps.getGitHost()
+      const result = await git.getGitStatus(cwd)
+      console.log('[openpi:git] GIT_STATUS success, files=', result?.files?.length)
+      return result
+    } catch (err) {
+      console.error('[openpi:git-status] error for cwd', cwd, err)
+      return null
     }
-  )
+  })
 
   deps.ipcMain.handle(IPC.GIT_DIFF, async (_event, raw: unknown): Promise<GitFileDiff | null> => {
     const parsed = gitDiffRequestSchema.parse(raw)
-    const cwd = resolveGitCwd(deps) ?? parsed.cwd
+    const cwd = resolveGitCwd(deps)
     if (!cwd) {
       console.warn(`[openpi:git] GIT_DIFF no cwd (path=${parsed.path})`)
       return null
@@ -280,7 +282,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     IPC.GIT_COMMIT_DIFF,
     async (_event, raw: unknown): Promise<GitFileDiff | null> => {
       const parsed = gitCommitDiffRequestSchema.parse(raw)
-      const cwd = resolveGitCwd(deps) ?? parsed.cwd
+      const cwd = resolveGitCwd(deps)
       if (!cwd) {
         console.warn(`[openpi:git] GIT_COMMIT_DIFF no cwd (hash=${parsed.hash})`)
         return null
@@ -357,22 +359,19 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     }
   )
 
-  deps.ipcMain.handle(
-    IPC.GIT_FILE_TREE,
-    async (_event, cwdFromRenderer?: string): Promise<FileTreeResult | null> => {
-      const cwd = cwdFromRenderer ?? requireCwd(deps)
-      if (!cwd) return null
-      const git = await deps.getGitHost()
-      const tree = git.getFileTree(cwd)
-      // Enrich tree with git status so the renderer can show M/A/D/R badges
-      const status = await git.getGitStatus(cwd)
-      const statusMap = new Map<string, string>()
-      for (const file of status.files) {
-        statusMap.set(file.path, file.status)
-      }
-      return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
+  deps.ipcMain.handle(IPC.GIT_FILE_TREE, async (): Promise<FileTreeResult | null> => {
+    const cwd = requireCwd(deps)
+    if (!cwd) return null
+    const git = await deps.getGitHost()
+    const tree = git.getFileTree(cwd)
+    // Enrich tree with git status so the renderer can show M/A/D/R badges
+    const status = await git.getGitStatus(cwd)
+    const statusMap = new Map<string, string>()
+    for (const file of status.files) {
+      statusMap.set(file.path, file.status)
     }
-  )
+    return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
+  })
 
   deps.ipcMain.handle(
     IPC.GIT_GENERATE_COMMIT_MSG,
@@ -402,8 +401,8 @@ export function registerGitIpc(deps: GitIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GIT_STAGED_DIFF,
     async (_event, raw: unknown): Promise<Record<string, GitFileDiff> | null> => {
-      const parsed = gitStagedDiffRequestSchema.parse(raw ?? {})
-      const cwd = resolveGitCwd(deps) ?? parsed.cwd
+      gitStagedDiffRequestSchema.parse(raw ?? {})
+      const cwd = resolveGitCwd(deps)
       if (!cwd) {
         console.warn('[openpi:git] GIT_STAGED_DIFF no cwd')
         return null
@@ -417,7 +416,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     IPC.GIT_BRANCH_DIFF,
     async (_event, raw: unknown): Promise<Record<string, GitFileDiff> | null> => {
       const parsed = gitBranchDiffRequestSchema.parse(raw ?? {})
-      const cwd = resolveGitCwd(deps) ?? parsed.cwd
+      const cwd = resolveGitCwd(deps)
       if (!cwd) {
         console.warn('[openpi:git] GIT_BRANCH_DIFF no cwd')
         return null
@@ -430,8 +429,8 @@ export function registerGitIpc(deps: GitIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GIT_BRANCH_BASE,
     async (_event, raw: unknown): Promise<{ base: string } | null> => {
-      const parsed = gitStagedDiffRequestSchema.parse(raw ?? {})
-      const cwd = resolveGitCwd(deps) ?? parsed.cwd
+      gitStagedDiffRequestSchema.parse(raw ?? {})
+      const cwd = resolveGitCwd(deps)
       if (!cwd) {
         console.warn('[openpi:git] GIT_BRANCH_BASE no cwd')
         return null
@@ -444,7 +443,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
 
   deps.ipcMain.handle(IPC.GIT_STAGE_HUNK, async (_event, raw: unknown) => {
     const parsed = gitHunkActionSchema.parse(raw)
-    const cwd = resolveGitCwd(deps) ?? parsed.cwd
+    const cwd = resolveGitCwd(deps)
     if (!cwd) {
       console.warn(`[openpi:git] GIT_STAGE_HUNK no cwd (path=${parsed.path})`)
       throw new Error('No workspace cwd available')
@@ -463,7 +462,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
 
   deps.ipcMain.handle(IPC.GIT_UNSTAGE_HUNK, async (_event, raw: unknown) => {
     const parsed = gitHunkActionSchema.parse(raw)
-    const cwd = resolveGitCwd(deps) ?? parsed.cwd
+    const cwd = resolveGitCwd(deps)
     if (!cwd) {
       console.warn(`[openpi:git] GIT_UNSTAGE_HUNK no cwd (path=${parsed.path})`)
       throw new Error('No workspace cwd available')
@@ -476,7 +475,7 @@ export function registerGitIpc(deps: GitIpcDeps): void {
 
   deps.ipcMain.handle(IPC.GIT_REVERT_HUNK, async (_event, raw: unknown) => {
     const parsed = gitHunkActionSchema.parse(raw)
-    const cwd = resolveGitCwd(deps) ?? parsed.cwd
+    const cwd = resolveGitCwd(deps)
     if (!cwd) {
       console.warn(`[openpi:git] GIT_REVERT_HUNK no cwd (path=${parsed.path})`)
       throw new Error('No workspace cwd available')

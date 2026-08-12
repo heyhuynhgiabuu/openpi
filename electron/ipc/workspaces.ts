@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { IpcMain } from 'electron'
 import type { GitBranchInfo, WorkspaceSummaryInfo, WorkspaceTrustResult } from '../../src/lib/ipc'
 import {
@@ -24,6 +25,7 @@ interface ConfirmMutationOptions {
 
 interface WorkspacesIpcDeps {
   ipcMain: IpcMain
+  getCwd: () => string | null
   getGitHost: () => Promise<typeof GitHost>
   getSessionIndex: () => SessionIndexStore | null
   getCustomizationsHost: () => Promise<typeof CustomizationsHost>
@@ -31,9 +33,22 @@ interface WorkspacesIpcDeps {
   confirmHighRiskMutation: (options: ConfirmMutationOptions) => Promise<boolean>
 }
 
+function authorizeWorkspace(deps: WorkspacesIpcDeps, submittedCwd: string): string {
+  const candidate = path.resolve(submittedCwd)
+  const active = deps.getCwd()
+  if (active && path.resolve(active) === candidate) return active
+  const known = deps
+    .getSessionIndex()
+    ?.listWorkspaces()
+    .find((workspace) => path.resolve(workspace.path) === candidate)
+  if (known) return known.path
+  throw new Error('Unknown workspace')
+}
+
 export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
   deps.ipcMain.handle(IPC.GET_GIT_BRANCH, async (_event, raw: unknown): Promise<GitBranchInfo> => {
-    const { cwd } = gitBranchSchema.parse(raw)
+    const parsed = gitBranchSchema.parse(raw)
+    const cwd = authorizeWorkspace(deps, parsed.cwd)
     try {
       const { default: simpleGit } = await import('simple-git')
       const branch = await simpleGit({ baseDir: cwd }).branch()
@@ -46,7 +61,8 @@ export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GET_WORKSPACE_SUMMARY,
     async (_event, raw: unknown): Promise<WorkspaceSummaryInfo> => {
-      const { cwd } = workspaceSummaryRequestSchema.parse(raw)
+      const parsed = workspaceSummaryRequestSchema.parse(raw)
+      const cwd = authorizeWorkspace(deps, parsed.cwd)
       const git = await deps.getGitHost()
       return workspaceSummaryInfoSchema.parse(await git.getWorkspaceSummary(cwd))
     }
@@ -55,7 +71,9 @@ export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
   deps.ipcMain.handle(
     IPC.SET_WORKSPACE_TRUST,
     async (_event, raw: unknown): Promise<WorkspaceTrustResult> => {
-      const { cwd, trusted } = workspaceTrustRequestSchema.parse(raw)
+      const parsed = workspaceTrustRequestSchema.parse(raw)
+      const cwd = authorizeWorkspace(deps, parsed.cwd)
+      const { trusted } = parsed
       const sessionIndex = deps.getSessionIndex()
       if (!sessionIndex) throw new Error('Session index is not ready')
       if (trusted && !sessionIndex.isWorkspaceTrusted(cwd)) {
@@ -88,7 +106,11 @@ export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
   )
 
   deps.ipcMain.handle(IPC.CHECK_PATH_PROTECTION, (_event, raw: unknown) => {
-    const { path: targetPath, workspacePath } = pathProtectionRequestSchema.parse(raw)
+    const { path: targetPath, workspacePath: submittedWorkspace } =
+      pathProtectionRequestSchema.parse(raw)
+    const workspacePath = submittedWorkspace
+      ? authorizeWorkspace(deps, submittedWorkspace)
+      : deps.getCwd()
     const violation = checkProtectedPath(targetPath, workspacePath)
     return pathProtectionResultSchema.parse({
       protected: violation !== null,

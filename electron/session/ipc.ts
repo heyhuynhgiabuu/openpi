@@ -38,8 +38,10 @@ import {
   resolveSubSessionPath,
 } from '../services/piTaskArtifacts'
 import { highRiskShellReason } from '../services/shellEnv'
+import { resolveWorkspacePath } from '../services/workspacePath'
 import type { SessionState } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
+import { resolveAuthorizedFile } from '../session/sessionPath'
 import { emptyUsageSummary } from '../session/sessionUsage'
 
 interface ConfirmMutationOptions {
@@ -51,6 +53,7 @@ interface ConfirmMutationOptions {
 interface SessionsIpcDeps {
   ipcMain: IpcMain
   getMainWindow: () => BrowserWindow | null
+  getAgentDir: () => string
   outputBuffer: readonly OutputLine[]
   startSession: (
     cwd: string,
@@ -76,6 +79,32 @@ interface SessionsIpcDeps {
   refreshSessionIndex: () => Promise<void>
   normalizeSessionReady: (payload: SessionReady) => SessionReady
   applySessionValues: (ready: SessionReady) => void
+  suspendSessionValues: () => void
+  restoreSessionValues: (state: SessionState) => void
+}
+
+function authorizedWorkspacePath(deps: SessionsIpcDeps, submittedCwd: string): string {
+  const candidate = path.resolve(submittedCwd)
+  const active = deps.activeWorkspacePath()
+  if (active && path.resolve(active) === candidate) return active
+  const known = deps
+    .getSessionIndex()
+    ?.listWorkspaces()
+    .find((workspace) => path.resolve(workspace.path) === candidate)
+  if (known) return known.path
+  throw new Error('Unknown workspace')
+}
+
+function authorizedSessionPath(deps: SessionsIpcDeps, submittedPath: string): string {
+  const workspaceRoots = [deps.getSessionState()?.cwd, deps.activeWorkspacePath()]
+    .filter((root): root is string => typeof root === 'string')
+    .map((root) => ({ anchor: root, root: path.join(root, '.pi', 'artifacts') }))
+  const agentDir = deps.getAgentDir()
+  return resolveAuthorizedFile(
+    submittedPath,
+    [{ anchor: agentDir, root: path.join(agentDir, 'sessions') }, ...workspaceRoots],
+    ['.jsonl']
+  )
 }
 
 function emptySessionStats(): SessionStats {
@@ -248,7 +277,8 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GET_SESSION_MESSAGES,
     async (_event, raw: unknown): Promise<SessionHistoryPage> => {
-      const { path: sessionPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
+      const { path: submittedPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
+      const sessionPath = authorizedSessionPath(deps, submittedPath)
       return (
         (await deps
           .getSessionIndex()
@@ -265,7 +295,8 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GET_SESSION_TREE,
     async (_event, raw: unknown): Promise<SessionTreeResponse> => {
-      const { path: sessionPath } = sessionTreeRequestSchema.parse(raw)
+      const { path: submittedPath } = sessionTreeRequestSchema.parse(raw)
+      const sessionPath = authorizedSessionPath(deps, submittedPath)
       return (
         deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
           sessionPath,
@@ -278,23 +309,29 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   )
 
   deps.ipcMain.handle(IPC.RESOLVE_SUB_SESSION_PATH, async (_event, raw: unknown) => {
-    const { cwd, taskId } = resolveSubSessionPathSchema.parse(raw)
-    const artifactsDir = path.join(cwd, '.pi', 'artifacts')
+    const parsed = resolveSubSessionPathSchema.parse(raw)
+    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
+    const { taskId } = parsed
+    const artifactsDir = resolveWorkspacePath(cwd, '.pi/artifacts', 'read task artifacts')
     return resolveSubSessionPath(artifactsDir, taskId)
   })
 
   deps.ipcMain.handle(IPC.READ_TASK_SESSION_HISTORY, async (_event, raw: unknown) => {
-    const { cwd } = readTaskSessionHistorySchema.parse(raw)
+    const parsed = readTaskSessionHistorySchema.parse(raw)
+    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
     return readTaskSessionHistory(cwd)
   })
 
   deps.ipcMain.handle(IPC.RESOLVE_MOST_RECENT_SUB_SESSION_PATH, async (_event, raw: unknown) => {
-    const { cwd } = readTaskSessionHistorySchema.parse(raw)
-    return resolveMostRecentSubSessionPath(path.join(cwd, '.pi', 'artifacts'))
+    const parsed = readTaskSessionHistorySchema.parse(raw)
+    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
+    const artifactsDir = resolveWorkspacePath(cwd, '.pi/artifacts', 'read task artifacts')
+    return resolveMostRecentSubSessionPath(artifactsDir)
   })
 
   deps.ipcMain.handle(IPC.OPEN_SESSION, async (_event, raw: unknown) => {
-    const { path: sessionPath } = openSessionSchema.parse(raw)
+    const { path: submittedPath } = openSessionSchema.parse(raw)
+    const sessionPath = authorizedSessionPath(deps, submittedPath)
     const cwd =
       deps.getSessionIndex()?.getSessionWorkspace(sessionPath) ?? deps.getSessionState()?.cwd
     if (!cwd) return
@@ -303,8 +340,11 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
 
   deps.ipcMain.handle(IPC.NEW_SESSION, async (_event, raw: unknown) => {
     const { cwd, mode, baseBranch } = newSessionSchema.parse(raw)
-    const workspacePath =
+    const submittedWorkspace =
       cwd ?? deps.getSessionState()?.cwd ?? deps.getSessionIndex()?.getLastWorkspace()
+    const workspacePath = submittedWorkspace
+      ? authorizedWorkspacePath(deps, submittedWorkspace)
+      : null
     if (!workspacePath) return
 
     if (mode === 'worktree') {
@@ -336,14 +376,26 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(IPC.FORK_SESSION, async (_event, raw: unknown) => {
     if (!deps.getSessionState()) return
     const { entryId } = forkSessionSchema.parse(raw)
-    const response = await deps.requestSidecar<Extract<SidecarMessage, { type: 'session_ready' }>>({
-      type: 'fork_session',
-      requestId: deps.createRequestId(),
-      entryId,
-    })
-    const ready = deps.normalizeSessionReady(response.payload as SessionReady)
-    deps.applySessionValues(ready)
-    await deps.refreshSessionIndex()
+    const current = deps.getSessionState()
+    if (!current) return
+    const workspaceTrusted = deps.getSessionIndex()?.isWorkspaceTrusted(current.cwd) ?? false
+    deps.suspendSessionValues()
+    try {
+      const response = await deps.requestSidecar<
+        Extract<SidecarMessage, { type: 'session_ready' }>
+      >({
+        type: 'fork_session',
+        requestId: deps.createRequestId(),
+        entryId,
+        workspaceTrusted,
+      })
+      const ready = deps.normalizeSessionReady(response.payload as SessionReady)
+      deps.applySessionValues(ready)
+      await deps.refreshSessionIndex()
+    } catch (error) {
+      deps.restoreSessionValues(current)
+      throw error
+    }
   })
 
   deps.ipcMain.handle(IPC.COMPACT_SESSION, async (_event, raw: unknown) => {
@@ -351,7 +403,7 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     const { customInstructions } = compactSessionSchema.parse(raw)
     await deps
       .requestSidecar<
-        | Extract<SidecarMessage, { type: 'compaction_end' }>
+        | Extract<SidecarMessage, { type: 'compact_result' }>
         | Extract<SidecarMessage, { type: 'error' }>
       >({
         type: 'compact',
@@ -369,13 +421,14 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
 
   deps.ipcMain.handle(IPC.RELOAD_SESSION, async () => {
     if (!deps.getSessionState()) return
-    await deps.requestSidecar<
-      | Extract<SidecarMessage, { type: 'session_event' }>
-      | Extract<SidecarMessage, { type: 'error' }>
-    >({
+    deps.suspendSessionValues()
+    const response = await deps.requestSidecar<Extract<SidecarMessage, { type: 'session_ready' }>>({
       type: 'reload_session',
       requestId: deps.createRequestId(),
     })
+    const ready = deps.normalizeSessionReady(response.payload as SessionReady)
+    deps.applySessionValues(ready)
+    await deps.refreshSessionIndex()
   })
 
   deps.ipcMain.handle(IPC.GET_SESSION_INFO, async (): Promise<SessionInfo | null> => {

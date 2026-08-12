@@ -1,4 +1,4 @@
-import { type Component, For, Show } from 'solid-js'
+import { For, Show } from 'solid-js'
 import type { TrackedTask } from '../lib/extensionTrackers'
 import { formatTaskDurationMs } from '../lib/taskToolHelpers'
 

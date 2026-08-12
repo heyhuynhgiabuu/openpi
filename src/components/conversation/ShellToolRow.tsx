@@ -2,7 +2,7 @@ import { type Component, createEffect, createSignal, Show } from 'solid-js'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import { labelForTool } from '../../lib/sessionView'
 import type { ToolCard } from '../../types/session'
-import { extractCommand, MAX_CMD } from './toolCardHelpers'
+import { extractCommand } from './toolCardHelpers'
 
 type ShellToolRowProps = {
   card: ToolCard

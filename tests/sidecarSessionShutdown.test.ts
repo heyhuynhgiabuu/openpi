@@ -117,6 +117,51 @@ describe('sidecar stale-ctx error filter', () => {
     expect(showSystemNotification).not.toHaveBeenCalled()
   })
 
+  it('drops a malformed sidecar message before handling it', () => {
+    const normalizeSessionReady = vi.fn((payload) => payload)
+    const applySessionReady = vi.fn()
+    const handler = createSidecarMessageHandler({
+      getMainWindow: () => null,
+      normalizeSessionReady,
+      applySessionReady,
+      refreshSessionIndex: async () => {},
+      resolveActiveCwd: () => null,
+      showSystemNotification: vi.fn(),
+      playSoundEffect: vi.fn(),
+      getGitHost: async () => await import('../electron/git/gitHost'),
+      emitSessionError: vi.fn(),
+      emitOutputLine: vi.fn(),
+    })
+
+    handler({ type: 'session_ready', payload: {} } as unknown as Parameters<typeof handler>[0])
+
+    expect(normalizeSessionReady).not.toHaveBeenCalled()
+    expect(applySessionReady).not.toHaveBeenCalled()
+  })
+
+  it('drops a malformed known session event before renderer forwarding', () => {
+    const send = vi.fn()
+    const handler = createSidecarMessageHandler({
+      getMainWindow: () =>
+        ({ webContents: { send } }) as unknown as NonNullable<
+          ReturnType<Parameters<typeof createSidecarMessageHandler>[0]['getMainWindow']>
+        >,
+      normalizeSessionReady: (payload) => payload,
+      applySessionReady: vi.fn(),
+      refreshSessionIndex: async () => {},
+      resolveActiveCwd: () => null,
+      showSystemNotification: vi.fn(),
+      playSoundEffect: vi.fn(),
+      getGitHost: async () => await import('../electron/git/gitHost'),
+      emitSessionError: vi.fn(),
+      emitOutputLine: vi.fn(),
+    })
+
+    handler({ type: 'session_event', event: { type: '', unexpected: true } })
+
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('filters the case-insensitive "ctx is stale after" form', () => {
     expect(isStaleExtensionCtxMessage('ctx is stale after reload')).toBe(true)
     expect(isStaleExtensionCtxMessage('this extension ctx is stale')).toBe(true)

@@ -6,3 +6,4 @@
  * here instead of _full to reduce the monolithic file.
  */
 export * from './_full'
+export * from './usage'

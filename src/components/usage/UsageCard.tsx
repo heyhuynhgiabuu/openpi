@@ -1,16 +1,13 @@
-import { createMemo, createResource, createSignal, For, onMount, Show } from 'solid-js'
+import { createMemo, createResource, createSignal, For, Show } from 'solid-js'
 import type { UsageDay, UsageModelBucket, UsageSummary } from '../../lib/ipc'
 import { formatCurrency, formatModelName } from '../../lib/sessionView'
-import { DailyModelChart } from './DailyModelChart'
+import { ModelUsagePanel } from './ModelUsagePanel'
 import { ProviderShareChart } from './ProviderShareChart'
 import { downloadUsageCsv, downloadUsageJson } from './usageExport'
-import { findDeltaPct, formatDeltaPct, modelKey, pickModelColor } from './usageModelTrend'
-import {
-  modelPricingExtras,
-  sumCacheSavingsForModels,
-  warmUsagePricingCatalog,
-} from './usagePricing'
+import { formatProviderLabel, formatTokenMetric } from './usageFormat'
+import { modelPricingExtras, sumCacheSavingsForModels } from './usagePricing'
 import { providerChartColor } from './usageProviderTrend'
+import './usage.css'
 
 const HEATMAP_WEEKS = 53
 const DAYS_PER_WEEK = 7
@@ -47,10 +44,6 @@ type HeatmapCell = {
 }
 
 export function UsageCard(props: Props) {
-  onMount(() => {
-    warmUsagePricingCatalog()
-  })
-
   const [range, setRange] = createSignal<RangeKey>('30d')
   const [hoveredHeatmapDay, setHoveredHeatmapDay] = createSignal<HeatmapCell | null>(null)
   const [activityPreviewPosition, setActivityPreviewPosition] = createSignal({
@@ -534,183 +527,6 @@ export function UsageCard(props: Props) {
   )
 }
 
-function ModelUsagePanel(props: {
-  models: UsageModelBucket[]
-  previousModels: UsageModelBucket[]
-  dailyModels: UsageSummary['dailyModels']
-  maxDays: number
-  pinnedModelKey?: string | null
-  onPinnedModelChange?: (key: string | null) => void
-}) {
-  const totalTokens = createMemo(() =>
-    props.models.reduce((sum, model) => sum + model.totalTokens, 0)
-  )
-
-  const previousByKey = createMemo(() => {
-    const map = new Map<string, UsageModelBucket>()
-    for (const m of props.previousModels) {
-      map.set(modelKey(m.model, m.provider), m)
-    }
-    return map
-  })
-
-  const featured = createMemo(() => props.models.slice(0, 3))
-  const rest = createMemo(() => props.models.slice(3))
-
-  return (
-    <div class="usage-panel">
-      <div class="usage-panel-subsection">
-        <h4 class="usage-subsection-title">Daily stack by model</h4>
-        <DailyModelChart
-          dailyModels={props.dailyModels ?? []}
-          maxDays={props.maxDays ?? 90}
-          pinnedModelKey={props.pinnedModelKey}
-          onPinnedModelChange={props.onPinnedModelChange}
-        />
-      </div>
-      <header class="usage-panel-head">
-        <h3 class="usage-section-title">
-          Top models<span class="usage-section-dot">.</span>
-        </h3>
-        <p class="usage-section-desc">
-          Usage of models across your indexed sessions · {formatTokenMetric(totalTokens())} captured
-        </p>
-      </header>
-
-      <Show
-        when={props.models.length > 0}
-        fallback={
-          <div class="usage-models-placeholder">
-            No model usage captured yet. Run a session and assistant turns will show up here.
-          </div>
-        }
-      >
-        <div class="usage-featured-grid">
-          <For each={featured()}>
-            {(model, index) => {
-              const prev = previousByKey().get(modelKey(model.model, model.provider))
-              const delta = findDeltaPct(model.totalTokens, prev?.totalTokens ?? 0)
-              const { cacheSavings } = modelPricingExtras(model)
-              const key = modelKey(model.model, model.provider)
-              const color = pickModelColor(index(), key)
-              const isPinned = props.pinnedModelKey === key
-              const isDimmed = props.pinnedModelKey != null && !isPinned
-              return (
-                <button
-                  type="button"
-                  class={`usage-featured-card${isPinned ? ' is-pinned' : ''}${isDimmed ? ' is-dimmed' : ''}`}
-                  onMouseEnter={() => props.onPinnedModelChange?.(key)}
-                  onMouseLeave={() => props.onPinnedModelChange?.(null)}
-                >
-                  <span class="usage-model-swatch" style={{ background: color }} />
-                  <span class="usage-featured-rank">{String(index() + 1).padStart(2, '0')}</span>
-                  <span class="usage-featured-name">
-                    {formatModelName(model.model) || model.model || 'unknown'}
-                  </span>
-                  <span class="usage-featured-volume">{formatTokenMetric(model.totalTokens)}</span>
-                  <span class="usage-featured-sub">
-                    <Show when={formatProviderLabel(model.provider)}>
-                      <span>{formatProviderLabel(model.provider)}</span>
-                    </Show>
-                    <span class={`usage-featured-delta is-${delta.state}`}>
-                      {formatDeltaPct(delta)}
-                    </span>
-                    <Show when={(cacheSavings ?? 0) > 0}>
-                      <span>saved {formatCurrency(cacheSavings ?? 0)}</span>
-                    </Show>
-                  </span>
-                </button>
-              )
-            }}
-          </For>
-        </div>
-
-        <Show when={rest().length > 0}>
-          <div class="usage-rest-grid">
-            <For each={rest()}>
-              {(model, index) => {
-                const prev = previousByKey().get(modelKey(model.model, model.provider))
-                const delta = findDeltaPct(model.totalTokens, prev?.totalTokens ?? 0)
-                const key = modelKey(model.model, model.provider)
-                const color = pickModelColor(index() + 3, key)
-                const isPinned = props.pinnedModelKey === key
-                const isDimmed = props.pinnedModelKey != null && !isPinned
-                return (
-                  <button
-                    type="button"
-                    class={`usage-rest-card${isPinned ? ' is-pinned' : ''}${isDimmed ? ' is-dimmed' : ''}`}
-                    onMouseEnter={() => props.onPinnedModelChange?.(key)}
-                    onMouseLeave={() => props.onPinnedModelChange?.(null)}
-                  >
-                    <span class="usage-model-swatch" style={{ background: color }} />
-                    <span class="usage-rest-rank">{String(index() + 4).padStart(2, '0')}</span>
-                    <span class="usage-rest-name">
-                      {formatModelName(model.model) || model.model || 'unknown'}
-                    </span>
-                    <span class="usage-rest-volume">{formatTokenMetric(model.totalTokens)}</span>
-                    <span class={`usage-rest-delta is-${delta.state}`}>
-                      {formatDeltaPct(delta)}
-                    </span>
-                  </button>
-                )
-              }}
-            </For>
-          </div>
-        </Show>
-      </Show>
-    </div>
-  )
-}
-
-function _LeaderboardRow(props: {
-  rank: number
-  model: UsageModelBucket
-  sharePct: number
-  showBar?: boolean
-  hideVendor?: boolean
-  cacheSavingsUsd?: number | null
-}) {
-  const label = () => formatModelName(props.model.model) || props.model.model || 'unknown'
-  const vendor = () => formatProviderLabel(props.model.provider)
-
-  return (
-    <li class="usage-leaderboard-row">
-      <span class="usage-leaderboard-rank">{String(props.rank).padStart(2, '0')}</span>
-      <div class="usage-leaderboard-main">
-        <div class="usage-leaderboard-top">
-          <span class="usage-leaderboard-name" title={props.model.model}>
-            {label()}
-          </span>
-          <span class="usage-leaderboard-volume">{formatTokenMetric(props.model.totalTokens)}</span>
-        </div>
-        <div class="usage-leaderboard-sub">
-          <Show when={!props.hideVendor && vendor()}>
-            <span>{vendor()}</span>
-          </Show>
-          <span class="usage-leaderboard-share">{formatSharePct(props.sharePct)}</span>
-          <Show when={props.model.cacheHitRate != null}>
-            <span>{formatCacheHitRate(props.model.cacheHitRate)} cache</span>
-          </Show>
-          <Show when={props.model.cost > 0}>
-            <span>{formatCurrency(props.model.cost)}</span>
-          </Show>
-          <Show when={(props.cacheSavingsUsd ?? 0) > 0}>
-            <span>saved {formatCurrency(props.cacheSavingsUsd ?? 0)}</span>
-          </Show>
-        </div>
-        <Show when={props.showBar}>
-          <div class="usage-model-bar" aria-hidden="true">
-            <span
-              class="usage-model-bar-fill"
-              style={{ width: `${Math.max(props.sharePct, 2)}%` }}
-            />
-          </div>
-        </Show>
-      </div>
-    </li>
-  )
-}
-
 type ProviderBucket = UsageModelBucket & { model: string }
 
 function aggregateProviders(models: UsageModelBucket[]): ProviderBucket[] {
@@ -918,12 +734,6 @@ function rangeToDays(key: RangeKey): number {
   return 365
 }
 
-function _dayModelSharePct(model: UsageModelBucket, models: UsageModelBucket[]): number {
-  const total = models.reduce((sum, m) => sum + m.totalTokens, 0)
-  if (total <= 0) return 0
-  return (model.totalTokens / total) * 100
-}
-
 function formatSharePct(pct: number): string {
   const clamped = Math.min(100, Math.max(0, pct))
   return `${clamped.toFixed(clamped >= 10 ? 0 : 1)}%`
@@ -938,13 +748,6 @@ function cacheHitRate(inputTokens: number, cacheReadTokens: number): number | nu
 function formatCacheHitRate(rate: number | null | undefined): string {
   if (rate == null || !Number.isFinite(rate)) return '—'
   return `${Math.round(rate * 100)}%`
-}
-
-function formatTokenMetric(tokens: number): string {
-  if (tokens >= 1_000_000_000) return `${(tokens / 1_000_000_000).toFixed(1)}B`
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`
-  return tokens.toLocaleString()
 }
 
 function formatCostPerSession(cost: number, sessions: number): string {
@@ -976,23 +779,6 @@ function formatRelativeGenerated(iso: string): string {
   if (sec < 3600) return `${Math.floor(sec / 60)}m ago`
   if (sec < 86_400) return `${Math.floor(sec / 3600)}h ago`
   return `${Math.floor(sec / 86_400)}d ago`
-}
-
-function formatProviderLabel(provider: string | undefined): string {
-  if (!provider) return ''
-  const map: Record<string, string> = {
-    anthropic: 'Anthropic',
-    openai: 'OpenAI',
-    google: 'Google',
-    deepseek: 'DeepSeek',
-    minimax: 'MiniMax',
-    moonshot: 'Moonshot',
-    zhipu: 'Zhipu',
-    qwen: 'Qwen',
-    xai: 'xAI',
-  }
-  const key = provider.toLowerCase()
-  return map[key] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
 }
 
 function workspaceScopeFromPath(path: string | null): string {

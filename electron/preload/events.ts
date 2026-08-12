@@ -7,7 +7,7 @@ import type {
   SessionEvent,
   SessionReady,
 } from '../../src/lib/ipc'
-import { IPC } from '../../src/lib/ipc'
+import { IPC, sessionErrorSchema, sessionEventSchema, sessionReadySchema } from '../../src/lib/ipc'
 
 interface RemoteSessionStatusPayload {
   app: string
@@ -21,19 +21,28 @@ export const eventsApi = {
   sendPrompt: (text: string): Promise<void> => ipcRenderer.invoke(IPC.SEND_PROMPT, { text }),
 
   onSessionReady: (cb: (payload: SessionReady) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, payload: SessionReady) => cb(payload)
+    const handler = (_: Electron.IpcRendererEvent, raw: unknown) => {
+      const parsed = sessionReadySchema.safeParse(raw)
+      if (parsed.success) cb(parsed.data)
+    }
     ipcRenderer.on(IPC.SESSION_READY, handler)
     return () => ipcRenderer.removeListener(IPC.SESSION_READY, handler)
   },
 
   onSessionEvent: (cb: (event: SessionEvent) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, event: SessionEvent) => cb(event)
+    const handler = (_: Electron.IpcRendererEvent, raw: unknown) => {
+      const parsed = sessionEventSchema.safeParse(raw)
+      if (parsed.success) cb(parsed.data)
+    }
     ipcRenderer.on(IPC.SESSION_EVENT, handler)
     return () => ipcRenderer.removeListener(IPC.SESSION_EVENT, handler)
   },
 
   onSessionError: (cb: (error: SessionError) => void) => {
-    const handler = (_: Electron.IpcRendererEvent, error: SessionError) => cb(error)
+    const handler = (_: Electron.IpcRendererEvent, raw: unknown) => {
+      const parsed = sessionErrorSchema.safeParse(raw)
+      if (parsed.success) cb(parsed.data)
+    }
     ipcRenderer.on(IPC.SESSION_ERROR, handler)
     return () => ipcRenderer.removeListener(IPC.SESSION_ERROR, handler)
   },

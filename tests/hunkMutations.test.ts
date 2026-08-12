@@ -1,10 +1,11 @@
-import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import simpleGit from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { stageHunk, unstageHunk } from '../electron/git/gitMutations'
+import { registerGitIpc } from '../electron/git/ipc'
+import { IPC } from '../src/lib/ipc'
 
 /**
  * Integration tests for hunk-level git operations. These spin up a real
@@ -137,30 +138,109 @@ describe('hunk mutations (integration)', () => {
   })
 })
 
-describe('assertHunkTargetsFile (path verification)', () => {
-  // We import the helper via the IPC handler module path. The helper is
-  // not exported, so we test it indirectly through a wrapper. For now,
-  // document the expected behaviour with a unit-style assertion.
-  it('rejects a patch whose +++ b/<path> does not match the requested filePath', () => {
-    // The helper lives inside electron/git/ipc.ts. We can't import it
-    // directly, but the behaviour is documented:
-    //   - asserts the +++ b/<path> line equals the requested filePath
-    //   - asserts the --- a/<path> line (or /dev/null) matches
-    //   - asserts rename from/to paths share a basename
-    //
-    // This is a placeholder for an integration test. The unit tests for
-    // the helper itself would need a small refactor to export it.
-    const requested = 'src/foo.ts'
-    const maliciousPatch = [
-      'diff --git a/src/bar.ts b/src/bar.ts',
-      '--- a/src/bar.ts',
-      '+++ b/src/bar.ts',
-      '@@ -1,1 +1,1 @@',
+describe('Git hunk IPC path authorization', () => {
+  type IpcHandler = (event: unknown, raw?: unknown) => unknown
+
+  function createStageHunkHandler() {
+    const handlers = new Map<string, IpcHandler>()
+    const stageHunkMock = vi.fn().mockResolvedValue({ ok: true })
+    const deps: Parameters<typeof registerGitIpc>[0] = {
+      ipcMain: {
+        handle: vi.fn((channel: string, handler: IpcHandler) => handlers.set(channel, handler)),
+        on: vi.fn(),
+      } as unknown as Parameters<typeof registerGitIpc>[0]['ipcMain'],
+      getCwd: () => '/workspace',
+      getDeferredWorkspace: () => null,
+      getGitHost: async () =>
+        ({
+          stageHunk: stageHunkMock,
+        }) as unknown as Awaited<ReturnType<Parameters<typeof registerGitIpc>[0]['getGitHost']>>,
+      restartGitMonitoring: vi.fn(),
+      filterBlockedPaths: vi.fn(() => ({ allowed: [], blocked: [] })),
+      confirmHighRiskMutation: vi.fn(),
+      getCommitAgentContext: vi.fn(),
+    }
+    registerGitIpc(deps)
+    const handler = handlers.get(IPC.GIT_STAGE_HUNK)
+    if (!handler) throw new Error('Expected GIT_STAGE_HUNK handler')
+    return { handler, stageHunkMock }
+  }
+
+  it('rejects traversal in the requested file path before Git receives it', async () => {
+    const { handler, stageHunkMock } = createStageHunkHandler()
+    const patch = [
+      'diff --git a/../outside.ts b/../outside.ts',
+      '--- a/../outside.ts',
+      '+++ b/../outside.ts',
+      '@@ -1 +1 @@',
       '-old',
       '+new',
+      '',
     ].join('\n')
-    // Sanity: the malicious patch's +++ b/ path does NOT match the requested filePath
-    expect(maliciousPatch).toContain('+++ b/src/bar.ts')
-    expect(requested).not.toContain('src/bar.ts')
+
+    await expect(handler({}, { path: '../outside.ts', hunkPatch: patch })).rejects.toThrow(
+      /unsafe file path/i
+    )
+    expect(stageHunkMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a rename source that only matches the requested basename', async () => {
+    const { handler, stageHunkMock } = createStageHunkHandler()
+    const patch = [
+      'diff --git a/src/foo.ts b/src/foo.ts',
+      'similarity index 90%',
+      'rename from other/foo.ts',
+      'rename to src/foo.ts',
+      '--- a/src/foo.ts',
+      '+++ b/src/foo.ts',
+      '',
+    ].join('\n')
+
+    await expect(handler({}, { path: 'src/foo.ts', hunkPatch: patch })).rejects.toThrow(
+      /rename source/i
+    )
+    expect(stageHunkMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unrecognized old-file prefix before Git receives a reversible patch', async () => {
+    const { handler, stageHunkMock } = createStageHunkHandler()
+    const patch = [
+      'diff --git a/src/foo.ts b/src/foo.ts',
+      '--- x/src/secret.ts',
+      '+++ b/src/foo.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+      '',
+    ].join('\n')
+
+    await expect(handler({}, { path: 'src/foo.ts', hunkPatch: patch })).rejects.toThrow(
+      /source path|malformed hunk patch/i
+    )
+    expect(stageHunkMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a patch containing a second file before Git receives it', async () => {
+    const { handler, stageHunkMock } = createStageHunkHandler()
+    const patch = [
+      'diff --git a/src/foo.ts b/src/foo.ts',
+      '--- a/src/foo.ts',
+      '+++ b/src/foo.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+      'diff --git a/src/secret.ts b/src/secret.ts',
+      '--- a/src/secret.ts',
+      '+++ b/src/secret.ts',
+      '@@ -1 +1 @@',
+      '-safe',
+      '+compromised',
+      '',
+    ].join('\n')
+
+    await expect(handler({}, { path: 'src/foo.ts', hunkPatch: patch })).rejects.toThrow(
+      /exactly one file/i
+    )
+    expect(stageHunkMock).not.toHaveBeenCalled()
   })
 })

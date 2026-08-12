@@ -1,6 +1,6 @@
 # OpenPi Roadmap
 
-OpenPi is a **local-first desktop workbench** for the [Pi coding agent](https://pi.dev) (`@earendil-works/pi-coding-agent`). It hosts the **MIT agent core in Electron main** and renders sessions, tools, Git, editor, and terminal in a SolidJS shell — **not** a second agent runtime, **not** a VS Code / Warp clone, **not** a “Codex app replacement” installer.
+OpenPi is a **local-first desktop workbench** for the [Pi coding agent](https://pi.dev) (`@earendil-works/pi-coding-agent`). Electron main supervises the **MIT agent core in a local sidecar** and renders sessions, tools, Git, editor, and terminal in a SolidJS shell — **not** a second agent runtime, **not** a VS Code / Warp clone, **not** a “Codex app replacement” installer.
 
 **North star UI:** workspace-grouped session sidebar (token/cost, timestamps) + conversation (model selector, steer/follow-up/abort, tool cards) + customizations (extensions, skills, prompts, themes, packages) + command palette (`⇧⌘P`) + persistent Git panel + split diff viewer + bottom terminal/output.
 
@@ -24,7 +24,7 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 ---
 
-## Current Status (beta) — v0.2.1
+## Current Status (beta) — v0.2.6
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
@@ -67,13 +67,13 @@ Still beta-blocking:
 ┌──────────────────▼───────────────────────────────┐
 │ Electron Main                                    │
 │  app/window lifecycle · secure IPC routing       │
-│  Pi SDK session host · node-pty PTY bridge       │
+│  sidecar supervision · node-pty PTY bridge       │
 │  permission orchestration · Git read/stage/commit │
 │  SQLite read-model (session index, workspaces)   │
-└──────────────────────────────────────────────────┘
-            │ SDK import (same process)
-┌───────────▼──────────────────────────────────────┐
-│ Pi SDK (@earendil-works/pi-coding-agent)         │
+└──────────────────┬───────────────────────────────┘
+                   │ validated process messages
+┌──────────────────▼───────────────────────────────┐
+│ Pi SDK sidecar (@earendil-works/pi-coding-agent) │
 │  AgentSession · SessionManager · ResourceLoader  │
 │  ModelRuntime · credentials · extensions         │
 │  tools · compaction · session tree (JSONL v3)    │
@@ -82,10 +82,10 @@ Still beta-blocking:
 
 **Key authority split:**
 - **Renderer**: render state, collect intent. No Node access. No Pi imports.
-- **Electron main**: IPC routing, app lifecycle, PTY, Pi SDK session host, Git read/stage/commit, SQLite, permission gates.
-- **Pi SDK** (in Electron main): agent loop, session tree, tools, extensions, compaction, models. Not reimplemented. Not wrapped in a separate process for MVP.
+- **Electron main**: IPC routing, app lifecycle, sidecar supervision, PTY, Git read/stage/commit, SQLite, permission gates.
+- **Pi SDK sidecar**: agent loop, session tree, tools, extensions, compaction, models. OpenPi validates its local process protocol but does not reimplement Pi semantics.
 
-**Why SDK in Electron main (not subprocess RPC):** Pi's own docs say "if you're building a Node.js application, consider using AgentSession directly." We are. Type-safe, zero framing overhead, full access to `AgentSessionEvent` types. Switch to subprocess isolation if resource/security pressure demands it later.
+**Why a supervised SDK sidecar:** OpenPi uses Pi's SDK directly inside one local child process. This keeps Pi memory and extension execution isolated from Electron main while retaining typed SDK integration; it is not Pi RPC and not a second agent runtime.
 
 ---
 
@@ -101,7 +101,7 @@ Still beta-blocking:
 | Terminal | xterm.js + node-pty in main |
 | Editor | CodeMirror 6 |
 | Diff | @pierre/diffs (replaceable renderer only) |
-| Pi integration | @earendil-works/pi-coding-agent SDK (direct import in main) |
+| Pi integration | @earendil-works/pi-coding-agent SDK in a main-supervised local sidecar |
 | Persistence | SQLite via better-sqlite3 in main process |
 | Secrets | OS keychain via Electron safeStorage |
 
@@ -208,9 +208,9 @@ Token input/output/cacheRead/cacheWrite, cost, contextUsage (tokens, contextWind
 **Goal:** prove the Electron shell can host a Pi session and stream events to the renderer safely.
 
 Build:
-- Electron + React + Vite + Tailwind app shell
+- Electron + SolidJS + Vite + Tailwind app shell
 - Secure preload bridge with typed, Zod-validated IPC channel map
-- `SessionHost` in Electron main: creates Pi `AgentSession`, pipes `AgentSessionEvent` stream to renderer via IPC, handles prompt/steer/followUp/abort commands
+- Main-supervised `SessionHost` sidecar: creates Pi `AgentSession`, sends validated `AgentSessionEvent` envelopes to main/renderer, and handles prompt/steer/followUp/abort commands
 - Basic agent conversation view: streaming text, thinking blocks, tool execution cards (name + expandable output)
 - Model selector using `ModelRuntime.getAvailable()`
 - Token/cost display from `turn_end` usage events

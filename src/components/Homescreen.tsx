@@ -158,44 +158,30 @@ export function Homescreen(props: Props) {
                       <For each={group.sessions}>
                         {(session) => {
                           const isActive = session.path === props.activeSessionPath
-                          const _wsName = session.cwd.split('/').pop() ?? ''
+                          const title = session.title || 'Untitled session'
                           return (
-                            <div
-                              role="button"
-                              tabindex="0"
-                              class={`homescreen-session${isActive ? ' is-active' : ''}`}
-                              onClick={() => {
-                                if (!isActive) props.onSelectSession(session.path)
-                                props.onClose()
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault()
+                            <div class={`homescreen-session${isActive ? ' is-active' : ''}`}>
+                              <button
+                                type="button"
+                                class="homescreen-session-open"
+                                onClick={() => {
                                   if (!isActive) props.onSelectSession(session.path)
                                   props.onClose()
-                                } else if (e.key === 'Delete' || e.key === 'Backspace') {
-                                  e.preventDefault()
-                                  props.onDeleteSession(session.path)
-                                }
-                              }}
-                            >
-                              <span class="homescreen-session-title">
-                                {session.title || 'Untitled session'}
-                              </span>
-                              <span class="homescreen-session-meta">
-                                <button
-                                  type="button"
-                                  class="homescreen-session-delete"
-                                  aria-label={`Delete session ${session.title || 'Untitled session'}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    props.onDeleteSession(session.path)
-                                  }}
-                                >
-                                  <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
-                                </button>
-                                {formatRelativeTime(session.updatedAt)}
-                              </span>
+                                }}
+                              >
+                                <span class="homescreen-session-title">{title}</span>
+                                <span class="homescreen-session-meta">
+                                  {formatRelativeTime(session.updatedAt)}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                class="homescreen-session-delete"
+                                aria-label={`Delete session ${title}`}
+                                onClick={() => props.onDeleteSession(session.path)}
+                              >
+                                <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
+                              </button>
                             </div>
                           )
                         }}

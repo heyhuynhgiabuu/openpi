@@ -30,6 +30,7 @@ let _state: SessionState | null = null
 let _deferredWorkspace: string | null = null
 let _refreshInFlight: Promise<void> | null = null
 let _piSidecarHost: PiSidecarHost | null = null
+let _replacementGeneration = 0
 
 // ─── External references (set by main.ts) ──────────────────────────────────────
 
@@ -128,6 +129,24 @@ export function applySessionValues(ready: SessionReady): void {
     threadCwdRegistry.setActive(ready.sessionId)
   }
   sendToMainWindow(IPC.SESSION_READY, ready)
+  _onRestartGitMonitoring?.(ready.cwd)
+}
+
+export function suspendSessionValues(): void {
+  if (_state?.sessionId) threadCwdRegistry.unregister(_state.sessionId)
+  _state = null
+  _deferredWorkspace = null
+  threadCwdRegistry.clearActive()
+  _onStopGitMonitoring?.()
+}
+
+export function restoreSessionValues(state: SessionState): void {
+  _state = state
+  if (state.sessionId) {
+    threadCwdRegistry.register(state.sessionId, { root: state.cwd })
+    threadCwdRegistry.setActive(state.sessionId)
+  }
+  _onRestartGitMonitoring?.(state.cwd)
 }
 
 export function clearSessionState(): void {
@@ -143,21 +162,11 @@ export function clearSessionState(): void {
   }
   _state = null
   _deferredWorkspace = null
+  threadCwdRegistry.clearActive()
 }
 
-export function applySessionReady(ready: SessionReady, cwd: string): void {
-  _state = {
-    cwd: ready.cwd,
-    sessionFile: ready.sessionFile,
-    sessionId: ready.sessionId,
-  }
-  _deferredWorkspace = null
-  if (ready.sessionId) {
-    threadCwdRegistry.register(ready.sessionId, { root: ready.cwd })
-    threadCwdRegistry.setActive(ready.sessionId)
-  }
-  sendToMainWindow(IPC.SESSION_READY, ready)
-  _onRestartGitMonitoring?.(cwd)
+export function applySessionReady(ready: SessionReady, _cwd: string): void {
+  applySessionValues(ready)
 }
 
 export function resolveActiveCwd(): string {
@@ -176,30 +185,34 @@ export function normalizeSessionReady(payload: SessionReady): SessionReady {
 }
 
 export async function startSession(cwd: string, options: StartSessionOptions = {}): Promise<void> {
+  const generation = ++_replacementGeneration
+  const previous = _state
   _deferredWorkspace = null
   const workspacePath = _sessionIndex?.upsertWorkspace(cwd) ?? cwd
 
-  _state = null
-  _onStopGitMonitoring?.()
+  suspendSessionValues()
 
   const requestId = createRequestId()
-  const response = await ensurePiSidecarStarted().request<
-    Extract<SidecarMessage, { type: 'session_ready' }>
-  >({
-    type: 'start_session',
-    requestId,
-    cwd: workspacePath,
-    workspaceTrusted: _sessionIndex?.isWorkspaceTrusted(workspacePath) ?? false,
-    sessionFile: options.sessionFile,
-    forkEntryId: options.forkEntryId,
-  })
-
-  const ready = normalizeSessionReady(response.payload as SessionReady)
-  _state = {
-    cwd: ready.cwd,
-    sessionFile: ready.sessionFile,
-    sessionId: ready.sessionId,
+  let response: Extract<SidecarMessage, { type: 'session_ready' }>
+  try {
+    response = await ensurePiSidecarStarted().request<
+      Extract<SidecarMessage, { type: 'session_ready' }>
+    >({
+      type: 'start_session',
+      requestId,
+      cwd: workspacePath,
+      workspaceTrusted: _sessionIndex?.isWorkspaceTrusted(workspacePath) ?? false,
+      sessionFile: options.sessionFile,
+      forkEntryId: options.forkEntryId,
+    })
+  } catch (error) {
+    if (generation === _replacementGeneration && previous) restoreSessionValues(previous)
+    throw error
   }
+
+  if (generation !== _replacementGeneration) return
+  const ready = normalizeSessionReady(response.payload as SessionReady)
+  applySessionValues(ready)
 
   // Worktree mode: correct registry entry to reflect root repo + worktree path.
   if (options.worktreePath && options.rootCwd && ready.sessionId) {
@@ -209,9 +222,13 @@ export async function startSession(cwd: string, options: StartSessionOptions = {
     })
   }
 
-  sendToMainWindow(IPC.SESSION_READY, ready)
   _onMaybeCheckPiUpdate?.()
-  await refreshSessionIndex()
+  try {
+    await refreshSessionIndex()
+  } catch (error) {
+    if (generation === _replacementGeneration && previous) restoreSessionValues(previous)
+    throw error
+  }
 }
 
 export async function ensureActiveSession(): Promise<SessionState | null> {

@@ -1,63 +1,6 @@
-import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
-import type { UsageModelBucket } from '../../lib/ipc'
-
-/** USD per 1M tokens (pi-ai model catalog). */
-export type TokenRates = {
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-}
+import type { TokenRates, UsageModelBucket } from '../../lib/ipc'
 
 const M = 1_000_000
-let pricingCatalog: Map<string, Map<string, TokenRates>> | null = null
-
-function getPricingCatalog(): Map<string, Map<string, TokenRates>> {
-  if (pricingCatalog) return pricingCatalog
-
-  pricingCatalog = new Map()
-  for (const provider of getBuiltinProviders()) {
-    const models = new Map<string, TokenRates>()
-    for (const model of getBuiltinModels(provider)) {
-      models.set(model.id, model.cost)
-    }
-    pricingCatalog.set(provider, models)
-  }
-  return pricingCatalog
-}
-
-export function warmUsagePricingCatalog(): void {
-  getPricingCatalog()
-}
-
-export function resolveTokenRatesSync(modelId: string, provider?: string): TokenRates | null {
-  const id = modelId.trim()
-  if (!id) return null
-
-  const catalog = getPricingCatalog()
-  const candidates: Array<{ provider: string; id: string }> = []
-  if (provider) {
-    candidates.push({ provider, id })
-    if (!id.includes('/')) candidates.push({ provider, id: `${provider}/${id}` })
-  }
-  for (const catalogProvider of catalog.keys()) {
-    candidates.push({ provider: catalogProvider, id })
-    if (id.includes('/')) {
-      const tail = id.split('/').pop()
-      if (tail) candidates.push({ provider: catalogProvider, id: tail })
-    }
-  }
-
-  const seen = new Set<string>()
-  for (const candidate of candidates) {
-    const key = `${candidate.provider}:${candidate.id}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    const rates = catalog.get(candidate.provider)?.get(candidate.id)
-    if (rates) return rates
-  }
-  return null
-}
 
 export function estimateModelBillUsd(
   row: Pick<
@@ -92,8 +35,7 @@ export function sumCacheSavingsForModels(models: UsageModelBucket[]): number | n
   let total = 0
   let any = false
   for (const model of models) {
-    const rates = resolveTokenRatesSync(model.model, model.provider)
-    const savings = estimateCacheSavingsUsd(model, rates)
+    const savings = estimateCacheSavingsUsd(model, model.rates ?? null)
     if (savings != null) {
       total += savings
       any = true
@@ -106,7 +48,7 @@ export function modelPricingExtras(model: UsageModelBucket): {
   estimatedBill: number | null
   cacheSavings: number | null
 } {
-  const rates = resolveTokenRatesSync(model.model, model.provider)
+  const rates = model.rates ?? null
   return {
     estimatedBill: estimateModelBillUsd(model, rates),
     cacheSavings: estimateCacheSavingsUsd(model, rates),

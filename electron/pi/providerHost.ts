@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { ipcMain } from 'electron'
+import type { IpcMain } from 'electron'
 import type { ModelInfo } from '../../src/lib/ipc'
 import {
   type CustomProviderInfo,
@@ -59,7 +59,7 @@ function writeModelsJson(agentDir: string, data: ModelsJson): void {
 
 // ─── Handler registration ──────────────────────────────────────────────────────
 
-export function registerProviderHandlers(): void {
+export function registerProviderHandlers(ipcMain: IpcMain): void {
   // ── Model (sidecar-hosted) ──────────────────────────────────────────────────
   ipcMain.handle(IPC.GET_MODELS, async (): Promise<ModelInfo[]> => {
     const requestId = createRequestId()

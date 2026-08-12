@@ -33,11 +33,6 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-/** Strip Shiki's inline background-color so the editor background shows through */
-function _stripShikiBackground(html: string): string {
-  return html.replace(/background-color:[^;"'}]+;?\s*/g, '').replace(/\stabindex="0"/g, '')
-}
-
 export function SyntaxPreview(props: { name: string; contents: string }) {
   const [html, setHtml] = createSignal('')
 

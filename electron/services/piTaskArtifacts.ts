@@ -14,24 +14,39 @@ import {
   type TaskHistoryEntry,
 } from '../../src/lib/taskHistory'
 import { normalizeTaskHistoryStatus } from './piTaskStatus'
+import { readWorkspaceFile, resolveWorkspacePath } from './workspacePath'
 
 export type { TaskHistoryEntry }
 export { findTaskIdForToolCall, MAX_TIME_DELTA_MS }
 
-export const PI_TASK_SHORT_ID = /^[A-Za-z0-9._-]{1,80}$/
+export const PI_TASK_SHORT_ID = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,80}$/
 
 export function getSubSessionDir(artifactsDir: string, taskId: string): string {
   return path.join(artifactsDir, 'tasks', 'sessions', taskId)
 }
 
-function findSessionFile(dir: string): string | null {
+function findSessionFile(workspace: string, submittedDir: string): string | null {
   let entries: string[]
+  let dir: string
   try {
+    dir = resolveWorkspacePath(
+      workspace,
+      path.relative(workspace, submittedDir),
+      'resolve task session'
+    )
+    if (!fs.lstatSync(dir).isDirectory()) return null
     entries = fs.readdirSync(dir)
   } catch {
     return null
   }
-  const file = entries.find((name) => name.endsWith('.jsonl'))
+  const file = entries.find((name) => {
+    if (!name.endsWith('.jsonl')) return false
+    try {
+      return fs.lstatSync(path.join(dir, name)).isFile()
+    } catch {
+      return false
+    }
+  })
   return file ? path.join(dir, file) : null
 }
 
@@ -40,17 +55,19 @@ export function resolveSubSessionPath(artifactsDir: string, taskId: string): str
   const historyPath = resolveHistorySessionRef(artifactsDir, taskId)
   if (historyPath !== null) return historyPath
 
+  const workspace = path.dirname(path.dirname(artifactsDir))
   return (
-    findSessionFile(getSubSessionDir(artifactsDir, taskId)) ??
-    findSessionFile(path.join(artifactsDir, 'sessions', taskId))
+    findSessionFile(workspace, getSubSessionDir(artifactsDir, taskId)) ??
+    findSessionFile(workspace, path.join(artifactsDir, 'sessions', taskId))
   )
 }
 
 function resolveHistorySessionRef(artifactsDir: string, taskId: string): string | null {
-  const file = path.join(path.dirname(artifactsDir), 'task-session-history.json')
+  const workspace = path.dirname(path.dirname(artifactsDir))
+  const file = resolveWorkspacePath(workspace, '.pi/task-session-history.json', 'read task history')
   let raw: string
   try {
-    raw = fs.readFileSync(file, 'utf8')
+    raw = readWorkspaceFile(file, workspace)
   } catch {
     return null
   }
@@ -67,9 +84,16 @@ function resolveHistorySessionRef(artifactsDir: string, taskId: string): string 
   })
   const sessionRef = match?.sessionRef
   if (typeof sessionRef !== 'string' || sessionRef.length === 0) return null
-  const candidate = path.isAbsolute(sessionRef) ? sessionRef : path.join(artifactsDir, sessionRef)
+  const submittedCandidate = path.isAbsolute(sessionRef)
+    ? sessionRef
+    : path.join(artifactsDir, sessionRef)
   try {
-    const stat = fs.statSync(candidate)
+    const candidate = resolveWorkspacePath(
+      workspace,
+      path.relative(workspace, submittedCandidate),
+      'resolve task session'
+    )
+    const stat = fs.lstatSync(candidate)
     return stat.isFile() ? candidate : null
   } catch {
     return null
@@ -77,30 +101,51 @@ function resolveHistorySessionRef(artifactsDir: string, taskId: string): string 
 }
 
 export function resolveMostRecentSubSessionPath(artifactsDir: string): string | null {
-  const roots = [path.join(artifactsDir, 'tasks', 'sessions'), path.join(artifactsDir, 'sessions')]
+  const submittedRoots = [
+    path.join(artifactsDir, 'tasks', 'sessions'),
+    path.join(artifactsDir, 'sessions'),
+  ]
+  const workspace = path.dirname(path.dirname(artifactsDir))
   let best: { file: string; mtimeMs: number } | null = null
-  for (const root of roots) {
+  for (const submittedRoot of submittedRoots) {
     let taskDirs: string[]
+    let root: string
     try {
+      root = resolveWorkspacePath(
+        workspace,
+        path.relative(workspace, submittedRoot),
+        'resolve task session'
+      )
+      if (!fs.lstatSync(root).isDirectory()) continue
       taskDirs = fs.readdirSync(root)
     } catch {
       continue
     }
     for (const taskId of taskDirs) {
       if (!PI_TASK_SHORT_ID.test(taskId)) continue
-      const dir = path.join(root, taskId)
+      let dir: string
       let files: string[]
       try {
+        dir = resolveWorkspacePath(
+          workspace,
+          path.relative(workspace, path.join(root, taskId)),
+          'resolve task session'
+        )
+        if (!fs.lstatSync(dir).isDirectory()) continue
         files = fs.readdirSync(dir)
       } catch {
         continue
       }
       for (const name of files) {
         if (!name.endsWith('.jsonl')) continue
-        const file = path.join(dir, name)
         try {
-          const stat = fs.statSync(file)
-          if (best === null || stat.mtimeMs > best.mtimeMs) {
+          const file = resolveWorkspacePath(
+            workspace,
+            path.relative(workspace, path.join(dir, name)),
+            'resolve task session'
+          )
+          const stat = fs.lstatSync(file)
+          if (stat.isFile() && (best === null || stat.mtimeMs > best.mtimeMs)) {
             best = { file, mtimeMs: stat.mtimeMs }
           }
         } catch {}
@@ -111,10 +156,10 @@ export function resolveMostRecentSubSessionPath(artifactsDir: string): string | 
 }
 
 export function readTaskSessionHistory(cwd: string): TaskHistoryEntry[] {
-  const file = path.join(cwd, '.pi', 'task-session-history.json')
   let raw: string
   try {
-    raw = fs.readFileSync(file, 'utf8')
+    const file = resolveWorkspacePath(cwd, '.pi/task-session-history.json', 'read task history')
+    raw = readWorkspaceFile(file, cwd)
   } catch {
     return []
   }

@@ -1,5 +1,6 @@
 import path from 'node:path'
-import type { MenuItemConstructorOptions } from 'electron'
+import { pathToFileURL } from 'node:url'
+import type { Event, MenuItemConstructorOptions } from 'electron'
 import { BrowserWindow, Menu } from 'electron'
 import { IPC } from '../../src/lib/ipc'
 import type { SessionIndexStore } from '../session/sessionIndex'
@@ -45,6 +46,19 @@ function buildAppMenu() {
   Menu.setApplicationMenu(menu)
 }
 
+function isAllowedRendererNavigation(targetUrl: string, expectedUrl: string): boolean {
+  try {
+    const target = new URL(targetUrl)
+    const expected = new URL(expectedUrl)
+    if (expected.protocol === 'http:' || expected.protocol === 'https:') {
+      return target.origin === expected.origin
+    }
+    return target.href === expected.href
+  } catch {
+    return false
+  }
+}
+
 export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
   buildAppMenu()
 
@@ -78,10 +92,19 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
     }
   })
 
+  const rendererFile = path.resolve(options.currentDir, '../renderer/index.html')
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(rendererFile).href
+  const preventExternalNavigation = (event: Event, targetUrl: string) => {
+    if (!isAllowedRendererNavigation(targetUrl, rendererUrl)) event.preventDefault()
+  }
+  mainWindow.webContents.on('will-navigate', preventExternalNavigation)
+  mainWindow.webContents.on('will-redirect', preventExternalNavigation)
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(path.resolve(options.currentDir, '../renderer/index.html'))
+    mainWindow.loadFile(rendererFile)
   }
 
   mainWindow.webContents.once('did-finish-load', () => {

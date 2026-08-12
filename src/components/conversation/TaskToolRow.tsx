@@ -79,12 +79,12 @@ export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
   }
 
   return (
-    <div
+    <button
+      type="button"
       class={`tool-row task-tool${props.card.isError ? ' is-error' : ''}`}
       data-component="task-tool"
       data-status={status()}
-      role={canNavigate() ? 'button' : undefined}
-      tabIndex={canNavigate() ? 0 : undefined}
+      disabled={!canNavigate()}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
     >
@@ -106,6 +106,6 @@ export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
           ›
         </span>
       </Show>
-    </div>
+    </button>
   )
 }

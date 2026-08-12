@@ -9,7 +9,7 @@ import {
   IPC,
   unarchiveSessionsRequestSchema,
 } from '../../src/lib/ipc'
-import { isPathInside } from '../services/shellEnv'
+import { moveSessionFileNoReplace, resolveAuthorizedSessionFile } from './sessionPath'
 
 interface SessionArchiveIpcDeps {
   ipcMain: IpcMain
@@ -40,13 +40,13 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
         }
       }
 
-      for (const filePath of paths) {
-        if (!filePath.endsWith('.jsonl')) {
-          skipped++
-          continue
-        }
+      for (const submittedPath of paths) {
         try {
-          fs.renameSync(filePath, `${filePath}.archived`)
+          const filePath = resolveAuthorizedSessionFile(deps.getAgentDir(), submittedPath, [
+            '.jsonl',
+          ])
+          const archivedPath = `${filePath}.archived`
+          moveSessionFileNoReplace(filePath, archivedPath)
           archived++
         } catch (err) {
           skipped++
@@ -78,7 +78,7 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
       const dirPath = path.join(sessionsDir, dirName)
       let stat: fs.Stats
       try {
-        stat = fs.statSync(dirPath)
+        stat = fs.lstatSync(dirPath)
       } catch {
         continue
       }
@@ -93,14 +93,18 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
 
       for (const file of files) {
         if (!file.endsWith('.jsonl.archived')) continue
-        const archivedPath = path.join(dirPath, file)
-        const originalPath = archivedPath.slice(0, -'.archived'.length)
-        let mtime = 0
+        const submittedPath = path.join(dirPath, file)
+        let archivedPath: string
+        let mtime: number
         try {
-          mtime = fs.statSync(archivedPath).mtimeMs
+          archivedPath = resolveAuthorizedSessionFile(deps.getAgentDir(), submittedPath, [
+            '.jsonl.archived',
+          ])
+          mtime = fs.lstatSync(archivedPath).mtimeMs
         } catch {
-          /* ignore */
+          continue
         }
+        const originalPath = archivedPath.slice(0, -'.archived'.length)
         const inner = dirName.replace(/^--/, '').replace(/--$/, '')
         const segments = inner.split('-').filter((segment) => segment.length > 0)
         const workspaceName = segments[segments.length - 1] ?? dirName
@@ -113,11 +117,13 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
 
   deps.ipcMain.handle(IPC.UNARCHIVE_SESSIONS, async (_event, raw: unknown): Promise<void> => {
     const { paths } = unarchiveSessionsRequestSchema.parse(raw)
-    for (const archivedPath of paths) {
-      if (!archivedPath.endsWith('.jsonl.archived')) continue
-      const originalPath = archivedPath.slice(0, -'.archived'.length)
+    for (const submittedPath of paths) {
       try {
-        fs.renameSync(archivedPath, originalPath)
+        const archivedPath = resolveAuthorizedSessionFile(deps.getAgentDir(), submittedPath, [
+          '.jsonl.archived',
+        ])
+        const originalPath = archivedPath.slice(0, -'.archived'.length)
+        moveSessionFileNoReplace(archivedPath, originalPath)
       } catch {
         /* skip */
       }
@@ -129,37 +135,18 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
     IPC.DELETE_SESSIONS,
     async (_event, raw: unknown): Promise<{ deleted: number; failed: number }> => {
       const { paths } = deleteSessionsRequestSchema.parse(raw)
-      const sessionsDir = path.resolve(deps.getAgentDir(), 'sessions')
-      const realSessionsDir = fs.existsSync(sessionsDir)
-        ? fs.realpathSync(sessionsDir)
-        : sessionsDir
       let deleted = 0
       let failed = 0
 
       for (const submittedPath of paths) {
-        const filePath = path.resolve(submittedPath)
         try {
-          if (!filePath.endsWith('.jsonl.archived') || !isPathInside(sessionsDir, filePath)) {
-            failed++
-            continue
-          }
-
-          const stat = fs.lstatSync(filePath)
-          if (!stat.isFile()) {
-            failed++
-            continue
-          }
-
-          const realFilePath = fs.realpathSync(filePath)
-          if (!isPathInside(realSessionsDir, realFilePath)) {
-            failed++
-            continue
-          }
-
+          const filePath = resolveAuthorizedSessionFile(deps.getAgentDir(), submittedPath, [
+            '.jsonl.archived',
+          ])
           await shell.trashItem(filePath)
           deleted++
         } catch (err) {
-          console.warn(`[delete-sessions] failed to trash ${filePath}: ${String(err)}`)
+          console.warn(`[delete-sessions] failed to trash ${submittedPath}: ${String(err)}`)
           failed++
         }
       }
@@ -172,25 +159,22 @@ export function registerSessionArchiveIpc(deps: SessionArchiveIpcDeps): void {
     IPC.DELETE_SESSION,
     async (_event, raw: unknown): Promise<{ deleted: number; failed: number }> => {
       const { path: sessionPath } = deleteSessionRequestSchema.parse(raw)
-      const sessionsDir = path.resolve(deps.getAgentDir(), 'sessions')
       let deleted = 0
       let failed = 0
 
       try {
-        const filePath = path.resolve(sessionPath)
-        if (!isPathInside(sessionsDir, filePath) || !fs.lstatSync(filePath).isFile()) {
-          failed++
-        } else if (filePath.endsWith('.jsonl.archived')) {
+        const filePath = resolveAuthorizedSessionFile(deps.getAgentDir(), sessionPath, [
+          '.jsonl',
+          '.jsonl.archived',
+        ])
+        if (filePath.endsWith('.jsonl.archived')) {
           await shell.trashItem(filePath)
-          deleted++
-        } else if (filePath.endsWith('.jsonl')) {
-          const archivedPath = `${filePath}.archived`
-          fs.renameSync(filePath, archivedPath)
-          await shell.trashItem(archivedPath)
-          deleted++
         } else {
-          failed++
+          const archivedPath = `${filePath}.archived`
+          moveSessionFileNoReplace(filePath, archivedPath)
+          await shell.trashItem(archivedPath)
         }
+        deleted++
       } catch (err) {
         console.warn(`[delete-session] failed to delete ${sessionPath}: ${String(err)}`)
         failed++

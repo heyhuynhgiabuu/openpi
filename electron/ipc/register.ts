@@ -39,7 +39,9 @@ import {
   normalizeSessionReady,
   refreshSessionIndex,
   requirePiSidecar,
+  restoreSessionValues,
   startSession,
+  suspendSessionValues,
 } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import { threadCwdRegistry } from '../session/threadCwd'
@@ -50,6 +52,7 @@ import { registerFileIpc } from './files'
 import { registerPreferencesIpc } from './preferences'
 import { registerPtyIpc } from './pty'
 import { registerResourcesIpc } from './resources'
+import { createAuthorizedIpcMain } from './safeIpc'
 import { registerSearchIpc } from './search'
 import { registerSettingsIpc } from './settings'
 import { registerSoundIpc } from './sound'
@@ -102,9 +105,13 @@ async function getCommitAgentContext(
   return undefined
 }
 
-export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void {
+export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): void {
+  const deps = {
+    ...rawDeps,
+    ipcMain: createAuthorizedIpcMain(rawDeps.ipcMain, rawDeps.getMainWindow),
+  }
   registerExtensionUiHandlers(deps.ipcMain)
-  registerProviderHandlers()
+  registerProviderHandlers(deps.ipcMain)
   registerUpdateIpc({
     ipcMain: deps.ipcMain,
     getMainWindow: deps.getMainWindow,
@@ -118,6 +125,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   })
   registerPtyIpc({
     ipcMain: deps.ipcMain,
+    getCwd: () => threadCwdRegistry.resolveSafe() ?? getDeferredWorkspace(),
     hasPtyHost: deps.hasPtyHost,
     getPtyHost: deps.getPtyHost,
   })
@@ -149,7 +157,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   })
   registerFileIpc({
     ipcMain: deps.ipcMain,
-    getCwd: () => threadCwdRegistry.resolveSafe(),
+    getCwd: () => threadCwdRegistry.resolveSafe() ?? getDeferredWorkspace(),
     getMainWindow: deps.getMainWindow,
     getGitHost: deps.getGitHost,
     confirmHighRiskMutation: deps.confirmHighRiskMutation,
@@ -164,7 +172,11 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     requestSidecar: deps.requestSidecar,
     sendSidecar: deps.sendSidecar,
   })
-  registerSearchIpc({ ipcMain: deps.ipcMain, ensureFffInitialized: deps.ensureFffInitialized })
+  registerSearchIpc({
+    ipcMain: deps.ipcMain,
+    getCwd: () => threadCwdRegistry.resolveSafe() ?? getDeferredWorkspace(),
+    ensureFffInitialized: deps.ensureFffInitialized,
+  })
   registerResourcesIpc({
     ipcMain: deps.ipcMain,
     activeWorkspacePath,
@@ -184,6 +196,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   registerSessionsIpc({
     ipcMain: deps.ipcMain,
     getMainWindow: deps.getMainWindow,
+    getAgentDir,
     outputBuffer: deps.outputBuffer,
     startSession,
     emitSessionError,
@@ -205,9 +218,12 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     refreshSessionIndex,
     normalizeSessionReady,
     applySessionValues,
+    suspendSessionValues,
+    restoreSessionValues,
   })
   registerWorkspacesIpc({
     ipcMain: deps.ipcMain,
+    getCwd: () => threadCwdRegistry.resolveSafe() ?? getDeferredWorkspace(),
     getGitHost: deps.getGitHost,
     getSessionIndex: deps.getSessionIndex,
     getCustomizationsHost: deps.getCustomizationsHost,

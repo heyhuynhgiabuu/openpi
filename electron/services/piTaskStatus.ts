@@ -1,15 +1,26 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { readWorkspaceFile, resolveWorkspacePath } from './workspacePath'
 
 function resolveTaskSessionFile(cwd: string, taskId: string): string | null {
   const sessionRoots = [
     path.join(cwd, '.pi', 'artifacts', 'tasks', 'sessions'),
     path.join(cwd, '.pi', 'artifacts', 'sessions'),
   ]
-  for (const root of sessionRoots) {
-    const dir = path.join(root, taskId)
+  for (const submittedRoot of sessionRoots) {
     try {
+      const root = resolveWorkspacePath(
+        cwd,
+        path.relative(cwd, submittedRoot),
+        'read task session status'
+      )
+      const dir = resolveWorkspacePath(
+        cwd,
+        path.relative(cwd, path.join(root, taskId)),
+        'read task session status'
+      )
+      if (!fs.lstatSync(dir).isDirectory()) continue
       const entries = fs.readdirSync(dir, { withFileTypes: true })
       const file = entries
         .filter((entry) => entry.isFile() && entry.name.endsWith('.jsonl'))
@@ -43,7 +54,7 @@ function readSubSessionExecutionStatus(cwd: string, taskId: string): 'running' |
 
   let raw: string
   try {
-    raw = fs.readFileSync(sessionFile, 'utf8')
+    raw = readWorkspaceFile(sessionFile, cwd)
   } catch {
     return null
   }
