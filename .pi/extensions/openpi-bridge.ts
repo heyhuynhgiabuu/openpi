@@ -30,29 +30,17 @@ const STATUS_KEY = 'openpi-bridge'
 const WIDGET_KEY = 'openpi-bridge'
 const BRIDGE_VERSION = 2
 
-type SyncPayload = {
-  workspace: string
-  cursor?: number
-  preview: PreviewState
-  statusText: string | null
-  widgetLines: string[]
-  totalTokens: number
-  contextWindow: number
-  costUsd: number
-  agentTps: number
-  activeModel: string | null
-  thinkingLevel: string | null
-  sessionName: string | null
-  isRemote: boolean
-  remoteSessionId: string | null
-  sessionFile: string | null
-  sidebarTags: { open: string | null; activeSession: string | null }
-  resetOnNextTurn: boolean
-  isStreaming: boolean
-  contextUsagePercent: number | null
-  queueDepth: { steering: number; followUp: number }
-  modelOptions: Array<{ name: string; provider: string; id: string }>
-  providerCounts: Array<{ provider: string; modelCount: number }>
+interface SyncPayload {
+  app?: string
+  pid?: number
+  bridgeVersion?: number
+  timestamp?: number
+  status?: 'running' | 'idle'
+  workspace?: string
+  sessionFile?: string | null
+  startedAt?: number
+  previewMessages?: unknown
+  messageCount?: number
 }
 
 /**
@@ -264,19 +252,16 @@ export default function (pi: ExtensionAPI) {
   // the OpenPi UI state for the cwd the event refers to.
   //
   // If the file is missing (e.g. before the main process has written
-  // it for this cwd), we return undefined so Pi falls back to its own
+  // it for this cwd), report an undecided result so Pi applies its own
   // `defaultProjectTrust` policy.
-  pi.on('project_trust', (event: unknown, ctx: ExtensionContext) => {
+  pi.on('project_trust', (event, ctx) => {
     try {
-      const payload = event as { trust?: 'trusted' | 'untrusted'; cwd?: string } | undefined
-      const cwd = payload?.cwd ?? ctx.cwd
-      const decision = readWorkspaceTrustFor(cwd)
-      if (decision === 'trusted' || decision === 'untrusted') {
-        return { decision, reason: `OpenPi workspace trust: ${decision}` }
-      }
-      return undefined
+      const decision = readWorkspaceTrustFor(event.cwd ?? ctx.cwd)
+      if (decision === 'trusted') return { trusted: 'yes', remember: false }
+      if (decision === 'untrusted') return { trusted: 'no', remember: false }
+      return { trusted: 'undecided' }
     } catch {
-      return undefined
+      return { trusted: 'undecided' }
     }
   })
 
@@ -432,7 +417,7 @@ function buildLocalPreview(sessionFile: string | null, liveText: string): Previe
 
   return [
     ...messages,
-    { id: 'live-assistant', role: 'assistant', text: trimmedLiveText, live: true },
+    { id: 'live-assistant', role: 'assistant' as const, text: trimmedLiveText, live: true },
   ].slice(-HISTORY_PREVIEW_LIMIT)
 }
 

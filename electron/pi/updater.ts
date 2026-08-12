@@ -87,8 +87,8 @@ export async function checkPiUpdate(): Promise<PiUpdateCheckResult> {
 }
 
 /**
- * Update the bundled Pi SDK by reinstalling `@earendil-works/pi-coding-agent@<latest>`
- * in OpenPi's own `node_modules/`. A full app restart is required to pick
+ * Update the bundled Pi SDK by installing matching `pi-coding-agent` and `pi-ai`
+ * versions in one package-manager transaction. A full app restart is required to pick
  * up the new SDK code.
  *
  * OpenPi does not depend on a global `pi` CLI (it imports the SDK directly),
@@ -138,22 +138,25 @@ function hasOnPath(bin: string): boolean {
   }
 }
 
-export const __test = { detectPackageManager, hasOnPath }
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+function buildInstallArgs(pkgManager: PackageManager, version: string): string[] {
+  const specs = [`@earendil-works/pi-coding-agent@${version}`, `@earendil-works/pi-ai@${version}`]
+  if (pkgManager === 'npm') {
+    return ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...specs]
+  }
+  if (pkgManager === 'pnpm' || pkgManager === 'yarn') return ['add', '--ignore-scripts', ...specs]
+  return ['add', ...specs]
+}
+
+export const __test = { buildInstallArgs, detectPackageManager, hasOnPath }
 
 async function installBundledPi(
-  pkgManager: 'npm' | 'pnpm' | 'yarn' | 'bun',
+  pkgManager: PackageManager,
   latestVersion: string,
   appPath: string
 ): Promise<PiUpdateInstallResult> {
-  const spec = `@earendil-works/pi-coding-agent@${latestVersion}`
-  const args =
-    pkgManager === 'npm'
-      ? ['install', '--ignore-scripts', '--no-audit', '--no-fund', spec]
-      : pkgManager === 'pnpm'
-        ? ['add', '--ignore-scripts', spec]
-        : pkgManager === 'yarn'
-          ? ['add', '--ignore-scripts', spec]
-          : ['add', spec] // bun add does not support --ignore-scripts; bun install runs scripts off by default
+  const args = buildInstallArgs(pkgManager, latestVersion)
   try {
     const { stdout, stderr } = await execFileAsync(pkgManager, args, {
       cwd: appPath,

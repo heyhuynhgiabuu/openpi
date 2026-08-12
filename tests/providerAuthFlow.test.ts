@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js'
 import { describe, expect, it, vi } from 'vitest'
-import { ProviderAuthBridge } from '../electron/pi/providerAuth'
+import { ProviderAuthBridge, providerLoginFailureEvent } from '../electron/pi/providerAuth'
 import { routeProviderLoginEvent } from '../electron/pi/providerEvents'
 import type { SidecarMessage } from '../electron/pi/sidecarTypes'
 import { logoutProvider } from '../src/components/providers/providerActions'
@@ -37,6 +37,29 @@ function createRendererHarness() {
 
   return { phase, route, openExternal, onConnected, loadProviders, errors }
 }
+
+describe('provider login failures', () => {
+  it('reports committed credentials without asking for a blind retry', () => {
+    const error = Object.assign(new Error('local synchronization failed'), {
+      name: 'CredentialSynchronizationError',
+      providerId: 'openrouter',
+      operation: 'login',
+    })
+
+    expect(providerLoginFailureEvent(error)).toEqual({
+      type: 'error',
+      message:
+        'Credentials were saved for openrouter, but provider state could not be refreshed. Restart OpenPi or refresh providers; do not sign in again.',
+    })
+  })
+
+  it('preserves ordinary provider errors', () => {
+    expect(providerLoginFailureEvent(new Error('Access denied'))).toEqual({
+      type: 'error',
+      message: 'Access denied',
+    })
+  })
+})
 
 describe('provider authentication flow', () => {
   it('routes a select-first browser flow from sidecar through main to renderer', async () => {

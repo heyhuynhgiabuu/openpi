@@ -5,16 +5,18 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const updater = await import('../electron/pi/updater')
 // electron import is stubbed; the test surface we need is the pure helper.
-const detectPackageManager = (
+const updaterTest = (
   updater as unknown as {
     __test: {
       detectPackageManager: (
         appPath: string,
         hasOnPath: (bin: string) => boolean
       ) => 'npm' | 'pnpm' | 'yarn' | 'bun' | null
+      buildInstallArgs: (manager: 'npm' | 'pnpm' | 'yarn' | 'bun', version: string) => string[]
     }
   }
-).__test.detectPackageManager
+).__test
+const detectPackageManager = updaterTest.detectPackageManager
 
 let tmpDir: string
 const noOnPath = () => false
@@ -25,6 +27,19 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true })
+})
+
+describe('Pi package update transaction', () => {
+  it.each([
+    'npm',
+    'pnpm',
+    'yarn',
+    'bun',
+  ] as const)('updates coding-agent and pi-ai together with %s', (manager) => {
+    const args = updaterTest.buildInstallArgs(manager, '0.84.1')
+    expect(args).toContain('@earendil-works/pi-coding-agent@0.84.1')
+    expect(args).toContain('@earendil-works/pi-ai@0.84.1')
+  })
 })
 
 describe('detectPackageManager', () => {

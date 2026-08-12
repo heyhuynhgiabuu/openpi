@@ -1,6 +1,30 @@
 import type { AuthEvent, AuthInteraction, AuthPrompt } from '@earendil-works/pi-ai'
 import type { ProviderLoginEvent } from '../../src/lib/ipc'
 
+interface CredentialSynchronizationFailure extends Error {
+  name: 'CredentialSynchronizationError'
+  providerId: string
+  operation: string
+}
+
+function isCredentialSynchronizationFailure(
+  error: unknown
+): error is CredentialSynchronizationFailure {
+  if (!(error instanceof Error) || error.name !== 'CredentialSynchronizationError') return false
+  const candidate = error as Error & { providerId?: unknown; operation?: unknown }
+  return typeof candidate.providerId === 'string' && typeof candidate.operation === 'string'
+}
+
+export function providerLoginFailureEvent(error: unknown): ProviderLoginEvent {
+  if (isCredentialSynchronizationFailure(error)) {
+    return {
+      type: 'error',
+      message: `Credentials were saved for ${error.providerId}, but provider state could not be refreshed. Restart OpenPi or refresh providers; do not sign in again.`,
+    }
+  }
+  return { type: 'error', message: error instanceof Error ? error.message : String(error) }
+}
+
 type PromptLoginEvent =
   | Extract<ProviderLoginEvent, { type: 'prompt' }>
   | Extract<ProviderLoginEvent, { type: 'select' }>

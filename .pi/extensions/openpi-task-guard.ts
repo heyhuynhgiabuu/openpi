@@ -90,7 +90,7 @@ function loadTerminalTaskIds(cwd: string): Set<string> {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.on('tool_call', (event) => {
+  pi.on('tool_call', (event, ctx) => {
     if (event.toolName !== 'task') return
 
     const input = event.input as Record<string, unknown>
@@ -104,7 +104,7 @@ export default function (pi: ExtensionAPI) {
 
     // ── Rule 4: when both are set, the conversation registry wins.
     if (conversationId !== null && CONVERSATION_ID.test(conversationId) && taskId !== null) {
-      const registry = loadConversationRegistry(event.cwd)
+      const registry = loadConversationRegistry(ctx.cwd)
       const mapped = registry[conversationId]?.task_id
       if (mapped && mapped !== taskId) {
         delete input.task_id
@@ -128,7 +128,7 @@ export default function (pi: ExtensionAPI) {
       if (UUID_RE.test(taskId) || !PI_TASK_SHORT_ID.test(taskId)) {
         delete input.task_id
       } else {
-        const terminalIds = loadTerminalTaskIds(event.cwd)
+        const terminalIds = loadTerminalTaskIds(ctx.cwd)
         if (terminalIds.has(taskId)) {
           delete input.task_id
         }

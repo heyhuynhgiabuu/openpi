@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSidecarMessageHandler } from '../electron/pi/messages'
+import { teardownSession } from '../electron/pi/sessionTeardown'
 import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from '../electron/pi/staleCtx'
 
 /**
@@ -17,6 +18,46 @@ function shutdownReasonForStart(opts: {
   if (opts.sessionFile) return 'resume'
   return 'new'
 }
+
+describe('sidecar session teardown', () => {
+  it('aborts active work before extension shutdown and disposal', async () => {
+    const events: string[] = []
+    const session = {
+      abort: async () => {
+        events.push('abort')
+      },
+      dispose: () => {
+        events.push('dispose')
+      },
+    }
+
+    await teardownSession(session, async () => {
+      events.push('shutdown')
+    })
+
+    expect(events).toEqual(['abort', 'shutdown', 'dispose'])
+  })
+
+  it('still shuts down and disposes when abort rejects', async () => {
+    const events: string[] = []
+    const session = {
+      abort: async () => {
+        events.push('abort')
+        throw new Error('abort failed')
+      },
+      dispose: () => {
+        events.push('dispose')
+      },
+    }
+
+    await expect(
+      teardownSession(session, async () => {
+        events.push('shutdown')
+      })
+    ).resolves.toBeUndefined()
+    expect(events).toEqual(['abort', 'shutdown', 'dispose'])
+  })
+})
 
 describe('sidecar session_shutdown reasons', () => {
   it('fork when branching', () => {

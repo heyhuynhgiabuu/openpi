@@ -22,8 +22,9 @@ import {
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { fulfillExtensionUiPending } from './extensionUiPending'
-import { answerApiKeyPrompt, ProviderAuthBridge } from './providerAuth'
+import { answerApiKeyPrompt, ProviderAuthBridge, providerLoginFailureEvent } from './providerAuth'
 import { enforceIgnoreScriptsEnv } from './safePackageManager'
+import { teardownSession } from './sessionTeardown'
 import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from './staleCtx'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -270,13 +271,17 @@ async function emitSessionShutdown(
   try {
     // `session.extensionRunner` is a public typed getter in the Pi SDK.
     // `emit` iterates registered handlers; no-op when none are subscribed.
-    // TODO(project-trust): register a `pi.on('project_trust', ...)` handler
-    // in `.pi/extensions/openpi-bridge.ts` that defers to our workspace-trust gate.
-    // That requires a synchronous channel from the extension process to the sidecar.
     await session.extensionRunner.emit({ type: 'session_shutdown', reason })
   } catch {
     // Never let extension errors block session disposal
   }
+}
+
+async function stopSession(
+  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
+  reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
+): Promise<void> {
+  await teardownSession(session, () => emitSessionShutdown(session, reason))
 }
 
 async function startSession(
@@ -297,8 +302,7 @@ async function startSession(
       : opts.sessionFile
         ? 'resume'
         : 'new'
-    await emitSessionShutdown(state.session, shutdownReason)
-    state.session.dispose()
+    await stopSession(state.session, shutdownReason)
     state = null
   }
 
@@ -734,8 +738,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         const previous = state
         state = null
         previous.unsubscribe()
-        await emitSessionShutdown(previous.session, 'reload')
-        previous.session.dispose()
+        await stopSession(previous.session, 'reload')
         await startSession(previous.cwd, {
           sessionFile: previous.session.sessionFile ?? undefined,
           requestId: cmd.requestId,
@@ -1008,7 +1011,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         send({
           type: 'provider_login_event',
           requestId: cmd.requestId,
-          event: { type: 'error', message: err instanceof Error ? err.message : String(err) },
+          event: providerLoginFailureEvent(err),
         })
       }
       break
@@ -1037,8 +1040,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
     case 'stop': {
       if (state) {
         state.unsubscribe()
-        await emitSessionShutdown(state.session, 'quit')
-        state.session.dispose()
+        await stopSession(state.session, 'quit')
         state = null
       }
       send({ type: 'stopped' })

@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-08-12
+
+### Added
+
+- **Pi extension compatibility gate** — normal typechecking now compiles OpenPi's shipped task guard and desktop bridge against the installed Pi SDK.
+
+### Changed
+
+- **Pi SDK 0.84.1** — upgraded the coding agent, model runtime, TUI, and TypeBox dependencies together while preserving OpenPi's existing JSONL v3 session integration.
+- **Atomic Pi updates** — in-app Pi updates now install matching `pi-coding-agent` and `pi-ai` versions in one package-manager operation.
+- **Homebrew cask generation** — release automation now emits architecture-aware casks in the syntax expected by current Homebrew. (`29137ff`)
+
+### Fixed
+
+- **Session replacement safety** — active work is aborted before extension shutdown and disposal during reload, replacement, and stop; cleanup still completes when cancellation fails.
+- **Provider credential synchronization** — credentials saved by Pi are reported as a partial success when synchronization fails, preventing unnecessary repeat sign-in attempts.
+- **Pi 0.84 extension contracts** — the task guard reads the workspace from extension context, and workspace trust follows Pi's current result contract.
+- **Production dependency advisories** — updated vulnerable `brace-expansion`, `js-yaml`, and DOMPurify paths; npm and pnpm production audits now report no findings.
+
+### Beta caveats
+
+- Real provider OAuth, device-code, and manual-code flows were not executed with live credentials; automated coverage validates OpenPi's authentication bridge and error classification.
+
 ## [0.2.5] - 2026-07-27
 
 ### Added

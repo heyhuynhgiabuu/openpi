@@ -1,6 +1,6 @@
 # OpenPi Project Rules
 
-**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.82.1+).
+**Purpose:** Project-level operating rules for building OpenPi: a desktop workbench for the Pi coding agent (`@earendil-works/pi-coding-agent` v0.84.1+).
 **Audience:** human developers and AI coding agents.
 **Related surfaces:**
 - `ROADMAP.md` — philosophy, phases, non-goals (read before proposing product scope).

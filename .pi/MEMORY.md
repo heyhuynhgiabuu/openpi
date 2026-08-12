@@ -6,6 +6,8 @@
 - Cloudflare key setup preserves the prior key-plus-environment flow via `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID`.
 - Current production audit baseline after hardening: pnpm has zero findings; npm retains one high `brace-expansion@5.0.7` finding locked inside Pi 0.82.1's published shrinkwrap. Live OAuth/device flows remain unverified end-to-end.
 - Zod `.refine()` callbacks must never throw: earlier `.url().refine(value => new URL(value))` code could throw during `safeParse()` and terminate Electron main. Use a non-throwing parse guard such as `URL.canParse()` first.
+- [discovery] Pi 0.84.1 remains compatible with the coding-agent `AgentSession`/`SessionManager` JSONL v3 path; its v4 lane-based session migration applies to lower-level agent-core, not OpenPi.
+- [warning] Before upgrading to Pi 0.84.1, make session replacement/reload/stop abort active work before shutdown/dispose, handle `CredentialSynchronizationError` without blind login retry, align TypeBox 1.3.7, and test third-party provider refresh APIs broken by 0.84.
 
 ## 2026-07-27 — release readiness
 - A tag-triggered workflow must validate the tag against both package versions, require exact version/architecture artifact names, and scope uploads to that version; recursive `release/**` uploads can publish stale installers.
