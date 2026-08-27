@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
+import { startTunnel } from './ipc/tunnel'
 import { createSidecarMessageHandler } from './pi/messages'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
@@ -17,9 +18,13 @@ import {
   getFffHost,
   getGitHost,
   getPtyHost,
+  getRelayServerHost,
+  getZrokHost,
   hasFffHost,
   hasGitHost,
   hasPtyHost,
+  hasRelayServerHost,
+  hasZrokHost,
 } from './services/mainHosts'
 import {
   emitSessionError,
@@ -33,6 +38,7 @@ import { startStatusWatchers } from './services/statusWatchers'
 import { checkForAppUpdate, initAutoUpdater } from './services/updater'
 import { createMainWindow } from './services/windowHost'
 import { bindWebContents } from './services/workbenchContext'
+import { readZrokConfig } from './services/zrokConfig'
 import {
   activeWorkspacePath,
   applySessionReady,
@@ -64,6 +70,13 @@ const _require = createRequire(import.meta.url)
 // We run the user's login shell once at startup to harvest the full PATH
 // so subprocesses (npm, git, node) can be found regardless of launch method.
 enrichPathFromLoginShell()
+
+// Linux Mesa / VAAPI: GPU process crashes with `GPU process isn't usable` on some
+// drivers (libva i965). Our tunnel/relay never needs GPU — disable it.
+if (process.platform === 'linux') {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+}
 
 app.setName('OpenPi')
 app.setAppUserModelId('dev.openpi.app')
@@ -150,6 +163,32 @@ async function maybeCheckPiUpdateOnStartup(): Promise<void> {
   }
 }
 
+// ── Tunnel auto-restart ────────────────────────────────────────────────────────
+// If the persisted zrok.json enables auto-restart with a reserved name, bring
+// the relay server + zrok share back up automatically at launch.
+async function maybeAutoStartTunnel(): Promise<void> {
+  const cfg = readZrokConfig()
+  if (!cfg?.persistent || !cfg.reservedName) return
+  try {
+    const res = await startTunnel({ getZrokHost, getRelayServerHost }, cfg.reservedName)
+    if (!res.ok) {
+      const line: OutputLine = {
+        level: 'warn',
+        text: `[tunnel] auto-restart failed: ${res.error ?? 'unknown'}`,
+        ts: Date.now(),
+      }
+      emitOutputLine(line)
+    }
+  } catch (err) {
+    const line: OutputLine = {
+      level: 'warn',
+      text: `[tunnel] auto-restart error: ${err instanceof Error ? err.message : String(err)}`,
+      ts: Date.now(),
+    }
+    emitOutputLine(line)
+  }
+}
+
 // ─── Session host ──────────────────────────────────────────────────────────────
 
 const handleSidecarMessage = createSidecarMessageHandler({
@@ -180,6 +219,8 @@ function registerHandlers(): void {
     restartGitMonitoring,
     hasPtyHost,
     getPtyHost,
+    getZrokHost,
+    getRelayServerHost,
     confirmHighRiskMutation,
     emitOutputLine,
     createRequestId,
@@ -257,6 +298,9 @@ app.whenReady().then(() => {
   // ── Workbench context bridge ─────────────────────────────────────────────
   if (mainWindow) bindWebContents(mainWindow.webContents)
 
+  // ── Tunnel auto-restart (persisted zrok.json) ────────────────────────────
+  void maybeAutoStartTunnel()
+
   startStatusWatchers({
     getMainWindow: () => mainWindow,
     getSessionIndex: () => sessionIndex,
@@ -288,6 +332,13 @@ app.on('quit', () => {
     })
   if (hasFffHost()) void getFffHost().then((host) => host.destroyFff())
   if (getPiSidecarHost()) void getPiSidecarHost()!.stop()
+  if (hasZrokHost())
+    void getZrokHost().then((z) => {
+      z.stopTunnel()
+      z.removePid()
+      z.cleanupStale()
+    })
+  if (hasRelayServerHost()) void getRelayServerHost().then((r) => r.stop())
   clearSessionState()
   if (hasPtyHost()) void getPtyHost().then((p) => p.closeAll())
   sessionIndex?.close()

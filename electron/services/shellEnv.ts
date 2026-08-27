@@ -45,7 +45,11 @@ export function enrichPathFromLoginShell(): void {
 export function resolveAppAssetPath(...segments: string[]): string {
   const candidates = app.isPackaged
     ? [path.join(process.resourcesPath, ...segments)]
-    : [path.resolve(currentDir, '../..', ...segments), path.resolve(process.cwd(), ...segments)]
+    : [
+        path.resolve(currentDir, '../vendor', ...segments), // electron/vendor (relay-server.js)
+        path.resolve(currentDir, '../..', ...segments),
+        path.resolve(process.cwd(), ...segments),
+      ]
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
 }
 

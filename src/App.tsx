@@ -44,6 +44,9 @@ export default function App() {
   const [customizationsInitialTab, setCustomizationsInitialTab] = createSignal<
     import('./components/customizations/CustomizationsModal').ActiveTab | undefined
   >(undefined)
+  const [tunnelStatus, setTunnelStatus] = createSignal<
+    import('../electron/ipc/tunnel').TunnelStatus | null
+  >(null)
   const [terminalOpen, setTerminalOpen] = createSignal(false)
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [gitPanelOpen, _setGitPanelOpen] = createSignal(false)
@@ -217,6 +220,16 @@ export default function App() {
       queueMicrotask(() => setFileFindOpen(true))
     })
 
+    // Poll zrok tunnel status so the TopBar pill stays in sync.
+    const refreshTunnel = () => {
+      window.openpi
+        .getStatus()
+        .then(setTunnelStatus)
+        .catch(() => setTunnelStatus(null))
+    }
+    refreshTunnel()
+    const tunnelTimer = setInterval(refreshTunnel, 2000)
+
     // Allow slash commands (e.g. /resume) to open the homescreen
     // overlay without threading a new prop through the entire tree.
     const openHomescreenViaEvent = () => setHomescreenOpen(true)
@@ -240,6 +253,7 @@ export default function App() {
       removePrefs()
       removeKeydown()
       removeFileFindShortcut?.()
+      clearInterval(tunnelTimer)
       document.removeEventListener('openpi:open-homescreen', openHomescreenViaEvent)
       document.removeEventListener('openpi:open-customizations', openCustomizationsViaEvent)
     }
@@ -342,6 +356,18 @@ export default function App() {
               onOpenSettings={() => setCustomizationsOpen(true)}
               startRenameRef={(fn) => {
                 triggerRename = fn
+              }}
+              tunnelStatus={tunnelStatus()}
+              tunnelUrl={tunnelStatus()?.url ?? null}
+              onTunnelClick={() => {
+                // Open the General pane and scroll to the tunnel section.
+                setCustomizationsInitialTab('general')
+                setCustomizationsOpen(true)
+                setTimeout(() => {
+                  document
+                    .getElementById('tunnel-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 100)
               }}
               models={session.models}
               currentModel={session.currentModel}

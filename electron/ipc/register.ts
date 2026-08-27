@@ -11,6 +11,7 @@ import type * as FffHost from '../services/fffHost'
 import { emitSessionError, playSoundEffectId } from '../services/notificationHost'
 import { filterBlockedPaths } from '../services/protectedPaths'
 import type { PtyHost } from '../services/ptyHost'
+import type { RelayServerHost } from '../services/relayServerHost'
 import { getSettings, saveSettings as writeSettings } from '../services/settingsHost'
 import { getAgentDir, getAppInfo } from '../services/shellEnv'
 import {
@@ -25,6 +26,7 @@ import {
   updateTerminalOutput,
   updateVisibleFile,
 } from '../services/workbenchContext'
+import type { ZrokHost } from '../services/zrokHost'
 import { registerSessionArchiveIpc } from '../session/archiveIpc'
 import { registerSessionsIpc } from '../session/ipc'
 import {
@@ -57,6 +59,7 @@ import { registerSearchIpc } from './search'
 import { registerSettingsIpc } from './settings'
 import { registerSoundIpc } from './sound'
 import { registerThemeIpc } from './themes'
+import { registerTunnelIpc } from './tunnel'
 import { registerUpdateIpc } from './update'
 import { registerWorkbenchIpc } from './workbench'
 import { registerWorkspacesIpc } from './workspaces'
@@ -75,6 +78,8 @@ interface RegisterMainIpcHandlersDeps {
   restartGitMonitoring: (cwd: string) => Promise<void>
   hasPtyHost: () => boolean
   getPtyHost: () => Promise<PtyHostInstance>
+  getZrokHost: () => Promise<ZrokHost>
+  getRelayServerHost: () => Promise<RelayServerHost>
   confirmHighRiskMutation: (options: {
     title: string
     message: string
@@ -135,6 +140,11 @@ export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): v
     setPref: (key, value) => deps.getSessionIndex()?.setPref(key, value),
   })
   registerSoundIpc({ ipcMain: deps.ipcMain, playSoundEffectId })
+  registerTunnelIpc({
+    ipcMain: deps.ipcMain,
+    getZrokHost: deps.getZrokHost,
+    getRelayServerHost: deps.getRelayServerHost,
+  })
   registerWorkbenchIpc({
     ipcMain: deps.ipcMain,
     getWorkbenchContext,

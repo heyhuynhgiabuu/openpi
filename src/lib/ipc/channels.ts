@@ -93,6 +93,18 @@ export const IPC = {
   GIT_UNSTAGE_HUNK: 'openpi:git-unstage-hunk',
   GIT_REVERT_HUNK: 'openpi:git-revert-hunk',
 
+  // zrok tunnel (renderer → main)
+  TUNNEL_GET_STATUS: 'openpi:tunnel:get-status',
+  TUNNEL_ENABLE: 'openpi:tunnel:enable',
+  TUNNEL_DISABLE: 'openpi:tunnel:disable',
+  TUNNEL_GET_URL: 'openpi:tunnel:get-url',
+  TUNNEL_GENERATE_QR: 'openpi:tunnel:generate-qr',
+
+  // zrok tunnel (main → renderer)
+  TUNNEL_STATUS_CHANGED: 'openpi:tunnel:status-changed',
+  TUNNEL_READY: 'openpi:tunnel:ready',
+  TUNNEL_ERROR: 'openpi:tunnel:error',
+
   // Agent review changes (renderer → main)
   AGENT_REVIEW_LIST: 'openpi:agent-review-list',
   AGENT_REVIEW_KEEP: 'openpi:agent-review-keep',

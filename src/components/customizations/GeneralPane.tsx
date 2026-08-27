@@ -11,6 +11,7 @@ import { BooleanPreferenceSection } from './BooleanPreferenceSection'
 import { DiagnosticsSection } from './DiagnosticsSection'
 import type { GeneralPaneProps } from './generalPaneTypes'
 import { SoundSection } from './SoundSection'
+import { TunnelSection } from './TunnelSection'
 import { UpdateSection } from './UpdateSection'
 import { useGeneralPaneState } from './useGeneralPaneState'
 
@@ -102,6 +103,8 @@ export function GeneralPane(props: GeneralPaneProps) {
             savedKey={savedKey()}
             onCopy={copyDiagnostics}
           />
+
+          <TunnelSection onError={props.onError} />
 
           <UpdateSection
             updatePrefs={updatePrefs()}

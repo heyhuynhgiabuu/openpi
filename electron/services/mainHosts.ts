@@ -4,6 +4,8 @@ import type * as GitHost from '../git/gitHost'
 import type * as CustomizationsHost from './customizations'
 import type * as FffHost from './fffHost'
 import type { PtyHost } from './ptyHost'
+import type { RelayServerHost } from './relayServerHost'
+import type { ZrokHost } from './zrokHost'
 
 type PtyHostInstance = InstanceType<typeof PtyHost>
 
@@ -11,6 +13,8 @@ let fffHostPromise: Promise<typeof FffHost> | null = null
 let customizationsHostPromise: Promise<typeof CustomizationsHost> | null = null
 let gitHostPromise: Promise<typeof GitHost> | null = null
 let ptyHostPromise: Promise<PtyHostInstance> | null = null
+let zrokHostPromise: Promise<ZrokHost> | null = null
+let relayServerHostPromise: Promise<RelayServerHost> | null = null
 
 export async function getCustomizationsHost(): Promise<typeof CustomizationsHost> {
   customizationsHostPromise ??= import('./customizations')
@@ -61,4 +65,22 @@ export function hasPtyHost(): boolean {
 
 export function hasFffHost(): boolean {
   return Boolean(fffHostPromise)
+}
+
+export async function getZrokHost(): Promise<ZrokHost> {
+  zrokHostPromise ??= import('./zrokHost').then((m) => m.zrokHost)
+  return zrokHostPromise
+}
+
+export function hasZrokHost(): boolean {
+  return Boolean(zrokHostPromise)
+}
+
+export async function getRelayServerHost(): Promise<RelayServerHost> {
+  relayServerHostPromise ??= import('./relayServerHost').then((m) => m.relayServerHost)
+  return relayServerHostPromise
+}
+
+export function hasRelayServerHost(): boolean {
+  return Boolean(relayServerHostPromise)
 }
