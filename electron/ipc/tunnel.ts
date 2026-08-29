@@ -106,9 +106,10 @@ export type TunnelErrorKind =
   | 'unknown'
 
 /**
- * DNS-safe zrok `reserved` name: `^[a-z0-9][a-z0-9-]{0,62}$`, max 63 chars.
+ * zrok `reserve -n` unique-name: `^[a-z0-9]{4,32}$` (lowercase alphanumeric, 4-32, no hyphens).
+ * DNS-safe broader but zrok rejects hyphens.
  */
-const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9]{4,32}$/
 export const isDnsSafeReservedName = (name: string): boolean => DNS_SAFE_RESERVED_NAME_RE.test(name)
 
 /**
@@ -120,7 +121,8 @@ export function classifyZrokError(stderr: string): TunnelErrorKind {
   if (/command not found|\bno such file or directory\b/.test(e)) return 'not-installed'
   if (/not enabled|please run\b.*\bzrok enable/.test(e)) return 'not-enabled'
   if (/unauthorized|authentication failed|invalid token/.test(e)) return 'auth-failed'
-  if (/reserved|already (in use|reserved)|name conflict/.test(e)) return 'name-conflict'
+  if (/reserved|already (in use|reserved)|name conflict|invalid unique name/.test(e))
+    return 'name-conflict'
   if (/connection refused|network is unreachable|no route to host|i\/o timeout/.test(e))
     return 'offline'
   return 'unknown'
@@ -133,6 +135,9 @@ export const tunnelStatusSchema = z
     state: z.enum(['off', 'starting', 'running', 'error']),
     reservedName: z.string().optional(),
     url: z.string().optional(),
+    /** Basic-auth credentials minted per tunnel start (relay user / random pass). */
+    authUser: z.string().optional(),
+    authPass: z.string().optional(),
     error: z.string().nullable().optional(),
     startedAt: z.number().optional(),
     /** zrok binary resolvable on this host. */

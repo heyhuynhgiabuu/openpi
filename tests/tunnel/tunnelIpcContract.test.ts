@@ -31,7 +31,7 @@ describe('tunnelEnableSchema', () => {
 
   it('accepts an enable request with an optional reservedName', () => {
     expect(
-      tunnelEnableSchema.safeParse({ token: 'tok', reservedName: 'pi-dash-abc123' }).success
+      tunnelEnableSchema.safeParse({ token: 'tok', reservedName: 'pidashabc123' }).success
     ).toBe(true)
   })
 

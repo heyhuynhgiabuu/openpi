@@ -13,12 +13,23 @@ describe('tunnelStatusSchema', () => {
   it('parses a fully-populated running status', () => {
     const status: TunnelStatus = {
       state: 'running',
-      reservedName: 'pi-dash-abc123',
-      url: 'https://pi-dash-abc123.shares.zrok.io',
+      reservedName: 'pidashabc123',
+      url: 'https://pidashabc123.shares.zrok.io',
       error: null,
       startedAt: 1710000000000,
     }
     expect(tunnelStatusSchema.safeParse(status).success).toBe(true)
+  })
+
+  it('accepts basic-auth credentials in a running status', () => {
+    expect(
+      tunnelStatusSchema.safeParse({
+        state: 'running',
+        url: 'https://abcd.shares.zrok.io',
+        authUser: 'relay',
+        authPass: 'aB3xY9zQ0pW1kL2mN',
+      }).success
+    ).toBe(true)
   })
 
   it('parses an off status with no tunnel info', () => {

@@ -38,13 +38,32 @@ export class ZrokHost {
     const shell = process.env.SHELL
     if (shell && process.platform !== 'win32') {
       try {
-        const res = spawnSync(shell, ['-lc', 'which zrok2 2>/dev/null || which zrok 2>/dev/null'], {
-          encoding: 'utf-8',
-          timeout: 5000,
-          env: { HOME: os.homedir(), TERM: 'dumb', PATH: process.env.PATH ?? '' },
-        })
+        // `command -v` is POSIX and silent on miss; `which` on zsh prints "zrok2 not found" to stdout
+        const res = spawnSync(
+          shell,
+          [
+            '-lc',
+            'command -v zrok2 2>/dev/null || command -v zrok 2>/dev/null || which zrok2 2>/dev/null || which zrok 2>/dev/null',
+          ],
+          {
+            encoding: 'utf-8',
+            timeout: 5000,
+            env: { HOME: os.homedir(), TERM: 'dumb', PATH: process.env.PATH ?? '' },
+          }
+        )
         if (res.status === 0 && res.stdout && res.stdout.trim()) {
-          return res.stdout.trim().split('\n')[0]
+          const lines = res.stdout
+            .trim()
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+          // pick first line that looks like an absolute executable path
+          for (const line of lines) {
+            if (line.startsWith('/') && !line.includes('not found')) return line
+          }
+          // fallback: first line that is not "not found"
+          const fallback = lines.find((l) => !l.includes('not found'))
+          if (fallback) return fallback
         }
       } catch {
         // fall through to plain PATH lookup
@@ -116,8 +135,17 @@ export class ZrokHost {
 
     let args: string[]
     let effectiveReservedName: string | null = reservedName
-
+    // zrok `reserve -n` is strict alphanumeric 4-32; sanitize hyphens etc.
     if (reservedName) {
+      const sanitized = reservedName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .slice(0, 32)
+      if (sanitized.length >= 4) effectiveReservedName = sanitized
+      else effectiveReservedName = null
+    }
+
+    if (effectiveReservedName) {
       // Ensure reserved share exists (zrok v2: reserve public <target>)
       const reserveArgs = [
         'reserve',
@@ -129,7 +157,7 @@ export class ZrokHost {
         `${user}:${pass}`,
         '--json-output',
         '-n',
-        reservedName,
+        effectiveReservedName,
       ]
       const reserveRes = spawnSync(binary, reserveArgs, {
         encoding: 'utf-8',
@@ -152,9 +180,11 @@ export class ZrokHost {
       if (reserveRes.status !== 0 && !isConflict && !reservedToken) {
         const kind = classifyZrokError(reserveErr || reserveOut || `exit ${reserveRes.status}`)
         this.status = { state: 'error', error: kind }
+        // eslint-disable-next-line no-console
+        console.error('[zrok] reserve failed', kind, reserveErr || reserveOut)
         return { ok: false, error: kind }
       }
-      const token = reservedToken ?? reservedName
+      const token = reservedToken ?? effectiveReservedName
       args = [
         'share',
         'reserved',
@@ -182,11 +212,11 @@ export class ZrokHost {
       env: { ...process.env },
     })
     this.child = child
-    this.scavengeOrphans(port)
+    this.scavengeOrphans(port, child.pid ?? null)
     this.writePid(child.pid ?? 0)
 
     const startedAt = Date.now()
-    this.status = { state: 'starting' }
+    this.status = { state: 'starting', authUser: user, authPass: pass }
 
     let buffer = ''
     let stderrBuf = ''
@@ -199,6 +229,8 @@ export class ZrokHost {
             state: 'running',
             reservedName: effectiveReservedName ?? undefined,
             url,
+            authUser: user,
+            authPass: pass,
             startedAt,
           }
         }
@@ -216,17 +248,21 @@ export class ZrokHost {
             state: 'running',
             reservedName: effectiveReservedName ?? undefined,
             url,
+            authUser: user,
+            authPass: pass,
             startedAt,
           }
         }
       }
     })
     child.on('error', (err) => {
+      // eslint-disable-next-line no-console
+      console.error('[zrok] share error', err)
       if (this.child === child) this.child = null
       this.removePid()
       this.status = { state: 'error', error: classifyZrokError(err.message) }
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       if (this.child === child) this.child = null
       this.removePid()
       if (this.status.state !== 'running') {
@@ -234,6 +270,8 @@ export class ZrokHost {
           this.status = { state: 'error', error: classifyZrokError(stderrBuf) }
         } else if (code !== null && code !== 0) {
           this.status = { state: 'error', error: classifyZrokError(`zrok exited ${code}`) }
+        } else if (signal) {
+          this.status = { state: 'error', error: classifyZrokError(`zrok killed ${signal}`) }
         }
       }
     })
@@ -305,7 +343,7 @@ export class ZrokHost {
   }
 
   /** Hunts stray `zrok share` processes bound to `port` and stops them. */
-  scavengeOrphans(port: number): void {
+  scavengeOrphans(port: number, excludePid: number | null = null): void {
     try {
       const res = spawnSync('ps', ['-ax', '-o', 'pid=', '-o', 'command='], {
         encoding: 'utf-8',
@@ -318,6 +356,7 @@ export class ZrokHost {
         const cmd = m[2] ?? ''
         if (
           pid !== process.pid &&
+          pid !== excludePid &&
           cmd.includes('zrok') &&
           cmd.includes('share') &&
           cmd.includes(String(port))
