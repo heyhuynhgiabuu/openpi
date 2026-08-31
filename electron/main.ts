@@ -18,12 +18,12 @@ import {
   getFffHost,
   getGitHost,
   getPtyHost,
-  getRelayServerHost,
+  getDashboardServerHost,
   getZrokHost,
   hasFffHost,
   hasGitHost,
   hasPtyHost,
-  hasRelayServerHost,
+  hasDashboardServerHost,
   hasZrokHost,
 } from './services/mainHosts'
 import {
@@ -72,7 +72,7 @@ const _require = createRequire(import.meta.url)
 enrichPathFromLoginShell()
 
 // Linux Mesa / VAAPI: GPU process crashes with `GPU process isn't usable` on some
-// drivers (libva i965). Our tunnel/relay never needs GPU — disable it.
+// drivers (libva i965). Our tunnel/dashboard never needs GPU — disable it.
 if (process.platform === 'linux') {
   app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('disable-gpu')
@@ -165,12 +165,12 @@ async function maybeCheckPiUpdateOnStartup(): Promise<void> {
 
 // ── Tunnel auto-restart ────────────────────────────────────────────────────────
 // If the persisted zrok.json enables auto-restart with a reserved name, bring
-// the relay server + zrok share back up automatically at launch.
+// the dashboard server + zrok share back up automatically at launch.
 async function maybeAutoStartTunnel(): Promise<void> {
   const cfg = readZrokConfig()
   if (!cfg?.persistent || !cfg.reservedName) return
   try {
-    const res = await startTunnel({ getZrokHost, getRelayServerHost }, cfg.reservedName)
+    const res = await startTunnel({ getZrokHost, getDashboardServerHost }, cfg.reservedName)
     if (!res.ok) {
       const line: OutputLine = {
         level: 'warn',
@@ -220,7 +220,7 @@ function registerHandlers(): void {
     hasPtyHost,
     getPtyHost,
     getZrokHost,
-    getRelayServerHost,
+    getDashboardServerHost,
     confirmHighRiskMutation,
     emitOutputLine,
     createRequestId,
@@ -338,7 +338,7 @@ app.on('quit', () => {
       z.removePid()
       z.cleanupStale()
     })
-  if (hasRelayServerHost()) void getRelayServerHost().then((r) => r.stop())
+  if (hasDashboardServerHost()) void getDashboardServerHost().then((r) => r.stop())
   clearSessionState()
   if (hasPtyHost()) void getPtyHost().then((p) => p.closeAll())
   sessionIndex?.close()

@@ -26,7 +26,7 @@ describe('tunnelStatusSchema', () => {
       tunnelStatusSchema.safeParse({
         state: 'running',
         url: 'https://abcd.shares.zrok.io',
-        authUser: 'relay',
+        authUser: 'dashboard',
         authPass: 'aB3xY9zQ0pW1kL2mN',
       }).success
     ).toBe(true)

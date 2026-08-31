@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 'use strict';
-// VENDORED COPY — OpenPi electron/vendor/relay-server.js
-// Source: https://github.com/<owner>/Relay-pi-dashboard server.js (zero npm deps, read-only monitor).
+// VENDORED COPY — OpenPi electron/vendor/dashboard-server.cjs
+// Source: vendored dashboard server (zero npm deps, read-only monitor). Originally from Relay-pi-dashboard.
 // Local changes from upstream:
 //  - VENDOR_DIR resolves this script's dir so it works both in dev (electron/vendor)
 //    and packaged (resources/vendor via extraResources). Electron main passes
-//    RELAY_VENDOR_DIR = resolveAppAssetPath('vendor') for prod.
+//    DASHBOARD_VENDOR_DIR = resolveAppAssetPath('vendor') for prod. (RELAY_VENDOR_DIR kept as fallback)
 // Keep this file dependency-free; do not import electron internals (spawned via `node`).
 const http = require('http');
 const fs = require('fs');
@@ -15,8 +15,8 @@ const net = require('net');
 const { pathToFileURL } = require('url');
 const crypto = require('crypto');
 
-const PORT = Number(process.env.RELAY_PORT || 8080);
-const HOST = process.env.RELAY_HOST || '127.0.0.1';
+const PORT = Number(process.env.DASHBOARD_PORT || process.env.RELAY_PORT || 8080);
+const HOST = process.env.DASHBOARD_HOST || process.env.RELAY_HOST || '127.0.0.1';
 const BOARD_ROOT = process.env.AGENT_BOARD_ROOT
   || path.join(os.homedir(), '.pi', 'agent', 'agent-board');
 const VIEWS_DIR = path.join(BOARD_ROOT, 'views');
@@ -24,22 +24,22 @@ const BOARD_SESSIONS_DIR = path.join(BOARD_ROOT, 'sessions'); // live view trans
 const SESSION_ROOT = process.env.PI_CODING_AGENT_SESSION_DIR
   || path.join(os.homedir(), '.pi', 'agent', 'sessions');
 // VENDOR_DIR: electron/vendor in dev; resources/vendor when packaged. The Electron
-// main spawner passes RELAY_VENDOR_DIR = resolveAppAssetPath('vendor') so this
+// main spawner passes DASHBOARD_VENDOR_DIR = resolveAppAssetPath('vendor') so this
 // standalone node process locates itself under process.resourcesPath in prod.
-const VENDOR_DIR = process.env.RELAY_VENDOR_DIR || __dirname;
+const VENDOR_DIR = process.env.DASHBOARD_VENDOR_DIR || process.env.RELAY_VENDOR_DIR || __dirname;
 const PUBLIC_DIR = path.join(VENDOR_DIR, 'public');
 
 // --- security gate (T-006) ---
-const CONTROL_ENABLED = process.env.RELAY_ENABLE_CONTROL === '1';
-const DISPATCH_ENABLED = process.env.RELAY_ENABLE_DISPATCH === '1';
-const TUNNEL_ORIGIN = process.env.RELAY_TUNNEL_ORIGIN || '';
-const AUTH_USER = process.env.RELAY_AUTH_USER || '';
-const AUTH_PASS = process.env.RELAY_AUTH_PASS || '';
+const CONTROL_ENABLED = (process.env.DASHBOARD_ENABLE_CONTROL || process.env.RELAY_ENABLE_CONTROL) === '1';
+const DISPATCH_ENABLED = (process.env.DASHBOARD_ENABLE_DISPATCH || process.env.RELAY_ENABLE_DISPATCH) === '1';
+const TUNNEL_ORIGIN = process.env.DASHBOARD_TUNNEL_ORIGIN || process.env.RELAY_TUNNEL_ORIGIN || '';
+const AUTH_USER = process.env.DASHBOARD_AUTH_USER || process.env.RELAY_AUTH_USER || '';
+const AUTH_PASS = process.env.DASHBOARD_AUTH_PASS || process.env.RELAY_AUTH_PASS || '';
 const AUTH_ENABLED = !!(AUTH_USER && AUTH_PASS);
 const AUTH_BASIC = AUTH_ENABLED && ('Basic ' + Buffer.from(AUTH_USER + ':' + AUTH_PASS).toString('base64'));
 
 // --- audit log for control mutations (who/when/what) ---
-const AUDIT_LOG = path.join(VENDOR_DIR, 'relay-audit.log');
+const AUDIT_LOG = path.join(VENDOR_DIR, 'dashboard-audit.log');
 function auditUser(req) {
   const h = req.headers.authorization || '';
   if (!h.startsWith('Basic ')) return '-';
@@ -60,10 +60,10 @@ function audit(action, target, req, extra) {
 }
 
 // --- dispatch (T-009): pi invocation for detached hosts ---
-const BOARD_DIR = process.env.RELAY_BOARD_DIR
+const BOARD_DIR = process.env.DASHBOARD_BOARD_DIR || process.env.RELAY_BOARD_DIR
   || path.join(os.homedir(), '.pi', 'agent', 'npm', 'node_modules', 'pi-agent-board');
-const RELAY_PI_COMMAND = process.env.RELAY_PI_COMMAND || 'pi';
-const RELAY_PI_ARGS = (process.env.RELAY_PI_ARGS || '').trim() ? process.env.RELAY_PI_ARGS.trim().split(/\s+/) : [];
+const DASHBOARD_PI_COMMAND = process.env.DASHBOARD_PI_COMMAND || process.env.DASHBOARD_PI_COMMAND || 'pi';
+const DASHBOARD_PI_ARGS = (process.env.DASHBOARD_PI_ARGS || process.env.DASHBOARD_PI_ARGS || '').trim() ? (process.env.DASHBOARD_PI_ARGS || process.env.DASHBOARD_PI_ARGS).trim().split(/\s+/) : [];
 
 function isWhitelistedOrigin(o) {
   if (!o) return false;
@@ -459,11 +459,11 @@ function dec(s) { try { return decodeURIComponent(s); } catch { return '\u0000';
 function gateMutant(req, res) {
   if (!CONTROL_ENABLED) { sendJson(res, 403, { error: 'control disabled' }); return false; }
   const origin = req.headers.origin;
-  const relayOrigin = req.headers['x-relay-origin'];
+  const dashboardOrigin = req.headers['x-dashboard-origin'] || req.headers['x-relay-origin'];
   if (origin && !isWhitelistedOrigin(origin)) { sendJson(res, 403, { error: 'origin not allowed' }); return false; }
-  if (!relayOrigin) { sendJson(res, 403, { error: 'missing x-relay-origin' }); return false; }
-  if (!isWhitelistedOrigin(relayOrigin)) { sendJson(res, 403, { error: 'x-relay-origin not allowed' }); return false; }
-  if (origin && relayOrigin !== origin) { sendJson(res, 403, { error: 'origin mismatch' }); return false; }
+  if (!dashboardOrigin) { sendJson(res, 403, { error: 'missing x-dashboard-origin' }); return false; }
+  if (!isWhitelistedOrigin(dashboardOrigin)) { sendJson(res, 403, { error: 'x-dashboard-origin not allowed' }); return false; }
+  if (origin && dashboardOrigin !== origin) { sendJson(res, 403, { error: 'origin mismatch' }); return false; }
   return true;
 }
 
@@ -513,8 +513,8 @@ async function relaunchWithPrompt(req, res, id, op, text) {
       sessionFile: meta.sessionFile,
       cwd: meta.cwd || '',
       initialPrompt: text,
-      piCommand: RELAY_PI_COMMAND,
-      piArgsPrefix: RELAY_PI_ARGS,
+      piCommand: DASHBOARD_PI_COMMAND,
+      piArgsPrefix: DASHBOARD_PI_ARGS,
       model: null,
       thinkingLevel: null,
       tools: null,
@@ -629,7 +629,7 @@ function boardModules() {
       return { store, launch, ids };
     })().catch((e) => {
       // T06: don't cache failure forever — allow retry on next call
-      console.error('[relay] board modules import failed (' + BOARD_DIR + '):', e && e.message ? e.message : e);
+      console.error('[dashboard] board modules import failed (' + BOARD_DIR + '):', e && e.message ? e.message : e);
       boardModsPromise = null;
       return null;
     });
@@ -674,8 +674,8 @@ async function handleDispatch(req, res) {
       sessionFile: meta.sessionFile,
       cwd,
       initialPrompt: prompt,
-      piCommand: RELAY_PI_COMMAND,
-      piArgsPrefix: RELAY_PI_ARGS,
+      piCommand: DASHBOARD_PI_COMMAND,
+      piArgsPrefix: DASHBOARD_PI_ARGS,
       model: model || null,
       thinkingLevel: null,
       tools: null,
@@ -738,7 +738,7 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/api/') && AUTH_ENABLED) {
     const auth = req.headers.authorization || '';
     if (auth !== AUTH_BASIC) {
-      res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Basic realm="relay"', 'Cache-Control': 'no-store' });
+      res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Basic realm="dashboard"', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify({ error: 'unauthorized' }));
     }
   }
@@ -861,10 +861,10 @@ const server = http.createServer((req, res) => {
 // T06: clear failure when the port is taken instead of an unhandled crash
 server.on('error', (e) => {
   if (e && e.code === 'EADDRINUSE') {
-    console.error(`relay-pi-dashboard: port ${PORT} already in use — is another relay instance running? (try --stop)`);
+    console.error(`dashboard: port ${PORT} already in use — is another dashboard instance running? (try --stop)`);
     process.exit(0);
   }
-  console.error('relay-pi-dashboard server error:', e && e.message ? e.message : e);
+  console.error('dashboard server error:', e && e.message ? e.message : e);
   process.exit(1);
 });
 
@@ -889,9 +889,9 @@ server.listen(PORT, HOST, () => {
   // PORT may be 0 (ephemeral); report the OS-assigned port so the Electron
   // main process can learn it without a separate TOCTOU-prone probe.
   const BOUND_PORT = server.address() && typeof server.address() === 'object' ? server.address().port : PORT;
-  console.log(`Relay-pi-dashboard on http://${HOST}:${BOUND_PORT} · board: ${BOARD_ROOT} · sessions: ${SESSION_ROOT}`);
+  console.log(`Dashboard on http://${HOST}:${BOUND_PORT} · board: ${BOARD_ROOT} · sessions: ${SESSION_ROOT}`);
   // T05: loud warning when a tunnel exposes unauthenticated PII
   if (TUNNEL_ORIGIN && !AUTH_ENABLED) {
-    console.warn('WARNING: RELAY_TUNNEL_ORIGIN is set without RELAY_AUTH_USER/RELAY_AUTH_PASS — full pi session content (PII) is exposed to anyone who can reach the tunnel.');
+    console.warn('WARNING: DASHBOARD_TUNNEL_ORIGIN is set without DASHBOARD_AUTH_USER/DASHBOARD_AUTH_PASS — full pi session content (PII) is exposed to anyone who can reach the tunnel.');
   }
 });

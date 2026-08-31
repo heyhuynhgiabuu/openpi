@@ -71,13 +71,13 @@ describe('TunnelSection', () => {
         enrolled: true,
         state: 'running',
         url: 'https://pidashabc123.shares.zrok.io',
-        authUser: 'relay',
+        authUser: 'dashboard',
         authPass: 'aB3xY9zQ0pW1kL2mN',
       })
     )
     api.generateQr.mockResolvedValue('data:image/png;base64,AAAA')
     const { findByText, findByRole } = render(() => <TunnelSection onError={() => {}} />)
-    expect(await findByText(/relay:aB3xY9zQ0pW1kL2mN/i)).toBeTruthy()
+    expect(await findByText(/dashboard:aB3xY9zQ0pW1kL2mN/i)).toBeTruthy()
     expect(await findByRole('button', { name: /copy creds/i })).toBeTruthy()
   })
 })
