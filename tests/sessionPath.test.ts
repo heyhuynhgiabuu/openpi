@@ -50,4 +50,68 @@ describe('session file roots', () => {
       )
     ).toThrow(/symlink|authorized sessions directory/i)
   })
+
+  it('accepts a not-yet-written session file inside the agent sessions directory', () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-root-'))
+    const agentDir = path.join(tempDir, 'agent')
+    const sessions = path.join(agentDir, 'sessions')
+    fs.mkdirSync(sessions, { recursive: true })
+    const pending = path.join(sessions, 'workspace', 'pending.jsonl')
+
+    expect(
+      resolveAuthorizedFile(pending, [{ anchor: agentDir, root: sessions }], ['.jsonl'], {
+        allowMissing: true,
+      })
+    ).toBe(pending)
+  })
+
+  it('rejects a missing session file when the caller has not opted into allowMissing', () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-root-'))
+    const agentDir = path.join(tempDir, 'agent')
+    const sessions = path.join(agentDir, 'sessions')
+    fs.mkdirSync(sessions, { recursive: true })
+
+    expect(() =>
+      resolveAuthorizedFile(
+        path.join(sessions, 'pending.jsonl'),
+        [{ anchor: agentDir, root: sessions }],
+        ['.jsonl']
+      )
+    ).toThrow(/does not exist/i)
+  })
+
+  it('rejects a missing session file outside every authorized root even with allowMissing', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-root-'))
+    tempDir = root
+    const agentDir = path.join(root, 'agent')
+    const sessions = path.join(agentDir, 'sessions')
+    fs.mkdirSync(sessions, { recursive: true })
+
+    expect(() =>
+      resolveAuthorizedFile(
+        path.join(root, 'outside', 'pending.jsonl'),
+        [{ anchor: agentDir, root: sessions }],
+        ['.jsonl'],
+        { allowMissing: true }
+      )
+    ).toThrow(/authorized sessions directory/i)
+  })
+
+  it('rejects a missing session file reached through a symlinked sessions root', () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-root-'))
+    const agentDir = path.join(tempDir, 'agent')
+    const outside = path.join(tempDir, 'outside')
+    fs.mkdirSync(agentDir)
+    fs.mkdirSync(outside)
+    fs.symlinkSync(outside, path.join(agentDir, 'sessions'))
+
+    expect(() =>
+      resolveAuthorizedFile(
+        path.join(agentDir, 'sessions', 'pending.jsonl'),
+        [{ anchor: agentDir, root: path.join(agentDir, 'sessions') }],
+        ['.jsonl'],
+        { allowMissing: true }
+      )
+    ).toThrow(/symlink|authorized sessions directory/i)
+  })
 })

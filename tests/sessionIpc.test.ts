@@ -82,6 +82,60 @@ describe('registerSessionsIpc', () => {
     }
   })
 
+  it('returns an empty history page for a session file the agent has not written yet', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-ipc-'))
+    const agentDir = path.join(tempDir, 'agent')
+    fs.mkdirSync(path.join(agentDir, 'sessions'), { recursive: true })
+    const pending = path.join(agentDir, 'sessions', 'workspace', 'pending.jsonl')
+    const sessionIndex = {
+      refreshSessions: vi.fn(),
+      listSessions: vi.fn(),
+      getSessionMessages: vi.fn(async () => ({
+        messages: [],
+        hasMoreBefore: false,
+        nextBeforeEntryId: null,
+        limit: 50,
+      })),
+    }
+    const { deps, handlers } = createDeps(sessionIndex)
+    ;(deps as unknown as { getAgentDir: () => string }).getAgentDir = () => agentDir
+    registerSessionsIpc(deps)
+    const getMessages = handlers.get(IPC.GET_SESSION_MESSAGES)
+    if (!getMessages) throw new Error('Expected GET_SESSION_MESSAGES handler')
+
+    try {
+      await expect(getMessages({}, { path: pending })).resolves.toMatchObject({ messages: [] })
+      expect(sessionIndex.getSessionMessages).toHaveBeenCalledWith(pending, expect.anything())
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a session path outside the authorized roots even when it does not exist', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-session-ipc-'))
+    const agentDir = path.join(tempDir, 'agent')
+    fs.mkdirSync(path.join(agentDir, 'sessions'), { recursive: true })
+    const sessionIndex = {
+      refreshSessions: vi.fn(),
+      listSessions: vi.fn(),
+      getSessionMessages: vi.fn(),
+    }
+    const { deps, handlers } = createDeps(sessionIndex)
+    ;(deps as unknown as { getAgentDir: () => string }).getAgentDir = () => agentDir
+    registerSessionsIpc(deps)
+    const getMessages = handlers.get(IPC.GET_SESSION_MESSAGES)
+    if (!getMessages) throw new Error('Expected GET_SESSION_MESSAGES handler')
+
+    try {
+      await expect(
+        getMessages({}, { path: path.join(tempDir, 'outside', 'pending.jsonl') })
+      ).rejects.toThrow(/sessions directory/i)
+      expect(sessionIndex.getSessionMessages).not.toHaveBeenCalled()
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects task artifact reads for a renderer-controlled workspace', async () => {
     const sessionIndex = {
       refreshSessions: vi.fn(),

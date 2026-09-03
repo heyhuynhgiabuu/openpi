@@ -41,7 +41,7 @@ import { highRiskShellReason } from '../services/shellEnv'
 import { resolveWorkspacePath } from '../services/workspacePath'
 import type { SessionState } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
-import { resolveAuthorizedFile } from '../session/sessionPath'
+import { type ResolveAuthorizedFileOptions, resolveAuthorizedFile } from '../session/sessionPath'
 import { emptyUsageSummary } from '../session/sessionUsage'
 
 interface ConfirmMutationOptions {
@@ -95,7 +95,11 @@ function authorizedWorkspacePath(deps: SessionsIpcDeps, submittedCwd: string): s
   throw new Error('Unknown workspace')
 }
 
-function authorizedSessionPath(deps: SessionsIpcDeps, submittedPath: string): string {
+function authorizedSessionPath(
+  deps: SessionsIpcDeps,
+  submittedPath: string,
+  options: ResolveAuthorizedFileOptions = {}
+): string {
   const workspaceRoots = [deps.getSessionState()?.cwd, deps.activeWorkspacePath()]
     .filter((root): root is string => typeof root === 'string')
     .map((root) => ({ anchor: root, root: path.join(root, '.pi', 'artifacts') }))
@@ -103,7 +107,8 @@ function authorizedSessionPath(deps: SessionsIpcDeps, submittedPath: string): st
   return resolveAuthorizedFile(
     submittedPath,
     [{ anchor: agentDir, root: path.join(agentDir, 'sessions') }, ...workspaceRoots],
-    ['.jsonl']
+    ['.jsonl'],
+    options
   )
 }
 
@@ -278,7 +283,10 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_MESSAGES,
     async (_event, raw: unknown): Promise<SessionHistoryPage> => {
       const { path: submittedPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
+      // A freshly started session has no JSONL on disk until its first entry is
+      // written; the renderer still asks for history, so answer with an empty page
+      // instead of rejecting the call with ENOENT.
+      const sessionPath = authorizedSessionPath(deps, submittedPath, { allowMissing: true })
       return (
         (await deps
           .getSessionIndex()
@@ -296,7 +304,8 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_TREE,
     async (_event, raw: unknown): Promise<SessionTreeResponse> => {
       const { path: submittedPath } = sessionTreeRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
+      // Same as GET_SESSION_MESSAGES: an unwritten session yields an empty tree.
+      const sessionPath = authorizedSessionPath(deps, submittedPath, { allowMissing: true })
       return (
         deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
           sessionPath,
