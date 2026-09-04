@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-09-04
+
+### Added
+
+- **Pi SDK 0.85.0** — extension UI prompts (confirm, select, input, editor) now emit session events and surface a waiting indicator in the composer hint and top bar while they block the agent. Model and thinking-level changes keep persisting as global defaults.
+- **Tools settings** — new Tools section exposes Pi's `defaultTools`; clearing the list restores Pi's defaults instead of disabling every built-in tool.
+
+### Changed
+
+- **Lint and format toolchain** — Biome is replaced by oxlint 1.81.0 and oxfmt 0.66.0, with the anti-slop plugin vendored at `tools/oxlint/anti-slop`; CI and the pre-commit hook keep enforcing lint errors and formatting, and format-on-save (FORMAT_FILE) now formats via oxfmt.
+- **Anti-slop staged rollout** — seven anti-slop rules enforce as errors on new code; seven legacy-backlog rules warn without failing CI while they are ratcheted down.
+
+### Fixed
+
+- **Waiting-prompt reactivity** — the composer hint now reacts immediately when an extension prompt starts or ends instead of freezing at mount.
+- **Deterministic prompt teardown** — blocking extension prompts are settled when a session stops or reloads, so the waiting indicator can no longer linger.
+- **Settings array removal** — removing the last entry of a string-array setting (for example `defaultTools`) now takes the tested delete-key path instead of writing an undefined value.
+
+### Beta caveats
+
+- **Packaging workaround** — Pi 0.85.0 imports `@earendil-works/pi-server` without declaring it, so OpenPi hosts it as a direct dependency until upstream fixes packaging.
+- macOS notarization and Windows code signing remain unconfigured; live provider OAuth flows remain unverified with real credentials.
+
 ## [0.2.7] - 2026-08-12
 
 ### Added
