@@ -379,8 +379,8 @@
   display: grid;
   grid-template-columns: 10px 28px minmax(0, 1fr) auto;
   grid-template-areas:
-    "swatch rank name volume"
-    ". . sub sub";
+    'swatch rank name volume'
+    '. . sub sub';
   align-items: center;
   gap: 5px 8px;
   min-height: 74px;
@@ -505,7 +505,7 @@
 .usage-rest-card {
   display: grid;
   grid-template-columns: 10px 28px minmax(0, 1fr) auto auto;
-  grid-template-areas: "swatch rank name volume delta";
+  grid-template-areas: 'swatch rank name volume delta';
   align-items: center;
   gap: 6px 8px;
   padding: 10px 12px;
@@ -605,8 +605,8 @@
   display: grid;
   grid-template-columns: 10px 28px minmax(0, 1fr) auto auto;
   grid-template-areas:
-    "swatch rank name volume share"
-    ". . saving saving saving";
+    'swatch rank name volume share'
+    '. . saving saving saving';
   align-items: center;
   gap: 4px 8px;
   padding: 10px 12px;
@@ -766,7 +766,7 @@
     filter 0.1s ease;
 }
 
-.usage-daily-chart-seg[style*="height: 0%"] {
+.usage-daily-chart-seg[style*='height: 0%'] {
   display: none;
 }
 

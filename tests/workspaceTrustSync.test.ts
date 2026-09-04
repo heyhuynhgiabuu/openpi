@@ -7,9 +7,8 @@ const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-wt-'))
 process.env.OPENPI_AGENT_DIR = tmpHome
 
 const syncFile = path.join(tmpHome, '.openpi-workspace-trust.json')
-const { setWorkspaceTrustSync, clearWorkspaceTrustSync } = await import(
-  '../electron/services/workspaceTrustSync'
-)
+const { setWorkspaceTrustSync, clearWorkspaceTrustSync } =
+  await import('../electron/services/workspaceTrustSync')
 
 function readMap(): Record<string, 'trusted' | 'untrusted'> {
   try {

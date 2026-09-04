@@ -126,10 +126,7 @@ export class PiSidecarHost {
   private _stdoutBuf = ''
   private _stderrBuf = ''
 
-  constructor(opts: {
-    onMessage: (msg: SidecarMessage) => void
-    onCrash: () => void
-  }) {
+  constructor(opts: { onMessage: (msg: SidecarMessage) => void; onCrash: () => void }) {
     this.onMessage = opts.onMessage
     this.onCrash = opts.onCrash
   }

@@ -465,6 +465,7 @@ export const Composer: Component<ComposerProps> = (props) => {
         <ComposerHint
           shellMode={shellMode()}
           isStreaming={props.isStreaming}
+          awaitingPrompt={props.awaitingPrompt}
           queueMode={props.queueMode}
         />
       </div>

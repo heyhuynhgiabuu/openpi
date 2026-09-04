@@ -6,6 +6,23 @@ import { fulfillExtensionUiPending, registerExtensionUiPending } from './extensi
 
 const DEFAULT_DIALOG_TIMEOUT_MS = 120_000
 
+/**
+ * Mirror Pi 0.85's ui_prompt_start / ui_prompt_end extension events for the
+ * OpenPi renderer. The host cannot subscribe to ExtensionRunner.on (not a
+ * public API), but OpenPi owns this ctx.ui bridge — every blocking prompt
+ * flows through dialogPromise, so emitting the equivalent session events here
+ * gives the renderer the same "agent blocked on user input" signal the SDK
+ * emits in RPC mode.
+ */
+function emitUiPromptEvent(
+  sinks: ExtensionUiBridgeSinks,
+  type: 'ui_prompt_start' | 'ui_prompt_end',
+  kind: ExtensionUiRequest['method'],
+  title: string
+): void {
+  sinks.sessionEvent({ type, reason: 'ui_prompt', kind, title })
+}
+
 function dialogPromise<T>(
   sinks: ExtensionUiBridgeSinks,
   buildRequest: (id: string) => ExtensionUiRequest,
@@ -17,6 +34,9 @@ function dialogPromise<T>(
 
   const id = crypto.randomUUID()
   const timeoutMs = opts?.timeout ?? DEFAULT_DIALOG_TIMEOUT_MS
+  const request = buildRequest(id)
+  const kind = request.method
+  const title = request.title
 
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
@@ -39,7 +59,12 @@ function dialogPromise<T>(
       }
     )
 
-    sinks.postExtensionUiRequest(buildRequest(id))
+    sinks.postExtensionUiRequest(request)
+    emitUiPromptEvent(sinks, 'ui_prompt_start', kind, title)
+  }).finally(() => {
+    // .finally fires exactly once however the prompt settles: answer, cancel,
+    // timeout, abort, or sidecar teardown.
+    emitUiPromptEvent(sinks, 'ui_prompt_end', kind, title)
   })
 }
 

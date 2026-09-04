@@ -111,10 +111,9 @@ export function playSoundEffect(key: SoundPreferenceKey): void {
 }
 
 export function emitSessionError(message: string, code?: string): void {
-  _mainWindow?.webContents.send(IPC.SESSION_ERROR, {
-    message,
-    ...(code ? { code } : {}),
-  })
+  const payload: { message: string; code?: string } = { message }
+  if (code) payload.code = code
+  _mainWindow?.webContents.send(IPC.SESSION_ERROR, payload)
   showSystemNotification('notifyErrors', 'OpenPi error', message)
   playSoundEffect('soundErrors')
 }

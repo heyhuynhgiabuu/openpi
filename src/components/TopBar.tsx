@@ -5,6 +5,7 @@
 import { GitBranch, House, MonitorCog, Plus } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import type { ModelInfo, SessionListItem } from '../lib/ipc'
+import type { AwaitingPrompt } from '../hooks/useOpenPiSession'
 import { isMacPlatform } from '../lib/shortcutFormat'
 import { SessionProgressDot } from './conversation/SessionProgressDot'
 
@@ -17,6 +18,8 @@ interface Props {
   onBranchClick?: () => void
   sessionName: string
   isStreaming: boolean
+  /** Agent is blocked on a ctx.ui prompt (Pi 0.85 ui_prompt_start). */
+  awaitingPrompt?: AwaitingPrompt | null
   onRenameSession: (name: string) => void
   onOpenWorkspace: () => void
   onOpenSettings: () => void
@@ -226,8 +229,20 @@ export function TopBar(props: Props) {
           )}
         </Show>
 
-        <Show when={props.isStreaming}>
-          <SessionProgressDot status="running" />
+        <Show
+          when={props.awaitingPrompt}
+          fallback={
+            <Show when={props.isStreaming}>
+              <SessionProgressDot status="running" />
+            </Show>
+          }
+        >
+          <span
+            class="topbar-awaiting"
+            title={props.awaitingPrompt?.title ?? 'Waiting for your response'}
+          >
+            <SessionProgressDot status="background" />
+          </span>
         </Show>
       </div>
 

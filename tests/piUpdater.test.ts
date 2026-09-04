@@ -30,16 +30,14 @@ afterEach(() => {
 })
 
 describe('Pi package update transaction', () => {
-  it.each([
-    'npm',
-    'pnpm',
-    'yarn',
-    'bun',
-  ] as const)('updates coding-agent and pi-ai together with %s', (manager) => {
-    const args = updaterTest.buildInstallArgs(manager, '0.84.1')
-    expect(args).toContain('@earendil-works/pi-coding-agent@0.84.1')
-    expect(args).toContain('@earendil-works/pi-ai@0.84.1')
-  })
+  it.each(['npm', 'pnpm', 'yarn', 'bun'] as const)(
+    'updates coding-agent and pi-ai together with %s',
+    (manager) => {
+      const args = updaterTest.buildInstallArgs(manager, '0.84.1')
+      expect(args).toContain('@earendil-works/pi-coding-agent@0.84.1')
+      expect(args).toContain('@earendil-works/pi-ai@0.84.1')
+    }
+  )
 })
 
 describe('detectPackageManager', () => {

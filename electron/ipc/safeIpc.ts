@@ -41,6 +41,7 @@ export function createAuthorizedIpcMain(
     get(target, property) {
       if (property === 'handle') return authorizedHandle
       if (property === 'on') return authorizedOn
+      // eslint-disable-next-line anti-slop/no-reflect-get -- this Proxy IS the ipc boundary; forwarded properties are dynamic by contract
       const value: unknown = Reflect.get(target, property, target)
       return typeof value === 'function' ? value.bind(target) : value
     },

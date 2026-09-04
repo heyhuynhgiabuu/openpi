@@ -70,7 +70,10 @@ export function FilePreviewFindBar(props: FilePreviewFindBarProps) {
             props.onFindMatchIndexReset()
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') e.shiftKey ? props.onFindPrev() : props.onFindNext()
+            if (e.key === 'Enter') {
+              if (e.shiftKey) props.onFindPrev()
+              else props.onFindNext()
+            }
             if (e.key === 'Escape') {
               e.stopPropagation()
               props.onCloseFindBar()

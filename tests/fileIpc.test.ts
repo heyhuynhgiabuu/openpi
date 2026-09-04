@@ -63,7 +63,7 @@ describe('file IPC command safety', () => {
 
     expect(execFileSyncMock).toHaveBeenCalledWith(
       'npx',
-      ['biome', 'format', '--stdin-file-path', fullPath],
+      ['oxfmt', '--stdin-filepath', fullPath],
       expect.objectContaining({
         cwd: tempDir,
         input: 'const value=1\n',

@@ -401,15 +401,16 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(IPC.COMPACT_SESSION, async (_event, raw: unknown) => {
     if (!deps.getSessionState()) return
     const { customInstructions } = compactSessionSchema.parse(raw)
+    const command: Extract<SidecarCommand, { type: 'compact' }> = {
+      type: 'compact',
+      requestId: deps.createRequestId(),
+    }
+    if (customInstructions) command.customInstructions = customInstructions
     await deps
       .requestSidecar<
         | Extract<SidecarMessage, { type: 'compact_result' }>
         | Extract<SidecarMessage, { type: 'error' }>
-      >({
-        type: 'compact',
-        requestId: deps.createRequestId(),
-        ...(customInstructions ? { customInstructions } : {}),
-      })
+      >(command)
       .catch((err) => {
         // The Pi SDK emits `compaction_end` (success or with errorMessage)
         // as a session event, so the renderer already sees the outcome.

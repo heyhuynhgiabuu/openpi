@@ -272,7 +272,7 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     const full = resolveWorkspacePath(cwd, relPath, 'format')
     try {
       const source = readWorkspaceFile(full, cwd)
-      const formatted = execFileSync('npx', ['biome', 'format', '--stdin-file-path', full], {
+      const formatted = execFileSync('npx', ['oxfmt', '--stdin-filepath', full], {
         cwd,
         timeout: 15_000,
         input: source,

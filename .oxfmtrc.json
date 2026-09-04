@@ -1,0 +1,26 @@
+{
+  // oxfmt formats what Biome did (ts/js/json/css); md/yaml/html are ignored to avoid prose-doc churn.
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "useTabs": false,
+  "tabWidth": 2,
+  "printWidth": 100,
+  "singleQuote": true,
+  "jsxSingleQuote": false,
+  "quoteProps": "as-needed",
+  "trailingComma": "es5",
+  "semi": false,
+  "arrowParens": "always",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "ignorePatterns": [
+    "out",
+    "coverage",
+    "release",
+    "tools/oxlint/anti-slop",
+    "src/index.css",
+    "**/*.md",
+    "**/*.yml",
+    "**/*.yaml",
+    "index.html"
+  ]
+}

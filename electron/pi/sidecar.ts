@@ -21,7 +21,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
-import { fulfillExtensionUiPending } from './extensionUiPending'
+import { fulfillExtensionUiPending, rejectAllExtensionUiPending } from './extensionUiPending'
 import { answerApiKeyPrompt, ProviderAuthBridge, providerLoginFailureEvent } from './providerAuth'
 import { handleResourceCommand, isResourceCommand } from './resourceCommands'
 import { enforceIgnoreScriptsEnv } from './safePackageManager'
@@ -284,6 +284,9 @@ async function stopSession(
   session: Awaited<ReturnType<typeof createAgentSession>>['session'],
   reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
 ): Promise<void> {
+  // Settle any blocking extension UI prompt first so its dialogPromise
+  // .finally emits ui_prompt_end before the session event stream shuts down.
+  rejectAllExtensionUiPending(`session ${reason}`)
   await teardownSession(session, () => emitSessionShutdown(session, reason))
 }
 
@@ -561,14 +564,19 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       if (!state) return
       const model = (await getModelRuntime()).getModel(cmd.provider, cmd.modelId)
       if (!model) return
-      await state.session.setModel(model)
+      // Pi 0.85.0 changed setModel/setThinkingLevel to be session-scoped by
+      // default (persist only with an explicit option). OpenPi's model selector
+      // has always saved the global default, so pass persist: true to keep that
+      // behavior instead of silently regressing the user's saved model.
+      await state.session.setModel(model, { persist: true })
       break
     }
 
     case 'set_thinking': {
       if (!state) return
       state.session.setThinkingLevel(
-        cmd.level as Parameters<typeof state.session.setThinkingLevel>[0]
+        cmd.level as Parameters<typeof state.session.setThinkingLevel>[0],
+        { persist: true }
       )
       break
     }

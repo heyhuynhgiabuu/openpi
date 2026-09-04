@@ -406,6 +406,13 @@ input::placeholder {
   color: var(--graphite);
   border: 1px solid var(--hairline);
 }
+.topbar-awaiting {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: help;
+}
 .topbar-branch-icon {
   opacity: 0.75;
   flex-shrink: 0;

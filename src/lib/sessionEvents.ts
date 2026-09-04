@@ -80,7 +80,7 @@ export function applySessionEvent(
         | undefined
       if (assistantEvent?.type === 'text_delta' && assistantEvent.delta) {
         const next = [...messages]
-        next[next.length - 1] = { ...lastA, text: lastA.text + assistantEvent.delta } as Message
+        next[next.length - 1] = { ...lastA, text: lastA.text + assistantEvent.delta }
         return next
       }
       if (assistantEvent?.type === 'thinking_delta' && assistantEvent.delta) {
@@ -88,7 +88,7 @@ export function applySessionEvent(
         next[next.length - 1] = {
           ...lastA,
           thinking: (lastA.thinking ?? '') + assistantEvent.delta,
-        } as Message
+        }
         return next
       }
       return messages // no applicable delta — no copy
@@ -100,12 +100,10 @@ export function applySessionEvent(
       if (last?.role !== 'assistant') return messages
       const durationMs = durationFrom(currentTurnStartMs, msg.timestamp)
       const next = [...messages]
-      next[next.length - 1] = {
-        ...last,
-        streaming: false,
-        ...(msg.usage ? usageToMessageMetrics(msg.usage) : {}),
-        ...(durationMs ? { durationMs } : {}),
-      } as Message
+      const updated: Message = { ...last, streaming: false }
+      if (msg.usage) Object.assign(updated, usageToMessageMetrics(msg.usage))
+      if (durationMs) updated.durationMs = durationMs
+      next[next.length - 1] = updated
       return next
     }
 
@@ -129,7 +127,7 @@ export function applySessionEvent(
             startedAt: Date.now(),
           },
         ],
-      } as Message
+      }
       return next
     }
 
@@ -148,16 +146,12 @@ export function applySessionEvent(
       const next = [...messages]
       next[next.length - 1] = {
         ...lastA,
-        toolCards: lastA.toolCards.map((card) =>
-          card.toolCallId === toolCallId
-            ? {
-                ...card,
-                output,
-                ...(partialDetails ? { details: { ...card.details, ...partialDetails } } : {}),
-              }
-            : card
-        ),
-      } as Message
+        toolCards: lastA.toolCards.map((card) => {
+          if (card.toolCallId !== toolCallId) return card
+          if (!partialDetails) return { ...card, output }
+          return { ...card, output, details: { ...card.details, ...partialDetails } }
+        }),
+      }
       return next
     }
 
@@ -175,18 +169,12 @@ export function applySessionEvent(
       const next = [...messages]
       next[next.length - 1] = {
         ...lastA,
-        toolCards: lastA.toolCards.map((card) =>
-          card.toolCallId === toolCallId
-            ? {
-                ...card,
-                output,
-                isError: !!event.isError,
-                streaming: false,
-                ...(endDetails ? { details: endDetails } : {}),
-              }
-            : card
-        ),
-      } as Message
+        toolCards: lastA.toolCards.map((card) => {
+          if (card.toolCallId !== toolCallId) return card
+          const base = { ...card, output, isError: !!event.isError, streaming: false }
+          return endDetails ? { ...base, details: endDetails } : base
+        }),
+      }
       return next
     }
 

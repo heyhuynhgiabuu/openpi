@@ -1,3 +1,4 @@
+import type { AwaitingPrompt } from '../../hooks/useOpenPiSession'
 import type { CoreSlashCommand } from '../../lib/coreCommands'
 import type { FileLineComment } from '../../lib/fileLineComments'
 import type { ModelInfo, SessionStats, SkillItem } from '../../lib/ipc'
@@ -14,6 +15,7 @@ export interface ComposerProps {
   input: string
   isStreaming: boolean
   isShellRunning: boolean
+  awaitingPrompt?: AwaitingPrompt | null
   queueMode: QueueMode
   workspaceName: string
   /** Most-recent-first list of user message texts for Up/Down history navigation */

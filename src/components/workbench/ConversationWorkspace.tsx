@@ -308,6 +308,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           <Composer
             input={props.session.input}
             isStreaming={props.session.isStreaming}
+            awaitingPrompt={props.session.awaitingPrompt}
             isShellRunning={props.session.isShellRunning}
             queueMode={props.session.queueMode}
             workspaceName={props.workspaceName}

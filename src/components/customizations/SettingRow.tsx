@@ -167,7 +167,7 @@ function TagControl(props: {
 
   const remove = (i: number) => {
     const next = props.value.filter((_, idx) => idx !== i)
-    props.onChange(next.length === 0 ? undefined : next)
+    props.onChange(next)
   }
 
   return (

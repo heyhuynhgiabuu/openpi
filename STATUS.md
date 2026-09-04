@@ -13,7 +13,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
 - Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
 - Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
-- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.84.1 `ModelRuntime` authentication with API-key and supported account-login flows.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.85.0 `ModelRuntime` authentication with API-key and supported account-login flows.
 - Command palette (`⇧⌘P`): commands, `fff` files, sessions.
 - Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
 - Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.
@@ -33,6 +33,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 ## Known constraints
 
 - macOS primary; other platforms less tested.
+- Pi SDK pinned at 0.85.0. Upstream packaging bug: `pi-coding-agent` 0.85.0 statically imports `@earendil-works/pi-server` from `main.js` without declaring it, so OpenPi hosts it as a direct dependency until upstream declares it (drop the pin after upgrading past the fix).
 - Packaging via `electron-builder`; in-app updates are wired, but signed/notarized release artifacts remain required before broad rollout.
 - Single-user, local-only, no cloud sync.
 - Pi defaults to **YOLO**; OpenPi adds **optional** desktop policy rails — users can still install Pi [example extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) for TUI-style gates.

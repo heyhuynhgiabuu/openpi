@@ -22,7 +22,9 @@ test('launches the real app with a sandboxed renderer and preload bridge', async
 
     const rendererGlobals = await page.evaluate(() => ({
       hasBridge: typeof window.openpi === 'object',
+      // eslint-disable-next-line anti-slop/no-reflect-get -- the test probes for leaked untyped Node globals at the sandbox boundary
       hasNodeRequire: typeof Reflect.get(window, 'require') === 'function',
+      // eslint-disable-next-line anti-slop/no-reflect-get -- same untyped-global probe as above
       hasNodeProcess: typeof Reflect.get(window, 'process') === 'object',
     }))
     expect(rendererGlobals).toEqual({
@@ -34,7 +36,8 @@ test('launches the real app with a sandboxed renderer and preload bridge', async
     const webPreferences = await app.evaluate(({ BrowserWindow }) => {
       const webContents = BrowserWindow.getAllWindows()[0]?.webContents
       const getPreferences = webContents
-        ? Reflect.get(webContents, 'getLastWebPreferences')
+        ? // eslint-disable-next-line anti-slop/no-reflect-get -- getLastWebPreferences is a private Electron API; the assertion depends on reading it dynamically
+          Reflect.get(webContents, 'getLastWebPreferences')
         : undefined
       return typeof getPreferences === 'function' ? getPreferences.call(webContents) : null
     })

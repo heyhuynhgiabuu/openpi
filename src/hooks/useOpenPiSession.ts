@@ -51,6 +51,11 @@ import { useSubagentFileTracker } from './useSubagentFileTracker'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
 
+/** Agent is blocked on a ctx.ui prompt (Pi 0.85 ui_prompt_start/end events). */
+export interface AwaitingPrompt {
+  title: string | null
+}
+
 export { buildSessionPromptText }
 
 export function useOpenPiSession() {
@@ -59,6 +64,10 @@ export function useOpenPiSession() {
   const [messages, setMessages] = createSignal<Message[]>([])
   const [isStreaming, setIsStreaming] = createSignal(false)
   const [isShellRunning, setIsShellRunning] = createSignal(false)
+  // Set by Pi 0.85 ui_prompt_start / ui_prompt_end extension events: the agent
+  // is blocked on a ctx.ui prompt instead of streaming. Lets the UI distinguish
+  // "working" from "waiting for your response".
+  const [awaitingPrompt, setAwaitingPrompt] = createSignal<AwaitingPrompt | null>(null)
   const [input, setInput] = createSignal('')
   const [models, setModels] = createSignal<ModelInfo[]>([])
   const [error, setError] = createSignal<string | null>(null)
@@ -137,6 +146,7 @@ export function useOpenPiSession() {
     }
     if (event.type === 'agent_end') {
       setIsStreaming(false)
+      setAwaitingPrompt(null)
       setQueueMode('prompt')
       currentTurnStartMs = null
       void refreshContextUsage()
@@ -163,6 +173,16 @@ export function useOpenPiSession() {
     if (event.type === 'session_info_changed') {
       const e = event as { name?: string }
       setSessionNameState(e.name ?? null)
+      return
+    }
+
+    if (event.type === 'ui_prompt_start') {
+      const e = event as { title?: string }
+      setAwaitingPrompt({ title: e.title ?? null })
+      return
+    }
+    if (event.type === 'ui_prompt_end') {
+      setAwaitingPrompt(null)
       return
     }
 
@@ -275,6 +295,7 @@ export function useOpenPiSession() {
           setError(null)
           setSteeringQueue([])
           setFollowUpQueue([])
+          setAwaitingPrompt(null)
           setSessionNameState(payload.sessionName ?? null)
           // Clear extension trackers on new session
           trackers.clearAll()
@@ -525,6 +546,9 @@ export function useOpenPiSession() {
     },
     get isStreaming() {
       return isStreaming()
+    },
+    get awaitingPrompt() {
+      return awaitingPrompt()
     },
     get agentRunMetrics() {
       return agentRunMetrics.metrics()

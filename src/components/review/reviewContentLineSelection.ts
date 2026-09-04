@@ -120,12 +120,13 @@ function pointFromEvent(event: PointerEvent, pre: HTMLPreElement): SelectionPoin
 }
 
 function buildRange(anchor: SelectionPoint, current: SelectionPoint): SelectedLineRange {
-  return {
+  const range: SelectedLineRange = {
     start: anchor.lineNumber,
     end: current.lineNumber,
     side: anchor.side,
-    ...(anchor.side !== current.side ? { endSide: current.side } : {}),
   }
+  if (anchor.side !== current.side) range.endSide = current.side
+  return range
 }
 
 function renderSelectionPreview(instance: FileDiff<undefined>, range: SelectedLineRange): void {

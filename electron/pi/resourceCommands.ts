@@ -9,7 +9,7 @@ type ResourceCommand = Extract<
   }
 >
 
-interface ResourceLoaderShape {
+interface ResourceLoaderView {
   getPrompts(): {
     prompts: Array<{ name: string; description?: string; argumentHint?: string }>
   }
@@ -24,7 +24,7 @@ interface ResourceLoaderShape {
   }
 }
 
-interface ResourceSessionShape {
+interface ResourceSessionView {
   extensionRunner: {
     getRegisteredCommands(): Array<{
       invocationName: string
@@ -36,8 +36,8 @@ interface ResourceSessionShape {
 
 interface ResourceCommandDeps {
   getCwd: () => string | null
-  getSession: () => ResourceSessionShape | null
-  getResourceLoader: (cwd: string, workspaceTrusted: boolean) => Promise<ResourceLoaderShape>
+  getSession: () => ResourceSessionView | null
+  getResourceLoader: (cwd: string, workspaceTrusted: boolean) => Promise<ResourceLoaderView>
   send: (message: SidecarMessage) => void
 }
 
@@ -85,12 +85,13 @@ export async function handleResourceCommand(
         source: 'extension',
       }))
       for (const template of session.promptTemplates) {
-        commands.push({
+        const entry: (typeof commands)[number] = {
           name: template.name,
           description: template.description ?? '',
-          source: 'prompt' as const,
-          ...(template.argumentHint ? { argHint: template.argumentHint } : {}),
-        })
+          source: 'prompt',
+        }
+        if (template.argumentHint) entry.argHint = template.argumentHint
+        commands.push(entry)
       }
       deps.send({ type: 'slash_commands_result', requestId: command.requestId, commands })
       return

@@ -146,28 +146,27 @@ describe('provider authentication flow', () => {
     expect(loadProviders).toHaveBeenCalledOnce()
   })
 
-  it.each([
-    'not a url',
-    '//example.com',
-    'file:///tmp/credential.html',
-  ])('rejects an unsafe authentication URL without throwing: %s', (url) => {
-    const emitted: ProviderLoginEvent[] = []
-    const errors: string[] = []
+  it.each(['not a url', '//example.com', 'file:///tmp/credential.html'])(
+    'rejects an unsafe authentication URL without throwing: %s',
+    (url) => {
+      const emitted: ProviderLoginEvent[] = []
+      const errors: string[] = []
 
-    expect(() =>
-      routeProviderLoginEvent(
-        { type: 'auth', url },
-        {
-          openExternal: vi.fn(async () => {}),
-          emit: (event) => emitted.push(event),
-          emitError: (message) => errors.push(message),
-        }
-      )
-    ).not.toThrow()
+      expect(() =>
+        routeProviderLoginEvent(
+          { type: 'auth', url },
+          {
+            openExternal: vi.fn(async () => {}),
+            emit: (event) => emitted.push(event),
+            emitError: (message) => errors.push(message),
+          }
+        )
+      ).not.toThrow()
 
-    expect(emitted).toEqual([])
-    expect(errors).toEqual(['Invalid provider authentication event.'])
-  })
+      expect(emitted).toEqual([])
+      expect(errors).toEqual(['Invalid provider authentication event.'])
+    }
+  )
 
   it('reports an external-browser launch failure without rejecting globally', async () => {
     const errors: string[] = []

@@ -156,6 +156,20 @@ export const SECTIONS: SettingSection[] = [
     ],
   },
   {
+    id: 'tools',
+    label: 'Tools',
+    fields: [
+      {
+        key: 'defaultTools',
+        type: 'string-array',
+        label: 'Default Startup Tools',
+        description:
+          'Built-in tools enabled at session start: read, bash, edit, write, grep, find, ls (powershell on Windows). Empty = Pi defaults (read, bash, edit, write). Extension/custom tools are always kept.',
+        placeholder: 'read',
+      },
+    ],
+  },
+  {
     id: 'projectTrust',
     label: 'Project Trust',
     fields: [

@@ -1,9 +1,11 @@
 {
   "name": "openpi",
-  "private": true,
   "version": "0.2.7",
-  "type": "module",
+  "private": true,
   "description": "OpenPi desktop workbench for the Pi coding agent.",
+  "license": "MIT",
+  "author": "OpenPi contributors",
+  "type": "module",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,9 +14,9 @@
     "package": "npm run build && electron-builder --config electron-builder.json",
     "prepare": "git config core.hooksPath .githooks",
     "precommit": "npm run lint",
-    "lint": "biome check .",
-    "lint:fix": "biome check . --write",
-    "format": "biome format . --write",
+    "lint": "oxlint && oxfmt --check .",
+    "lint:fix": "oxlint --fix && oxfmt .",
+    "format": "oxfmt .",
     "typecheck": "tsc --noEmit && npm run typecheck:extensions",
     "typecheck:extensions": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --types node .pi/extensions/openpi-task-guard.ts .pi/extensions/openpi-bridge.ts",
     "test": "vitest run",
@@ -42,9 +44,10 @@
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.43.0",
-    "@earendil-works/pi-ai": "0.84.1",
-    "@earendil-works/pi-coding-agent": "0.84.1",
-    "@earendil-works/pi-tui": "0.84.1",
+    "@earendil-works/pi-ai": "0.85.0",
+    "@earendil-works/pi-coding-agent": "0.85.0",
+    "@earendil-works/pi-server": "0.85.0",
+    "@earendil-works/pi-tui": "0.85.0",
     "@ff-labs/fff-node": "^0.7.2",
     "@kobalte/core": "^0.13.11",
     "@lydell/node-pty": "^1.2.0-beta.12",
@@ -91,8 +94,8 @@
     "zod": "^3.25.28"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.15",
     "@electron/rebuild": "^4.0.4",
+    "@oxlint/plugins": "1.81.0",
     "@playwright/test": "^1.59.1",
     "@solidjs/testing-library": "^0.8.10",
     "@types/better-sqlite3": "^7.6.13",
@@ -102,6 +105,8 @@
     "electron-builder": "^26.8.1",
     "electron-vite": "^3.1.0",
     "jsdom": "^26.1.0",
+    "oxfmt": "0.66.0",
+    "oxlint": "1.81.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
@@ -113,8 +118,6 @@
     "brace-expansion@>=5.0.0 <5.0.9": "5.0.9",
     "js-yaml@>=4.0.0 <4.3.1": "4.3.1"
   },
-  "author": "OpenPi contributors",
-  "license": "MIT",
   "engines": {
     "node": ">=22.19.0 <23"
   }

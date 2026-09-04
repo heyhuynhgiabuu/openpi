@@ -47,6 +47,16 @@ export function deleteNestedValue(obj: PiSettings, key: string): PiSettings {
   return { ...obj, [first]: next }
 }
 
+/**
+ * Apply a settings-pane edit. An emptied string-array means "back to the Pi
+ * default", not an explicit empty list — critical for defaultTools where []
+ * disables ALL built-in tools while an absent key keeps read/bash/edit/write.
+ */
+export function applySettingValue(obj: PiSettings, key: string, value: unknown): PiSettings {
+  if (Array.isArray(value) && value.length === 0) return deleteNestedValue(obj, key)
+  return setNestedValue(obj, key, value)
+}
+
 export type BaseField = {
   key: string
   label: string

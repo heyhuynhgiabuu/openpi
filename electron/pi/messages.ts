@@ -25,7 +25,7 @@ interface SidecarMessageDeps {
   emitOutputLine: (line: OutputLine) => void
 }
 
-interface SessionEventShape {
+interface SessionEventSummary {
   type?: string
   success?: boolean
   finalError?: string
@@ -54,7 +54,7 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         if (!parsedEvent.success) return
         if (isStaleExtensionCtxEvent(parsedEvent.data)) return
 
-        const event = parsedEvent.data as SessionEventShape
+        const event = parsedEvent.data as SessionEventSummary
         const window = deps.getMainWindow()
         setAgentReviewWindow(window)
         deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, parsedEvent.data)

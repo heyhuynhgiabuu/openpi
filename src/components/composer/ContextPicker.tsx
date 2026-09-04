@@ -49,6 +49,7 @@ export const ContextPicker: Component<ContextPickerProps> = (props) => {
 
   // Reset active idx when result set changes
   createEffect(() => {
+    // eslint-disable-next-line no-unused-expressions -- Solid: tracks results() as a reactive dependency
     results().length
     setActiveIdx(0)
   })

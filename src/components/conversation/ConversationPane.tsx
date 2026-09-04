@@ -173,7 +173,8 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
   // Use instant (not smooth) so rapid token updates never conflict with each
   // other or with user scroll gestures.
   createEffect(() => {
-    props.messages.length // reactive dependency
+    // eslint-disable-next-line no-unused-expressions -- Solid: tracks messages as a reactive dependency
+    props.messages.length
     if (!isAtBottom()) return
     // Defer one microtask so the new DOM nodes are measured before scrolling.
     queueMicrotask(() => {
@@ -185,7 +186,8 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
 
   // ── When a new session is loaded, jump straight to the bottom ────────────
   createEffect(() => {
-    props.activeSessionPath // reactive dep
+    // eslint-disable-next-line no-unused-expressions -- Solid: tracks activeSessionPath as a reactive dependency
+    props.activeSessionPath
     setIsAtBottom(true)
     queueMicrotask(() => {
       scrollToBottomIndex(false)

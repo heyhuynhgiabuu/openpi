@@ -171,7 +171,7 @@ export function DiffViewer(props: DiffViewerProps) {
   const hasDiffData = () =>
     Boolean(
       props.diff.rawPatch ||
-        (props.diff.oldContent !== undefined && props.diff.newContent !== undefined)
+      (props.diff.oldContent !== undefined && props.diff.newContent !== undefined)
     )
 
   return (

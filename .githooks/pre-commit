@@ -5,5 +5,5 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "--- Biome lint check ---"
-npx biome check .
+echo "--- oxlint + oxfmt check ---"
+npm run lint

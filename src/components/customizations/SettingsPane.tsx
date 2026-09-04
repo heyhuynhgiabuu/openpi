@@ -3,11 +3,11 @@ import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js'
 import type { PiSettings, SettingsResult } from '../../lib/ipc'
 import { SettingRow } from './SettingRow'
 import {
+  applySettingValue,
   deleteNestedValue,
   getNestedValue,
   hasNestedKey,
   type SettingField,
-  setNestedValue,
 } from './settingsHelpers'
 import type { SettingsPaneProps } from './settingsSections'
 import { SECTIONS } from './settingsSections'
@@ -65,7 +65,7 @@ export function SettingsPane(props: SettingsPaneProps) {
 
   const setValue = (key: string, value: unknown) => {
     setLocal((prev) => {
-      const next = setNestedValue(prev, key, value)
+      const next = applySettingValue(prev, key, value)
       scheduleSave(key, next)
       return next
     })

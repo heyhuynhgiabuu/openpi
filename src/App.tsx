@@ -288,9 +288,9 @@ export default function App() {
         const showingRemoteSession = createMemo(() =>
           Boolean(
             !session.isStreaming &&
-              !remotePreemptedByLocal() &&
-              session.remoteSessionStatus?.sessionFile &&
-              session.remoteSessionMessages.length > 0
+            !remotePreemptedByLocal() &&
+            session.remoteSessionStatus?.sessionFile &&
+            session.remoteSessionMessages.length > 0
           )
         )
         const conversationMessages = createMemo(() =>
@@ -304,7 +304,7 @@ export default function App() {
         const showRemoteSessionBar = createMemo(() =>
           Boolean(
             !remotePreemptedByLocal() &&
-              (session.remoteSessionStatus?.status === 'running' || showingRemoteSession())
+            (session.remoteSessionStatus?.status === 'running' || showingRemoteSession())
           )
         )
 
@@ -337,6 +337,7 @@ export default function App() {
               onBranchClick={() => toggleRefsRef?.()}
               sessionName={displayName()}
               isStreaming={conversationStreaming()}
+              awaitingPrompt={session.awaitingPrompt}
               onRenameSession={session.setSessionName}
               onOpenWorkspace={session.openWorkspace}
               onOpenSettings={() => setCustomizationsOpen(true)}
