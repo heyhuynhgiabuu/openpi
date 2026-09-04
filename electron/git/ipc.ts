@@ -365,10 +365,16 @@ export function registerGitIpc(deps: GitIpcDeps): void {
     const git = await deps.getGitHost()
     const tree = git.getFileTree(cwd)
     // Enrich tree with git status so the renderer can show M/A/D/R badges
-    const status = await git.getGitStatus(cwd)
+    // If cwd is not a git repo, return tree without badges instead of throwing
     const statusMap = new Map<string, string>()
-    for (const file of status.files) {
-      statusMap.set(file.path, file.status)
+    try {
+      const status = await git.getGitStatus(cwd)
+      for (const file of status.files) {
+        statusMap.set(file.path, file.status)
+      }
+    } catch (e) {
+      const msg = String(e)
+      if (!msg.includes('not a git repository') && !msg.includes('does not exist')) throw e
     }
     return fileTreeResultSchema.parse(enrichTree(tree, statusMap))
   })

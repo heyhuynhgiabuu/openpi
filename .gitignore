@@ -61,6 +61,11 @@ desktop.ini
 !.env.example
 .pi/extensions/harness/*.bak
 
+# ── Local todos not tracked ────────────────────────────────────────────
+*.local.md
+*.local.txt
+.todo/
+
 # ── pi-task runtime data (local, not committed) ────────────────────────
 .pi/task-session-history.json
 .pi/task-registry.json

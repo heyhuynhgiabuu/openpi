@@ -66,7 +66,7 @@ describe('main IPC sender authorization', () => {
       hasPtyHost: () => false,
       getPtyHost: vi.fn(),
       getZrokHost: vi.fn(),
-      getDashboardServerHost: vi.fn(),
+      getWebHost: vi.fn(),
       confirmHighRiskMutation: vi.fn(),
       emitOutputLine: vi.fn(),
       createRequestId: vi.fn(() => 'request-1'),

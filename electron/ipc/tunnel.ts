@@ -6,12 +6,11 @@
  * t-004: real validation, zrok stderr classification and status schema.
  */
 
-import { randomBytes } from 'node:crypto'
 import type { IpcMain } from 'electron'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { IPC } from '../../src/lib/ipc'
-import type { DashboardServerHost } from '../services/dashboardServerHost'
+import type { WebHost } from '../services/webHost'
 import { clearZrokConfig, writeZrokConfig } from '../services/zrokConfig'
 import type { ZrokHost } from '../services/zrokHost'
 
@@ -19,7 +18,7 @@ import type { ZrokHost } from '../services/zrokHost'
 export function registerTunnelIpc(deps: {
   ipcMain: IpcMain
   getZrokHost: () => Promise<ZrokHost>
-  getDashboardServerHost: () => Promise<DashboardServerHost>
+  getWebHost: () => Promise<WebHost>
 }): void {
   deps.ipcMain.handle(IPC.TUNNEL_GET_STATUS, async () => {
     const host = await deps.getZrokHost()
@@ -58,32 +57,28 @@ export function registerTunnelIpc(deps: {
     zrok.stopTunnel()
     zrok.removePid()
     zrok.cleanupStale()
-    const dashboard = await deps.getDashboardServerHost()
-    dashboard.stop()
+    const webHost = await deps.getWebHost()
+    webHost.stop()
     clearZrokConfig()
   })
 }
 
 /**
- * Starts the local dashboard server and exposes it through a zrok share.
- * Ephemeral basic-auth credentials are minted per start (never persisted).
+ * Starts the local web host (OpenPi workbench) and exposes it through a zrok share.
+ * No basic-auth — zrok URL is already private (auth optional with warning).
  */
 export async function startTunnel(
   deps: {
     getZrokHost: () => Promise<ZrokHost>
-    getDashboardServerHost: () => Promise<DashboardServerHost>
+    getWebHost: () => Promise<WebHost>
   },
   reservedName?: string
 ): Promise<{ ok: boolean; error?: string }> {
   const host = await deps.getZrokHost()
-  const dashboard = await deps.getDashboardServerHost()
-  const user = 'dashboard'
-  const pass = randomBytes(18).toString('base64url')
-  const port = await dashboard.start({ authUser: user, authPass: pass })
-  if (port === null) return { ok: false, error: 'dashboard failed to start' }
-  // A persisted reserved name yields a stable URL; otherwise fall back to an
-  // ephemeral share URL.
-  return host.createTunnel(port, reservedName || null, user, pass)
+  const webHost = await deps.getWebHost()
+  const port = await webHost.start({})
+  if (port === null) return { ok: false, error: 'webHost failed to start' }
+  return host.createTunnel(port, reservedName || null, null, null)
 }
 
 /**

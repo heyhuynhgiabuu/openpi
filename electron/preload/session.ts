@@ -29,7 +29,11 @@ import { IPC } from '../../src/lib/ipc'
 
 export const sessionApi = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.GET_APP_INFO),
-  pickWorkspace: (): Promise<PickWorkspaceResult> => ipcRenderer.invoke(IPC.PICK_WORKSPACE),
+  pickWorkspace: (payload?: { path?: string } | string): Promise<PickWorkspaceResult> => {
+    if (typeof payload === 'string')
+      return ipcRenderer.invoke(IPC.PICK_WORKSPACE, { path: payload })
+    return ipcRenderer.invoke(IPC.PICK_WORKSPACE, payload ?? {})
+  },
 
   prompt: (text: string, contextPrefix?: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SESSION_PROMPT, { text, contextPrefix }),

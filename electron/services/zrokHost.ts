@@ -127,8 +127,8 @@ export class ZrokHost {
   createTunnel(
     port: number,
     reservedName: string | null,
-    user: string,
-    pass: string
+    user: string | null,
+    pass: string | null
   ): { ok: boolean; error?: string } {
     const binary = this.getZrokBinary()
     if (!binary) return { ok: false, error: 'not-installed' }
@@ -147,18 +147,17 @@ export class ZrokHost {
 
     if (effectiveReservedName) {
       // Ensure reserved share exists (zrok v2: reserve public <target>)
-      const reserveArgs = [
+      const reserveArgs: string[] = [
         'reserve',
         'public',
         `http://127.0.0.1:${port}`,
         '--backend-mode',
         'proxy',
-        '--basic-auth',
-        `${user}:${pass}`,
         '--json-output',
         '-n',
         effectiveReservedName,
       ]
+      if (user && pass) reserveArgs.splice(5, 0, '--basic-auth', `${user}:${pass}`)
       const reserveRes = spawnSync(binary, reserveArgs, {
         encoding: 'utf-8',
         timeout: 10000,
@@ -199,11 +198,10 @@ export class ZrokHost {
         'public',
         '--backend-mode',
         'proxy',
-        '--basic-auth',
-        `${user}:${pass}`,
         '--headless',
         `http://127.0.0.1:${port}`,
       ]
+      if (user && pass) args.splice(3, 0, '--basic-auth', `${user}:${pass}`)
       effectiveReservedName = null
     }
 
@@ -216,7 +214,11 @@ export class ZrokHost {
     this.writePid(child.pid ?? 0)
 
     const startedAt = Date.now()
-    this.status = { state: 'starting', authUser: user, authPass: pass }
+    this.status = {
+      state: 'starting',
+      ...(user ? { authUser: user } : {}),
+      ...(pass ? { authPass: pass } : {}),
+    }
 
     let buffer = ''
     let stderrBuf = ''
@@ -229,8 +231,8 @@ export class ZrokHost {
             state: 'running',
             reservedName: effectiveReservedName ?? undefined,
             url,
-            authUser: user,
-            authPass: pass,
+            ...(user ? { authUser: user } : {}),
+            ...(pass ? { authPass: pass } : {}),
             startedAt,
           }
         }
@@ -248,8 +250,8 @@ export class ZrokHost {
             state: 'running',
             reservedName: effectiveReservedName ?? undefined,
             url,
-            authUser: user,
-            authPass: pass,
+            ...(user ? { authUser: user } : {}),
+            ...(pass ? { authPass: pass } : {}),
             startedAt,
           }
         }

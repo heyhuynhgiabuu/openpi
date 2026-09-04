@@ -292,7 +292,7 @@ export function TopBar(props: Props) {
               type="button"
               class="topbar-tunnel-btn no-drag"
               onClick={props.onTunnelClick}
-              title="Tunnel status — click to manage"
+              title="OpenPi workbench — click to manage remote access"
               aria-label="Tunnel status"
             >
               <span class="topbar-tunnel-dot" />

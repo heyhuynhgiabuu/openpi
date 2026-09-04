@@ -58,7 +58,7 @@ describe('TunnelSection', () => {
     )
     api.generateQr.mockResolvedValue('data:image/png;base64,AAAA')
     const { findByText, findByAltText } = render(() => <TunnelSection onError={() => {}} />)
-    expect(await findByText(/tunnel is live/i)).toBeTruthy()
+    expect(await findByText(/openpi is live/i)).toBeTruthy()
     const img = (await findByAltText(/tunnel qr code/i)) as HTMLImageElement
     expect(img.src).toBe('data:image/png;base64,AAAA')
   })

@@ -14,6 +14,10 @@ import { sidecarCommandSchema, sidecarMessageSchema } from './sidecarContracts'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
+// Same pattern as electron/pi/staleCtx.ts — filter benign stale ctx noise from Output pane
+const STALE_SIDECAR_LINE_RE =
+  /(?:this extension ctx is stale|captured pi or command ctx|stale after session replacement|stale after session reload|ctx is stale after)/i
+
 const SIDECAR_PATH = path.join(currentDir, 'piSidecar.js')
 const SIDECAR_SERVICE_NAME = 'openpi-pi-sidecar'
 const RESTART_DELAY_MS = 1500
@@ -162,14 +166,20 @@ export class PiSidecarHost {
         })
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      process.stdout.write(`[piSidecar] ${chunk.toString('utf8').trimEnd()}\n`)
+      const text = chunk.toString('utf8')
+      // Filter benign stale ctx noise (MCP init with stale ctx after newSession) — don't spam terminal/Output
+      const lines = text.split('\n')
+      const filtered = lines.filter((l) => !STALE_SIDECAR_LINE_RE.test(l))
+      if (filtered.join('\n').trim())
+        process.stdout.write(`[piSidecar] ${filtered.join('\n').trimEnd()}\n`)
       // Accumulate until a newline boundary so partial chunks don't produce
       // truncated log entries in the Output pane.
-      this._stdoutBuf += chunk.toString('utf8')
+      this._stdoutBuf += text
       const parts = this._stdoutBuf.split('\n')
       this._stdoutBuf = parts.pop() ?? ''
       for (const line of parts) {
         if (!line.trim()) continue
+        if (STALE_SIDECAR_LINE_RE.test(line)) continue
         this.onMessage({
           type: 'output_append',
           line: { level: 'info', text: `[sidecar] ${line}`, ts: Date.now() },
@@ -177,12 +187,17 @@ export class PiSidecarHost {
       }
     })
     child.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(`[piSidecar] ${chunk.toString('utf8').trimEnd()}\n`)
-      this._stderrBuf += chunk.toString('utf8')
+      const text = chunk.toString('utf8')
+      const lines = text.split('\n')
+      const filtered = lines.filter((l) => !STALE_SIDECAR_LINE_RE.test(l))
+      if (filtered.join('\n').trim())
+        process.stderr.write(`[piSidecar] ${filtered.join('\n').trimEnd()}\n`)
+      this._stderrBuf += text
       const parts = this._stderrBuf.split('\n')
       this._stderrBuf = parts.pop() ?? ''
       for (const line of parts) {
         if (!line.trim()) continue
+        if (STALE_SIDECAR_LINE_RE.test(line)) continue
         this.onMessage({
           type: 'output_append',
           line: { level: 'error', text: `[sidecar] ${line}`, ts: Date.now() },

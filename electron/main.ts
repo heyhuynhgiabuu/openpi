@@ -15,15 +15,17 @@ import { handleLocalFileProtocol, registerLocalFileScheme } from './services/loc
 import {
   ensureFffInitialized,
   getCustomizationsHost,
+  getDashboardServerHost,
   getFffHost,
   getGitHost,
   getPtyHost,
-  getDashboardServerHost,
+  getWebHost,
   getZrokHost,
+  hasDashboardServerHost,
   hasFffHost,
   hasGitHost,
   hasPtyHost,
-  hasDashboardServerHost,
+  hasWebHost,
   hasZrokHost,
 } from './services/mainHosts'
 import {
@@ -118,6 +120,13 @@ function emitOutputLine(line: OutputLine): void {
   outputBuffer.push(line)
   if (outputBuffer.length > OUTPUT_BUFFER_MAX) outputBuffer.shift()
   mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+  void import('./services/webHost')
+    .then((m) => {
+      try {
+        m.webHost.broadcast(IPC.OUTPUT_APPEND, line)
+      } catch {}
+    })
+    .catch(() => {})
 }
 
 // Capture main-process crashes and forward them to the Output pane,
@@ -143,9 +152,23 @@ async function restartGitMonitoring(cwd: string): Promise<void> {
   const git = await getGitHost()
   git.startGitPoll(cwd, (status: GitStatusResult) => {
     mainWindow?.webContents.send(IPC.GIT_STATUS_CHANGED, status)
+    void import('./services/webHost')
+      .then((m) => {
+        try {
+          m.webHost.broadcast(IPC.GIT_STATUS_CHANGED, status)
+        } catch {}
+      })
+      .catch(() => {})
   })
   git.startFileTreeWatch(cwd, () => {
     mainWindow?.webContents.send(IPC.FILE_TREE_CHANGED)
+    void import('./services/webHost')
+      .then((m) => {
+        try {
+          m.webHost.broadcast(IPC.FILE_TREE_CHANGED, undefined)
+        } catch {}
+      })
+      .catch(() => {})
   })
 }
 
@@ -165,12 +188,21 @@ async function maybeCheckPiUpdateOnStartup(): Promise<void> {
 
 // ── Tunnel auto-restart ────────────────────────────────────────────────────────
 // If the persisted zrok.json enables auto-restart with a reserved name, bring
-// the dashboard server + zrok share back up automatically at launch.
+// the web host + zrok share back up automatically at launch.
 async function maybeAutoStartTunnel(): Promise<void> {
   const cfg = readZrokConfig()
-  if (!cfg?.persistent || !cfg.reservedName) return
+  console.log('[tunnel] maybeAutoStart cfg', cfg)
+  if (!cfg?.persistent || !cfg.reservedName) {
+    console.log('[tunnel] skip auto-start, cfg missing persistent/reservedName')
+    return
+  }
   try {
-    const res = await startTunnel({ getZrokHost, getDashboardServerHost }, cfg.reservedName)
+    console.log('[tunnel] auto-start calling startTunnel', cfg.reservedName)
+    const res = await startTunnel({ getZrokHost, getWebHost }, cfg.reservedName).catch((e) => {
+      console.log('[tunnel] startTunnel threw', e)
+      return { ok: false, error: String(e) }
+    })
+    console.log('[tunnel] auto-start result', res)
     if (!res.ok) {
       const line: OutputLine = {
         level: 'warn',
@@ -178,6 +210,9 @@ async function maybeAutoStartTunnel(): Promise<void> {
         ts: Date.now(),
       }
       emitOutputLine(line)
+      console.log('[tunnel] auto-restart failed', res.error)
+    } else {
+      console.log('[tunnel] auto-restart ok')
     }
   } catch (err) {
     const line: OutputLine = {
@@ -220,7 +255,7 @@ function registerHandlers(): void {
     hasPtyHost,
     getPtyHost,
     getZrokHost,
-    getDashboardServerHost,
+    getWebHost,
     confirmHighRiskMutation,
     emitOutputLine,
     createRequestId,
@@ -339,6 +374,7 @@ app.on('quit', () => {
       z.cleanupStale()
     })
   if (hasDashboardServerHost()) void getDashboardServerHost().then((r) => r.stop())
+  if (hasWebHost()) void getWebHost().then((r) => r.stop())
   clearSessionState()
   if (hasPtyHost()) void getPtyHost().then((p) => p.closeAll())
   sessionIndex?.close()

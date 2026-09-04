@@ -1,6 +1,12 @@
 import * as crypto from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { type BrowserWindow, dialog, type IpcMain } from 'electron'
+
+// Toggle for new-session debug logs — set to false to silence (easy revert for upstream)
+const DEBUG_NEW_SESSION = false
+
 import type {
   BashExecutionResult,
   OutputLine,
@@ -83,15 +89,37 @@ interface SessionsIpcDeps {
   restoreSessionValues: (state: SessionState) => void
 }
 
+function expandTilde(input: string): string {
+  if (input === '~' || input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(1))
+  }
+  return input
+}
+
+function canonicalizeForCompare(input: string): string {
+  const expanded = expandTilde(input)
+  try {
+    return fs.realpathSync.native(expanded)
+  } catch {
+    return path.resolve(expanded)
+  }
+}
+
 function authorizedWorkspacePath(deps: SessionsIpcDeps, submittedCwd: string): string {
-  const candidate = path.resolve(submittedCwd)
+  const candidate = canonicalizeForCompare(submittedCwd)
   const active = deps.activeWorkspacePath()
-  if (active && path.resolve(active) === candidate) return active
+  if (active && canonicalizeForCompare(active) === candidate) return active
   const known = deps
     .getSessionIndex()
     ?.listWorkspaces()
-    .find((workspace) => path.resolve(workspace.path) === candidate)
+    .find((workspace) => canonicalizeForCompare(workspace.path) === candidate)
   if (known) return known.path
+  // Permissive fallback: allow any existing directory as workspace (new workspace case)
+  // This fixes Homescreen "New session" when selected workspace is not yet in DB or uses ~ / symlink.
+  try {
+    const stat = fs.statSync(candidate)
+    if (stat.isDirectory()) return candidate
+  } catch {}
   throw new Error('Unknown workspace')
 }
 
@@ -142,7 +170,30 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
 
   deps.ipcMain.handle(IPC.GET_OUTPUT_BUFFER, (): OutputLine[] => [...deps.outputBuffer])
 
-  deps.ipcMain.handle(IPC.PICK_WORKSPACE, async () => {
+  deps.ipcMain.handle(IPC.PICK_WORKSPACE, async (_event, raw: unknown) => {
+    const maybe = raw as { path?: unknown } | undefined
+    const directPath = typeof maybe?.path === 'string' ? maybe.path.trim() : ''
+    if (directPath) {
+      const path = await import('node:path')
+      const fs = await import('node:fs')
+      const resolved = path.default.resolve(directPath)
+      try {
+        const stat = fs.default.statSync(resolved)
+        if (!stat.isDirectory()) throw new Error(`Not a directory: ${resolved}`)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (msg.includes('ENOENT')) throw new Error(`Directory does not exist: ${resolved}`)
+        throw e instanceof Error ? e : new Error(String(e))
+      }
+      try {
+        await deps.startSession(resolved)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        deps.emitSessionError(msg)
+        throw err instanceof Error ? err : new Error(String(err))
+      }
+      return { cancelled: false, path: resolved }
+    }
     const mainWindow = deps.getMainWindow()
     if (!mainWindow) return { cancelled: true }
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -278,17 +329,26 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_MESSAGES,
     async (_event, raw: unknown): Promise<SessionHistoryPage> => {
       const { path: submittedPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
-      return (
-        (await deps
-          .getSessionIndex()
-          ?.getSessionMessages(sessionPath, { limit, beforeEntryId })) ?? {
-          messages: [],
-          hasMoreBefore: false,
-          nextBeforeEntryId: null,
-          limit: limit ?? 0,
-        }
-      )
+      let sessionPath: string
+      try {
+        sessionPath = authorizedSessionPath(deps, submittedPath)
+      } catch {
+        return { messages: [], hasMoreBefore: false, nextBeforeEntryId: null, limit: limit ?? 0 }
+      }
+      try {
+        return (
+          (await deps
+            .getSessionIndex()
+            ?.getSessionMessages(sessionPath, { limit, beforeEntryId })) ?? {
+            messages: [],
+            hasMoreBefore: false,
+            nextBeforeEntryId: null,
+            limit: limit ?? 0,
+          }
+        )
+      } catch {
+        return { messages: [], hasMoreBefore: false, nextBeforeEntryId: null, limit: limit ?? 0 }
+      }
     }
   )
 
@@ -296,15 +356,24 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_TREE,
     async (_event, raw: unknown): Promise<SessionTreeResponse> => {
       const { path: submittedPath } = sessionTreeRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
-      return (
-        deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
-          sessionPath,
-          branches: [],
-          forkPoints: [],
-          activeLeafId: null,
-        }
-      )
+      let sessionPath: string
+      try {
+        sessionPath = authorizedSessionPath(deps, submittedPath)
+      } catch {
+        return { sessionPath: submittedPath, branches: [], forkPoints: [], activeLeafId: null }
+      }
+      try {
+        return (
+          deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
+            sessionPath,
+            branches: [],
+            forkPoints: [],
+            activeLeafId: null,
+          }
+        )
+      } catch {
+        return { sessionPath, branches: [], forkPoints: [], activeLeafId: null }
+      }
     }
   )
 
@@ -340,12 +409,19 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
 
   deps.ipcMain.handle(IPC.NEW_SESSION, async (_event, raw: unknown) => {
     const { cwd, mode, baseBranch } = newSessionSchema.parse(raw)
+    if (DEBUG_NEW_SESSION) console.log('[openpi:new-session] request', { cwd, mode, baseBranch })
     const submittedWorkspace =
       cwd ?? deps.getSessionState()?.cwd ?? deps.getSessionIndex()?.getLastWorkspace()
+    if (DEBUG_NEW_SESSION)
+      console.log('[openpi:new-session] resolved workspace candidate', submittedWorkspace)
     const workspacePath = submittedWorkspace
       ? authorizedWorkspacePath(deps, submittedWorkspace)
       : null
-    if (!workspacePath) return
+    if (DEBUG_NEW_SESSION) console.log('[openpi:new-session] authorized workspace', workspacePath)
+    if (!workspacePath) {
+      if (DEBUG_NEW_SESSION) console.warn('[openpi:new-session] no workspace — abort')
+      return
+    }
 
     if (mode === 'worktree') {
       const threadId = crypto.randomUUID()
