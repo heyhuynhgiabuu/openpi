@@ -21,7 +21,19 @@ export function createEventBus(base: string): { on: (ch: string, cb: Cb) => () =
         try {
           const msg = JSON.parse(ev.data as string) as { event: string; data: unknown }
           const set = listeners.get(msg.event)
-          if (set) for (const cb of [...set]) cb(msg.data)
+          // Isolate listeners: one throwing callback must not starve the rest
+          if (set)
+            for (const cb of [...set]) {
+              try {
+                cb(msg.data)
+              } catch (e) {
+                console.error(
+                  '[webBridgeBus] listener threw',
+                  msg.event,
+                  e instanceof Error ? (e.stack ?? e.message) : String(e).slice(0, 500)
+                )
+              }
+            }
         } catch {
           // ignore
         }

@@ -493,6 +493,33 @@ export class WebHost {
         getPiSidecarHost()?.send({ type: 'abort' } as never)
         return { ok: true }
       }
+      // Agent review: delegate to the real service (same as Electron IPC).
+      // Without this, list() resolves the {ok:true} stub and poisons the
+      // renderer's changes signal (undefined.length crashes session open).
+      if (
+        channel === IPC.AGENT_REVIEW_LIST ||
+        channel === IPC.AGENT_REVIEW_KEEP ||
+        channel === IPC.AGENT_REVIEW_REVERT ||
+        channel === IPC.AGENT_REVIEW_REVERT_ALL ||
+        channel === IPC.AGENT_REVIEW_CLEAR
+      ) {
+        const review = await import('./agentReview')
+        const cwd = activeWorkspacePath() ?? getSessionState()?.cwd ?? null
+        const p = (payload ?? {}) as { id?: unknown; cwd?: unknown }
+        if (channel === IPC.AGENT_REVIEW_LIST) return review.getAgentReviewSummary(cwd)
+        if (channel === IPC.AGENT_REVIEW_REVERT_ALL)
+          return review.revertAgentReviewChanges(cwd)
+        if (channel === IPC.AGENT_REVIEW_CLEAR) {
+          const clearCwd = typeof p.cwd === 'string' ? p.cwd : cwd
+          return review.clearAgentReviewChanges(clearCwd)
+        }
+        if (typeof p.id !== 'string' || !p.id) throw new Error('missing id')
+        if (channel === IPC.AGENT_REVIEW_KEEP) {
+          review.keepAgentReviewChange(p.id)
+          return review.getAgentReviewSummary(cwd)
+        }
+        return review.revertAgentReviewChange(p.id)
+      }
     }
     // default: acknowledged so UI doesn't block; real Electron IPC remains primary
     return { ok: true, channel }

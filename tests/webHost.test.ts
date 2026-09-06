@@ -105,6 +105,19 @@ describe('webHost', () => {
     expect(j.error).toMatch(/missing path|sessionHost unavailable/)
   })
 
+  it('returns real agent-review shape (not stub) for review list', async () => {
+    // Regression t2: the {ok:true} stub poisoned the renderer's changes
+    // signal (undefined.length crashed remote session open).
+    const res = await fetch(`${base}/api/ipc/openpi:agent-review-list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    expect(res.status).toBe(200)
+    const j = (await res.json()) as { changes: unknown }
+    expect(Array.isArray(j.changes)).toBe(true)
+  })
+
   it('returns 200 for known ipc channel', async () => {
     const res = await fetch(`${base}/api/ipc/openpi:get-app-info`, {
       method: 'POST',
