@@ -118,6 +118,19 @@ describe('webHost', () => {
     expect(Array.isArray(j.changes)).toBe(true)
   })
 
+  it('returns real git status shape (not stub) for git panel', async () => {
+    // Regression t3: stub {ok:true} is truthy -> panel setStatus(stub), spins forever.
+    const res = await fetch(`${base}/api/ipc/openpi:git-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd: process.cwd() }),
+    })
+    expect(res.status).toBe(200)
+    const j = (await res.json()) as { files: unknown } | null
+    expect(j).toBeTruthy()
+    expect(Array.isArray(j?.files)).toBe(true)
+  })
+
   it('returns 200 for known ipc channel', async () => {
     const res = await fetch(`${base}/api/ipc/openpi:get-app-info`, {
       method: 'POST',

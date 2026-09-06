@@ -520,6 +520,48 @@ export class WebHost {
         }
         return review.revertAgentReviewChange(p.id)
       }
+      // Git read paths: delegate to gitDiffStatus (same data as Electron IPC).
+      // Without this the panel gets the {ok:true} stub and spins forever.
+      if (channel === IPC.GIT_STATUS) {
+        const git = await import('../git/gitDiffStatus')
+        const arg =
+          typeof payload === 'string'
+            ? payload
+            : ((payload as { cwd?: unknown } | null)?.cwd ?? null)
+        const gitCwd =
+          (typeof arg === 'string' && arg) ||
+          activeWorkspacePath() ||
+          getSessionState()?.cwd ||
+          null
+        if (!gitCwd) return null
+        try {
+          return await git.getGitStatus(gitCwd)
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          this.logLine('error', `git-status failed for ${gitCwd}: ${msg}`)
+          return null
+        }
+      }
+      if (channel === IPC.GIT_DIFF) {
+        const git = await import('../git/gitDiffStatus')
+        const p = (payload ?? {}) as {
+          path?: unknown
+          cwd?: unknown
+          scope?: 'unstaged' | 'staged' | 'branch' | 'auto'
+          baseBranch?: unknown
+        }
+        if (typeof p.path !== 'string' || !p.path) throw new Error('missing path')
+        const gitCwd =
+          (typeof p.cwd === 'string' && p.cwd) ||
+          activeWorkspacePath() ||
+          getSessionState()?.cwd ||
+          null
+        if (!gitCwd) return null
+        return await git.getGitFileDiff(gitCwd, p.path, {
+          scope: p.scope,
+          baseBranch: typeof p.baseBranch === 'string' ? p.baseBranch : undefined,
+        })
+      }
     }
     // default: acknowledged so UI doesn't block; real Electron IPC remains primary
     return { ok: true, channel }
