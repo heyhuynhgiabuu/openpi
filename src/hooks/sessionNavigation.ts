@@ -24,7 +24,6 @@ interface SessionNavigationDeps {
 }
 
 // Toggle for new-session debug logs — set to false to silence (easy revert for upstream)
-const DEBUG_NEW_SESSION = false
 
 export function createSessionNavigation(deps: SessionNavigationDeps) {
   const openWorkspace = async () => {
@@ -85,23 +84,15 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
   const createNewSession = async (mode?: 'local' | 'worktree', baseBranch?: string) => {
     deps.setError(null)
     const cwd = deps.sessionIndex.selectedWorkspaceForQuery() ?? deps.getReady()?.cwd
-    if (DEBUG_NEW_SESSION)
-      console.log('[openpi] createNewSession click', {
-        cwd,
-        mode,
-        baseBranch,
-        selected: deps.sessionIndex.selectedWorkspaceForQuery(),
-        readyCwd: deps.getReady()?.cwd,
-      })
+    console.log('[openpi] createNewSession click', { cwd, mode, baseBranch })
     if (!cwd) {
-      if (DEBUG_NEW_SESSION)
-        console.warn('[openpi] createNewSession aborted — no cwd (no workspace selected)')
+      console.warn('[openpi] createNewSession aborted — no cwd (no workspace selected)')
       deps.setError('No workspace selected')
       return
     }
     try {
       await deps.api.newSession(cwd, mode, baseBranch)
-      if (DEBUG_NEW_SESSION) console.log('[openpi] createNewSession success', cwd)
+      console.log('[openpi] createNewSession success', cwd)
     } catch (err) {
       console.error('[openpi] createNewSession failed', err)
       deps.setError(err instanceof Error ? err.message : String(err))

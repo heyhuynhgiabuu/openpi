@@ -10,7 +10,9 @@ async function invoke(base: string, channel: string, payload?: unknown): Promise
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `ipc ${channel} failed ${res.status}`)
+    const msg = text || `ipc ${channel} failed ${res.status}`
+    console.error(`[webBridge] ${channel} -> ${res.status}: ${msg.slice(0, 300)}`)
+    throw new Error(msg)
   }
   const t = await res.text()
   return t ? JSON.parse(t) : null

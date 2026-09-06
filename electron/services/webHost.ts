@@ -41,6 +41,19 @@ export class WebHost {
     return this.server !== null && this.boundPort !== null
   }
 
+  /** Always-on line: host terminal + remote Output pane (via WS) so failures are visible. */
+  logLine(level: 'info' | 'warn' | 'error', text: string): void {
+    const line = `[webHost] ${text}`
+    if (level === 'error') console.error(line)
+    else if (level === 'warn') console.warn(line)
+    else console.log(line)
+    try {
+      this.broadcast(IPC.OUTPUT_APPEND, { level, text: line, ts: Date.now() })
+    } catch {
+      // ignore — WS may be down
+    }
+  }
+
   broadcast(event: string, data: unknown): void {
     if (this.wsSet.size === 0) return
     const payload = JSON.stringify({ event, data })
@@ -100,10 +113,10 @@ export class WebHost {
       if (authEnabled) {
         const h = req.headers.authorization ?? ''
         if (h !== expectedAuth) {
-          if (DEBUG_TUNNEL_NEW_SESSION)
-            console.warn(
-              `[webHost] 401 unauthorized ${req.method} ${pathname} origin=${req.headers.origin ?? ''} hasAuth=${Boolean(h)}`
-            )
+          this.logLine(
+            'warn',
+            `401 unauthorized ${req.method} ${pathname} origin=${req.headers.origin ?? ''} hasAuth=${Boolean(h)}`
+          )
           res.writeHead(401, {
             'WWW-Authenticate': 'Basic realm="openpi"',
             'Cache-Control': 'no-store',
@@ -166,7 +179,7 @@ export class WebHost {
           res.end(JSON.stringify(result))
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          console.error(`[webHost] IPC ${channel} failed`, msg)
+          this.logLine('error', `IPC ${channel} failed: ${msg}`)
           res.writeHead(500, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: msg }))
         }
@@ -371,7 +384,7 @@ export class WebHost {
           null
         if (DEBUG_TUNNEL_NEW_SESSION) console.log('[webHost:new-session] resolved cwd', cwd)
         if (!cwd) {
-          console.warn('[webHost:new-session] no workspace — abort')
+          this.logLine('warn', 'new-session abort: no workspace (cwd null, nothing active)')
           throw new Error('no workspace')
         }
         // Expand ~ and canonicalize like desktop authorizedWorkspacePath
@@ -393,10 +406,11 @@ export class WebHost {
         } catch {}
         try {
           await startSession(resolvedCwd, p?.mode ? { worktreePath: undefined } : undefined)
-          if (DEBUG_TUNNEL_NEW_SESSION) console.log('[webHost:new-session] success', resolvedCwd)
+          this.logLine('info', `new-session ok: ${resolvedCwd}`)
           return { ok: true }
         } catch (err) {
-          console.error('[webHost:new-session] failed', err)
+          const msg = err instanceof Error ? err.message : String(err)
+          this.logLine('error', `new-session failed for ${resolvedCwd}: ${msg}`)
           throw err
         }
       }
@@ -405,9 +419,19 @@ export class WebHost {
         if (!p?.path) throw new Error('missing path')
         const state = getSessionState()
         const cwd = si?.getSessionWorkspace(p.path) ?? state?.cwd
-        if (!cwd) throw new Error('no cwd for session')
-        await startSession(cwd, { sessionFile: p.path })
-        return { ok: true }
+        if (!cwd) {
+          this.logLine('warn', `open-session abort: no cwd for ${p.path}`)
+          throw new Error('no cwd for session')
+        }
+        try {
+          await startSession(cwd, { sessionFile: p.path })
+          this.logLine('info', `open-session ok: ${p.path}`)
+          return { ok: true }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          this.logLine('error', `open-session failed for ${p.path}: ${msg}`)
+          throw err
+        }
       }
       if (channel === IPC.GET_SESSION_STATS) {
         const { getPiSidecarHost, createRequestId } = await import('../session/sessionHost')
@@ -458,8 +482,9 @@ export class WebHost {
         return { ok: true }
       }
     } catch (err) {
-      // fallback to stub if sessionHost not ready
-      void err
+      // fallback to stub if sessionHost not ready — LOUD so silent UI emptiness is diagnosable
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logLine('error', `IPC ${channel} dispatch threw, returning stub: ${msg}`)
     }
     // default: acknowledged so UI doesn't block; real Electron IPC remains primary
     return { ok: true, channel }

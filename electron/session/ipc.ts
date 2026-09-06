@@ -4,8 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { type BrowserWindow, dialog, type IpcMain } from 'electron'
 
-// Toggle for new-session debug logs — set to false to silence (easy revert for upstream)
-const DEBUG_NEW_SESSION = false
+// Concise new-session lifecycle logs are always on: user-initiated, low volume.
 
 import type {
   BashExecutionResult,
@@ -409,17 +408,14 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
 
   deps.ipcMain.handle(IPC.NEW_SESSION, async (_event, raw: unknown) => {
     const { cwd, mode, baseBranch } = newSessionSchema.parse(raw)
-    if (DEBUG_NEW_SESSION) console.log('[openpi:new-session] request', { cwd, mode, baseBranch })
+    console.log('[openpi:new-session] request', { cwd, mode, baseBranch })
     const submittedWorkspace =
       cwd ?? deps.getSessionState()?.cwd ?? deps.getSessionIndex()?.getLastWorkspace()
-    if (DEBUG_NEW_SESSION)
-      console.log('[openpi:new-session] resolved workspace candidate', submittedWorkspace)
     const workspacePath = submittedWorkspace
       ? authorizedWorkspacePath(deps, submittedWorkspace)
       : null
-    if (DEBUG_NEW_SESSION) console.log('[openpi:new-session] authorized workspace', workspacePath)
     if (!workspacePath) {
-      if (DEBUG_NEW_SESSION) console.warn('[openpi:new-session] no workspace — abort')
+      console.warn('[openpi:new-session] abort: no workspace', { submittedWorkspace })
       return
     }
 
