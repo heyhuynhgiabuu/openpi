@@ -40,6 +40,8 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       await deps.api.openSession({ path: session.path })
     } catch (error) {
       deps.setParentStack(previousStack)
+      // callers fire-and-forget (void) — without setError the failure is silent
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
@@ -63,6 +65,7 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       return true
     } catch (error) {
       deps.setParentStack(stack)
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
@@ -77,6 +80,7 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       await deps.api.openSession({ path: target.path })
     } catch (error) {
       deps.setParentStack(stack)
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
