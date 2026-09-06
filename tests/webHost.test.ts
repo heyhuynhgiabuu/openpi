@@ -92,6 +92,19 @@ describe('webHost', () => {
     expect(res.status).toBe(404)
   })
 
+  it('returns 500 (not stub 200) when open-session handler fails', async () => {
+    // Regression: dispatchIpc used to swallow handler throws into {ok:true} stub,
+    // leaving remote UI waiting for SESSION_READY that never comes.
+    const res = await fetch(`${base}/api/ipc/openpi:open-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    expect(res.status).toBe(500)
+    const j = (await res.json()) as { error: string }
+    expect(j.error).toMatch(/missing path|sessionHost unavailable/)
+  })
+
   it('returns 200 for known ipc channel', async () => {
     const res = await fetch(`${base}/api/ipc/openpi:get-app-info`, {
       method: 'POST',

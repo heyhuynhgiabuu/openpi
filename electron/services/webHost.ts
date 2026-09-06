@@ -304,9 +304,21 @@ export class WebHost {
     if (channel === IPC.GET_APP_INFO) return getAppInfo()
     if (channel === IPC.GET_PREF || channel === IPC.SET_PREF) return null
     // Remote browser needs real workspace/session data. Import sessionHost lazily to avoid cycle.
+    // NOTE: only the import itself falls back to stub. Handler errors below must
+    // propagate to the HTTP 500 path — swallowing them as {ok:true} leaves the
+    // remote UI waiting for SESSION_READY that never comes (silent open failure).
+    let sessionHost: typeof import('../session/sessionHost')
     try {
+      sessionHost = await import('../session/sessionHost')
+    } catch (err) {
+      // fallback to stub if sessionHost not ready — LOUD so silent UI emptiness is diagnosable
+      const msg = err instanceof Error ? err.message : String(err)
+      this.logLine('error', `IPC ${channel} sessionHost unavailable, returning stub: ${msg}`)
+      return { ok: true, channel }
+    }
+    {
       const { getSessionIndexStore, getSessionState, startSession, activeWorkspacePath } =
-        await import('../session/sessionHost')
+        sessionHost
       const si = getSessionIndexStore()
       if (channel === IPC.GET_WORKSPACES) {
         return si?.listWorkspaces() ?? []
@@ -481,10 +493,6 @@ export class WebHost {
         getPiSidecarHost()?.send({ type: 'abort' } as never)
         return { ok: true }
       }
-    } catch (err) {
-      // fallback to stub if sessionHost not ready — LOUD so silent UI emptiness is diagnosable
-      const msg = err instanceof Error ? err.message : String(err)
-      this.logLine('error', `IPC ${channel} dispatch threw, returning stub: ${msg}`)
     }
     // default: acknowledged so UI doesn't block; real Electron IPC remains primary
     return { ok: true, channel }
