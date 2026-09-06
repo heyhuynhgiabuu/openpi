@@ -71,3 +71,7 @@ desktop.ini
 .pi/task-registry.json
 .pi/task-sessions.json
 .pi/artifacts/sessions/
+
+# ── Local planners not tracked ─────────────────────────────────────────
+.wayfinder/
+.taskman/
