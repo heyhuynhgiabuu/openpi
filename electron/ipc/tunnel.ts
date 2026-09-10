@@ -11,7 +11,7 @@ import type { IpcMain } from 'electron'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { IPC } from '../../src/lib/ipc'
-import type { RelayServerHost } from '../services/relayServerHost'
+import type { DashboardServerHost } from '../services/dashboardServerHost'
 import { clearZrokConfig, writeZrokConfig } from '../services/zrokConfig'
 import type { ZrokHost } from '../services/zrokHost'
 
@@ -19,7 +19,7 @@ import type { ZrokHost } from '../services/zrokHost'
 export function registerTunnelIpc(deps: {
   ipcMain: IpcMain
   getZrokHost: () => Promise<ZrokHost>
-  getRelayServerHost: () => Promise<RelayServerHost>
+  getDashboardServerHost: () => Promise<DashboardServerHost>
 }): void {
   deps.ipcMain.handle(IPC.TUNNEL_GET_STATUS, async () => {
     const host = await deps.getZrokHost()
@@ -44,7 +44,7 @@ export function registerTunnelIpc(deps: {
       clearZrokConfig()
     }
     // With an enrolled account and an idle tunnel, "enable" acts as Connect
-    // (token-less) and starts the share against the local relay server.
+    // (token-less) and starts the share against the local dashboard server.
     if (host.isEnrolled() && host.getStatus().state === 'off') {
       return startTunnel(deps, reservedName)
     }
@@ -58,29 +58,29 @@ export function registerTunnelIpc(deps: {
     zrok.stopTunnel()
     zrok.removePid()
     zrok.cleanupStale()
-    const relay = await deps.getRelayServerHost()
-    relay.stop()
+    const dashboard = await deps.getDashboardServerHost()
+    dashboard.stop()
     clearZrokConfig()
   })
 }
 
 /**
- * Starts the local relay server and exposes it through a zrok share.
+ * Starts the local dashboard server and exposes it through a zrok share.
  * Ephemeral basic-auth credentials are minted per start (never persisted).
  */
 export async function startTunnel(
   deps: {
     getZrokHost: () => Promise<ZrokHost>
-    getRelayServerHost: () => Promise<RelayServerHost>
+    getDashboardServerHost: () => Promise<DashboardServerHost>
   },
   reservedName?: string
 ): Promise<{ ok: boolean; error?: string }> {
   const host = await deps.getZrokHost()
-  const relay = await deps.getRelayServerHost()
-  const user = 'relay'
+  const dashboard = await deps.getDashboardServerHost()
+  const user = 'dashboard'
   const pass = randomBytes(18).toString('base64url')
-  const port = await relay.start({ authUser: user, authPass: pass })
-  if (port === null) return { ok: false, error: 'relay failed to start' }
+  const port = await dashboard.start({ authUser: user, authPass: pass })
+  if (port === null) return { ok: false, error: 'dashboard failed to start' }
   // A persisted reserved name yields a stable URL; otherwise fall back to an
   // ephemeral share URL.
   return host.createTunnel(port, reservedName || null, user, pass)
@@ -106,9 +106,10 @@ export type TunnelErrorKind =
   | 'unknown'
 
 /**
- * DNS-safe zrok `reserved` name: `^[a-z0-9][a-z0-9-]{0,62}$`, max 63 chars.
+ * zrok `reserve -n` unique-name: `^[a-z0-9]{4,32}$` (lowercase alphanumeric, 4-32, no hyphens).
+ * DNS-safe broader but zrok rejects hyphens.
  */
-const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9]{4,32}$/
 export const isDnsSafeReservedName = (name: string): boolean => DNS_SAFE_RESERVED_NAME_RE.test(name)
 
 /**
@@ -120,7 +121,8 @@ export function classifyZrokError(stderr: string): TunnelErrorKind {
   if (/command not found|\bno such file or directory\b/.test(e)) return 'not-installed'
   if (/not enabled|please run\b.*\bzrok enable/.test(e)) return 'not-enabled'
   if (/unauthorized|authentication failed|invalid token/.test(e)) return 'auth-failed'
-  if (/reserved|already (in use|reserved)|name conflict/.test(e)) return 'name-conflict'
+  if (/reserved|already (in use|reserved)|name conflict|invalid unique name/.test(e))
+    return 'name-conflict'
   if (/connection refused|network is unreachable|no route to host|i\/o timeout/.test(e))
     return 'offline'
   return 'unknown'
@@ -133,6 +135,9 @@ export const tunnelStatusSchema = z
     state: z.enum(['off', 'starting', 'running', 'error']),
     reservedName: z.string().optional(),
     url: z.string().optional(),
+    /** Basic-auth credentials minted per tunnel start (dashboard user / random pass). */
+    authUser: z.string().optional(),
+    authPass: z.string().optional(),
     error: z.string().nullable().optional(),
     startedAt: z.number().optional(),
     /** zrok binary resolvable on this host. */

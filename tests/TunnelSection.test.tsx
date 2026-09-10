@@ -52,7 +52,7 @@ describe('TunnelSection', () => {
 
   it('renders the live URL and QR once connected', async () => {
     const api = mockOpenpi()
-    const url = 'https://pi-dash-abc123.shares.zrok.io'
+    const url = 'https://pidashabc123.shares.zrok.io'
     api.getStatus.mockResolvedValue(
       status({ installed: true, enrolled: true, state: 'running', url })
     )
@@ -61,5 +61,23 @@ describe('TunnelSection', () => {
     expect(await findByText(/tunnel is live/i)).toBeTruthy()
     const img = (await findByAltText(/tunnel qr code/i)) as HTMLImageElement
     expect(img.src).toBe('data:image/png;base64,AAAA')
+  })
+
+  it('renders basic-auth credentials with a Copy creds action once connected', async () => {
+    const api = mockOpenpi()
+    api.getStatus.mockResolvedValue(
+      status({
+        installed: true,
+        enrolled: true,
+        state: 'running',
+        url: 'https://pidashabc123.shares.zrok.io',
+        authUser: 'dashboard',
+        authPass: 'aB3xY9zQ0pW1kL2mN',
+      })
+    )
+    api.generateQr.mockResolvedValue('data:image/png;base64,AAAA')
+    const { findByText, findByRole } = render(() => <TunnelSection onError={() => {}} />)
+    expect(await findByText(/dashboard:aB3xY9zQ0pW1kL2mN/i)).toBeTruthy()
+    expect(await findByRole('button', { name: /copy creds/i })).toBeTruthy()
   })
 })

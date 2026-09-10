@@ -3,10 +3,10 @@ import { createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { TunnelStatus } from '../../../electron/ipc/tunnel'
 
 /**
- * DNS-safe zrok reserved name: `^[a-z0-9][a-z0-9-]{0,62}$`, max 63 chars.
- * Mirrors the enforcement in Electron main (electron/ipc/tunnel.ts).
+ * zrok `reserve -n` unique-name: `^[a-z0-9]{4,32}$` (4-32 lowercase alphanumeric, no hyphens).
+ * Mirrors electron/ipc/tunnel.ts.
  */
-const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+const DNS_SAFE_RESERVED_NAME_RE = /^[a-z0-9]{4,32}$/
 
 type UiState =
   | 'not-installed'
@@ -28,6 +28,7 @@ export function TunnelSection(props: TunnelSectionProps) {
   const [touched, setTouched] = createSignal(false)
   const [qrData, setQrData] = createSignal<string | null>(null)
   const [copied, setCopied] = createSignal(false)
+  const [copiedCreds, setCopiedCreds] = createSignal(false)
   let timer: ReturnType<typeof setInterval> | undefined
 
   const enrolled = () => Boolean(status().enrolled)
@@ -44,6 +45,9 @@ export function TunnelSection(props: TunnelSectionProps) {
   }
 
   const url = () => status().url ?? null
+  const authUser = () => status().authUser ?? null
+  const authPass = () => status().authPass ?? null
+  const creds = () => (authUser() && authPass() ? `${authUser()}:${authPass()}` : null)
 
   const refresh = async () => {
     try {
@@ -78,12 +82,24 @@ export function TunnelSection(props: TunnelSectionProps) {
     }
   }
 
+  const copyCreds = async () => {
+    const target = creds()
+    if (!target) return
+    try {
+      await navigator.clipboard.writeText(target)
+      setCopiedCreds(true)
+      setTimeout(() => setCopiedCreds(false), 1600)
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
   const connect = async () => {
     setBusy(true)
     try {
       const name = reservedName().trim()
       if (name && !DNS_SAFE_RESERVED_NAME_RE.test(name)) {
-        props.onError('Reserved name must be DNS-safe: lowercase letters, digits, hyphens only.')
+        props.onError('Reserved name must be 4-32 lowercase letters/digits, no hyphens.')
         return
       }
       const result = await window.openpi.enable(token().trim(), false, name || undefined)
@@ -179,12 +195,12 @@ export function TunnelSection(props: TunnelSectionProps) {
               onInput={(e) => setToken(e.currentTarget.value)}
             />
             <div class="osp-row-desc">
-              Optional reserved name (DNS-safe, lowercase + digits + hyphens):
+              Optional reserved name (4-32 lowercase letters/digits, no hyphens):
             </div>
             <input
               class="osp-input"
               type="text"
-              placeholder="pi-dash-abc123"
+              placeholder="pidashabc123"
               value={reservedName()}
               onInput={(e) => {
                 setReservedName(e.currentTarget.value)
@@ -193,7 +209,7 @@ export function TunnelSection(props: TunnelSectionProps) {
             />
             <Show when={nameInvalid()}>
               <div class="osp-update-status" style="color:#f87171">
-                Invalid name: use lowercase letters, digits and hyphens only (max 63 chars).
+                Invalid name: 4-32 lowercase letters/digits, no hyphens.
               </div>
             </Show>
           </div>
@@ -282,11 +298,29 @@ export function TunnelSection(props: TunnelSectionProps) {
                   style="margin-top:10px;width:160px;height:160px;image-rendering:pixelated;border-radius:var(--r-sm);border:1px solid var(--hairline-strong)"
                 />
               </Show>
+              <Show when={creds()}>
+                <div class="osp-row-desc" style="margin-top:10px">
+                  Basic auth: <code>{creds()}</code>
+                  <Show when={copiedCreds()}>
+                    <span class="osp-saved-inline">
+                      <Check size={10} /> copied
+                    </span>
+                  </Show>
+                </div>
+              </Show>
             </div>
             <div class="osp-row-right osp-row-right-actions">
               <div class="osp-action-group">
                 <button class="osp-action-btn" type="button" onClick={copyUrl} disabled={!url()}>
                   <Copy size={13} /> Copy URL
+                </button>
+                <button
+                  class="osp-action-btn"
+                  type="button"
+                  onClick={copyCreds}
+                  disabled={!creds()}
+                >
+                  <Copy size={13} /> Copy creds
                 </button>
                 <button
                   class="osp-action-btn"

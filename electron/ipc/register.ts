@@ -11,7 +11,7 @@ import type * as FffHost from '../services/fffHost'
 import { emitSessionError, playSoundEffectId } from '../services/notificationHost'
 import { filterBlockedPaths } from '../services/protectedPaths'
 import type { PtyHost } from '../services/ptyHost'
-import type { RelayServerHost } from '../services/relayServerHost'
+import type { DashboardServerHost } from '../services/dashboardServerHost'
 import { getSettings, saveSettings as writeSettings } from '../services/settingsHost'
 import { getAgentDir, getAppInfo } from '../services/shellEnv'
 import {
@@ -79,7 +79,7 @@ interface RegisterMainIpcHandlersDeps {
   hasPtyHost: () => boolean
   getPtyHost: () => Promise<PtyHostInstance>
   getZrokHost: () => Promise<ZrokHost>
-  getRelayServerHost: () => Promise<RelayServerHost>
+  getDashboardServerHost: () => Promise<DashboardServerHost>
   confirmHighRiskMutation: (options: {
     title: string
     message: string
@@ -143,7 +143,7 @@ export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): v
   registerTunnelIpc({
     ipcMain: deps.ipcMain,
     getZrokHost: deps.getZrokHost,
-    getRelayServerHost: deps.getRelayServerHost,
+    getDashboardServerHost: deps.getDashboardServerHost,
   })
   registerWorkbenchIpc({
     ipcMain: deps.ipcMain,

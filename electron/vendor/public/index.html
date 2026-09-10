@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0F172A">
+<meta name="description" content="Relay — ultra-light dashboard for the pi agent. Live views + session history.">
+<title>Relay · pi dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="topbar">
+  <button id="burger" aria-label="Open projects" class="icon-btn" title="Menu">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <div class="brandmark">
+    <span class="brand-icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="var(--primary)" stroke-width="1.7"/><path d="M12 2.5a9.5 9.5 0 0 1 6.7 2.8M2.5 12A9.5 9.5 0 0 1 5.3 5.3M21.5 12A9.5 9.5 0 0 1 18.7 18.7M12 21.5A9.5 9.5 0 0 1 5.3 18.7" stroke="var(--primary)" stroke-width="1.25" stroke-linecap="round" opacity=".9"/><circle cx="12" cy="12" r="9.5" stroke="var(--border)" stroke-width="1"/></svg>
+    </span>
+    <span id="brand">Relay</span>
+    <span class="brandsub">pi&nbsp;dashboard</span>
+  </div>
+
+  <button id="cmdkTrigger" class="search-btn" aria-label="Search and commands" title="Search (⌘K)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <span class="search-placeholder">Search…</span>
+    <kbd class="kbd">⌘K</kbd>
+  </button>
+
+  <span class="spacer"></span>
+
+  <span id="connPill" class="conn-pill" title="Live connection status">
+    <span id="conn" class="conn" aria-hidden="true"></span>
+    <span id="connlabel" class="connlabel">offline</span>
+  </span>
+</header>
+
+<div class="scroller">
+  <aside id="sidebar" aria-label="Projects and sessions">
+    <div class="side-search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="side-search-icon"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="sideSearch" type="search" placeholder="Filter projects…" autocomplete="off" spellcheck="false" aria-label="Filter projects">
+    </div>
+
+    <div class="side-block">
+      <div class="side-head">
+        <span class="side-title">Live</span>
+        <span id="liveCount" class="side-count" aria-hidden="true"></span>
+        <button id="newView" hidden class="btn btn-ghost btn-xs" aria-label="New session" title="New session">+ new</button>
+      </div>
+      <div id="newform" hidden>
+        <label class="nflabel" for="newCwd">cwd</label>
+        <input id="newCwd" type="text" placeholder="project path" autocomplete="off" spellcheck="false">
+        <label class="nflabel" for="newPrompt">prompt</label>
+        <textarea id="newPrompt" placeholder="startup prompt…" spellcheck="false"></textarea>
+        <label class="nflabel" for="newProvider">provider / model</label>
+        <div class="nfrow">
+          <select id="newProvider" aria-label="Provider"></select>
+          <select id="newModel" aria-label="Model"></select>
+        </div>
+        <button id="newSubmit" class="btn btn-primary btn-sm">Start session</button>
+      </div>
+      <div id="liveGroups" class="groups"></div>
+      <div id="liveSkeleton" class="skeleton-groups" hidden aria-hidden="true">
+        <div class="sk-row"><span class="sk-dot"></span><span class="sk-line w-60"></span><span class="sk-badge"></span></div>
+        <div class="sk-row"><span class="sk-dot"></span><span class="sk-line w-40"></span><span class="sk-badge"></span></div>
+      </div>
+    </div>
+
+    <div class="side-block">
+      <div class="side-head"><span class="side-title">History</span><span id="histCount" class="side-count"></span></div>
+      <div id="histGroups" class="groups"></div>
+    </div>
+
+    <div class="side-foot">
+      <span class="side-foot-hint"><kbd class="kbd kbd-sm">/</kbd> search · <kbd class="kbd kbd-sm">⌘K</kbd> palette</span>
+    </div>
+  </aside>
+
+  <div id="shell">
+    <nav id="tabsbar" role="tablist" aria-label="Sessions"></nav>
+    <main id="chatwrap">
+      <div id="empty" class="empty">
+        <div class="empty-card">
+          <div class="empty-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+          </div>
+          <h1 class="empty-title">Select a project</h1>
+          <p class="empty-main">Your pi's live sessions appear here, in real time.</p>
+          <p class="empty-hint">Use <kbd class="kbd">⌘K</kbd> to search or <kbd class="kbd">/</kbd> to filter projects.</p>
+        </div>
+      </div>
+      <div id="chat"></div>
+      <button id="jumpBottom" class="jump-bottom" hidden aria-label="Jump to latest messages">↓ latest</button>
+    </main>
+    <div id="waitBanner" hidden class="wait-banner">
+      <span class="wait-dot" aria-hidden="true"></span>
+      <span id="waitText" class="wait-text"></span>
+    </div>
+    <div id="ctlHint" hidden class="ctl-hint">Control disabled — restart server with <code>DASHBOARD_ENABLE_CONTROL=1</code> to write to sessions.</div>
+    <div id="composer" hidden>
+      <div id="queueList" class="queue-list" hidden></div>
+      <div class="composer-inner">
+        <textarea id="composerInput" rows="1" placeholder="Message pi… (↵ send · ⇧↵ newline)" autocomplete="off" spellcheck="false" aria-label="Message for pi"></textarea>
+        <button id="composerStop" class="btn btn-stop" hidden title="Interrupt session" aria-label="Interrupt session"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+        <button id="composerSend" class="btn btn-primary">Send</button>
+        <button id="composerQueue" class="btn btn-ghost" hidden title="Queue — sent when session is idle">Queue</button>
+      </div>
+      <span class="composer-hint"><kbd class="kbd">↵</kbd> send · <kbd class="kbd">⇧↵</kbd> newline · busy = steer</span>
+    </div>
+  </div>
+</div>
+
+<!-- Command palette -->
+<dialog id="cmdk" class="cmdk" aria-label="Commands">
+  <div class="cmdk-inner">
+    <div class="cmdk-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="cmdkInput" type="text" placeholder="Search project, session or command…" autocomplete="off" spellcheck="false" aria-label="Search" role="combobox" aria-autocomplete="list" aria-controls="cmdkList" aria-expanded="true">
+      <kbd class="kbd">ESC</kbd>
+    </div>
+    <div id="cmdkList" class="cmdk-list" role="listbox" aria-label="Results"></div>
+    <div class="cmdk-foot">
+      <span><kbd class="kbd kbd-sm">↑↓</kbd> navigate</span>
+      <span><kbd class="kbd kbd-sm">↵</kbd> open</span>
+      <span><kbd class="kbd kbd-sm">ESC</kbd> close</span>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="scrim"></div>
+<script src="/app.js"></script>
+</body>
+</html>

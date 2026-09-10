@@ -10,10 +10,9 @@ import { describe, expect, it } from 'vitest'
 import { classifyZrokError, isDnsSafeReservedName } from '../../electron/ipc/tunnel'
 
 describe('isDnsSafeReservedName', () => {
-  it('accepts all-lowercase DNS-safe reserved names', () => {
-    expect(isDnsSafeReservedName('pi-dash-abc123')).toBe(true)
-    expect(isDnsSafeReservedName('a')).toBe(true)
-    expect(isDnsSafeReservedName('p')).toBe(true)
+  it('accepts 4-32 lowercase alphanumeric reserved names', () => {
+    expect(isDnsSafeReservedName('pidashabc123')).toBe(true)
+    expect(isDnsSafeReservedName('abcd')).toBe(true)
   })
 
   it('rejects a name starting or ending with a hyphen', () => {
@@ -36,9 +35,9 @@ describe('isDnsSafeReservedName', () => {
     expect(isDnsSafeReservedName('')).toBe(false)
   })
 
-  it('rejects names longer than 63 characters', () => {
-    expect(isDnsSafeReservedName('a'.repeat(63))).toBe(true)
-    expect(isDnsSafeReservedName('a'.repeat(64))).toBe(false)
+  it('rejects names longer than 32 characters', () => {
+    expect(isDnsSafeReservedName('a'.repeat(32))).toBe(true)
+    expect(isDnsSafeReservedName('a'.repeat(33))).toBe(false)
   })
 })
 

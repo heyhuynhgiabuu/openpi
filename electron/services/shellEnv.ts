@@ -46,7 +46,7 @@ export function resolveAppAssetPath(...segments: string[]): string {
   const candidates = app.isPackaged
     ? [path.join(process.resourcesPath, ...segments)]
     : [
-        path.resolve(currentDir, '../vendor', ...segments), // electron/vendor (relay-server.js)
+        path.resolve(currentDir, '../vendor', ...segments), // electron/vendor (dashboard-server.cjs)
         path.resolve(currentDir, '../..', ...segments),
         path.resolve(process.cwd(), ...segments),
       ]
