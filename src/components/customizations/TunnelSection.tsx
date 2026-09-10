@@ -142,9 +142,14 @@ export function TunnelSection(props: TunnelSectionProps) {
   onMount(() => {
     void refresh().then(() => loadQr())
     // Reflect the running/starting transition while the tunnel is active.
+    // Also pick up the QR once the URL appears (enable returns while starting).
     timer = setInterval(() => {
       const state = status().state
-      if (state === 'running' || state === 'starting') void refresh()
+      if (state === 'running' || state === 'starting') {
+        void refresh().then(() => {
+          if (uiState() === 'connected' && !qrData()) void loadQr()
+        })
+      }
     }, 2000)
   })
 
@@ -260,8 +265,7 @@ export function TunnelSection(props: TunnelSectionProps) {
             </div>
             <div class="osp-row-desc">
               Start a private zrok tunnel to reach this OpenPi workbench from any browser on another
-              device. No password — zrok URL is already private. Stessa UI di Electron, via browser
-              remoto.
+              device.
             </div>
           </div>
           <div class="osp-row-right osp-row-right-actions">
@@ -292,7 +296,6 @@ export function TunnelSection(props: TunnelSectionProps) {
                 </Show>
               </div>
               <div class="osp-row-desc">{resolved()}</div>
-              <div class="osp-row-desc">Stessa UI di Electron, via browser remoto.</div>
               <Show when={qrData()}>
                 <img
                   src={qrData()!}
