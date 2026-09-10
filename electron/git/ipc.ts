@@ -74,7 +74,7 @@ function requireCwd(deps: GitIpcDeps): string | null {
  * files) matches the requested filePath. Defends against a compromised renderer
  * shipping a patch that targets a different file than the user clicked on.
  */
-function assertHunkTargetsFile(hunkPatch: string, filePath: string): void {
+export function assertHunkTargetsFile(hunkPatch: string, filePath: string): void {
   const normalizedExpected = filePath.replace(/^\.\//, '')
   const pathSegments = normalizedExpected.split('/')
   if (

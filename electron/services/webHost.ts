@@ -562,6 +562,109 @@ export class WebHost {
           baseBranch: typeof p.baseBranch === 'string' ? p.baseBranch : undefined,
         })
       }
+      // Git mutations: delegate to gitHost (same authority as Electron IPC).
+      // Previously these fell through to the {ok:true} stub — silent no-op.
+      const resolveMutationCwd = (p: { cwd?: unknown } | null | undefined): string => {
+        const gitCwd =
+          (typeof p?.cwd === 'string' && p.cwd) ||
+          activeWorkspacePath() ||
+          getSessionState()?.cwd ||
+          null
+        if (!gitCwd) throw new Error('no workspace')
+        return gitCwd
+      }
+      if (channel === IPC.GIT_STAGE) {
+        const { gitStageSchema } = await import('../../src/lib/ipc')
+        const { filterBlockedPaths } = await import('./protectedPaths')
+        const { getGitHost } = await import('./mainHosts')
+        const { path: filePath } = gitStageSchema.parse(payload ?? {})
+        const { blocked } = filterBlockedPaths([filePath])
+        if (blocked.length > 0) {
+          throw new Error(
+            `Cannot stage protected path: ${blocked[0]?.violation.reason ?? 'blocked path'}`
+          )
+        }
+        const git = await getGitHost()
+        await git.stageFile(resolveMutationCwd(payload as { cwd?: unknown }), filePath)
+        return { ok: true }
+      }
+      if (channel === IPC.GIT_UNSTAGE) {
+        const { gitUnstageSchema } = await import('../../src/lib/ipc')
+        const { getGitHost } = await import('./mainHosts')
+        const { path: filePath } = gitUnstageSchema.parse(payload ?? {})
+        const git = await getGitHost()
+        await git.unstageFile(resolveMutationCwd(payload as { cwd?: unknown }), filePath)
+        return { ok: true }
+      }
+      if (channel === IPC.GIT_COMMIT) {
+        const { gitCommitSchema } = await import('../../src/lib/ipc')
+        const { filterBlockedPaths } = await import('./protectedPaths')
+        const { getGitHost } = await import('./mainHosts')
+        const parsed = gitCommitSchema.parse(payload ?? {})
+        const { allowed: safePaths, blocked: blockedPaths } = filterBlockedPaths(parsed.paths)
+        if (blockedPaths.length > 0) {
+          const labels = blockedPaths.map((b) => path.basename(b.path)).join(', ')
+          throw new Error(`Commit blocked: ${labels} matches a protected path policy.`)
+        }
+        const git = await getGitHost()
+        await git.commitFiles(
+          resolveMutationCwd(payload as { cwd?: unknown }),
+          safePaths,
+          parsed.message,
+          parsed.push,
+          { amend: parsed.amend, signoff: parsed.signoff }
+        )
+        return { ok: true }
+      }
+      if (channel === IPC.GIT_COMMIT_DIFF) {
+        const { gitCommitDiffRequestSchema } = await import('../../src/lib/ipc')
+        const { getGitHost } = await import('./mainHosts')
+        const parsed = gitCommitDiffRequestSchema.parse(payload ?? {})
+        const gitCwd =
+          (typeof parsed.cwd === 'string' && parsed.cwd) ||
+          activeWorkspacePath() ||
+          getSessionState()?.cwd ||
+          null
+        if (!gitCwd) return null
+        const git = await getGitHost()
+        try {
+          return await git.getGitCommitDiff(gitCwd, parsed.hash, parsed.path)
+        } catch {
+          return null
+        }
+      }
+      if (channel === IPC.GIT_STAGED_DIFF) {
+        const { gitStagedDiffRequestSchema } = await import('../../src/lib/ipc')
+        const { getGitHost } = await import('./mainHosts')
+        const parsed = gitStagedDiffRequestSchema.parse(payload ?? {})
+        const gitCwd =
+          (typeof parsed.cwd === 'string' && parsed.cwd) ||
+          activeWorkspacePath() ||
+          getSessionState()?.cwd ||
+          null
+        if (!gitCwd) return null
+        const git = await getGitHost()
+        return git.getGitStagedDiff(gitCwd)
+      }
+      if (channel === IPC.GIT_STAGE_HUNK || channel === IPC.GIT_UNSTAGE_HUNK) {
+        const { gitHunkActionSchema } = await import('../../src/lib/ipc')
+        const { filterBlockedPaths } = await import('./protectedPaths')
+        const { getGitHost } = await import('./mainHosts')
+        const { assertHunkTargetsFile } = await import('../git/ipc')
+        const parsed = gitHunkActionSchema.parse(payload ?? {})
+        assertHunkTargetsFile(parsed.hunkPatch, parsed.path)
+        const { blocked } = filterBlockedPaths([parsed.path])
+        if (blocked.length > 0) {
+          throw new Error(
+            `Cannot stage hunk in protected path: ${blocked[0]?.violation.reason ?? 'blocked'}`
+          )
+        }
+        const git = await getGitHost()
+        const gitCwd = resolveMutationCwd(parsed)
+        if (channel === IPC.GIT_STAGE_HUNK)
+          return git.stageHunk(gitCwd, parsed.path, parsed.hunkPatch)
+        return git.unstageHunk(gitCwd, parsed.path, parsed.hunkPatch)
+      }
     }
     // default: acknowledged so UI doesn't block; real Electron IPC remains primary
     return { ok: true, channel }

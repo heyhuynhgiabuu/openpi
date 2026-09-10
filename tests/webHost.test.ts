@@ -118,6 +118,42 @@ describe('webHost', () => {
     expect(Array.isArray(j.changes)).toBe(true)
   })
 
+  it('stages and unstages a file (not stub) in a temp repo', async () => {
+    // Regression: GIT_STAGE/GIT_UNSTAGE fell to {ok:true} stub — silent no-op.
+    const { execSync } = await import('node:child_process')
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-webhost-git-'))
+    try {
+      execSync('git init -q', { cwd: repo })
+      execSync('git config user.email t@t.t && git config user.name t', { cwd: repo })
+      fs.writeFileSync(path.join(repo, 'a.txt'), 'hello\n')
+      const post = (ch: string, body: unknown) =>
+        fetch(`${base}/api/ipc/${ch}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      const r1 = await post('openpi:git-stage', { path: 'a.txt', cwd: repo })
+      expect(r1.status).toBe(200)
+      const cached1 = execSync('git diff --cached --name-only', { cwd: repo }).toString().trim()
+      expect(cached1).toBe('a.txt')
+      const r2 = await post('openpi:git-unstage', { path: 'a.txt', cwd: repo })
+      expect(r2.status).toBe(200)
+      const cached2 = execSync('git diff --cached --name-only', { cwd: repo }).toString().trim()
+      expect(cached2).toBe('')
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  it('returns 500 (not stub) for invalid git-stage payload', async () => {
+    const res = await fetch(`${base}/api/ipc/openpi:git-stage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    expect(res.status).toBe(500)
+  })
+
   it('returns real git status shape (not stub) for git panel', async () => {
     // Regression t3: stub {ok:true} is truthy -> panel setStatus(stub), spins forever.
     const res = await fetch(`${base}/api/ipc/openpi:git-status`, {
