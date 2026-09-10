@@ -2,8 +2,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type * as GitHost from '../git/gitHost'
 import type * as CustomizationsHost from './customizations'
+import type { DashboardServerHost } from './dashboardServerHost'
 import type * as FffHost from './fffHost'
 import type { PtyHost } from './ptyHost'
+import type { WebHost } from './webHost'
+import type { ZrokHost } from './zrokHost'
 
 type PtyHostInstance = InstanceType<typeof PtyHost>
 
@@ -11,6 +14,9 @@ let fffHostPromise: Promise<typeof FffHost> | null = null
 let customizationsHostPromise: Promise<typeof CustomizationsHost> | null = null
 let gitHostPromise: Promise<typeof GitHost> | null = null
 let ptyHostPromise: Promise<PtyHostInstance> | null = null
+let zrokHostPromise: Promise<ZrokHost> | null = null
+let dashboardServerHostPromise: Promise<DashboardServerHost> | null = null
+let webHostPromise: Promise<WebHost> | null = null
 
 export async function getCustomizationsHost(): Promise<typeof CustomizationsHost> {
   customizationsHostPromise ??= import('./customizations')
@@ -61,4 +67,31 @@ export function hasPtyHost(): boolean {
 
 export function hasFffHost(): boolean {
   return Boolean(fffHostPromise)
+}
+
+export async function getZrokHost(): Promise<ZrokHost> {
+  zrokHostPromise ??= import('./zrokHost').then((m) => m.zrokHost)
+  return zrokHostPromise
+}
+
+export function hasZrokHost(): boolean {
+  return Boolean(zrokHostPromise)
+}
+
+export async function getDashboardServerHost(): Promise<DashboardServerHost> {
+  dashboardServerHostPromise ??= import('./dashboardServerHost').then((m) => m.dashboardServerHost)
+  return dashboardServerHostPromise
+}
+
+export function hasDashboardServerHost(): boolean {
+  return Boolean(dashboardServerHostPromise)
+}
+
+export async function getWebHost(): Promise<WebHost> {
+  webHostPromise ??= import('./webHost').then((m) => m.webHost)
+  return webHostPromise
+}
+
+export function hasWebHost(): boolean {
+  return Boolean(webHostPromise)
 }

@@ -58,6 +58,13 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         const window = deps.getMainWindow()
         setAgentReviewWindow(window)
         deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, parsedEvent.data)
+        void import('../services/webHost')
+          .then((m) => {
+            try {
+              m.webHost.broadcast(IPC.SESSION_EVENT, parsedEvent.data)
+            } catch {}
+          })
+          .catch(() => {})
         if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
           captureAgentReviewEvent(deps.resolveActiveCwd(), parsedEvent.data)
         }
@@ -79,10 +86,15 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
                 const status = await git.getGitStatus(cwd)
                 const files = status?.files ?? []
                 if (files.length > 0) {
-                  deps.getMainWindow()?.webContents.send(IPC.AGENT_CHANGED_FILES, {
-                    count: files.length,
-                    files,
-                  })
+                  const payload = { count: files.length, files }
+                  deps.getMainWindow()?.webContents.send(IPC.AGENT_CHANGED_FILES, payload)
+                  void import('../services/webHost')
+                    .then((m) => {
+                      try {
+                        m.webHost.broadcast(IPC.AGENT_CHANGED_FILES, payload)
+                      } catch {}
+                    })
+                    .catch(() => {})
                 }
               } catch {
                 // non-fatal — git may not be available in all workspaces

@@ -4,6 +4,8 @@ export default defineConfig({
   ignorePatterns: [
     // Vendored anti-slop plugin source — linted and tested upstream, not here.
     'tools/oxlint/anti-slop/**',
+    // Vendored dashboard monitor assets (third-party bundle, not our source).
+    'electron/vendor/**',
     // Agent/tooling assets (per anti-slop vendoring guidance).
     '.agent/**',
     '.agents/**',

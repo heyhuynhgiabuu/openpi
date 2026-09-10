@@ -437,6 +437,7 @@ input::placeholder {
 
 /* Right zone */
 .topbar-right-zone {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -474,6 +475,80 @@ input::placeholder {
 .topbar-icon-btn.is-active {
   background: var(--surface-card);
   color: var(--ink);
+}
+
+/* Tunnel status pill in TopBar */
+.topbar-tunnel-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+  border-radius: var(--r-xs);
+  flex-shrink: 0;
+}
+.topbar-tunnel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: var(--surface-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--graphite);
+  transition: background 0.12s;
+}
+.topbar-tunnel-btn:hover {
+  background: var(--surface-raised);
+}
+.topbar-tunnel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.topbar-tunnel-pill--green .topbar-tunnel-dot {
+  background: #4ade80;
+  box-shadow: 0 0 4px #4ade8033;
+}
+.topbar-tunnel-pill--yellow .topbar-tunnel-dot {
+  background: #facc15;
+}
+.topbar-tunnel-pill--red .topbar-tunnel-dot {
+  background: #f87171;
+}
+.topbar-tunnel-label {
+  color: var(--graphite);
+  white-space: nowrap;
+}
+.topbar-tunnel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.topbar-tunnel-action {
+  width: 22px;
+  height: 22px;
+}
+.topbar-tunnel-qr-popover {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  z-index: 40;
+  padding: 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
+}
+.topbar-tunnel-qr-popover img {
+  display: block;
+  width: 160px;
+  height: 160px;
+  border-radius: var(--r-xs);
+  image-rendering: pixelated;
 }
 
 /* ── TopBar: session tabs ───────────────────────────────────────────── */

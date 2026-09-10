@@ -17,6 +17,7 @@
     "coverage",
     "release",
     "tools/oxlint/anti-slop",
+    "electron/vendor",
     "src/index.css",
     "**/*.md",
     "**/*.yml",

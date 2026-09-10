@@ -19,12 +19,14 @@ import {
   quitAndInstall,
   readChangelog,
 } from '../services/updater'
+import type { WebHost } from '../services/webHost'
 import {
   buildWorkbenchContextPrefix,
   getWorkbenchContext,
   updateTerminalOutput,
   updateVisibleFile,
 } from '../services/workbenchContext'
+import type { ZrokHost } from '../services/zrokHost'
 import { registerSessionArchiveIpc } from '../session/archiveIpc'
 import { registerSessionsIpc } from '../session/ipc'
 import {
@@ -57,6 +59,7 @@ import { registerSearchIpc } from './search'
 import { registerSettingsIpc } from './settings'
 import { registerSoundIpc } from './sound'
 import { registerThemeIpc } from './themes'
+import { registerTunnelIpc } from './tunnel'
 import { registerUpdateIpc } from './update'
 import { registerWorkbenchIpc } from './workbench'
 import { registerWorkspacesIpc } from './workspaces'
@@ -75,6 +78,8 @@ interface RegisterMainIpcHandlersDeps {
   restartGitMonitoring: (cwd: string) => Promise<void>
   hasPtyHost: () => boolean
   getPtyHost: () => Promise<PtyHostInstance>
+  getZrokHost: () => Promise<ZrokHost>
+  getWebHost: () => Promise<WebHost>
   confirmHighRiskMutation: (options: {
     title: string
     message: string
@@ -135,6 +140,11 @@ export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): v
     setPref: (key, value) => deps.getSessionIndex()?.setPref(key, value),
   })
   registerSoundIpc({ ipcMain: deps.ipcMain, playSoundEffectId })
+  registerTunnelIpc({
+    ipcMain: deps.ipcMain,
+    getZrokHost: deps.getZrokHost,
+    getWebHost: deps.getWebHost,
+  })
   registerWorkbenchIpc({
     ipcMain: deps.ipcMain,
     getWorkbenchContext,

@@ -180,6 +180,13 @@ export class PtyHost {
     if (this.sender && !this.sender.isDestroyed()) {
       this.sender.send(channel, ...args)
     }
+    void import('./webHost')
+      .then((m) => {
+        try {
+          m.webHost.broadcast(channel, args[0])
+        } catch {}
+      })
+      .catch(() => {})
   }
 
   create(cwd: string, cols: number, rows: number): string {

@@ -23,6 +23,8 @@ interface SessionNavigationDeps {
   sessionIndex: SessionIndexNavigation
 }
 
+// Toggle for new-session debug logs — set to false to silence (easy revert for upstream)
+
 export function createSessionNavigation(deps: SessionNavigationDeps) {
   const openWorkspace = async () => {
     deps.setError(null)
@@ -38,6 +40,8 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       await deps.api.openSession({ path: session.path })
     } catch (error) {
       deps.setParentStack(previousStack)
+      // callers fire-and-forget (void) — without setError the failure is silent
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
@@ -61,6 +65,7 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       return true
     } catch (error) {
       deps.setParentStack(stack)
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
@@ -75,6 +80,7 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
       await deps.api.openSession({ path: target.path })
     } catch (error) {
       deps.setParentStack(stack)
+      deps.setError(error instanceof Error ? error.message : String(error))
       throw error
     }
   }
@@ -82,8 +88,20 @@ export function createSessionNavigation(deps: SessionNavigationDeps) {
   const createNewSession = async (mode?: 'local' | 'worktree', baseBranch?: string) => {
     deps.setError(null)
     const cwd = deps.sessionIndex.selectedWorkspaceForQuery() ?? deps.getReady()?.cwd
-    if (!cwd) return
-    await deps.api.newSession(cwd, mode, baseBranch)
+    console.log('[openpi] createNewSession click', { cwd, mode, baseBranch })
+    if (!cwd) {
+      console.warn('[openpi] createNewSession aborted — no cwd (no workspace selected)')
+      deps.setError('No workspace selected')
+      return
+    }
+    try {
+      await deps.api.newSession(cwd, mode, baseBranch)
+      console.log('[openpi] createNewSession success', cwd)
+    } catch (err) {
+      console.error('[openpi] createNewSession failed', err)
+      deps.setError(err instanceof Error ? err.message : String(err))
+      throw err
+    }
   }
 
   return { openWorkspace, openExistingSession, openSubSession, popToParent, createNewSession }

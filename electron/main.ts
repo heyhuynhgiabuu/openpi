@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
+import { startTunnel } from './ipc/tunnel'
 import { createSidecarMessageHandler } from './pi/messages'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
@@ -14,12 +15,18 @@ import { handleLocalFileProtocol, registerLocalFileScheme } from './services/loc
 import {
   ensureFffInitialized,
   getCustomizationsHost,
+  getDashboardServerHost,
   getFffHost,
   getGitHost,
   getPtyHost,
+  getWebHost,
+  getZrokHost,
+  hasDashboardServerHost,
   hasFffHost,
   hasGitHost,
   hasPtyHost,
+  hasWebHost,
+  hasZrokHost,
 } from './services/mainHosts'
 import {
   emitSessionError,
@@ -33,6 +40,7 @@ import { startStatusWatchers } from './services/statusWatchers'
 import { checkForAppUpdate, initAutoUpdater } from './services/updater'
 import { createMainWindow } from './services/windowHost'
 import { bindWebContents } from './services/workbenchContext'
+import { readZrokConfig } from './services/zrokConfig'
 import {
   activeWorkspacePath,
   applySessionReady,
@@ -64,6 +72,13 @@ const _require = createRequire(import.meta.url)
 // We run the user's login shell once at startup to harvest the full PATH
 // so subprocesses (npm, git, node) can be found regardless of launch method.
 enrichPathFromLoginShell()
+
+// Linux Mesa / VAAPI: GPU process crashes with `GPU process isn't usable` on some
+// drivers (libva i965). Our tunnel/dashboard never needs GPU — disable it.
+if (process.platform === 'linux') {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+}
 
 app.setName('OpenPi')
 app.setAppUserModelId('dev.openpi.app')
@@ -105,6 +120,13 @@ function emitOutputLine(line: OutputLine): void {
   outputBuffer.push(line)
   if (outputBuffer.length > OUTPUT_BUFFER_MAX) outputBuffer.shift()
   mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
+  void import('./services/webHost')
+    .then((m) => {
+      try {
+        m.webHost.broadcast(IPC.OUTPUT_APPEND, line)
+      } catch {}
+    })
+    .catch(() => {})
 }
 
 // Capture main-process crashes and forward them to the Output pane,
@@ -130,9 +152,23 @@ async function restartGitMonitoring(cwd: string): Promise<void> {
   const git = await getGitHost()
   git.startGitPoll(cwd, (status: GitStatusResult) => {
     mainWindow?.webContents.send(IPC.GIT_STATUS_CHANGED, status)
+    void import('./services/webHost')
+      .then((m) => {
+        try {
+          m.webHost.broadcast(IPC.GIT_STATUS_CHANGED, status)
+        } catch {}
+      })
+      .catch(() => {})
   })
   git.startFileTreeWatch(cwd, () => {
     mainWindow?.webContents.send(IPC.FILE_TREE_CHANGED)
+    void import('./services/webHost')
+      .then((m) => {
+        try {
+          m.webHost.broadcast(IPC.FILE_TREE_CHANGED, undefined)
+        } catch {}
+      })
+      .catch(() => {})
   })
 }
 
@@ -144,6 +180,44 @@ async function maybeCheckPiUpdateOnStartup(): Promise<void> {
     const line: OutputLine = {
       level: 'info',
       text: `[updates] Pi ${result.latestVersion} is available; current bundled SDK is ${result.currentVersion}.`,
+      ts: Date.now(),
+    }
+    emitOutputLine(line)
+  }
+}
+
+// ── Tunnel auto-restart ────────────────────────────────────────────────────────
+// If the persisted zrok.json enables auto-restart with a reserved name, bring
+// the web host + zrok share back up automatically at launch.
+async function maybeAutoStartTunnel(): Promise<void> {
+  const cfg = readZrokConfig()
+  console.log('[tunnel] maybeAutoStart cfg', cfg)
+  if (!cfg?.persistent || !cfg.reservedName) {
+    console.log('[tunnel] skip auto-start, cfg missing persistent/reservedName')
+    return
+  }
+  try {
+    console.log('[tunnel] auto-start calling startTunnel', cfg.reservedName)
+    const res = await startTunnel({ getZrokHost, getWebHost }, cfg.reservedName).catch((e) => {
+      console.log('[tunnel] startTunnel threw', e)
+      return { ok: false, error: String(e) }
+    })
+    console.log('[tunnel] auto-start result', res)
+    if (!res.ok) {
+      const line: OutputLine = {
+        level: 'warn',
+        text: `[tunnel] auto-restart failed: ${res.error ?? 'unknown'}`,
+        ts: Date.now(),
+      }
+      emitOutputLine(line)
+      console.log('[tunnel] auto-restart failed', res.error)
+    } else {
+      console.log('[tunnel] auto-restart ok')
+    }
+  } catch (err) {
+    const line: OutputLine = {
+      level: 'warn',
+      text: `[tunnel] auto-restart error: ${err instanceof Error ? err.message : String(err)}`,
       ts: Date.now(),
     }
     emitOutputLine(line)
@@ -180,6 +254,8 @@ function registerHandlers(): void {
     restartGitMonitoring,
     hasPtyHost,
     getPtyHost,
+    getZrokHost,
+    getWebHost,
     confirmHighRiskMutation,
     emitOutputLine,
     createRequestId,
@@ -257,6 +333,9 @@ app.whenReady().then(() => {
   // ── Workbench context bridge ─────────────────────────────────────────────
   if (mainWindow) bindWebContents(mainWindow.webContents)
 
+  // ── Tunnel auto-restart (persisted zrok.json) ────────────────────────────
+  void maybeAutoStartTunnel()
+
   startStatusWatchers({
     getMainWindow: () => mainWindow,
     getSessionIndex: () => sessionIndex,
@@ -288,6 +367,14 @@ app.on('quit', () => {
     })
   if (hasFffHost()) void getFffHost().then((host) => host.destroyFff())
   if (getPiSidecarHost()) void getPiSidecarHost()!.stop()
+  if (hasZrokHost())
+    void getZrokHost().then((z) => {
+      z.stopTunnel()
+      z.removePid()
+      z.cleanupStale()
+    })
+  if (hasDashboardServerHost()) void getDashboardServerHost().then((r) => r.stop())
+  if (hasWebHost()) void getWebHost().then((r) => r.stop())
   clearSessionState()
   if (hasPtyHost()) void getPtyHost().then((p) => p.closeAll())
   sessionIndex?.close()

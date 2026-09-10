@@ -7,8 +7,10 @@ export function useAgentReviewChanges() {
   const [error, setError] = createSignal<string | null>(null)
 
   const applyChanges = (next: AgentReviewChange[]) => {
+    // Remote stub shapes ({ok:true}) have no .changes — never poison the signal
+    const safe = Array.isArray(next) ? next : []
     batch(() => {
-      setChanges(next)
+      setChanges(safe)
       setActiveId((current) => {
         if (current && next.some((change) => change.id === current)) return current
         return next[0]?.id ?? null

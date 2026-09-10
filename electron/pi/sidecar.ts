@@ -117,6 +117,7 @@ const providerAuthBridge = new ProviderAuthBridge((requestId, event) => {
 })
 
 function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
+  if (isStaleExtensionCtxMessage(text)) return
   send({ type: 'output_append', line: { level, text, ts: Date.now() } })
 }
 

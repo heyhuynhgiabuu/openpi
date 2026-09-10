@@ -1,7 +1,8 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Event, MenuItemConstructorOptions } from 'electron'
-import { BrowserWindow, Menu } from 'electron'
+import { BrowserWindow, dialog, Menu } from 'electron'
 import { IPC } from '../../src/lib/ipc'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import type { PtyHost } from './ptyHost'
@@ -104,8 +105,22 @@ export function createMainWindow(options: CreateWindowOptions): BrowserWindow {
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(rendererFile)
+    if (!fs.existsSync(rendererFile)) {
+      console.error(`[window] renderer not found: ${rendererFile} — run "npm run build"`)
+      dialog.showErrorBox(
+        'OpenPi — build mancante',
+        `Renderer non trovato:\n${rendererFile}\n\nEsegui "npm run build" oppure "npm run dev".`
+      )
+    }
+    mainWindow.loadFile(rendererFile).catch((err) => {
+      console.error('[window] loadFile failed:', err)
+      dialog.showErrorBox('OpenPi — load error', String(err))
+    })
   }
+
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[window] did-fail-load ${code} ${desc} ${url}`)
+  })
 
   mainWindow.webContents.once('did-finish-load', () => {
     options.ensurePiSidecarStarted()

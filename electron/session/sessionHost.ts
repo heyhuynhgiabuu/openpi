@@ -44,10 +44,22 @@ export function setSessionHostMainWindow(win: BrowserWindow | null): void {
 export function setSessionHostSessionIndex(si: SessionIndexStore | null): void {
   _sessionIndex = si
 }
+export function getSessionIndexStore(): SessionIndexStore | null {
+  return _sessionIndex
+}
 
 function sendToMainWindow(channel: string, ...args: unknown[]): void {
-  if (!_mainWindow || _mainWindow.isDestroyed()) return
-  _mainWindow.webContents.send(channel, ...args)
+  if (_mainWindow && !_mainWindow.isDestroyed()) _mainWindow.webContents.send(channel, ...args)
+  // Also forward to remote web browsers via WebHost WS broadcast (fire-and-forget)
+  void import('../services/webHost')
+    .then((m) => {
+      try {
+        m.webHost.broadcast(channel, args[0])
+      } catch {
+        // ignore
+      }
+    })
+    .catch(() => {})
 }
 
 // ─── Callbacks (bridge to main.ts lazy imports) ────────────────────────────────

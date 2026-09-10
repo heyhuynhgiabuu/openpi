@@ -2,8 +2,9 @@
  * TopBar — SolidJS version.
  * Three-zone header: homescreen + new session · session tabs · workspace + git + settings.
  */
-import { GitBranch, House, MonitorCog, Plus } from 'lucide-solid'
+import { Check, Copy, GitBranch, House, MonitorCog, Plus, QrCode } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import type { TunnelStatus } from '../../electron/ipc/tunnel'
 import type { ModelInfo, SessionListItem } from '../lib/ipc'
 import type { AwaitingPrompt } from '../hooks/useOpenPiSession'
 import { isMacPlatform } from '../lib/shortcutFormat'
@@ -33,6 +34,10 @@ interface Props {
   onSelectSession: (path: string) => void
   onNewSession: () => void
   onToggleHomescreen: () => void
+  // ── Tunnel status pill ─────────────────────────────────────────────
+  tunnelStatus?: TunnelStatus | null
+  tunnelUrl?: string | null
+  onTunnelClick?: () => void
 }
 
 export function TopBar(props: Props) {
@@ -55,6 +60,54 @@ export function TopBar(props: Props) {
   }
 
   const [openSessionPaths, setOpenSessionPaths] = createSignal<string[]>([])
+
+  // ── Tunnel status pill ────────────────────────────────────────────────
+  const [qrData, setQrData] = createSignal<string | null>(null)
+  const [copied, setCopied] = createSignal(false)
+
+  const tunnelColor = (): 'green' | 'yellow' | 'red' => {
+    const s = props.tunnelStatus?.state
+    if (s === 'running') return 'green'
+    if (s === 'starting') return 'yellow'
+    return 'red'
+  }
+
+  const loadQr = async () => {
+    const url = props.tunnelUrl
+    if (!url) return
+    try {
+      setQrData(await window.openpi.generateQr(url))
+    } catch {
+      setQrData(null)
+    }
+  }
+
+  const tunnelState = createMemo(() => props.tunnelStatus?.state ?? null)
+  const tunnelVisible = createMemo(
+    () => tunnelState() === 'running' || tunnelState() === 'starting' || tunnelState() === 'error'
+  )
+
+  const copyUrl = async () => {
+    const url = props.tunnelUrl
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      // ignore clipboard failure
+    }
+  }
+
+  // Load the QR data URL whenever the tunnel URL changes.
+  createEffect(() => {
+    const url = props.tunnelUrl
+    if (url) {
+      void loadQr()
+    } else {
+      setQrData(null)
+    }
+  })
 
   createEffect(() => {
     const activePath = props.activeSessionPath
@@ -246,8 +299,60 @@ export function TopBar(props: Props) {
         </Show>
       </div>
 
-      {/* ── Right zone: settings ── */}
+      {/* ── Right zone: tunnel pill + settings ── */}
       <div class="topbar-right-zone">
+        <Show when={tunnelVisible()}>
+          <div class={`topbar-tunnel-pill topbar-tunnel-pill--${tunnelColor()}`}>
+            <button
+              type="button"
+              class="topbar-tunnel-btn no-drag"
+              onClick={props.onTunnelClick}
+              title="OpenPi workbench — click to manage remote access"
+              aria-label="Tunnel status"
+            >
+              <span class="topbar-tunnel-dot" />
+              <span class="topbar-tunnel-label">
+                {tunnelState() === 'running'
+                  ? 'Live'
+                  : tunnelState() === 'starting'
+                    ? 'Starting'
+                    : 'Error'}
+              </span>
+            </button>
+            <Show when={props.tunnelUrl}>
+              <div class="topbar-tunnel-actions">
+                <button
+                  type="button"
+                  class="topbar-icon-btn topbar-tunnel-action no-drag"
+                  onClick={copyUrl}
+                  title="Copy tunnel URL"
+                  aria-label="Copy tunnel URL"
+                >
+                  <Show when={copied()} fallback={<Copy size={12} />}>
+                    <Check size={12} />
+                  </Show>
+                </button>
+                <button
+                  type="button"
+                  class="topbar-icon-btn topbar-tunnel-action no-drag"
+                  onClick={() => {
+                    if (qrData()) setQrData(null)
+                    else void loadQr()
+                  }}
+                  title="Show QR code"
+                  aria-label="Show QR code"
+                >
+                  <QrCode size={12} />
+                </button>
+              </div>
+            </Show>
+          </div>
+          <Show when={qrData()}>
+            <div class="topbar-tunnel-qr-popover no-drag">
+              <img src={qrData()!} alt="Tunnel QR code" />
+            </div>
+          </Show>
+        </Show>
         <button
           type="button"
           class="topbar-icon-btn no-drag"

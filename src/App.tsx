@@ -31,6 +31,7 @@ import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from './lib/displayPreferences'
 import type { AppInfo, GitSyncAction, SessionListItem } from './lib/ipc'
 import type { KeybindingOverrides } from './lib/keybindings'
+import { isWebBridge } from './lib/webBridge'
 
 const Homescreen = lazy(() =>
   import('./components/Homescreen').then((module) => ({ default: module.Homescreen }))
@@ -44,6 +45,9 @@ export default function App() {
   const [customizationsInitialTab, setCustomizationsInitialTab] = createSignal<
     import('./components/customizations/CustomizationsModal').ActiveTab | undefined
   >(undefined)
+  const [tunnelStatus, setTunnelStatus] = createSignal<
+    import('../electron/ipc/tunnel').TunnelStatus | null
+  >(null)
   const [terminalOpen, setTerminalOpen] = createSignal(false)
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [gitPanelOpen, _setGitPanelOpen] = createSignal(false)
@@ -217,6 +221,16 @@ export default function App() {
       queueMicrotask(() => setFileFindOpen(true))
     })
 
+    // Poll zrok tunnel status so the TopBar pill stays in sync.
+    const refreshTunnel = () => {
+      window.openpi
+        .getStatus()
+        .then(setTunnelStatus)
+        .catch(() => setTunnelStatus(null))
+    }
+    refreshTunnel()
+    const tunnelTimer = setInterval(refreshTunnel, 2000)
+
     // Allow slash commands (e.g. /resume) to open the homescreen
     // overlay without threading a new prop through the entire tree.
     const openHomescreenViaEvent = () => setHomescreenOpen(true)
@@ -240,6 +254,7 @@ export default function App() {
       removePrefs()
       removeKeydown()
       removeFileFindShortcut?.()
+      clearInterval(tunnelTimer)
       document.removeEventListener('openpi:open-homescreen', openHomescreenViaEvent)
       document.removeEventListener('openpi:open-customizations', openCustomizationsViaEvent)
     }
@@ -249,18 +264,42 @@ export default function App() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const renderWelcome = () => {
+    if (isWebBridge()) {
+      // Web/tunnel: mostra direttamente la home (Homescreen) invece della splash.
+      // E' la stessa home del workbench: lista progetti + sessions, con "Open workspace" che apre il modal validato.
+      // Evita prompt nativo e la splash brutta segnalata.
+      return (
+        <Suspense fallback={<div class="homescreen-loading">Loading home…</div>}>
+          <Homescreen
+            sessions={session.sessions}
+            workspaces={session.workspaces}
+            selectedWorkspacePath={session.selectedWorkspacePath}
+            activeSessionPath={null}
+            onSelectSession={(path: string) =>
+              void session.openExistingSession({ path } as SessionListItem)
+            }
+            onDeleteSession={requestDeleteSession}
+            onNewSession={() => void session.createNewSession()}
+            onOpenWorkspace={() => void session.openWorkspace()}
+            onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
+            onClose={() => {}}
+          />
+        </Suspense>
+      )
+    }
+    return (
+      <Welcome
+        appName={appName()}
+        appVersionLabel={appVersionLabel()}
+        onOpen={session.openWorkspace}
+        error={session.error}
+      />
+    )
+  }
+
   return (
-    <Show
-      when={session.ready}
-      fallback={
-        <Welcome
-          appName={appName()}
-          appVersionLabel={appVersionLabel()}
-          onOpen={session.openWorkspace}
-          error={session.error}
-        />
-      }
-    >
+    <Show when={session.ready} fallback={renderWelcome()}>
       {(getReady) => {
         // getReady() is called once — NOT reactive on its own. Wrap every derived
         // value in createMemo so they recompute when session.ready changes (e.g.
@@ -344,6 +383,18 @@ export default function App() {
               startRenameRef={(fn) => {
                 triggerRename = fn
               }}
+              tunnelStatus={tunnelStatus()}
+              tunnelUrl={tunnelStatus()?.url ?? null}
+              onTunnelClick={() => {
+                // Open the General pane and scroll to the tunnel section.
+                setCustomizationsInitialTab('general')
+                setCustomizationsOpen(true)
+                setTimeout(() => {
+                  document
+                    .getElementById('tunnel-section')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }, 100)
+              }}
               models={session.models}
               currentModel={session.currentModel}
               onSelectModel={session.selectModel}
@@ -353,7 +404,12 @@ export default function App() {
               onSelectSession={(path: string) =>
                 void session.openExistingSession({ path } as SessionListItem)
               }
-              onNewSession={() => void session.createNewSession()}
+              onNewSession={() =>
+                void session
+                  .createNewSession()
+                  .then(() => setHomescreenOpen(false))
+                  .catch(() => {})
+              }
               onToggleHomescreen={() => setHomescreenOpen((v) => !v)}
             />
 
@@ -369,7 +425,12 @@ export default function App() {
                     onSelectSession={(path: string) =>
                       void session.openExistingSession({ path } as SessionListItem)
                     }
-                    onNewSession={() => void session.createNewSession()}
+                    onNewSession={() =>
+                      void session
+                        .createNewSession()
+                        .then(() => setHomescreenOpen(false))
+                        .catch(() => {})
+                    }
                     onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
                     onOpenWorkspace={() => void session.openWorkspace()}
                     onDeleteSession={requestDeleteSession}
