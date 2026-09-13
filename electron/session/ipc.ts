@@ -39,6 +39,7 @@ import {
 } from '../services/piTaskArtifacts'
 import { highRiskShellReason } from '../services/shellEnv'
 import { resolveWorkspacePath } from '../services/workspacePath'
+import { emptyHistoryPage } from '../session/sessionEntries'
 import type { SessionState } from '../session/sessionHost'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import { resolveAuthorizedFile } from '../session/sessionPath'
@@ -105,6 +106,24 @@ function authorizedSessionPath(deps: SessionsIpcDeps, submittedPath: string): st
     [{ anchor: agentDir, root: path.join(agentDir, 'sessions') }, ...workspaceRoots],
     ['.jsonl']
   )
+}
+
+/**
+ * Like authorizedSessionPath, but returns null while Pi has not flushed the
+ * session's JSONL yet: the file appears only when the first assistant message
+ * is appended, so a brand-new session has a valid path with no file. Every
+ * other authorization failure still throws.
+ */
+function authorizedSessionPathIfPresent(
+  deps: SessionsIpcDeps,
+  submittedPath: string
+): string | null {
+  try {
+    return authorizedSessionPath(deps, submittedPath)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+    throw error
+  }
 }
 
 function emptySessionStats(): SessionStats {
@@ -278,16 +297,12 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_MESSAGES,
     async (_event, raw: unknown): Promise<SessionHistoryPage> => {
       const { path: submittedPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
+      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
+      // No file yet means the session has no persisted history to load.
+      if (!sessionPath) return emptyHistoryPage(limit ?? 0)
       return (
-        (await deps
-          .getSessionIndex()
-          ?.getSessionMessages(sessionPath, { limit, beforeEntryId })) ?? {
-          messages: [],
-          hasMoreBefore: false,
-          nextBeforeEntryId: null,
-          limit: limit ?? 0,
-        }
+        (await deps.getSessionIndex()?.getSessionMessages(sessionPath, { limit, beforeEntryId })) ??
+        emptyHistoryPage(limit ?? 0)
       )
     }
   )
@@ -296,7 +311,16 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     IPC.GET_SESSION_TREE,
     async (_event, raw: unknown): Promise<SessionTreeResponse> => {
       const { path: submittedPath } = sessionTreeRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPath(deps, submittedPath)
+      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
+      // No file yet means there is no tree to build.
+      if (!sessionPath) {
+        return {
+          sessionPath: path.resolve(submittedPath),
+          branches: [],
+          forkPoints: [],
+          activeLeafId: null,
+        }
+      }
       return (
         deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
           sessionPath,
