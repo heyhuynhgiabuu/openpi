@@ -15478,3 +15478,156 @@ body.panel-dragging {
   background: var(--danger-hover, #b83838);
   border-color: var(--danger-hover, #b83838);
 }
+
+/* ── Session map overlay ─────────────────────────────────────────────── */
+.session-map {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 48px 24px;
+  background: color-mix(in srgb, var(--bg, #0b0b12) 72%, transparent);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+  outline: none;
+}
+
+.session-map-shell {
+  width: min(920px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 22px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: 12px;
+  background: var(--bg-surface, #16161f);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
+}
+
+.session-map-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-map-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.session-map-meta {
+  margin: 2px 0 0;
+  color: var(--ash, #9aa0b4);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-map-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.session-map-close:hover {
+  background: var(--bg-hover, #23232f);
+}
+
+.session-map-empty {
+  padding: 18px 4px;
+  color: var(--ash, #9aa0b4);
+  font-size: 13px;
+}
+
+.session-map-branches {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-map-branch {
+  border: 1px solid var(--hairline, #2a2a38);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.session-map-branch.is-active {
+  border-color: var(--accent, #7aa2f7);
+}
+
+.session-map-branch-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-hover, #1d1d28);
+  font-size: 12px;
+}
+
+.session-map-branch-name {
+  font-weight: 600;
+}
+
+.session-map-branch-count {
+  color: var(--ash, #9aa0b4);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-map-branch-current {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 22%, transparent);
+  color: var(--accent, #7aa2f7);
+  font-size: 11px;
+}
+
+.session-map-nodes {
+  margin: 0;
+  padding: 6px 10px 8px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-map-node {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.session-map-node.is-leaf {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 12%, transparent);
+}
+
+.session-map-node-type {
+  flex: none;
+  min-width: 78px;
+  color: var(--ash, #9aa0b4);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-map-node.is-compaction .session-map-node-type,
+.session-map-node.is-label .session-map-node-type {
+  color: var(--accent, #7aa2f7);
+}
+
+.session-map-node-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

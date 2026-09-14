@@ -17,6 +17,7 @@ function baseCtx() {
     onCycleModel: () => {},
     onSetSessionName: () => {},
     onShowSessionInfo: () => {},
+    onOpenSessionMap: () => {},
     onShowError: () => {},
     onPrefillInput: () => {},
   }
@@ -33,6 +34,7 @@ describe('core slash commands', () => {
         'copy',
         'login',
         'logout',
+        'map',
         'model',
         'name',
         'new',
@@ -107,6 +109,32 @@ describe('core slash commands', () => {
 
     expect(name.onSelect('  my-feature  ')).toBe(true)
     expect(saved).toBe('my-feature')
+  })
+
+  it('opens the session map only with an active session', () => {
+    const errors: string[] = []
+    let opened = 0
+
+    const ready = buildCoreSlashCommands({
+      ...baseCtx(),
+      onOpenSessionMap: () => {
+        opened += 1
+      },
+    })
+    expect(findCoreCommand(ready, 'map')!.onSelect('')).toBe(true)
+    expect(opened).toBe(1)
+
+    const idle = buildCoreSlashCommands({
+      ...baseCtx(),
+      sessionReady: false,
+      onShowError: (message) => errors.push(message),
+      onOpenSessionMap: () => {
+        opened += 1
+      },
+    })
+    expect(findCoreCommand(idle, 'map')!.onSelect('')).toBe(true)
+    expect(opened).toBe(1)
+    expect(errors).toEqual(['No active session.'])
   })
 
   it('returns null for unknown commands', () => {

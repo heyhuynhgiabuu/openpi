@@ -26,6 +26,8 @@ export interface CoreCommandContext {
   onCycleModel: () => void
   onSetSessionName: (name: string) => Promise<void> | void
   onShowSessionInfo: () => Promise<void> | void
+  /** Open the read-only session tree map overlay. */
+  onOpenSessionMap: () => void
   onShowError: (message: string) => void
   /** Replace the current composer input with the given text (e.g. `/name `). */
   onPrefillInput: (text: string) => void
@@ -96,6 +98,21 @@ export function buildCoreSlashCommands(ctx: CoreCommandContext): CoreSlashComman
           return true
         }
         void ctx.onShowSessionInfo()
+        return true
+      },
+    },
+    {
+      id: 'session.map',
+      slash: 'map',
+      name: '/map',
+      description: 'Show the session tree: branches, compaction, labels',
+      category: 'session',
+      onSelect: () => {
+        if (!ctx.sessionReady) {
+          ctx.onShowError('No active session.')
+          return true
+        }
+        ctx.onOpenSessionMap()
         return true
       },
     },

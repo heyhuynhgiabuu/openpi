@@ -14,6 +14,7 @@ import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
 import { FileTabBar } from '../FileTabBar'
 import { GitHistoryTab } from '../git/GitHistoryTab'
+import { SessionMap } from '../map/SessionMap'
 import { ResizeHandle } from '../ResizeHandle'
 import { ReviewPane } from '../review/ReviewPane'
 import { SubagentFileWidget, TodoListTray } from '../SubagentFileWidget'
@@ -75,6 +76,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const reviewChangeCount = createMemo(() => props.agentReview.changes.length)
   const [historyActive, setHistoryActive] = createSignal(false)
   const [reviewSource, setReviewSource] = createSignal<'git' | 'last-turn'>('git')
+  const [sessionMapOpen, setSessionMapOpen] = createSignal(false)
   let lastReviewChangeCount = 0
 
   createEffect(() => {
@@ -138,6 +140,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
         if (next) void props.session.selectModel(next)
       },
       onSetSessionName: (name) => void props.session.setSessionName(name),
+      onOpenSessionMap: () => setSessionMapOpen(true),
       onShowSessionInfo: async () => {
         const info = (await props.session.getSessionInfo()) as {
           sessionFile: string | null
@@ -449,6 +452,12 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           </div>
         </Show>
       </main>
+
+      <Show when={sessionMapOpen() ? (props.session.ready?.sessionFile ?? null) : null}>
+        {(sessionPath) => (
+          <SessionMap sessionPath={sessionPath()} onClose={() => setSessionMapOpen(false)} />
+        )}
+      </Show>
     </div>
   )
 }
