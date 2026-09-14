@@ -206,7 +206,11 @@ function captureToolEnd(cwd: string, toolCallId: string): void {
   let changed = false
   for (const snapshot of pending.snapshots) {
     if (snapshot.cwd !== cwd) continue
-    const after = readSnapshot(snapshot.cwd, snapshot.relPath, snapshot.fullPath)
+    // Re-resolve before the second read: between the two events the path can be
+    // replaced by a symlink, and the review must not pull in outside content.
+    const resolved = safeResolveWorkspacePath(snapshot.cwd, snapshot.relPath)
+    if (!resolved) continue
+    const after = readSnapshot(snapshot.cwd, resolved.relPath, resolved.fullPath)
     if (after.skipped) continue
     const existing = findChange(snapshot.cwd, snapshot.relPath)
     const before = existing?.beforeContent ?? snapshot.beforeContent

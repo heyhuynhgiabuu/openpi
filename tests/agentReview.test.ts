@@ -14,6 +14,14 @@ import {
 import { getAgentReviewSummary } from '../electron/services/agentReviewStore'
 
 let tmp: string | null = null
+let outside: string[] = []
+
+/** A directory outside the workspace, cleaned up with it. */
+function makeOutside() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-outside-'))
+  outside.push(dir)
+  return dir
+}
 
 function makeWorkspace() {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-review-'))
@@ -22,6 +30,8 @@ function makeWorkspace() {
 }
 
 afterEach(() => {
+  for (const dir of outside) fs.rmSync(dir, { recursive: true, force: true })
+  outside = []
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true })
   clearAgentReviewChanges()
   tmp = null
@@ -53,6 +63,31 @@ describe('agent review snapshots', () => {
 
     revertAgentReviewChange(change.id)
     expect(fs.readFileSync(file, 'utf-8')).toBe('before\n')
+    expect(getAgentReviewSummary(cwd).changes).toHaveLength(0)
+  })
+
+  it('ignores a file that became a symlink between the two events', () => {
+    const cwd = makeWorkspace()
+    const file = path.join(cwd, 'note.txt')
+    const secret = path.join(makeOutside(), 'secret.txt')
+    fs.writeFileSync(file, 'before\n', 'utf-8')
+    fs.writeFileSync(secret, 'OUTSIDE\n', 'utf-8')
+
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_start',
+      toolCallId: 'tool-1',
+      toolName: 'write',
+      args: { path: 'note.txt' },
+    })
+    // Between the events the file is replaced by a symlink out of the workspace.
+    fs.rmSync(file)
+    fs.symlinkSync(secret, file)
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_end',
+      toolCallId: 'tool-1',
+      toolName: 'write',
+    })
+
     expect(getAgentReviewSummary(cwd).changes).toHaveLength(0)
   })
 
