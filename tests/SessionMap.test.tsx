@@ -367,6 +367,22 @@ describe('SessionMap', () => {
     expect(cursorIndex(container)).toBe('0')
   })
 
+  it('closes when the backdrop is pressed, but not from inside the panel', async () => {
+    const onClose = vi.fn()
+    const { findByText, getByRole, container } = renderMap({ onClose })
+
+    await findByText('2 branches · 1 fork')
+    const backdrop = getByRole('dialog')
+    const panel = container.querySelector('.session-map-shell')
+    if (!panel) throw new Error('expected the map panel')
+
+    fireEvent.mouseDown(panel)
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.mouseDown(backdrop)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('reports an empty session', async () => {
     stubTree({
       sessionPath: '/sessions/empty.jsonl',

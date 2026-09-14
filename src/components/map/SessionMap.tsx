@@ -220,7 +220,17 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   })
 
   return (
-    <div class="session-map" role="dialog" aria-modal="true" aria-label="Session map">
+    <div
+      class="session-map"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Session map"
+      onMouseDown={(event) => {
+        // mousedown, not click: releasing a text selection outside the panel
+        // must not close the map.
+        if (event.currentTarget === event.target) props.onClose()
+      }}
+    >
       <div class="session-map-shell">
         <header class="session-map-header">
           <div>
