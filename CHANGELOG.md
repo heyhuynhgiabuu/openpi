@@ -30,7 +30,7 @@ Fixes for the pre-apply review gate and the review workspace boundary, found by 
 
 ### Changed
 
-- New tests cover the workspace path authority, the review snapshot reader, and the IPC sender check (34 tests), including the frame-URL conjunct that deleting left every test green before. Test count 535 → 575. (`3e3b874`, `3c00da9`)
+- New tests cover the workspace path authority, the review snapshot reader, and the IPC sender check (35 tests), including the frame-URL conjunct that deleting left every test green before. Test count 535 → 575. (`3e3b874`, `3c00da9`)
 
 ### Docs
 
