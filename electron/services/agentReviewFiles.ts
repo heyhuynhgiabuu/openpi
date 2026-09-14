@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { resolveWorkspacePath as resolveContainedPath } from './workspacePath'
 
 const MAX_REVIEW_FILE_BYTES = 500_000
 
@@ -23,9 +24,15 @@ export function safeResolveWorkspacePath(
 ): { relPath: string; fullPath: string } | null {
   const raw = candidate.trim()
   if (!raw || raw === '.' || raw.includes('\0')) return null
-  const fullPath = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(cwd, raw)
   const resolvedCwd = path.resolve(cwd)
-  if (fullPath !== resolvedCwd && !fullPath.startsWith(resolvedCwd + path.sep)) return null
+  let fullPath: string
+  try {
+    // Same containment authority as file IPC: lexical escapes and symlinked
+    // paths are refused, so a review can never point outside the workspace.
+    fullPath = resolveContainedPath(resolvedCwd, raw, 'review')
+  } catch {
+    return null
+  }
   const relPath = path.relative(resolvedCwd, fullPath).split(path.sep).join('/')
   if (!relPath || relPath.startsWith('..')) return null
   return { relPath, fullPath }

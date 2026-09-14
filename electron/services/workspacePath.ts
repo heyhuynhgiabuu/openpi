@@ -68,12 +68,10 @@ function assertOpenedWorkspaceFile(
 ): void {
   const openedStat = fs.fstatSync(descriptor)
   const currentStat = fs.lstatSync(filePath)
-  if (
-    !openedStat.isFile() ||
-    !currentStat.isFile() ||
-    openedStat.dev !== currentStat.dev ||
-    openedStat.ino !== currentStat.ino
-  ) {
+  if (!openedStat.isFile() || !currentStat.isFile()) {
+    throw new Error('Refusing to open a path that is not a file')
+  }
+  if (openedStat.dev !== currentStat.dev || openedStat.ino !== currentStat.ino) {
     throw new Error('Workspace file changed during authorization')
   }
   assertNoSymlinkComponents(path.resolve(workspaceRoot), path.resolve(filePath), 'access')
