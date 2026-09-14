@@ -2,6 +2,7 @@ import type { AwaitingPrompt } from '../../hooks/useOpenPiSession'
 import type { CoreSlashCommand } from '../../lib/coreCommands'
 import type { FileLineComment } from '../../lib/fileLineComments'
 import type { ModelInfo, SessionStats, SkillItem } from '../../lib/ipc'
+import type { RunUsage } from '../../lib/runUsage'
 
 export type QueueMode = 'prompt' | 'steer' | 'followup'
 
@@ -57,6 +58,8 @@ export interface ComposerProps {
   sessionStats?: SessionStats | null
   /** Last completed agent run tokens-per-second, Pi-compatible wall-clock TPS. */
   agentTps?: number | null
+  /** Live token/cost totals for the current agent run (updated per turn). */
+  runUsage?: RunUsage
   /** Available subagent types for @mention autocomplete. */
   availableAgentTypes?: { name: string; description: string }[]
   /** OpenPi core slash commands (intercepted before Pi session dispatch). */

@@ -1,5 +1,6 @@
 import type { ExtensionResponseMessage, Message, SystemMessage, ToolCard } from '../types/session'
 import type { SessionEvent } from './ipc'
+import { numeric, parseUsage } from './usageParse'
 
 export function applySessionEvent(
   messages: Message[],
@@ -95,7 +96,7 @@ export function applySessionEvent(
     }
 
     case 'message_end': {
-      const msg = event.message as { role: string; timestamp?: number; usage?: UsageLike }
+      const msg = event.message as { role: string; timestamp?: number; usage?: unknown }
       const last = messages.at(-1)
       if (last?.role !== 'assistant') return messages
       const durationMs = durationFrom(currentTurnStartMs, msg.timestamp)
@@ -336,38 +337,19 @@ export function formatCompactionEndText(event: CompactionEndEvent): string {
   return 'Context compacted'
 }
 
-type UsageLike = Record<string, unknown> & {
-  cost?: { total?: unknown } | number
-}
-
-function usageToMessageMetrics(usage: UsageLike) {
-  const cost = usage.cost
-  const totalCost = typeof cost === 'number' ? cost : numeric(cost?.total)
+function usageToMessageMetrics(usage: unknown) {
+  const parsed = parseUsage(usage)
   return {
-    inputTokens: numeric(usage.input) || numeric(usage.inputTokens),
-    outputTokens: numeric(usage.output) || numeric(usage.outputTokens),
-    cacheReadTokens: numeric(usage.cacheRead) || numeric(usage.cacheReadTokens),
-    cacheWriteTokens: numeric(usage.cacheWrite) || numeric(usage.cacheWriteTokens),
-    totalTokens: usageTotalTokens(usage),
-    cost: totalCost || undefined,
+    inputTokens: parsed.input,
+    outputTokens: parsed.output,
+    cacheReadTokens: parsed.cacheRead,
+    cacheWriteTokens: parsed.cacheWrite,
+    totalTokens: parsed.total,
+    cost: parsed.cost || undefined,
   }
 }
 
 function durationFrom(startMs?: number | null, endMs?: number): number | undefined {
   if (!startMs || !endMs || endMs <= startMs) return undefined
   return endMs - startMs
-}
-
-function numeric(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0
-}
-
-function usageTotalTokens(usage: Record<string, unknown>): number {
-  return (
-    numeric(usage.totalTokens) ||
-    (numeric(usage.input) || numeric(usage.inputTokens)) +
-      (numeric(usage.output) || numeric(usage.outputTokens)) +
-      (numeric(usage.cacheRead) || numeric(usage.cacheReadTokens)) +
-      (numeric(usage.cacheWrite) || numeric(usage.cacheWriteTokens))
-  )
 }

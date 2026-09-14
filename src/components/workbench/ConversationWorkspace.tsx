@@ -340,6 +340,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             contextPercent={props.session.contextPercent}
             sessionStats={props.session.sessionStats}
             agentTps={props.session.agentRunMetrics?.tps ?? null}
+            runUsage={props.session.runUsage}
             availableAgentTypes={[
               { name: 'worker', description: 'Surgical implementer' },
               { name: 'explorer', description: 'Read-only codebase cartographer' },

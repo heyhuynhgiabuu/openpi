@@ -1,6 +1,7 @@
 // biome-ignore-all lint/a11y/noSvgWithoutTitle: existing composer progress markup is tracked separately from this release.
 import { type Component, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { SessionStats } from '../../lib/ipc'
+import type { RunUsage } from '../../lib/runUsage'
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -159,5 +160,23 @@ export const ContextUsageButton: Component<{ percent: number; stats?: SessionSta
 export const TpsBadge: Component<{ tps: number }> = (props) => (
   <span class="composer-tps-badge" title={`Last run TPS: ${props.tps.toFixed(1)} tokens/second`}>
     TPS {props.tps.toFixed(1)}
+  </span>
+)
+
+/**
+ * Live token/cost totals for the current agent run, updated on every
+ * `turn_end`. Stays visible after the run finishes until the next one starts.
+ */
+export const RunUsageBadge: Component<{ usage: RunUsage; streaming: boolean }> = (props) => (
+  <span
+    class="composer-run-usage-badge"
+    classList={{ 'is-idle': !props.streaming }}
+    title={`${props.streaming ? 'This run' : 'Last run'}: ${props.usage.turns} turn(s) · ${props.usage.total.toLocaleString()} tokens · ${formatCost(props.usage.cost)}`}
+  >
+    <span>{props.usage.turns}t</span>
+    <span>{formatNumber(props.usage.total)} tok</span>
+    <Show when={props.usage.cost > 0}>
+      <span>{formatCost(props.usage.cost)}</span>
+    </Show>
   </span>
 )

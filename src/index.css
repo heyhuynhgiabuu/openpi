@@ -3878,6 +3878,24 @@ body.panel-dragging {
   letter-spacing: -0.01em;
 }
 
+.composer-run-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px;
+  color: var(--ash);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Finished runs stay visible but recede next to the live one */
+.composer-run-usage-badge.is-idle {
+  opacity: 0.65;
+}
+
 /* Pulse animation when context is high (≥80%) */
 @keyframes ctx-pulse {
   0%,

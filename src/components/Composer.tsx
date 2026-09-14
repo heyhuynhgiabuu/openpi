@@ -11,7 +11,7 @@ import {
   Show,
 } from 'solid-js'
 import { isMacPlatform } from '../lib/shortcutFormat'
-import { ContextUsageButton, TpsBadge } from './composer/Badges'
+import { ContextUsageButton, RunUsageBadge, TpsBadge } from './composer/Badges'
 import { AgentChip, FileChip, LineCommentChip, SkillChip } from './composer/Chips'
 import { SkillPicker, SlashCommandPicker } from './composer/CommandPicker'
 import { ComposerHint } from './composer/ComposerHint'
@@ -436,6 +436,16 @@ export const Composer: Component<ComposerProps> = (props) => {
                 when={props.agentTps !== null && props.agentTps !== undefined && props.agentTps > 0}
               >
                 <TpsBadge tps={props.agentTps as number} />
+              </Show>
+
+              {/* Live token/cost for the current run, updated per turn */}
+              <Show when={props.runUsage}>
+                {(usage) => (
+                  <Show when={usage().turns > 0}>
+                    <span class="composer-toolbar-divider" aria-hidden />
+                    <RunUsageBadge usage={usage()} streaming={props.isStreaming} />
+                  </Show>
+                )}
               </Show>
             </div>
 

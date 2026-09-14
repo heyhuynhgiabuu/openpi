@@ -144,6 +144,12 @@ export function useOpenPiSession() {
       const e = event as { timestamp?: number }
       currentTurnStartMs = e.timestamp ?? Date.now()
     }
+    if (event.type === 'turn_end') {
+      // Live run totals: `turn_end` carries the assistant message with usage,
+      // so tokens/cost update per turn instead of only at `agent_end`.
+      agentRunMetrics.addTurn(event)
+      void refreshContextUsage()
+    }
     if (event.type === 'agent_end') {
       setIsStreaming(false)
       setAwaitingPrompt(null)
@@ -153,8 +159,7 @@ export function useOpenPiSession() {
       // Clear finished subagents on session end; keep task tray across agent turns
       trackers.clearFinished()
 
-      // Compute wall-clock TPS using agent_end event.messages (same approach as Pi's tps.ts)
-      agentRunMetrics.finish(event as Record<string, unknown>)
+      agentRunMetrics.finish()
     }
 
     // ── Extension tracker dispatch ───────────────────────────────────────────
@@ -552,6 +557,9 @@ export function useOpenPiSession() {
     },
     get agentRunMetrics() {
       return agentRunMetrics.metrics()
+    },
+    get runUsage() {
+      return agentRunMetrics.usage()
     },
     get isShellRunning() {
       return isShellRunning()
