@@ -16,16 +16,10 @@ afterEach(cleanup)
 
 function setup() {
   const onApply = vi.fn()
-  const onCancel = vi.fn()
   const utils = render(() => (
-    <PreapplyReview
-      title="Review before applying: src/App.tsx"
-      review={review}
-      onApply={onApply}
-      onCancel={onCancel}
-    />
+    <PreapplyReview title="Review before applying: src/App.tsx" review={review} onApply={onApply} />
   ))
-  return { onApply, onCancel, ...utils }
+  return { onApply, ...utils }
 }
 
 /** Hunk checkboxes only: the footer carries a separate "remember" checkbox. */
@@ -55,8 +49,8 @@ describe('PreapplyReview', () => {
     expect(onApply).toHaveBeenCalledWith([1], false)
   })
 
-  it('will not apply an empty selection, but can deny everything', () => {
-    const { getByText, onApply, onCancel, container } = setup()
+  it('denies through the same answer as an approval', () => {
+    const { getByText, onApply, container, getByLabelText } = setup()
     for (const box of hunkBoxes(container)) fireEvent.click(box)
 
     const apply = getByText('Apply 0 of 2')
@@ -64,8 +58,13 @@ describe('PreapplyReview', () => {
     fireEvent.click(apply)
     expect(onApply).not.toHaveBeenCalled()
 
+    // Nothing selected means there is nothing to skip reviewing later.
+    expect(getByLabelText('Skip review for the rest of this turn').hasAttribute('disabled')).toBe(
+      true
+    )
+
     fireEvent.click(getByText('Deny all'))
-    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(onApply).toHaveBeenCalledWith([], false)
   })
 
   it('can skip review for the rest of the turn', () => {

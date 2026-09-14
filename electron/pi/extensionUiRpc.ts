@@ -31,6 +31,12 @@ function emitUiPromptEvent(
   })
 }
 
+/** The review answer as the gate reads it; no answer stays no answer. */
+function reviewAnswerValue(response: ExtensionUiResponse): string | undefined {
+  if (response.cancelled || !response.approved) return undefined
+  return JSON.stringify({ approved: response.approved, remember: response.remember === true })
+}
+
 /**
  * The pre-apply review gate cannot send structured data through ctx.ui, so it
  * puts a marked JSON payload in the input placeholder. Recognising it here keeps
@@ -120,12 +126,7 @@ export function createOpenPiExtensionUIContext(sinks: ExtensionUiBridgeSinks): E
         return dialogPromise(
           sinks,
           (id) => ({ id, method: 'preapply_review', title, review, timeout: opts?.timeout }),
-          // The gate parses this JSON; no answer (cancel, timeout, malformed)
-          // reads as a denial there.
-          (r) =>
-            r.cancelled || !r.approved
-              ? undefined
-              : JSON.stringify({ approved: r.approved, remember: r.remember === true }),
+          reviewAnswerValue,
           undefined,
           opts
         )

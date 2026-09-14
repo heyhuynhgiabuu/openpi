@@ -40,6 +40,16 @@ describe('pre-apply review bridge', () => {
     await expect(answer).resolves.toBe('{"approved":[1],"remember":true}')
   })
 
+  it('passes an explicit denial through as an empty selection', async () => {
+    const { requests, context } = harness()
+
+    const answer = context.input('title', PREAPPLY_REVIEW_MARKER + JSON.stringify(review))
+    const request = requests[0]
+    if (request) fulfillExtensionUiPending({ id: request.id, approved: [] })
+
+    await expect(answer).resolves.toBe('{"approved":[],"remember":false}')
+  })
+
   it('treats a cancelled review as no answer', async () => {
     const { requests, context } = harness()
 

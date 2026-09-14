@@ -57,10 +57,6 @@ export function isPreApplyReviewEnabled(env: NodeJS.ProcessEnv): boolean {
   return env.OPENPI_PREAPPLY_REVIEW === '1'
 }
 
-export function shouldSkipReview(): boolean {
-  return skipReviewThisTurn
-}
-
 export function endTurn(): void {
   skipReviewThisTurn = false
 }
@@ -168,8 +164,10 @@ async function reviewEdit(
     return deny(shownPath, 'did not answer')
   }
 
-  if (parsed.remember) skipReviewThisTurn = true
   if (parsed.approved.length === 0) return deny(shownPath, 'denied these changes')
+  // Skipping review means letting the rest of the turn through, so it only
+  // follows an approval; denying everything clearly does not ask for that.
+  if (parsed.remember) skipReviewThisTurn = true
   if (parsed.approved.length === hunks.length) return undefined
 
   const edits = Array.isArray(input.edits) ? input.edits : []

@@ -111,14 +111,7 @@ export function ExtensionUiDialog(props: Props) {
         }
 
         if (r.method === 'preapply_review') {
-          return (
-            <PreapplyReview
-              title={r.title}
-              review={r.review}
-              onApply={props.onApply}
-              onCancel={props.onCancel}
-            />
-          )
+          return <PreapplyReview title={r.title} review={r.review} onApply={props.onApply} />
         }
 
         if (r.method === 'editor') {

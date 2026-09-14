@@ -28,6 +28,8 @@ afterEach(() => {
   fs.rmSync(cwd, { recursive: true, force: true })
   delete process.env.OPENPI_PREAPPLY_REVIEW
   delete process.env.OPENPI_BRIDGE_APP
+  // The skip flag lives in the extension module, so isolate tests from each other.
+  endTurn()
 })
 
 function writeFile(relPath: string, content: string): void {
@@ -205,17 +207,33 @@ describe('hunk review inside OpenPi', () => {
 
   it('skips the rest of the turn after the user asks it to', async () => {
     const first = context({ reviewAnswer: '{"approved":[0,1],"remember":true}' })
-
     await handleToolCall({ toolName: 'edit', input: editInput() }, first.ctx)
+
     const second = context({ reviewAnswer: undefined })
     const skipped = await handleToolCall({ toolName: 'edit', input: editInput() }, second.ctx)
 
     expect(skipped).toBeUndefined()
     expect(second.input).not.toHaveBeenCalled()
+  })
 
+  it('does not skip when the user denied everything', async () => {
+    const denied = context({ reviewAnswer: '{"approved":[],"remember":true}' })
+    await handleToolCall({ toolName: 'edit', input: editInput() }, denied.ctx)
+
+    const next = context({ reviewAnswer: undefined })
+    await handleToolCall({ toolName: 'edit', input: editInput() }, next.ctx)
+
+    expect(next.input).toHaveBeenCalled()
+  })
+
+  it('asks again after the turn ends', async () => {
+    const first = context({ reviewAnswer: '{"approved":[0,1],"remember":true}' })
+    await handleToolCall({ toolName: 'edit', input: editInput() }, first.ctx)
     endTurn()
+
     const after = context({ reviewAnswer: '{"approved":[]}' })
     const asked = await handleToolCall({ toolName: 'edit', input: editInput() }, after.ctx)
+
     expect(after.input).toHaveBeenCalled()
     expect(asked?.block).toBe(true)
   })

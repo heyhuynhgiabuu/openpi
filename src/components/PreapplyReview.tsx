@@ -4,8 +4,11 @@ import type { PreapplyReview as Review } from '../lib/extensionUiTypes'
 type Props = {
   title: string
   review: Review
+  /**
+   * Denying is an answer, not a dismissal: it sends an empty selection so the
+   * model is told the change was refused instead of never answered.
+   */
   onApply: (approved: number[], remember: boolean) => void
-  onCancel: () => void
 }
 
 /**
@@ -68,12 +71,17 @@ export function PreapplyReview(props: Props) {
           <input
             type="checkbox"
             checked={remember()}
+            disabled={selected().length === 0}
             onChange={(event) => setRemember(event.currentTarget.checked)}
           />
           <span>Skip review for the rest of this turn</span>
         </label>
         <div class="ask-modal-footer">
-          <button type="button" class="ask-btn ask-btn-ghost" onClick={props.onCancel}>
+          <button
+            type="button"
+            class="ask-btn ask-btn-ghost"
+            onClick={() => props.onApply([], false)}
+          >
             Deny all
           </button>
           <button
