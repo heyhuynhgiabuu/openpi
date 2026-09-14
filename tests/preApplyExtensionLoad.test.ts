@@ -4,10 +4,8 @@ import path from 'node:path'
 import { discoverAndLoadExtensions } from '@earendil-works/pi-coding-agent'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-const extensionPath = path.resolve(
-  import.meta.dirname,
-  '../.pi/extensions/openpi-preapply-review.ts'
-)
+const extensionDir = path.resolve(import.meta.dirname, '../.pi/extensions/openpi-preapply-review')
+const entryPath = path.join(extensionDir, 'index.ts')
 
 let cwd: string
 let agentDir: string
@@ -31,10 +29,12 @@ afterEach(() => {
  */
 describe('pre-apply review extension under Pi extension loader', () => {
   async function load() {
-    const result = await discoverAndLoadExtensions([extensionPath], cwd, agentDir)
+    // Loading the directory exercises Pi's own entry resolution (index.ts), which
+    // is how the extension is discovered in a real session.
+    const result = await discoverAndLoadExtensions([extensionDir], cwd, agentDir)
     return {
       errors: result.errors,
-      extension: result.extensions.find((candidate) => candidate.resolvedPath === extensionPath),
+      extension: result.extensions.find((candidate) => candidate.resolvedPath === entryPath),
     }
   }
 

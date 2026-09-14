@@ -1,4 +1,6 @@
 import type { ExtensionUIContext } from '@earendil-works/pi-coding-agent'
+import type { PreapplyReview } from '../../src/lib/extensionUiTypes'
+import { PREAPPLY_REVIEW_MARKER, preapplyReviewSchema } from '../../src/lib/extensionUiTypes'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import type { ExtensionUiBridgeSinks } from './extensionUiBridge'
 import { emitExtensionNotify, extensionNotifyLevelFromPi } from './extensionUiBridge'
@@ -21,6 +23,23 @@ function emitUiPromptEvent(
   title: string
 ): void {
   sinks.sessionEvent({ type, reason: 'ui_prompt', kind, title })
+}
+
+/**
+ * The pre-apply review gate cannot send structured data through ctx.ui, so it
+ * puts a marked JSON payload in the input placeholder. Recognising it here keeps
+ * the payload out of the renderer's text box and turns it into a typed request.
+ */
+function parsePreapplyReview(placeholder: string): PreapplyReview | undefined {
+  try {
+    const raw: unknown = JSON.parse(placeholder.slice(PREAPPLY_REVIEW_MARKER.length))
+    const parsed = preapplyReviewSchema.safeParse(raw)
+    if (parsed.success) return parsed.data
+    console.warn('[openpi] preapply review payload rejected', parsed.error.flatten())
+  } catch (error) {
+    console.warn('[openpi] preapply review payload unparseable', error)
+  }
+  return undefined
 }
 
 function dialogPromise<T>(
@@ -87,14 +106,32 @@ export function createOpenPiExtensionUIContext(sinks: ExtensionUiBridgeSinks): E
         false,
         opts
       ),
-    input: (title, placeholder, opts) =>
-      dialogPromise(
+    input: (title, placeholder, opts) => {
+      if (placeholder?.startsWith(PREAPPLY_REVIEW_MARKER)) {
+        const review = parsePreapplyReview(placeholder)
+        // A marked payload that does not validate means the gate and this host
+        // disagree on the protocol. Answering "cancelled" denies the change
+        // instead of showing the user raw JSON in a text box.
+        if (!review) return Promise.resolve(undefined)
+        return dialogPromise(
+          sinks,
+          (id) => ({ id, method: 'preapply_review', title, review, timeout: opts?.timeout }),
+          // The gate parses this JSON; no answer (cancel, timeout, malformed)
+          // reads as a denial there.
+          (r) =>
+            r.cancelled || !r.approved ? undefined : JSON.stringify({ approved: r.approved }),
+          undefined,
+          opts
+        )
+      }
+      return dialogPromise(
         sinks,
         (id) => ({ id, method: 'input', title, placeholder, timeout: opts?.timeout }),
         (r) => (r.cancelled ? undefined : r.value),
         undefined,
         opts
-      ),
+      )
+    },
     editor: (title, prefill) =>
       dialogPromise(
         sinks,

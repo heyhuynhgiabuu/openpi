@@ -1012,6 +1012,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
         cancelled: cmd.cancelled,
         confirmed: cmd.confirmed,
         value: cmd.value,
+        approved: cmd.approved,
       })
       break
     }

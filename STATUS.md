@@ -26,7 +26,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ### Next (Phase 7 — see ROADMAP)
 
-- **P0:** pre-apply diff review — slice 1 is implemented on `main` and unreleased: the opt-in `.pi/extensions/openpi-preapply-review.ts` gate (`OPENPI_PREAPPLY_REVIEW=1`) uses Pi's `tool_call` hook to preview the `edit`/`write` change and blocks the write when the user denies. The split-diff modal with per-hunk choice (slice 2) still needs an approved design; `bash` writes stay ungated. Broader critical-path `npm test` coverage.
+- **P0:** pre-apply diff review — implemented on `main` and unreleased as the opt-in `.pi/extensions/openpi-preapply-review/` gate (`OPENPI_PREAPPLY_REVIEW=1`), which uses Pi's `tool_call` hook to stop a write before it lands. Inside OpenPi the gate sends the hunks of an `edit` call to a review modal where the user picks which ones to keep; unselected entries are dropped from the call, so Pi's own tool applies the rest and its result diff tells the model what was skipped. `write` stays whole-file allow/deny (a rewrite has no hunk to drop), and `bash` writes stay ungated. Outside OpenPi the gate falls back to a text confirm. Broader critical-path `npm test` coverage.
 
 - **P1:** Session map v2 is implemented on `main` and unreleased: read-only tree overlay, keyboard navigation, jump to an entry, text filter, branch switching through Pi's tree navigation, live refresh while Pi writes entries. Remaining: subagent card polish.
 - **P2:** Workbench context bridge, signed/notarized auto-update rollout.

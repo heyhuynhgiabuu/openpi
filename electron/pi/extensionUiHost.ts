@@ -13,6 +13,7 @@ export function registerExtensionUiHandlers(ipcMain: IpcMain): void {
       cancelled: response.cancelled,
       confirmed: response.confirmed,
       value: response.value,
+      approved: response.approved,
     } satisfies SidecarCommand)
   })
 }

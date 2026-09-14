@@ -14284,6 +14284,54 @@ body.panel-dragging {
   resize: vertical;
   font-family: inherit;
 }
+.extension-ui-overlay .ask-modal-review {
+  max-width: 720px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  /* Reset the dialog element's UA box so .ask-modal keeps deciding the look. */
+  position: static;
+  padding: 0;
+  color: var(--ink);
+}
+.preapply-hunks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 16px 0;
+  overflow-y: auto;
+}
+.preapply-hunk {
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.preapply-hunk.is-off {
+  opacity: 0.45;
+}
+.preapply-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink-muted, #a3a3a3);
+  background: var(--surface-2, #252525);
+}
+.preapply-hunk-diff {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-0, #111);
+}
+.preapply-hunk-line {
+  display: block;
+}
 
 /* ── Ask User Question Modal ─────────────────────────────────────────────── */
 .ask-overlay {

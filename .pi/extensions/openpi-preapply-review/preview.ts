@@ -1,20 +1,10 @@
 /**
- * OpenPi pre-apply review — optional gate that asks before Pi writes a file.
+ * Preview helpers for the pre-apply review gate.
  *
- * Pi runs its own tools, so the only sanctioned place to stop a write is the
- * `tool_call` event: it fires before the tool executes, can block with
- * `{ block: true, reason }`, and Pi reports the reason back to the model as the
- * tool result. This extension uses that hook plus `ctx.ui.confirm`, which OpenPi
- * renders in its own dialog (the same bridge as every other extension prompt).
- *
- * Off by default: Pi is YOLO by default and a gate stops every edit until the
- * user answers. Enable it per session with OPENPI_PREAPPLY_REVIEW=1 in the
- * environment OpenPi (and therefore the sidecar) is started with.
- *
- * Scope: Pi's built-in `edit` and `write` tools. `edit` carries `edits[]`, each
- * replacing one contiguous block, so every entry becomes a hunk of the preview;
- * `write` is compared against the file on disk. A preview trims the unchanged
- * prefix and suffix, so it shows the changed region instead of the whole file.
+ * They turn an `edit` or `write` tool call into something a user can judge: a
+ * summary line plus the changed region, with the unchanged prefix and suffix
+ * trimmed. `edit` carries `edits[]`, each replacing one contiguous block, so
+ * every entry becomes a hunk; `write` is compared against the file on disk.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
@@ -36,19 +26,15 @@ export interface PreApplyPreview {
   created: boolean
 }
 
-export function isPreApplyReviewEnabled(env: NodeJS.ProcessEnv): boolean {
-  return env.OPENPI_PREAPPLY_REVIEW === '1'
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
 
-function str(value: unknown): string | null {
+export function str(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-function displayPath(cwd: string, path: string): string {
+export function displayPath(cwd: string, path: string): string {
   const absolute = isAbsolute(path) ? path : resolve(cwd, path)
   const prefix = `${resolve(cwd)}/`
   return absolute.startsWith(prefix) ? absolute.slice(prefix.length) : path
@@ -113,37 +99,58 @@ function countLines(text: string): number {
   return text.endsWith('\n') ? segments.length - 1 : segments.length
 }
 
+/** One `edits[]` entry, ready for the review dialog. */
+export interface ReviewHunk {
+  diff: string
+  removed: number
+  added: number
+}
+
 /**
- * Preview for Pi's `edit` tool. One call carries `edits[]`, and each entry
- * replaces one contiguous block, so each entry is a hunk. An `edit` with no
- * usable entry would fail in the tool itself, which is why the gate stays out
- * of the way instead of asking about it.
+ * Hunks of an `edit` call, in the order Pi applies them. One call carries
+ * `edits[]`, and each entry replaces one contiguous block. Returns null when the
+ * call carries no usable entry: the tool itself would fail, so the gate stays
+ * out of the way instead of asking about a change that cannot happen.
  */
+export function editHunks(input: Record<string, unknown>): ReviewHunk[] | null {
+  const edits = Array.isArray(input.edits) ? input.edits : []
+  if (edits.length === 0) return null
+
+  const hunks: ReviewHunk[] = []
+  for (const entry of edits) {
+    const oldText = str(asRecord(entry).oldText)
+    const newText = str(asRecord(entry).newText)
+    if (oldText === null || newText === null) return null
+    hunks.push({
+      diff: diffRegion(oldText, newText),
+      removed: countLines(oldText),
+      added: countLines(newText),
+    })
+  }
+  return hunks
+}
+
+/** One line for the dialog header: what the call changes, in total. */
+export function hunksSummary(hunks: ReviewHunk[]): string {
+  const removed = hunks.reduce((total, hunk) => total + hunk.removed, 0)
+  const added = hunks.reduce((total, hunk) => total + hunk.added, 0)
+  const count = hunks.length > 1 ? ` · ${hunks.length} hunks` : ''
+  return `edit · -${lineLabel(removed)} / +${lineLabel(added)}${count}`
+}
+
+/** Preview for Pi's `edit` tool: every edit is a hunk of the change. */
 export function previewForEdit(
   input: Record<string, unknown>,
   cwd: string
 ): PreApplyPreview | null {
   const path = str(input.path)
-  const edits = Array.isArray(input.edits) ? input.edits : []
-  if (!path || edits.length === 0) return null
+  const hunks = editHunks(input)
+  if (!path || !hunks) return null
 
-  const hunks: string[] = []
-  let removed = 0
-  let added = 0
-  for (const entry of edits) {
-    const oldText = str(asRecord(entry).oldText)
-    const newText = str(asRecord(entry).newText)
-    if (oldText === null || newText === null) return null
-    removed += countLines(oldText)
-    added += countLines(newText)
-    hunks.push(diffRegion(oldText, newText))
-  }
-
-  const count = edits.length > 1 ? ` · ${edits.length} hunks` : ''
   return {
     path: displayPath(cwd, path),
-    summary: `edit · -${lineLabel(removed)} / +${lineLabel(added)}${count}`,
-    body: hunks.join('\n\n'),
+    summary: hunksSummary(hunks),
+    body: hunks.map((hunk) => hunk.diff).join('\n\n'),
     created: false,
   }
 }
@@ -212,49 +219,4 @@ export function confirmMessage(preview: PreApplyPreview): string {
     return `Pi wants to ${preview.created ? 'create' : 'rewrite'} this file, but the preview is empty.\n\nDeny blocks the write.`
   }
   return `${preview.body}\n\nDeny blocks the write; Allow applies it.`
-}
-
-/** The part of Pi's tool_call event and context this gate reads. */
-export interface PreApplyToolCall {
-  toolName: string
-  input: unknown
-}
-
-export interface PreApplyContext {
-  cwd: string
-  ui: { confirm: (title: string, message: string) => Promise<boolean> }
-}
-
-export interface BlockedToolCall {
-  block: true
-  reason: string
-}
-
-/**
- * Returns a block result when the user denies the change, and nothing when the
- * call should proceed. Pi reports the reason back to the model as the tool
- * result, so the model knows the change was refused rather than failed.
- */
-export async function handleToolCall(
-  event: PreApplyToolCall,
-  ctx: PreApplyContext
-): Promise<BlockedToolCall | undefined> {
-  const preview = previewForToolCall(event.toolName, event.input, ctx.cwd)
-  if (!preview) return undefined
-
-  const allowed = await ctx.ui.confirm(
-    `Review before applying: ${preview.path}`,
-    `${preview.summary}\n\n${confirmMessage(preview)}`
-  )
-  if (allowed) return undefined
-
-  return {
-    block: true,
-    reason: `The user denied this change in the OpenPi pre-apply review of ${preview.path}. Do not retry it unchanged.`,
-  }
-}
-
-export default function (pi: ExtensionAPI) {
-  if (!isPreApplyReviewEnabled(process.env)) return
-  pi.on('tool_call', (event, ctx) => handleToolCall(event, ctx))
 }

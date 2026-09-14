@@ -1,11 +1,13 @@
 import { For, Show } from 'solid-js'
 import type { ExtensionUiRequest } from '../lib/extensionUiTypes'
+import { PreapplyReview } from './PreapplyReview'
 
 type Props = {
   request: ExtensionUiRequest | null
   onConfirm: (confirmed: boolean) => void
   onSelect: (value: string | undefined) => void
   onInput: (value: string | undefined) => void
+  onApply: (approved: number[]) => void
   onCancel: () => void
 }
 
@@ -105,6 +107,17 @@ export function ExtensionUiDialog(props: Props) {
                 </div>
               </div>
             </div>
+          )
+        }
+
+        if (r.method === 'preapply_review') {
+          return (
+            <PreapplyReview
+              title={r.title}
+              review={r.review}
+              onApply={props.onApply}
+              onCancel={props.onCancel}
+            />
           )
         }
 

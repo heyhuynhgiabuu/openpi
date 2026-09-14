@@ -2,16 +2,20 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-agent'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  approvedHunks,
+  handleToolCall,
+  isOpenPiHost,
+  isPreApplyReviewEnabled,
+} from '../.pi/extensions/openpi-preapply-review/index'
 import {
   confirmMessage,
-  handleToolCall,
   diffRegion,
-  isPreApplyReviewEnabled,
   previewForEdit,
   previewForToolCall,
   previewForWrite,
-} from '../.pi/extensions/openpi-preapply-review'
+} from '../.pi/extensions/openpi-preapply-review/preview'
 
 let cwd: string
 
@@ -21,6 +25,8 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(cwd, { recursive: true, force: true })
+  delete process.env.OPENPI_PREAPPLY_REVIEW
+  delete process.env.OPENPI_BRIDGE_APP
 })
 
 function writeFile(relPath: string, content: string): void {
@@ -29,8 +35,16 @@ function writeFile(relPath: string, content: string): void {
   fs.writeFileSync(full, content)
 }
 
-function context(confirm: (title: string, message: string) => Promise<boolean>) {
-  return { cwd, ui: { confirm } }
+interface ContextOptions {
+  confirmed?: boolean
+  reviewAnswer?: string | undefined
+}
+
+/** Fake Pi context; the spies record what the gate asked for. */
+function context(options: ContextOptions = {}) {
+  const confirm = vi.fn(async (_title: string, _message: string) => options.confirmed ?? false)
+  const input = vi.fn(async (_title: string, _placeholder?: string) => options.reviewAnswer)
+  return { confirm, input, ctx: { cwd, ui: { confirm, input } } }
 }
 
 describe('pre-apply review gate', () => {
@@ -48,37 +62,127 @@ describe('tool_call handling', () => {
     path: 'a.ts',
     edits: [{ oldText: 'x\n', newText: 'y\n' }],
   }
-  const editCall = { toolName: 'edit', input: editInput }
 
-  it('blocks the tool when the user denies, and stays out of the way when they allow', async () => {
-    const seen: string[] = []
-    const denied = await handleToolCall(
-      editCall,
-      context(async (title, message) => {
-        seen.push(`${title}\n${message}`)
-        return false
-      })
-    )
+  it('asks with a text preview and blocks when the user denies', async () => {
+    const { ctx, confirm, input } = context({ confirmed: false })
+
+    const denied = await handleToolCall({ toolName: 'edit', input: editInput }, ctx)
 
     expect(denied?.block).toBe(true)
     expect(denied?.reason).toContain('denied')
-    expect(seen[0]).toContain('Review before applying: a.ts')
-    expect(seen[0]).toContain('-x\n+y')
+    expect(confirm.mock.calls[0]?.[0]).toBe('Review before applying: a.ts')
+    expect(confirm.mock.calls[0]?.[1]).toContain('-x\n+y')
+    expect(input).not.toHaveBeenCalled()
+  })
 
-    const allowed = await handleToolCall(
-      editCall,
-      context(async () => true)
-    )
-    expect(allowed).toBeUndefined()
+  it('stays out of the way when the user allows', async () => {
+    const { ctx } = context({ confirmed: true })
+
+    expect(await handleToolCall({ toolName: 'edit', input: editInput }, ctx)).toBeUndefined()
   })
 
   it('leaves tools it cannot preview alone', async () => {
+    const { ctx, confirm } = context({ confirmed: false })
+
+    const result = await handleToolCall({ toolName: 'bash', input: { command: 'rm -rf /' } }, ctx)
+
+    expect(result).toBeUndefined()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+})
+
+describe('hunk review inside OpenPi', () => {
+  const editInput = (): EditToolInput => ({
+    path: 'src/App.tsx',
+    edits: [
+      { oldText: 'one\n', newText: 'ONE\n' },
+      { oldText: 'two\n', newText: 'TWO\n' },
+    ],
+  })
+
+  beforeEach(() => {
+    process.env.OPENPI_BRIDGE_APP = 'openpi'
+  })
+
+  it('is detected from the bridge environment', () => {
+    expect(isOpenPiHost({ OPENPI_BRIDGE_APP: 'openpi' })).toBe(true)
+    expect(isOpenPiHost({})).toBe(false)
+    expect(isOpenPiHost({ OPENPI_BRIDGE_APP: 'pi-tui' })).toBe(false)
+  })
+
+  it('sends every hunk as a review payload', async () => {
+    const { ctx, confirm, input } = context({ reviewAnswer: '{"approved":[0,1]}' })
+
+    await handleToolCall({ toolName: 'edit', input: editInput() }, ctx)
+
+    expect(confirm).not.toHaveBeenCalled()
+    const [title, placeholder] = input.mock.calls[0] ?? []
+    expect(title).toBe('Review before applying: src/App.tsx')
+    expect(placeholder?.startsWith('openpi-preapply-review:')).toBe(true)
+    const payload: unknown = JSON.parse((placeholder ?? '').slice('openpi-preapply-review:'.length))
+    expect(payload).toEqual({
+      path: 'src/App.tsx',
+      summary: 'edit · -2 lines / +2 lines · 2 hunks',
+      hunks: [
+        { diff: '-one\n+ONE', removed: 1, added: 1 },
+        { diff: '-two\n+TWO', removed: 1, added: 1 },
+      ],
+    })
+  })
+
+  it('keeps only the approved hunks by rewriting the call input', async () => {
+    const input = editInput()
+    const { ctx } = context({ reviewAnswer: '{"approved":[1]}' })
+
+    const result = await handleToolCall({ toolName: 'edit', input }, ctx)
+
+    expect(result).toBeUndefined()
+    expect(input.edits).toEqual([{ oldText: 'two\n', newText: 'TWO\n' }])
+  })
+
+  it('leaves the call untouched when every hunk is approved', async () => {
+    const input = editInput()
+    const { ctx } = context({ reviewAnswer: '{"approved":[0,1]}' })
+
+    expect(await handleToolCall({ toolName: 'edit', input }, ctx)).toBeUndefined()
+    expect(input.edits).toHaveLength(2)
+  })
+
+  it('blocks when nothing is approved or the dialog is cancelled', async () => {
+    const none = context({ reviewAnswer: '{"approved":[]}' })
+    const cancelled = context({ reviewAnswer: undefined })
+
+    const deniedNone = await handleToolCall({ toolName: 'edit', input: editInput() }, none.ctx)
+    const deniedCancel = await handleToolCall(
+      { toolName: 'edit', input: editInput() },
+      cancelled.ctx
+    )
+
+    expect(deniedNone?.block).toBe(true)
+    expect(deniedCancel?.block).toBe(true)
+    expect(deniedNone?.reason).toContain('denied')
+  })
+
+  it('reads approved indexes defensively', () => {
+    expect(approvedHunks('{"approved":[1,0,1]}', 2)).toEqual([0, 1])
+    expect(approvedHunks('{"approved":[2,-1,"x"]}', 2)).toEqual([])
+    expect(approvedHunks('{}', 2)).toBeNull()
+    expect(approvedHunks('not json', 2)).toBeNull()
+    expect(approvedHunks(undefined, 2)).toBeNull()
+  })
+
+  it('still uses the text dialog for write', async () => {
+    const { ctx, confirm, input } = context({ confirmed: true })
+    writeFile('docs/new.md', 'old\n')
+
     const result = await handleToolCall(
-      { toolName: 'bash', input: { command: 'rm -rf /' } },
-      context(async () => false)
+      { toolName: 'write', input: { path: 'docs/new.md', content: 'new\n' } },
+      ctx
     )
 
     expect(result).toBeUndefined()
+    expect(input).not.toHaveBeenCalled()
+    expect(confirm.mock.calls[0]?.[0]).toBe('Review before applying: docs/new.md')
   })
 })
 

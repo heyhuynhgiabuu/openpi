@@ -60,6 +60,7 @@ export type SidecarCommand =
       cancelled?: boolean
       confirmed?: boolean
       value?: string
+      approved?: number[]
     }
   | { type: 'stop' }
 
