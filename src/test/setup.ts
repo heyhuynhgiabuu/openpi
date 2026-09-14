@@ -80,3 +80,11 @@ Object.defineProperty(globalThis, 'localStorage', {
     key: (i: number) => Object.keys(store)[i] ?? null,
   } satisfies Storage,
 })
+
+// jsdom implements no layout, so Element.scrollIntoView is missing entirely
+// rather than a no-op. The session map and command palette call it to keep the
+// keyboard cursor visible; without this the call throws inside a Solid
+// computation and vitest reports unhandled errors even when every test passes.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
