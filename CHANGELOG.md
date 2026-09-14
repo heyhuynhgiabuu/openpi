@@ -14,6 +14,13 @@
 
 - CI runs the test suite on Windows, so a POSIX-only assumption fails before a tag is pushed instead of after. (`1816210`)
 
+### Beta caveats
+
+- v0.2.12 was tagged but never published — its Windows release job failed on the test assertions above — so this is the first release carrying those fixes.
+- The pre-apply gate stays opt-in (**Settings → General → Agent policy**, or `OPENPI_PREAPPLY_REVIEW=1`), and `bash` writes stay ungated.
+- `write` is still whole-file allow/deny through a text confirm; routing it through the review modal is still open.
+- The gate's end-to-end check needs a model, so it stays manual; CI covers it per seam.
+
 ## [0.2.12] - 2026-09-14
 
 _Not published: the Windows release job failed on two test assertions that assumed POSIX `O_NOFOLLOW`. The fixes ship in 0.2.13._
