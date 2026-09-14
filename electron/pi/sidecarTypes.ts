@@ -38,7 +38,7 @@ export type SidecarCommand =
   | { type: 'execute_bash'; requestId: string; command: string; excludeFromContext?: boolean }
   | { type: 'set_session_name'; name: string }
   | { type: 'fork_session'; entryId: string; workspaceTrusted: boolean; requestId?: string }
-  | { type: 'navigate_tree'; entryId: string; summarize?: boolean; requestId: string }
+  | { type: 'navigate_tree'; entryId: string; requestId: string }
   | { type: 'compact'; customInstructions?: string; requestId: string }
   | { type: 'reload_session'; requestId: string }
   | { type: 'get_session_info'; requestId: string }

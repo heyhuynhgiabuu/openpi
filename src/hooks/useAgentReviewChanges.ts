@@ -15,19 +15,27 @@ export function useAgentReviewChanges() {
   /** Runs a review operation and applies the summary it returns; failures land in `error`. */
   const run = async (operation: () => Promise<AgentReviewSummary>): Promise<void> => {
     try {
-      applySummary(await operation())
+      await runAtHunk(operation)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  /**
+   * Hunk actions report next to the hunk they touched, so their failure is left
+   * to the caller (ReviewHunkActions renders it) instead of the pane banner.
+   */
+  const runAtHunk = async (operation: () => Promise<AgentReviewSummary>): Promise<void> => {
+    applySummary(await operation())
   }
 
   const refresh = () => run(() => window.openpi.agentReview.list())
   const keep = (id: string) => run(() => window.openpi.agentReview.keep(id))
   const revert = (id: string) => run(() => window.openpi.agentReview.revert(id))
   const keepHunk = (id: string, index: number) =>
-    run(() => window.openpi.agentReview.keepHunk(id, index))
+    runAtHunk(() => window.openpi.agentReview.keepHunk(id, index))
   const revertHunk = (id: string, index: number) =>
-    run(() => window.openpi.agentReview.revertHunk(id, index))
+    runAtHunk(() => window.openpi.agentReview.revertHunk(id, index))
   const revertAll = () => run(() => window.openpi.agentReview.revertAll())
   const clear = () => run(() => window.openpi.agentReview.clear())
 

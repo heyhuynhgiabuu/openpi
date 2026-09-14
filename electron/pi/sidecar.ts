@@ -780,9 +780,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       // Pi's own tree navigation: moves the leaf pointer in this file (no fork),
       // rebuilds the agent context from the new leaf, and reports the target
       // user message text so the composer can offer it for editing.
-      const result = await state.session.navigateTree(cmd.entryId, {
-        summarize: cmd.summarize ?? false,
-      })
+      const result = await state.session.navigateTree(cmd.entryId)
       send({
         type: 'navigate_tree_result',
         requestId: cmd.requestId,

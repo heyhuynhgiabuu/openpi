@@ -732,7 +732,6 @@ export type ForkSession = z.infer<typeof forkSessionSchema>
 export const navigateSessionTreeRequestSchema = z.object({
   path: z.string().min(1),
   entryId: z.string().min(1),
-  summarize: z.boolean().optional(),
 })
 export type NavigateSessionTreeRequest = z.infer<typeof navigateSessionTreeRequestSchema>
 

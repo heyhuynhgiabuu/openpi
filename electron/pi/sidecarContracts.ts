@@ -89,7 +89,6 @@ export const sidecarCommandSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('navigate_tree'),
       entryId: z.string().min(1),
-      summarize: z.boolean().optional(),
       requestId: requestIdSchema,
     })
     .strict(),

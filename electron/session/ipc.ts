@@ -435,11 +435,7 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(
     IPC.NAVIGATE_SESSION_TREE,
     async (_event, raw: unknown): Promise<NavigateSessionTreeResult> => {
-      const {
-        path: submittedPath,
-        entryId,
-        summarize,
-      } = navigateSessionTreeRequestSchema.parse(raw)
+      const { path: submittedPath, entryId } = navigateSessionTreeRequestSchema.parse(raw)
       const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
       const current = deps.getSessionState()
       // Only the session main is hosting can move its leaf.
@@ -452,7 +448,6 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
         type: 'navigate_tree',
         requestId: deps.createRequestId(),
         entryId,
-        summarize,
       })
       return navigateSessionTreeResultSchema.parse(response.result)
     }

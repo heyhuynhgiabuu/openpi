@@ -153,15 +153,15 @@ describe('session IPC for a session Pi has not flushed yet', () => {
     const handler = navigateFixture.handlers.get(IPC.NAVIGATE_SESSION_TREE)
     if (!handler) throw new Error('Expected NAVIGATE_SESSION_TREE handler')
 
-    await expect(
-      handler({}, { path: sessionPath, entryId: 'entry-42', summarize: false })
-    ).resolves.toEqual({ cancelled: false, leafId: 'entry-42' })
+    await expect(handler({}, { path: sessionPath, entryId: 'entry-42' })).resolves.toEqual({
+      cancelled: false,
+      leafId: 'entry-42',
+    })
 
     expect(navigateFixture.requestSidecar).toHaveBeenCalledWith({
       type: 'navigate_tree',
       requestId: 'req-test',
       entryId: 'entry-42',
-      summarize: false,
     })
   })
 
