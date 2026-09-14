@@ -320,11 +320,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
                         branch={branch}
                         activeLeafId={payload().activeLeafId}
                         cursor={cursor()}
-                        onFocusNode={(nodeIndex) => {
-                          setCursorMoved(true)
-                          setCursor(nodeIndex)
-                          setNotice(null)
-                        }}
+                        onFocusNode={moveCursor}
                         onActivateNode={activate}
                         onStartBranch={startBranch}
                       />

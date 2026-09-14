@@ -69,6 +69,10 @@ export function createUnifiedDiff(
   const after = afterContent.split('\n')
   let truncated = false
   let diffLines: string[]
+  // Counted from the line kinds: a changed line whose own text starts with `++`
+  // or `--` renders as `+++…`/`---…`, so scanning the rendered text undercounts.
+  let added = 0
+  let removed = 0
 
   if (before.length * after.length > MAX_DIFF_CELLS) {
     truncated = true
@@ -85,6 +89,8 @@ export function createUnifiedDiff(
           ? `${line.text.slice(0, MAX_DIFF_LINE_LENGTH)}…`
           : line.text
       diffLines.push(`${line.kind}${safeText}`)
+      if (line.kind === '+') added++
+      else if (line.kind === '-') removed++
       if (diffLines.length >= MAX_DIFF_LINES) {
         truncated = true
         diffLines.push('… diff truncated …')
@@ -93,8 +99,6 @@ export function createUnifiedDiff(
     }
   }
 
-  const added = diffLines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
-  const removed = diffLines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length
   return { text: diffLines.join('\n'), added, removed, truncated }
 }
 

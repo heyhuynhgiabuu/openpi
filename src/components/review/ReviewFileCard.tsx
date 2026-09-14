@@ -210,7 +210,7 @@ export function ReviewFileCard(props: ReviewFileCardProps) {
                     Revert
                   </button>
                 </div>
-                <Show when={change().status === 'modified' && change().hunks.length > 1}>
+                <Show when={change().hunks.length > 1}>
                   <ReviewHunkActions
                     change={change()}
                     onKeepHunk={(index) => props.onKeepReviewHunk(change().id, index)}

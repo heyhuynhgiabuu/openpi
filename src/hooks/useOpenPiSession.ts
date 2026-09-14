@@ -335,6 +335,8 @@ export function useOpenPiSession() {
             currentModelName = payload.model.name
           }
           if (payload.thinkingLevel) setThinkingLevelState(payload.thinkingLevel)
+          // A leaf from the previous session must not leak into this one.
+          setBranchLeafId(null)
           sessionHistory.reset(payload.sessionFile ?? null)
           setContextPercent(null)
           setWorkspaceSummary(null)

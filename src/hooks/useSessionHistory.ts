@@ -11,7 +11,7 @@ interface SessionHistoryOptions {
    * Branch to read instead of the file's own leaf. Set right after a branch
    * switch, which moves Pi's leaf without writing an entry to the file.
    */
-  getLeafId?: () => string | null
+  getLeafId: () => string | null
 }
 
 export function useSessionHistory(options: SessionHistoryOptions) {
@@ -31,7 +31,7 @@ export function useSessionHistory(options: SessionHistoryOptions) {
     window.openpi
       .getSessionMessages(sessionFile, {
         limit: HISTORY_PAGE_LIMIT,
-        leafId: options.getLeafId?.() ?? undefined,
+        leafId: options.getLeafId() ?? undefined,
       })
       .then((page) => {
         if (latestSessionFile !== sessionFile) return
@@ -54,7 +54,7 @@ export function useSessionHistory(options: SessionHistoryOptions) {
       const page = await window.openpi.getSessionMessages(sessionFile, {
         limit: HISTORY_PAGE_LIMIT,
         beforeEntryId,
-        leafId: options.getLeafId?.() ?? undefined,
+        leafId: options.getLeafId() ?? undefined,
       })
       if (latestSessionFile !== sessionFile) return
       options.setMessages((previous) => {

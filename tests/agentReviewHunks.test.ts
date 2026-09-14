@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeReviewHunks,
+  createUnifiedDiff,
   keepHunkInBefore,
   revertHunkInAfter,
   type ReviewHunk,
@@ -23,6 +24,18 @@ function applyAll(content: string, side: 'before' | 'after'): string {
 }
 
 const after = 'alpha\nBETA\ngamma\ndelta\nepsilon\nZETA\neta\n'
+
+describe('review diff totals', () => {
+  it('counts lines whose own text starts with ++ or --', () => {
+    // They render as "+++…"/"---…", so counting by text prefix would miss them.
+    const diff = createUnifiedDiff('notes.md', 'head\n-- removed line\n', 'head\n++ added line\n')
+
+    expect(diff.removed).toBe(1)
+    expect(diff.added).toBe(1)
+    expect(diff.text).toContain('--- removed line')
+    expect(diff.text).toContain('+++ added line')
+  })
+})
 
 describe('review hunk math', () => {
   it('reports no hunks for identical content', () => {

@@ -14,7 +14,6 @@ export type Snapshot = {
   relPath: string
   fullPath: string
   beforeContent: string | null
-  beforeExists: boolean
   skipped?: string
 }
 
@@ -45,27 +44,24 @@ export function readSnapshot(cwd: string, relPath: string, fullPath: string): Sn
     relPath,
     fullPath,
     beforeContent: current.content,
-    beforeExists: current.exists,
     skipped: current.skipped,
   }
 }
 
 export interface CurrentText {
-  exists: boolean
   content: string | null
   /** Set when the file exists but review cannot read it (binary, too large, not a file). */
   skipped?: string
 }
 
 export function readCurrentText(fullPath: string): CurrentText {
-  if (!fs.existsSync(fullPath)) return { exists: false, content: null }
+  if (!fs.existsSync(fullPath)) return { content: null }
   const stat = fs.statSync(fullPath)
-  if (!stat.isFile()) return { exists: true, content: null, skipped: 'Review supports files only' }
+  if (!stat.isFile()) return { content: null, skipped: 'Review supports files only' }
   if (stat.size > MAX_REVIEW_FILE_BYTES) {
-    return { exists: true, content: null, skipped: 'Review skipped a large file' }
+    return { content: null, skipped: 'Review skipped a large file' }
   }
   const buffer = fs.readFileSync(fullPath)
-  if (buffer.includes(0))
-    return { exists: true, content: null, skipped: 'Review skipped a binary file' }
-  return { exists: true, content: buffer.toString('utf-8') }
+  if (buffer.includes(0)) return { content: null, skipped: 'Review skipped a binary file' }
+  return { content: buffer.toString('utf-8') }
 }
