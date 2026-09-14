@@ -181,6 +181,66 @@ describe('SessionMap', () => {
     expect(onNavigate).toHaveBeenCalledWith('root')
   })
 
+  it('filters entries, keeps branch numbers, and hides branches without matches', async () => {
+    stubTree(tree)
+    const { findByText, getByLabelText, getByText, queryByText, container } = renderMap()
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.input(getByLabelText('Filter session entries'), { target: { value: 'second' } })
+
+    // The meta line is assembled from several text nodes, so read it as one string.
+    expect(container.querySelector('.session-map-meta')?.textContent).toContain(
+      '1 match of 4 entries'
+    )
+    expect(getByText('Branch 2')).toBeTruthy()
+    // Branch 1 only held "first prompt", so it drops out entirely.
+    expect(queryByText('Branch 1')).toBeNull()
+    expect(container.querySelectorAll('.session-map-node')).toHaveLength(1)
+    expect(getByText('second reply')).toBeTruthy()
+  })
+
+  it('says so when nothing matches', async () => {
+    stubTree(tree)
+    const { findByText, getByLabelText, container } = renderMap()
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.input(getByLabelText('Filter session entries'), { target: { value: 'zzz' } })
+
+    expect(await findByText('No entries match “zzz”.')).toBeTruthy()
+    expect(container.querySelectorAll('.session-map-node')).toHaveLength(0)
+  })
+
+  it('moves the cursor to the first match so Enter jumps to it', async () => {
+    stubTree(tree)
+    const { findByText, getByLabelText, getByRole, onNavigate, container } = renderMap({
+      loaded: ['leaf-2'],
+    })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.input(getByLabelText('Filter session entries'), { target: { value: 'second' } })
+    expect(container.querySelector('.session-map-meta')?.textContent).toContain('1 match')
+
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter' })
+    expect(onNavigate).toHaveBeenCalledWith('leaf-2')
+  })
+
+  it('clears the filter on Escape before closing the map', async () => {
+    stubTree(tree)
+    const onClose = vi.fn()
+    const { findByText, getByLabelText, getByRole, queryByText } = renderMap({ onClose })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.input(getByLabelText('Filter session entries'), { target: { value: 'zzz' } })
+    await findByText('No entries match “zzz”.')
+
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(queryByText('No entries match “zzz”.')).toBeNull()
+
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+  })
+
   it('reports an empty session', async () => {
     stubTree({
       sessionPath: '/sessions/empty.jsonl',

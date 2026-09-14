@@ -3,10 +3,10 @@
  *
  * Pi sessions are trees (parentId branching, compaction entries, labels), not
  * flat chats. This overlay renders every root-to-leaf branch, marks the active
- * leaf and lists fork points. Data comes from main via GET_SESSION_TREE — the
- * renderer never parses JSONL or imports the Pi SDK.
+ * leaf, lists fork points, and filters entries by text. Data comes from main via
+ * GET_SESSION_TREE — the renderer never parses JSONL or imports the Pi SDK.
  */
-import { X } from 'lucide-solid'
+import { Search, X } from 'lucide-solid'
 import {
   type Component,
   createEffect,
@@ -18,7 +18,15 @@ import {
   onMount,
   Show,
 } from 'solid-js'
-import type { Branch, TreeEntryNode } from '../../lib/ipc'
+import type { TreeEntryNode } from '../../lib/ipc'
+import {
+  BranchCard,
+  countLabel,
+  isNavigable,
+  nodeDetail,
+  nodeLabel,
+  type VisibleBranch,
+} from './BranchCard'
 
 export interface SessionMapProps {
   sessionPath: string
@@ -26,91 +34,6 @@ export interface SessionMapProps {
   /** True when the conversation has this entry loaded, so jumping to it will land somewhere. */
   isEntryLoaded: (entryId: string) => boolean
   onNavigate: (entryId: string) => void
-}
-
-/** Only message entries get a row in the conversation; the rest are metadata. */
-function isNavigable(node: TreeEntryNode): boolean {
-  return node.type === 'message'
-}
-
-const NODE_LABELS: Record<TreeEntryNode['type'], string> = {
-  message: 'Message',
-  compaction: 'Compaction',
-  branch_summary: 'Branch summary',
-  label: 'Label',
-  model_change: 'Model',
-  session_info: 'Name',
-  thinking_level_change: 'Thinking',
-}
-
-function nodeLabel(node: TreeEntryNode): string {
-  if (node.type === 'message') return node.role === 'user' ? 'You' : 'Assistant'
-  return NODE_LABELS[node.type]
-}
-
-/** First field that carries something readable, so every entry type shows a line. */
-function nodeDetail(node: TreeEntryNode): string {
-  if (node.contentPreview) return node.contentPreview
-  if (node.summary) return node.summary
-  if (node.name) return node.name
-  if (node.modelId) return node.modelId
-  if (node.tokensBefore !== undefined) return `${node.tokensBefore.toLocaleString()} tokens before`
-  return ''
-}
-
-function countLabel(count: number, singular: string, plural: string): string {
-  return `${count} ${count === 1 ? singular : plural}`
-}
-
-function BranchCard(props: {
-  branch: Branch
-  position: number
-  activeLeafId: string | null
-  /** Index of this branch's first node in the flattened node list. */
-  nodeOffset: number
-  cursor: number
-  onFocusNode: (index: number) => void
-  onActivateNode: (node: TreeEntryNode) => void
-}) {
-  const isActive = () => props.branch.leafId === props.activeLeafId
-
-  return (
-    <section class={`session-map-branch${isActive() ? ' is-active' : ''}`}>
-      <header class="session-map-branch-header">
-        <span class="session-map-branch-name">Branch {props.position}</span>
-        <span class="session-map-branch-count">
-          {countLabel(props.branch.nodes.length, 'entry', 'entries')}
-        </span>
-        <Show when={isActive()}>
-          <span class="session-map-branch-current">current</span>
-        </Show>
-      </header>
-      <ol class="session-map-nodes">
-        <For each={props.branch.nodes}>
-          {(node, index) => {
-            const flatIndex = () => props.nodeOffset + index()
-            return (
-              <li>
-                <button
-                  type="button"
-                  data-map-idx={flatIndex()}
-                  class={`session-map-node is-${node.type}${
-                    node.id === props.activeLeafId ? ' is-leaf' : ''
-                  }${flatIndex() === props.cursor ? ' is-cursor' : ''}`}
-                  aria-current={flatIndex() === props.cursor ? 'true' : undefined}
-                  onMouseEnter={() => props.onFocusNode(flatIndex())}
-                  onClick={() => props.onActivateNode(node)}
-                >
-                  <span class="session-map-node-type">{nodeLabel(node)}</span>
-                  <span class="session-map-node-detail">{nodeDetail(node)}</span>
-                </button>
-              </li>
-            )
-          }}
-        </For>
-      </ol>
-    </section>
-  )
 }
 
 export const SessionMap: Component<SessionMapProps> = (props) => {
@@ -121,29 +44,48 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   // Reading the resource accessor re-throws its error, so the error state is
   // read first and the rest of the component only ever sees loaded data.
   const data = () => (tree.error ? null : (tree() ?? null))
-  const branchCount = () => data()?.branches.length ?? 0
-  const forkCount = () => data()?.forkPoints.length ?? 0
-
-  // Branches are rendered in order, so a flat index addresses every node.
-  const nodes = createMemo(() => data()?.branches.flatMap((branch) => branch.nodes) ?? [])
-  const branchOffsets = createMemo(() => {
-    const offsets: number[] = []
-    let offset = 0
-    for (const branch of data()?.branches ?? []) {
-      offsets.push(offset)
-      offset += branch.nodes.length
-    }
-    return offsets
-  })
+  const [query, setQuery] = createSignal('')
   const [cursor, setCursor] = createSignal(0)
   const [notice, setNotice] = createSignal<string | null>(null)
   let listRef: HTMLDivElement | undefined
+  let searchRef: HTMLInputElement | undefined
 
-  // Start on the leaf the session is actually at, not on the first entry.
+  const matches = (node: TreeEntryNode) => {
+    const needle = query().trim().toLowerCase()
+    if (!needle) return true
+    return `${nodeLabel(node)} ${nodeDetail(node)}`.toLowerCase().includes(needle)
+  }
+
+  // Branches keep their original number so "Branch 2" stays Branch 2 while a
+  // filter hides the branches that have no match.
+  const branches = createMemo<VisibleBranch[]>(() =>
+    (data()?.branches ?? [])
+      .map((branch, index) => ({
+        leafId: branch.leafId,
+        position: index + 1,
+        nodes: branch.nodes.filter(matches),
+      }))
+      .filter((branch) => branch.nodes.length > 0)
+  )
+  // Branches render in order, so one flat index addresses every visible node.
+  const nodes = createMemo(() => branches().flatMap((branch) => branch.nodes))
+  const branchOffsets = createMemo(() => {
+    let offset = 0
+    return branches().map((branch) => {
+      const start = offset
+      offset += branch.nodes.length
+      return start
+    })
+  })
+  const totalCount = () =>
+    (data()?.branches ?? []).reduce((sum, branch) => sum + branch.nodes.length, 0)
+
+  // Keep the cursor on the leaf the session is at; when the filter hides it,
+  // fall back to the first match so Enter always has a target.
   createEffect(() => {
     const activeLeafId = data()?.activeLeafId
     const index = nodes().findIndex((node) => node.id === activeLeafId)
-    if (index >= 0) setCursor(index)
+    setCursor(index >= 0 ? index : 0)
   })
 
   createEffect(() => {
@@ -174,12 +116,15 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   }
 
   onMount(() => {
-    // Capture phase: the overlay owns Escape while it is open, including when
-    // focus sits outside it (the composer keeps focus when the map opens).
+    searchRef?.focus()
+    // Capture phase: the overlay owns these keys while it is open, including
+    // when focus sits outside it (the composer keeps focus when the map opens).
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
-        props.onClose()
+        // First Escape clears the filter, a second one closes the map.
+        if (query().trim()) setQuery('')
+        else props.onClose()
         return
       }
       const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
@@ -211,8 +156,13 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
           <div>
             <h2 class="session-map-title">Session map</h2>
             <p class="session-map-meta">
-              {countLabel(branchCount(), 'branch', 'branches')} ·{' '}
-              {countLabel(forkCount(), 'fork', 'forks')}
+              {countLabel(data()?.branches.length ?? 0, 'branch', 'branches')} ·{' '}
+              {countLabel(data()?.forkPoints.length ?? 0, 'fork', 'forks')}
+              <Show when={query().trim()}>
+                {' · '}
+                {countLabel(nodes().length, 'match', 'matches')} of{' '}
+                {countLabel(totalCount(), 'entry', 'entries')}
+              </Show>
             </p>
             <Show when={notice()}>
               <p class="session-map-notice">{notice()}</p>
@@ -237,27 +187,43 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
         <Show when={data()}>
           {(payload) => (
             <Show
-              when={payload().branches.length > 0}
+              when={totalCount() > 0}
               fallback={<div class="session-map-empty">This session has no entries yet.</div>}
             >
-              <div class="session-map-branches" ref={listRef}>
-                <For each={payload().branches}>
-                  {(branch, index) => (
-                    <BranchCard
-                      branch={branch}
-                      position={index() + 1}
-                      activeLeafId={payload().activeLeafId}
-                      nodeOffset={branchOffsets()[index()] ?? 0}
-                      cursor={cursor()}
-                      onFocusNode={(nodeIndex) => {
-                        setCursor(nodeIndex)
-                        setNotice(null)
-                      }}
-                      onActivateNode={activate}
-                    />
-                  )}
-                </For>
+              <div class="session-map-search-row">
+                <Search size={13} class="session-map-search-icon" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  class="session-map-search-input"
+                  aria-label="Filter session entries"
+                  placeholder="Filter entries by text…"
+                  value={query()}
+                  onInput={(event) => setQuery(event.currentTarget.value)}
+                />
               </div>
+              <Show
+                when={nodes().length > 0}
+                fallback={<div class="session-map-empty">No entries match “{query().trim()}”.</div>}
+              >
+                <div class="session-map-branches" ref={listRef}>
+                  <For each={branches()}>
+                    {(branch, index) => (
+                      <BranchCard
+                        branch={branch}
+                        activeLeafId={payload().activeLeafId}
+                        nodeOffset={branchOffsets()[index()] ?? 0}
+                        cursor={cursor()}
+                        onFocusNode={(nodeIndex) => {
+                          setCursor(nodeIndex)
+                          setNotice(null)
+                        }}
+                        onActivateNode={activate}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
             </Show>
           )}
         </Show>

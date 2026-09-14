@@ -15543,6 +15543,33 @@ body.panel-dragging {
   background: var(--bg-hover, #23232f);
 }
 
+.session-map-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 8px;
+}
+
+.session-map-search-icon {
+  flex: 0 0 auto;
+  color: var(--ash);
+}
+
+.session-map-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.session-map-search-input::placeholder {
+  color: var(--ash);
+}
+
 .session-map-notice {
   margin: 6px 0 0;
   color: var(--amber, #e0af68);
