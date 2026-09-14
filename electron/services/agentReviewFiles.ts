@@ -50,11 +50,14 @@ export function readSnapshot(cwd: string, relPath: string, fullPath: string): Sn
   }
 }
 
-export function readCurrentText(fullPath: string): {
+export interface CurrentText {
   exists: boolean
   content: string | null
+  /** Set when the file exists but review cannot read it (binary, too large, not a file). */
   skipped?: string
-} {
+}
+
+export function readCurrentText(fullPath: string): CurrentText {
   if (!fs.existsSync(fullPath)) return { exists: false, content: null }
   const stat = fs.statSync(fullPath)
   if (!stat.isFile()) return { exists: true, content: null, skipped: 'Review supports files only' }

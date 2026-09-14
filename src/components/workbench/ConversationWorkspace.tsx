@@ -350,7 +350,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             onAbort={() => void window.openpi.abort()}
             contextPercent={props.session.contextPercent}
             sessionStats={props.session.sessionStats}
-            agentTps={props.session.agentRunMetrics?.tps ?? null}
+            agentTps={props.session.agentTps ?? null}
             runUsage={props.session.runUsage}
             availableAgentTypes={[
               { name: 'worker', description: 'Surgical implementer' },

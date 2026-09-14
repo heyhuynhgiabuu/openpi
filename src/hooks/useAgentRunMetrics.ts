@@ -1,20 +1,14 @@
 import { createSignal } from 'solid-js'
 import { addTurnUsage, EMPTY_RUN_USAGE, type RunUsage } from '../lib/runUsage'
 
-interface AgentRunMetrics {
-  elapsedMs: number
-  output: number
-  tps: number
-}
-
 export function useAgentRunMetrics() {
-  const [metrics, setMetrics] = createSignal<AgentRunMetrics | null>(null)
+  const [tps, setTps] = createSignal<number | null>(null)
   const [usage, setUsage] = createSignal<RunUsage>(EMPTY_RUN_USAGE)
   let agentStartWallMs: number | null = null
 
   const start = () => {
     agentStartWallMs = Date.now()
-    setMetrics(null)
+    setTps(null)
     setUsage(EMPTY_RUN_USAGE)
   }
 
@@ -33,21 +27,9 @@ export function useAgentRunMetrics() {
 
     const elapsedMs = Date.now() - agentStartWallMs
     const output = usage().output
-    if (elapsedMs > 0 && output > 0) {
-      setMetrics({
-        elapsedMs,
-        output,
-        tps: output / (elapsedMs / 1000),
-      })
-    }
+    if (elapsedMs > 0 && output > 0) setTps(output / (elapsedMs / 1000))
     agentStartWallMs = null
   }
 
-  return {
-    metrics,
-    usage,
-    start,
-    addTurn,
-    finish,
-  }
+  return { tps, usage, start, addTurn, finish }
 }

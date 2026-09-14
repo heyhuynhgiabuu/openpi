@@ -599,8 +599,8 @@ export function useOpenPiSession() {
     get awaitingPrompt() {
       return awaitingPrompt()
     },
-    get agentRunMetrics() {
-      return agentRunMetrics.metrics()
+    get agentTps() {
+      return agentRunMetrics.tps()
     },
     get runUsage() {
       return agentRunMetrics.usage()

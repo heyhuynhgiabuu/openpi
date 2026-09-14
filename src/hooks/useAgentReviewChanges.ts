@@ -3,22 +3,13 @@ import type { AgentReviewChange, AgentReviewSummary } from '../lib/ipc'
 
 export function useAgentReviewChanges() {
   const [changes, setChanges] = createSignal<AgentReviewChange[]>([])
-  const [activeId, setActiveId] = createSignal<string | null>(null)
   const [error, setError] = createSignal<string | null>(null)
 
-  const applyChanges = (next: AgentReviewChange[]) => {
-    batch(() => {
-      setChanges(next)
-      setActiveId((current) => {
-        if (current && next.some((change) => change.id === current)) return current
-        return next[0]?.id ?? null
-      })
-    })
-  }
-
   const applySummary = (summary: AgentReviewSummary) => {
-    applyChanges(summary.changes)
-    setError(null)
+    batch(() => {
+      setChanges(summary.changes)
+      setError(null)
+    })
   }
 
   /** Runs a review operation and applies the summary it returns; failures land in `error`. */
@@ -50,23 +41,14 @@ export function useAgentReviewChanges() {
     get changes() {
       return changes()
     },
-    get activeId() {
-      return activeId()
-    },
-    get activeChange() {
-      const id = activeId()
-      return changes().find((change) => change.id === id) ?? changes()[0] ?? null
-    },
     get error() {
       return error()
     },
-    setActiveId,
     keep,
     revert,
     keepHunk,
     revertHunk,
     revertAll,
     clear,
-    refresh,
   }
 }

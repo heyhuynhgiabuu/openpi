@@ -51,9 +51,6 @@ export function ReviewHunkActions(props: ReviewHunkActionsProps) {
   return (
     <div class="git-hunk-actions">
       <div class="git-hunk-file-bar">
-        <span class="git-hunk-file-label">
-          {props.change.hunks.length} hunk{props.change.hunks.length !== 1 ? 's' : ''}
-        </span>
         <div class="git-hunk-file-buttons">
           <button
             type="button"

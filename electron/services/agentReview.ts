@@ -31,7 +31,6 @@ import {
 type PendingTool = {
   toolCallId: string
   toolName: string
-  startedAt: number
   snapshots: Snapshot[]
 }
 
@@ -40,8 +39,6 @@ type ToolEvent = {
   toolCallId?: unknown
   toolName?: unknown
   args?: unknown
-  result?: unknown
-  isError?: unknown
 }
 
 const pendingTools = new Map<string, PendingTool>()
@@ -198,7 +195,7 @@ function captureToolStart(cwd: string, toolCallId: string, toolName: string, arg
     if (!snapshot.skipped) snapshots.push(snapshot)
   }
   if (snapshots.length === 0) return
-  pendingTools.set(toolCallId, { toolCallId, toolName, startedAt: Date.now(), snapshots })
+  pendingTools.set(toolCallId, { toolCallId, toolName, snapshots })
 }
 
 function captureToolEnd(cwd: string, toolCallId: string): void {
@@ -221,8 +218,6 @@ function captureToolEnd(cwd: string, toolCallId: string): void {
       }
       continue
     }
-    if (!existing && snapshot.beforeContent === afterContent) continue
-
     putChange({
       id: existing?.id ?? nextChangeId(),
       cwd: snapshot.cwd,
