@@ -38,6 +38,8 @@ interface ConversationWorkspaceProps {
   onNavigateToMessage: (entryId: string) => void
   /** Leaf the session is on when it differs from the file's last entry. */
   branchLeafId: string | null
+  /** Increments when Pi writes an entry; the session map refreshes on change. */
+  treeVersion: number
   /** Continue the session from an entry, staying in the same session file. */
   onBranchFrom: (entryId: string) => Promise<void>
   showRemoteSessionBar: boolean
@@ -464,6 +466,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           <SessionMap
             sessionPath={sessionPath()}
             leafId={props.branchLeafId}
+            treeVersion={props.treeVersion}
             onClose={() => setSessionMapOpen(false)}
             isEntryLoaded={(entryId) => props.messages.some((message) => message.id === entryId)}
             onNavigate={props.onNavigateToMessage}

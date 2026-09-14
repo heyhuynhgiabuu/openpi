@@ -428,6 +428,7 @@ export default function App() {
                     scrollToMessageId={scrollToMessageId()}
                     onNavigateToMessage={navigateToMessage}
                     branchLeafId={session.branchLeafId()}
+                    treeVersion={session.treeVersion()}
                     onBranchFrom={session.navigateTree}
                     showRemoteSessionBar={showRemoteSessionBar()}
                     promptHistory={promptHistory()}

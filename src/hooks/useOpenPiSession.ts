@@ -58,6 +58,15 @@ export interface AwaitingPrompt {
 
 export { buildSessionPromptText }
 
+/** Session events that append an entry to the JSONL, so the tree can change. */
+const APPEND_EVENTS = new Set([
+  'message_start',
+  'tool_execution_end',
+  'compaction_end',
+  'session_info_changed',
+  'agent_end',
+])
+
 export function useOpenPiSession() {
   // ── Core session state ────────────────────────────────────────────────────
   const [ready, setReady] = createSignal<SessionReady | null>(null)
@@ -104,6 +113,10 @@ export function useOpenPiSession() {
   // file's last entry is the wrong leaf until the next append. This remembers
   // the leaf the switch landed on.
   const [branchLeafId, setBranchLeafId] = createSignal<string | null>(null)
+  // Bumped when Pi writes an entry, so views built from the session file (the
+  // session map) can refresh while they are open. Not per token: only events
+  // that add an entry to the JSONL.
+  const [treeVersion, setTreeVersion] = createSignal(0)
   const sessionHistory = useSessionHistory({
     setMessages,
     setError,
@@ -178,6 +191,7 @@ export function useOpenPiSession() {
     // Any appended entry becomes the file's last line again, so the file order
     // is authoritative from here on and the branch override would go stale.
     if (event.type === 'message_start') setBranchLeafId(null)
+    if (APPEND_EVENTS.has(event.type)) setTreeVersion((version) => version + 1)
 
     if (event.type === 'queue_update') {
       const e = event as { steering?: readonly string[]; followUp?: readonly string[] }
@@ -743,6 +757,7 @@ export function useOpenPiSession() {
       _bottomEl = el
     },
     branchLeafId,
+    treeVersion,
     setTextareaRef: (el: HTMLTextAreaElement) => {
       textareaEl = el
     },

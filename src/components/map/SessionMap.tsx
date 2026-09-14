@@ -14,6 +14,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -35,6 +36,8 @@ export interface SessionMapProps {
    * switch moves Pi's leaf without writing an entry).
    */
   leafId: string | null
+  /** Increments when Pi writes an entry; the tree reloads on change. */
+  treeVersion: number
   onClose: () => void
   /** True when the conversation has this entry loaded, so jumping to it will land somewhere. */
   isEntryLoaded: (entryId: string) => boolean
@@ -44,7 +47,7 @@ export interface SessionMapProps {
 }
 
 export const SessionMap: Component<SessionMapProps> = (props) => {
-  const [tree] = createResource(
+  const [tree, { refetch: refetchTree }] = createResource(
     () => props.sessionPath,
     (sessionPath) => window.openpi.getSessionTree(sessionPath, props.leafId ?? undefined)
   )
@@ -53,6 +56,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   const data = () => (tree.error ? null : (tree() ?? null))
   const [query, setQuery] = createSignal('')
   const [cursor, setCursor] = createSignal(0)
+  const [cursorMoved, setCursorMoved] = createSignal(false)
   const [notice, setNotice] = createSignal<string | null>(null)
   // Entry the user asked to continue from, held until they confirm: moving the
   // leaf changes where the next message lands, so it is never a single click.
@@ -86,12 +90,37 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   const entryCount = () =>
     (data()?.branches ?? []).reduce((sum, branch) => sum + branch.nodes.length, 0)
 
-  // Keep the cursor on the leaf the session is at; when the filter hides it,
-  // fall back to the first match so Enter always has a target.
-  createEffect(() => {
-    const activeLeafId = data()?.activeLeafId
-    const index = nodes().findIndex((node) => node.id === activeLeafId)
+  // The session map is a live view: Pi keeps writing entries while it is open.
+  createEffect(
+    on(
+      () => props.treeVersion,
+      () => void refetchTree(),
+      { defer: true }
+    )
+  )
+
+  // The cursor sits on the leaf the session is at, or on the first match when a
+  // filter hides it. It stops following once the user moves it, so a live reload
+  // (Pi writing entries) never yanks the cursor off the entry they are on.
+  const placeCursor = () => {
+    const index = nodes().findIndex((node) => node.id === data()?.activeLeafId)
     setCursor(index >= 0 ? index : 0)
+  }
+
+  createEffect(
+    on(
+      query,
+      () => {
+        setCursorMoved(false)
+        placeCursor()
+      },
+      { defer: true }
+    )
+  )
+
+  createEffect(() => {
+    if (!data() || cursorMoved()) return
+    placeCursor()
   })
 
   createEffect(() => {
@@ -137,6 +166,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   const moveCursor = (next: number) => {
     const total = nodes().length
     if (total === 0) return
+    setCursorMoved(true)
     setCursor(Math.max(0, Math.min(next, total - 1)))
     setNotice(null)
   }
@@ -281,6 +311,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
                         activeLeafId={payload().activeLeafId}
                         cursor={cursor()}
                         onFocusNode={(nodeIndex) => {
+                          setCursorMoved(true)
                           setCursor(nodeIndex)
                           setNotice(null)
                         }}

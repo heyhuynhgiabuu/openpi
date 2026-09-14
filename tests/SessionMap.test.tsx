@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render } from '@solidjs/testing-library'
+import { createSignal } from 'solid-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SessionMap } from '../src/components/map/SessionMap'
@@ -72,6 +73,7 @@ function renderMap(
     onClose?: () => void
     loaded?: string[]
     onBranchFrom?: (id: string) => Promise<void>
+    treeVersion?: () => number
   } = {}
 ) {
   const onNavigate = vi.fn()
@@ -80,6 +82,7 @@ function renderMap(
     <SessionMap
       sessionPath="/sessions/example.jsonl"
       leafId={null}
+      treeVersion={options.treeVersion?.() ?? 0}
       onClose={options.onClose ?? (() => {})}
       isEntryLoaded={(entryId) => (options.loaded ?? []).includes(entryId)}
       onNavigate={onNavigate}
@@ -98,6 +101,12 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
+
+function cursorIndex(container: HTMLElement): string | null | undefined {
+  return container
+    .querySelector('.session-map-node-row.is-cursor [data-map-idx]')
+    ?.getAttribute('data-map-idx')
+}
 
 describe('SessionMap', () => {
   it('renders every branch, marking the active one', async () => {
@@ -140,10 +149,7 @@ describe('SessionMap', () => {
     const { findByText, getByRole, container } = renderMap()
 
     await findByText('2 branches · 1 fork')
-    const cursorIdx = () =>
-      container
-        .querySelector('.session-map-node-row.is-cursor [data-map-idx]')
-        ?.getAttribute('data-map-idx')
+    const cursorIdx = () => cursorIndex(container)
     // Active leaf is the last node of branch 2 (index 3 of 4).
     expect(cursorIdx()).toBe('3')
 
@@ -316,6 +322,49 @@ describe('SessionMap', () => {
     fireEvent.click(button)
 
     expect(getByText(/Continue from this assistant entry\?/)).toBeTruthy()
+  })
+
+  it('reloads the tree when Pi writes an entry, keeping the cursor where it was', async () => {
+    // The second read is what Pi sees after appending a message: one more node
+    // and a new active leaf. A fresh object is essential — otherwise the reload
+    // would be invisible to everything downstream.
+    const appended: SessionTreeResponse = {
+      ...tree,
+      activeLeafId: 'leaf-3',
+      branches: tree.branches.map((branch, index) =>
+        index === 1
+          ? {
+              leafId: 'leaf-3',
+              nodes: [
+                ...branch.nodes,
+                {
+                  id: 'leaf-3',
+                  parentId: 'leaf-2',
+                  type: 'message',
+                  timestamp: '2026-09-14T00:03:00.000Z',
+                  role: 'user',
+                  contentPreview: 'third prompt',
+                },
+              ],
+            }
+          : branch
+      ),
+    }
+    const getSessionTree = vi.fn()
+    getSessionTree.mockResolvedValueOnce(tree).mockResolvedValueOnce(appended)
+    vi.stubGlobal('openpi', { getSessionTree })
+    const [version, setVersion] = createSignal(1)
+    const { findByText, getByRole, container } = renderMap({ treeVersion: version })
+
+    await findByText('2 branches · 1 fork')
+    // Move the cursor off the active leaf before the session writes anything.
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Home' })
+    expect(cursorIndex(container)).toBe('0')
+
+    setVersion(2)
+    expect(await findByText('third prompt')).toBeTruthy()
+    expect(getSessionTree).toHaveBeenCalledTimes(2)
+    expect(cursorIndex(container)).toBe('0')
   })
 
   it('reports an empty session', async () => {
