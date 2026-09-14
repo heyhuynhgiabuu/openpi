@@ -80,6 +80,14 @@ describe('session history along a chosen branch', () => {
     expect(switched.branches.map((branch) => branch.leafId).sort()).toEqual(['a-a', 'a-b'])
   })
 
+  it('reports the fork point with both of its branches', () => {
+    const [fork] = buildSessionTree(sessionFile).forkPoints
+
+    expect(fork?.entryId).toBe('u-root')
+    expect(fork?.branchCount).toBe(2)
+    expect([...(fork?.childLeaves ?? [])].sort()).toEqual(['a-a', 'a-b'])
+  })
+
   it('falls back to the file leaf when the requested entry is not in the file', async () => {
     const ids = await readCurrentBranchIds(sessionFile, 'does-not-exist')
 
