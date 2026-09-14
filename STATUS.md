@@ -6,7 +6,7 @@ Surface state of the desktop workbench as of the latest release. Not a rule surf
 
 OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`): make sessions **visible** and **steerable**, keep the **MIT agent core** in Pi (not a second runtime), and treat the user as the **quality gate** — aligned with Pi’s minimal harness and inspectability goals. See **Philosophy** in `ROADMAP.md`.
 
-## Beta (v0.2.7)
+## Beta (v0.2.9)
 
 ### Shipped
 
@@ -22,12 +22,13 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
  - Conversation polish: live token counter (streaming), code line numbers, tool cards.
  - Agent review: unified Review tab now has a source dropdown for `Git changes` vs `Last turn changes`; last-turn mode uses agent snapshots, file accordions, proper diff rendering, Keep/Revert/Revert all, coalesces repeated edits per file, and supports diff line comments with hover `+`, content-row multi-select, saved annotations, composer chips, and structured `<file_comment>` prompt context.
  - CI: PR/main checks; tag-triggered beta releases (macOS/Windows/Linux). **Signing/notarization not configured.**
+- **Phase 7 P0:** live token/cost per turn in the composer badge, hunk-level Keep/Revert for last-turn review, empty history page while Pi flushes a new session (#7).
 
 ### Next (Phase 7 — see ROADMAP)
 
-- **P0:** `npm test` coverage for critical paths, hunk-level/pre-apply diff polish, **live token/cost per turn** while streaming.
+- **P0:** pre-apply diff review — needs an architecture decision, because Pi owns tool execution; broader critical-path `npm test` coverage.
 
-- **P1:** Session tree map v2, subagent card polish.
+- **P1:** Session map v2 is implemented on `main` and unreleased: read-only tree overlay, keyboard navigation, jump to an entry, text filter, branch switching through Pi's tree navigation, live refresh while Pi writes entries. Remaining: subagent card polish.
 - **P2:** Workbench context bridge, signed/notarized auto-update rollout.
 
 ## Known constraints
