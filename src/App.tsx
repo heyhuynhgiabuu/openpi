@@ -427,6 +427,7 @@ export default function App() {
                     displayPreferences={displayPreferences()}
                     scrollToMessageId={scrollToMessageId()}
                     onNavigateToMessage={navigateToMessage}
+                    onCancelTask={session.cancelTask}
                     branchLeafId={session.branchLeafId()}
                     treeVersion={session.treeVersion()}
                     onBranchFrom={session.navigateTree}

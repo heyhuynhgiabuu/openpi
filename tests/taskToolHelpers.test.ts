@@ -1,11 +1,32 @@
 import { describe, expect, it } from 'vitest'
+import type { SlashCommandItem } from '../src/lib/ipc'
 import {
   formatTaskDurationMs,
   isBackgroundHandoff,
   isTaskForeground,
   isValidPiTaskId,
   parseTaskDetails,
+  taskCancelCommand,
 } from '../src/lib/taskToolHelpers'
+
+describe('taskCancelCommand', () => {
+  const task: SlashCommandItem = {
+    name: 'task',
+    description: 'Task control',
+    source: 'extension',
+  }
+
+  it('builds the pi-task control command when the extension registers it', () => {
+    expect(taskCancelCommand('m1abc-x1y2', [task])).toBe('/task cancel m1abc-x1y2')
+  })
+
+  it('returns null otherwise, so an unknown slash text never reaches the model', () => {
+    expect(taskCancelCommand('m1abc-x1y2', [])).toBeNull()
+    expect(
+      taskCancelCommand('m1abc-x1y2', [{ name: 'model', description: '', source: 'builtin' }])
+    ).toBeNull()
+  })
+})
 
 describe('taskToolHelpers', () => {
   it('foreground when background is false', () => {

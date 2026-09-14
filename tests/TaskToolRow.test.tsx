@@ -23,12 +23,33 @@ function taskCard(overrides: Partial<ToolCard> = {}): ToolCard {
   }
 }
 
-function renderRow(card: ToolCard = taskCard(), onOpenSubSession?: (id: string | null) => void) {
-  return render(() => <TaskToolRow card={card} onOpenSubSession={onOpenSubSession} />)
+function renderRow(
+  card: ToolCard = taskCard(),
+  onOpenSubSession?: (id: string | null) => void,
+  onCancelTask?: (id: string) => Promise<void>
+) {
+  return render(() => (
+    <TaskToolRow card={card} onOpenSubSession={onOpenSubSession} onCancelTask={onCancelTask} />
+  ))
+}
+
+/** A background task pi-task answered with a handoff receipt. */
+function backgroundCard(overrides: Partial<ToolCard> = {}): ToolCard {
+  return taskCard({
+    output: 'Started task m1abc-x1y2 in the background. Do not poll.',
+    details: {
+      task_id: 'm1abc-x1y2',
+      agent_type: 'scout',
+      description: 'Slow research',
+      background: true,
+    },
+    ...overrides,
+  })
 }
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
 })
 
 describe('TaskToolRow', () => {
@@ -80,6 +101,49 @@ describe('TaskToolRow', () => {
     const preview = await findByText(/^x+…$/)
     expect(preview.textContent?.length).toBe(4001)
     expect(queryByRole('button', { name: /Open sub-session/ })).toBeNull()
+  })
+
+  it('cancels a running background task after confirming', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onCancelTask = vi.fn(async () => {})
+    const { getByRole, findByText } = renderRow(backgroundCard(), undefined, onCancelTask)
+
+    fireEvent.click(getByRole('button', { name: /Task · scout/ }))
+    fireEvent.click(getByRole('button', { name: 'Cancel task' }))
+
+    expect(confirm).toHaveBeenCalled()
+    expect(onCancelTask).toHaveBeenCalledWith('m1abc-x1y2')
+    expect(await findByText('Cancel requested.')).toBeTruthy()
+  })
+
+  it('sends nothing when the cancel confirmation is declined', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const onCancelTask = vi.fn(async () => {})
+    const { getByRole, queryByText } = renderRow(backgroundCard(), undefined, onCancelTask)
+
+    fireEvent.click(getByRole('button', { name: /Task · scout/ }))
+    fireEvent.click(getByRole('button', { name: 'Cancel task' }))
+
+    expect(onCancelTask).not.toHaveBeenCalled()
+    expect(queryByText('Cancel requested.')).toBeNull()
+  })
+
+  it('shows why a cancel failed and offers none for finished work', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onCancelTask = vi.fn(async () => {
+      throw new Error('The pi-task extension is not installed, so this task cannot be cancelled.')
+    })
+    const running = renderRow(backgroundCard(), undefined, onCancelTask)
+
+    fireEvent.click(running.getByRole('button', { name: /Task · scout/ }))
+    fireEvent.click(running.getByRole('button', { name: 'Cancel task' }))
+    expect(await running.findByText(/pi-task extension is not installed/)).toBeTruthy()
+    running.unmount()
+
+    // A finished task has nothing to cancel, even with the handler available.
+    const done = renderRow(taskCard(), undefined, onCancelTask)
+    fireEvent.click(done.getByRole('button', { name: /Task · scout/ }))
+    expect(done.queryByRole('button', { name: 'Cancel task' })).toBeNull()
   })
 
   it('shows a handed-off background task as pending', async () => {

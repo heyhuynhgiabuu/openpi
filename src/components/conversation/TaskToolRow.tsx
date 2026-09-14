@@ -13,6 +13,8 @@ import { SessionProgressDot } from './SessionProgressDot'
 type TaskToolRowProps = {
   card: ToolCard
   onOpenSubSession?: (taskId: string | null) => void
+  /** Rejects when the task cannot be cancelled, with the reason to show. */
+  onCancelTask?: (taskId: string) => Promise<void>
   resolveTaskId?: (card: ToolCard) => string | null
   resolveTaskStatus?: (taskId: string) => string | null
 }
@@ -22,6 +24,7 @@ const RESULT_PREVIEW_CHARS = 4000
 
 export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
   const [open, setOpen] = createSignal(false)
+  const [cancelNotice, setCancelNotice] = createSignal<string | null>(null)
   const details = (): TaskToolDetails => parseTaskDetails(props.card.args, props.card.details)
 
   const taskId = createMemo<string | null>(() => {
@@ -69,6 +72,28 @@ export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
   })
 
   const canNavigate = () => Boolean(taskId() && props.onOpenSubSession)
+
+  // Only a handed-off task can be cancelled from here: a foreground task keeps
+  // the parent streaming, and Pi refuses to queue an extension command.
+  const canCancel = () =>
+    Boolean(props.onCancelTask && taskId() && status() === 'pending' && handoff())
+
+  const cancelTask = async () => {
+    const id = taskId()
+    if (!id || !props.onCancelTask) return
+    const confirmed = window.confirm(
+      `Cancel background task ${id}? This closes the task's tmux/HerdR pane. ` +
+        'Tasks running on the SDK backend report that cancellation is unsupported.'
+    )
+    if (!confirmed) return
+    setCancelNotice('Cancelling…')
+    try {
+      await props.onCancelTask(id)
+      setCancelNotice('Cancel requested.')
+    } catch (error) {
+      setCancelNotice(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   /** Everything the tool call reported about the run, minus the result text. */
   const facts = createMemo(() => {
@@ -127,14 +152,26 @@ export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
         <div class="tool-output-connector">
           <div class="task-tool-panel">
             <div class="task-tool-facts">{facts().join(' · ')}</div>
-            <Show when={canNavigate()}>
-              <button
-                type="button"
-                class="task-tool-open"
-                onClick={() => props.onOpenSubSession?.(taskId())}
-              >
-                Open sub-session ›
-              </button>
+            <Show when={canNavigate() || canCancel()}>
+              <div class="task-tool-actions">
+                <Show when={canNavigate()}>
+                  <button
+                    type="button"
+                    class="task-tool-open"
+                    onClick={() => props.onOpenSubSession?.(taskId())}
+                  >
+                    Open sub-session ›
+                  </button>
+                </Show>
+                <Show when={canCancel()}>
+                  <button type="button" class="task-tool-cancel" onClick={() => void cancelTask()}>
+                    Cancel task
+                  </button>
+                </Show>
+              </div>
+            </Show>
+            <Show when={cancelNotice()}>
+              <span class="task-tool-notice">{cancelNotice()}</span>
             </Show>
             <Show when={result()}>
               <div class={`tool-ran-output${props.card.isError ? ' is-error' : ''}`}>

@@ -117,6 +117,7 @@ type ConversationPaneProps = {
   onFork?: (messageId: string) => void
   onFileClick?: (path: string) => void
   onOpenSubSession?: (taskId: string | null) => void
+  onCancelTask?: (taskId: string) => Promise<void>
   resolveTaskId?: (card: ToolCard) => string | null
   resolveTaskStatus?: (taskId: string | null) => TaskStatus | null
   onOpenWorkspace?: () => void
@@ -240,6 +241,7 @@ export const ConversationPane: Component<ConversationPaneProps> = (props) => {
           onFork={props.onFork}
           onFileClick={props.onFileClick}
           onOpenSubSession={props.onOpenSubSession}
+          onCancelTask={props.onCancelTask}
           resolveTaskId={props.resolveTaskId}
           resolveTaskStatus={props.resolveTaskStatus}
           displayPreferences={props.displayPreferences}

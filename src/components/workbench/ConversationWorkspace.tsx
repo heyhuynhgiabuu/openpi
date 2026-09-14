@@ -36,6 +36,8 @@ interface ConversationWorkspaceProps {
   scrollToMessageId: string | null
   /** Jump the conversation to a session entry (the session map drives this). */
   onNavigateToMessage: (entryId: string) => void
+  /** Cancels one pi-task subagent through pi-task's own control command. */
+  onCancelTask: (taskId: string) => Promise<void>
   /** Leaf the session is on when it differs from the file's last entry. */
   branchLeafId: string | null
   /** Increments when Pi writes an entry; the session map refreshes on change. */
@@ -240,6 +242,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             setBottomRef={props.session.setBottomRef}
             onFork={props.session.forkFromMessage}
             onFileClick={props.onOpenFile}
+            onCancelTask={props.onCancelTask}
             onOpenSubSession={props.session.openSubSession}
             resolveTaskId={(card) => props.session.resolveTaskIdForCard(card)}
             resolveTaskStatus={(taskId) => props.session.resolveTaskStatusForTaskId(taskId)}

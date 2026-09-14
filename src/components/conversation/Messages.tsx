@@ -75,6 +75,7 @@ export type AssistantMessageGroupProps = {
   onFork?: (id: string) => void
   onFileClick?: (path: string) => void
   onOpenSubSession?: (taskId: string | null) => void
+  onCancelTask?: (taskId: string) => Promise<void>
   resolveTaskId?: (card: ToolCard) => string | null
   resolveTaskStatus?: (taskId: string | null) => TaskStatus | null
   displayPreferences: DisplayPreferences
@@ -136,6 +137,7 @@ export const AssistantMessageGroup: Component<AssistantMessageGroupProps> = (pro
                         shimmerActive={shouldShimmerTool(card)}
                         onFileClick={props.onFileClick}
                         onOpenSubSession={props.onOpenSubSession}
+                        onCancelTask={props.onCancelTask}
                         resolveTaskId={props.resolveTaskId}
                         resolveTaskStatus={props.resolveTaskStatus}
                         displayPreferences={props.displayPreferences}
@@ -202,6 +204,7 @@ type AssistantMessageProps = {
   onFork?: (id: string) => void
   onFileClick?: (path: string) => void
   onOpenSubSession?: (taskId: string | null) => void
+  onCancelTask?: (taskId: string) => Promise<void>
   resolveTaskId?: (card: ToolCard) => string | null
   resolveTaskStatus?: (taskId: string | null) => TaskStatus | null
   displayPreferences: DisplayPreferences
@@ -230,6 +233,7 @@ export const AssistantMessage: Component<AssistantMessageProps> = (props) => {
               shimmerActive={card.streaming || Boolean(props.agentStreaming)}
               onFileClick={props.onFileClick}
               onOpenSubSession={props.onOpenSubSession}
+              onCancelTask={props.onCancelTask}
               resolveTaskId={props.resolveTaskId}
               resolveTaskStatus={props.resolveTaskStatus}
               displayPreferences={props.displayPreferences}
@@ -288,6 +292,7 @@ export function renderMessage(
   onFileClick?: (path: string) => void,
   displayPreferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES,
   onOpenSubSession?: (taskId: string | null) => void,
+  onCancelTask?: (taskId: string) => Promise<void>,
   resolveTaskId?: (card: ToolCard) => string | null,
   resolveTaskStatus?: (taskId: string | null) => TaskStatus | null
 ) {
@@ -301,6 +306,7 @@ export function renderMessage(
       onFork={onFork}
       onFileClick={onFileClick}
       onOpenSubSession={onOpenSubSession}
+      onCancelTask={onCancelTask}
       resolveTaskId={resolveTaskId}
       resolveTaskStatus={resolveTaskStatus}
       displayPreferences={displayPreferences}

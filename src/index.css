@@ -15362,6 +15362,32 @@ body.panel-dragging {
   font-variant-numeric: tabular-nums;
 }
 
+.task-tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-tool-cancel {
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--danger, #f87171) 45%, transparent);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--danger, #f87171);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.task-tool-cancel:hover {
+  background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
+}
+
+.task-tool-notice {
+  color: var(--graphite);
+  font-size: 11.5px;
+}
+
 .task-tool-open {
   padding: 3px 9px;
   border: 1px solid var(--hairline-strong, #333);

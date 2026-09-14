@@ -1,4 +1,5 @@
 /** Mirrors `@heyhuynhgiabuu/pi-task` tool `details` / receipt shapes. */
+import type { SlashCommandItem } from './ipc'
 
 export interface TaskToolDetails {
   task_id?: string
@@ -60,6 +61,15 @@ export function isTaskForeground(args: Record<string, unknown>): boolean {
 }
 
 /** End event is a background handoff receipt, not final subagent output. */
+/**
+ * pi-task exposes task control as the user command `/task cancel <id>`, not as a
+ * tool. Returns null when Pi does not report that command: sending an unknown
+ * slash text would hand it to the model as an ordinary prompt instead.
+ */
+export function taskCancelCommand(taskId: string, commands: SlashCommandItem[]): string | null {
+  return commands.some((command) => command.name === 'task') ? `/task cancel ${taskId}` : null
+}
+
 export function isBackgroundHandoff(
   details: TaskToolDetails,
   output: string,

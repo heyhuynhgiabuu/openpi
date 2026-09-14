@@ -30,7 +30,7 @@ import {
   resolveTaskStatusFromHistory,
   type TaskHistoryEntry,
 } from '../lib/taskHistory'
-import { isValidPiTaskId } from '../lib/taskToolHelpers'
+import { isValidPiTaskId, taskCancelCommand } from '../lib/taskToolHelpers'
 import type { Message, ToolCard } from '../types/session'
 import { createSessionNavigation, type ParentStackEntry } from './sessionNavigation'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
@@ -551,6 +551,21 @@ export function useOpenPiSession() {
     sessionHistory.loadInitialMessages(sessionFile)
   }
 
+  /**
+   * Cancels one pi-task subagent. Control lives in pi-task's `/task cancel`
+   * command, and it only closes a live tmux/HerdR pane — SDK-backed runs answer
+   * that cancellation is unsupported. The command is only sent when Pi reports
+   * it, because an unknown slash text would go to the model as a prompt.
+   */
+  const cancelTask = async (taskId: string) => {
+    const commands = await window.openpi.listSlashCommands()
+    const text = taskCancelCommand(taskId, commands)
+    if (!text) {
+      throw new Error('The pi-task extension is not installed, so this task cannot be cancelled.')
+    }
+    await window.openpi.prompt(text)
+  }
+
   const compactSession = async (customInstructions?: string) => {
     try {
       await window.openpi.compactSession(customInstructions ? { customInstructions } : {})
@@ -783,6 +798,7 @@ export function useOpenPiSession() {
     loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
     loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
     navigateTree,
+    cancelTask,
     send,
     sendShell,
     selectModel,

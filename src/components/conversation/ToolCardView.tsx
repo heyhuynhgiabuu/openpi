@@ -17,6 +17,7 @@ export interface ToolCardViewProps {
   card: ToolCard
   onFileClick?: (relativePath: string) => void
   onOpenSubSession?: (taskId: string | null) => void
+  onCancelTask?: (taskId: string) => Promise<void>
   resolveTaskId?: (card: ToolCard) => string | null
   resolveTaskStatus?: (taskId: string | null) => 'running' | 'done' | 'error' | null
   displayPreferences: DisplayPreferences
@@ -54,6 +55,7 @@ export const ToolCardView: Component<ToolCardViewProps> = (props) => {
         <TaskToolRow
           card={props.card}
           onOpenSubSession={props.onOpenSubSession}
+          onCancelTask={props.onCancelTask}
           resolveTaskId={props.resolveTaskId}
           resolveTaskStatus={props.resolveTaskStatus}
         />
