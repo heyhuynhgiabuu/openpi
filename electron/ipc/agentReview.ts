@@ -9,13 +9,13 @@ import {
 } from '../../src/lib/ipc'
 import {
   clearAgentReviewChanges,
-  getAgentReviewSummary,
   keepAgentReviewChange,
   keepAgentReviewHunk,
   revertAgentReviewChange,
   revertAgentReviewChanges,
   revertAgentReviewHunk,
 } from '../services/agentReview'
+import { getAgentReviewSummary } from '../services/agentReviewStore'
 
 interface AgentReviewIpcDeps {
   ipcMain: IpcMain

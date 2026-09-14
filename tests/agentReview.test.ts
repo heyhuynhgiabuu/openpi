@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   captureAgentReviewEvent,
   clearAgentReviewChanges,
-  getAgentReviewSummary,
   keepAgentReviewChange,
   keepAgentReviewHunk,
   revertAgentReviewChange,
   revertAgentReviewChanges,
   revertAgentReviewHunk,
 } from '../electron/services/agentReview'
+import { getAgentReviewSummary } from '../electron/services/agentReviewStore'
 
 let tmp: string | null = null
 

@@ -3,7 +3,8 @@ import { type BrowserWindow, shell } from 'electron'
 import type { OutputLine, SessionReady } from '../../src/lib/ipc'
 import { IPC, sessionEventSchema } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
-import { captureAgentReviewEvent, setAgentReviewWindow } from '../services/agentReview'
+import { captureAgentReviewEvent } from '../services/agentReview'
+import { setAgentReviewWindow } from '../services/agentReviewStore'
 import type {
   showSystemNotification as notifySystem,
   playSoundEffect as playSound,

@@ -1,7 +1,13 @@
+/**
+ * Agent review capture and actions — Electron main process only.
+ *
+ * Capture snapshots files around Pi tool calls; actions accept or revert a
+ * review item, either whole-file or per hunk. State lives in agentReviewStore.
+ */
 import fs from 'node:fs'
 import path from 'node:path'
-import type { BrowserWindow } from 'electron'
-import { type AgentReviewChange, type AgentReviewSummary, IPC } from '../../src/lib/ipc'
+import type { AgentReviewSummary } from '../../src/lib/ipc'
+import { keepHunkInBefore, revertHunkInAfter, type ReviewHunk } from './agentReviewDiff'
 import {
   readCurrentText,
   readSnapshot,
@@ -10,25 +16,23 @@ import {
   type Snapshot,
 } from './agentReviewFiles'
 import {
-  computeReviewHunks,
-  createUnifiedDiff,
-  keepHunkInBefore,
-  revertHunkInAfter,
-  type ReviewHunk,
-} from './agentReviewDiff'
+  describeContent,
+  emitChanged,
+  findChange,
+  getAgentReviewSummary,
+  getChange,
+  listChanges,
+  nextChangeId,
+  putChange,
+  removeChange,
+  type StoredChange,
+} from './agentReviewStore'
 
 type PendingTool = {
   toolCallId: string
   toolName: string
   startedAt: number
   snapshots: Snapshot[]
-}
-
-type StoredChange = AgentReviewChange & {
-  cwd: string
-  beforeContent: string | null
-  afterContent: string | null
-  hunks: ReviewHunk[]
 }
 
 type ToolEvent = {
@@ -41,54 +45,37 @@ type ToolEvent = {
 }
 
 const pendingTools = new Map<string, PendingTool>()
-const changes = new Map<string, StoredChange>()
-let mainWindow: BrowserWindow | null = null
-let changeSequence = 0
-
-export function setAgentReviewWindow(window: BrowserWindow | null): void {
-  mainWindow = window
-}
-
-export function getAgentReviewSummary(cwd?: string | null): AgentReviewSummary {
-  const items = [...changes.values()]
-    .filter((change) => !cwd || change.cwd === cwd)
-    .map(publicChange)
-    .sort((a, b) => b.createdAt - a.createdAt)
-  return { changes: items }
-}
 
 export function keepAgentReviewChange(id: string): AgentReviewSummary {
-  changes.delete(id)
+  removeChange(id)
   emitChanged()
   return getAgentReviewSummary()
 }
 
 export function clearAgentReviewChanges(cwd?: string | null): AgentReviewSummary {
-  for (const [id, change] of changes) {
-    if (!cwd || change.cwd === cwd) changes.delete(id)
-  }
+  for (const change of listChanges(cwd)) removeChange(change.id)
   emitChanged(cwd)
   return getAgentReviewSummary(cwd)
 }
 
 export function revertAgentReviewChange(id: string): AgentReviewSummary {
-  const change = changes.get(id)
+  const change = getChange(id)
   if (!change) return getAgentReviewSummary()
 
   validateRevert(change)
   applyRevert(change)
 
-  changes.delete(id)
+  removeChange(id)
   emitChanged(change.cwd)
   return getAgentReviewSummary(change.cwd)
 }
 
 export function revertAgentReviewChanges(cwd?: string | null): AgentReviewSummary {
-  const selected = [...changes.values()].filter((change) => !cwd || change.cwd === cwd)
+  const selected = listChanges(cwd)
   for (const change of selected) validateRevert(change)
   for (const change of selected) {
     applyRevert(change)
-    changes.delete(change.id)
+    removeChange(change.id)
   }
   emitChanged(cwd)
   return getAgentReviewSummary(cwd)
@@ -99,7 +86,7 @@ export function revertAgentReviewChanges(cwd?: string | null): AgentReviewSummar
  * reported as a change. Nothing is written to disk — the file already holds it.
  */
 export function keepAgentReviewHunk(id: string, index: number): AgentReviewSummary {
-  const change = changes.get(id)
+  const change = getChange(id)
   if (!change) return getAgentReviewSummary()
   const hunk = selectHunk(change, index)
 
@@ -114,7 +101,7 @@ export function keepAgentReviewHunk(id: string, index: number): AgentReviewSumma
 
 /** Rejects one hunk: its before lines go back into the file on disk. */
 export function revertAgentReviewHunk(id: string, index: number): AgentReviewSummary {
-  const change = changes.get(id)
+  const change = getChange(id)
   if (!change) return getAgentReviewSummary()
   const hunk = selectHunk(change, index)
 
@@ -153,19 +140,14 @@ function storeReviewedContent(
   afterContent: string
 ): void {
   if (beforeContent === afterContent) {
-    changes.delete(change.id)
+    removeChange(change.id)
     return
   }
-  const diff = createUnifiedDiff(change.path, beforeContent, afterContent)
-  changes.set(change.id, {
+  putChange({
     ...change,
     beforeContent,
     afterContent,
-    diff: diff.text,
-    totalAdded: diff.added,
-    totalRemoved: diff.removed,
-    truncated: diff.truncated,
-    hunks: hunksFor('modified', diff.truncated, beforeContent, afterContent),
+    ...describeContent(change.path, beforeContent, afterContent),
   })
 }
 
@@ -229,95 +211,33 @@ function captureToolEnd(cwd: string, toolCallId: string): void {
     if (snapshot.cwd !== cwd) continue
     const after = readSnapshot(snapshot.cwd, snapshot.relPath, snapshot.fullPath)
     if (after.skipped) continue
-    const existing = findReviewChange(snapshot.cwd, snapshot.relPath)
+    const existing = findChange(snapshot.cwd, snapshot.relPath)
     const before = existing?.beforeContent ?? snapshot.beforeContent
     const afterContent = after.beforeContent
     if (before === afterContent) {
       if (existing) {
-        changes.delete(existing.id)
+        removeChange(existing.id)
         changed = true
       }
       continue
     }
     if (!existing && snapshot.beforeContent === afterContent) continue
 
-    const status = reviewStatus(before, afterContent)
-    const diff = createUnifiedDiff(snapshot.relPath, before ?? '', afterContent ?? '')
-    const id = existing?.id ?? `${Date.now()}-${changeSequence++}`
-    changes.set(id, {
-      id,
+    putChange({
+      id: existing?.id ?? nextChangeId(),
       cwd: snapshot.cwd,
       path: snapshot.relPath,
       toolCallId: pending.toolCallId,
       toolName: pending.toolName,
-      status,
       createdAt: existing?.createdAt ?? Date.now(),
       beforeContent: before,
       afterContent,
-      diff: diff.text,
-      totalAdded: diff.added,
-      totalRemoved: diff.removed,
-      truncated: diff.truncated,
-      hunks: hunksFor(status, diff.truncated, before, afterContent),
+      ...describeContent(snapshot.relPath, before, afterContent),
     })
     changed = true
   }
 
   if (changed) emitChanged(cwd)
-}
-
-function findReviewChange(cwd: string, relPath: string): StoredChange | null {
-  return (
-    [...changes.values()].find((change) => change.cwd === cwd && change.path === relPath) ?? null
-  )
-}
-
-function reviewStatus(
-  beforeContent: string | null,
-  afterContent: string | null
-): AgentReviewChange['status'] {
-  if (beforeContent === null) return 'created'
-  if (afterContent === null) return 'deleted'
-  return 'modified'
-}
-
-/** Only modified files can be split into hunks; truncated diffs cannot be mapped to regions. */
-function hunksFor(
-  status: AgentReviewChange['status'],
-  truncated: boolean,
-  beforeContent: string | null,
-  afterContent: string | null
-): ReviewHunk[] {
-  if (status !== 'modified' || truncated) return []
-  return computeReviewHunks(beforeContent ?? '', afterContent ?? '')
-}
-
-function publicChange(change: StoredChange): AgentReviewChange {
-  return {
-    id: change.id,
-    path: change.path,
-    toolCallId: change.toolCallId,
-    toolName: change.toolName,
-    status: change.status,
-    createdAt: change.createdAt,
-    diff: change.diff,
-    beforeContent: change.beforeContent,
-    afterContent: change.afterContent,
-    totalAdded: change.totalAdded,
-    totalRemoved: change.totalRemoved,
-    truncated: change.truncated,
-    hunks: change.hunks.map((hunk) => ({
-      index: hunk.index,
-      beforeStart: hunk.beforeStart,
-      afterStart: hunk.afterStart,
-      added: hunk.added,
-      removed: hunk.removed,
-    })),
-  }
-}
-
-function emitChanged(cwd?: string | null): void {
-  mainWindow?.webContents.send(IPC.AGENT_REVIEW_CHANGED, getAgentReviewSummary(cwd))
 }
 
 function extractMutablePaths(toolName: string, args: unknown): string[] {
