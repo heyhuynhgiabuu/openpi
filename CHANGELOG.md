@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-09-14
+
+### Added
+
+- **Session map** — `/map` opens an overlay of the whole session tree: every root-to-leaf branch, the leaf the session is on, and the fork points. Arrow keys and Home/End move the cursor, Enter jumps the conversation to that entry, and a text filter narrows the list while branch numbers stay stable.
+- **Branch switching** — `Shift+Enter` on an entry, or its row action, continues the session from that entry without leaving the session file, using Pi's own tree navigation. The abandoned branch stays in the JSONL, and picking a user message puts its text back in the composer for editing.
+- **Live session map** — the map refreshes while Pi writes entries, and its "current" marker follows a branch switch.
+
+### Fixed
+
+- **Review totals** — last-turn `+N/-N` no longer drops changed lines whose own text starts with `++` or `--`.
+- **Hunk failure reporting** — a failed Keep/Revert on a hunk now reports next to that hunk instead of only in the pane banner.
+- **Stale branch leaf** — a leaf left over from a previous session is cleared when another session opens, instead of travelling to the next session's history and tree requests.
+
+### Changed
+
+- **Branch-aware reads** — session history and the session tree accept the leaf to read along, so the conversation shows the branch that is actually current.
+- **Phase 7 cleanup** — dead review state, run-metric fields and an unreachable capture branch removed; the branch-switch request no longer carries an unused summary flag.
+
+### Docs
+
+- **Status surface** — `STATUS.md` records Phase 7 P0 as shipped and the session map as unreleased; its version heading had drifted to v0.2.7.
+
+### Beta caveats
+
+- macOS notarization and Windows code signing remain unconfigured; live provider OAuth flows remain unverified with real credentials.
+- Pi SDK pinned at 0.85.0 — `pi-coding-agent` imports `@earendil-works/pi-server` without declaring it, so OpenPi hosts it as a direct dependency until upstream fixes packaging.
+- The session map's branch switch is covered per seam (wire contract, IPC, tree builder, component) but has no end-to-end test yet.
+
 ## [0.2.9] - 2026-09-14
 
 ### Fixed
