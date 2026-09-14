@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-09-14
+
+### Fixed
+
+- **New session history** — opening a freshly created session no longer fails with an `ENOENT` error while Pi is still flushing its JSONL file; the session shows an empty history until the first assistant reply persists it. ([#7](https://github.com/heyhuynhgiabuu/openpi/issues/7))
+- **Lint suppressions** — 20 `biome-ignore` comments left over from the oxlint migration were replaced by working oxlint directives (16 suppressions restored) or removed; the warning backlog dropped from 844 to 827.
+
+### Added
+
+- **Live token/cost per turn** — the composer shows turns, tokens and cost for the current agent run, updating on every turn instead of only after the run finishes; the context percentage now refreshes per turn as well.
+- **Hunk-level review** — Last turn changes can now be accepted or reverted one changed region at a time, next to the existing whole-file Keep/Revert. Created and deleted files stay whole-file, and diffs too large to split keep the file-level actions only.
+
+### Changed
+
+- **Review internals** — diff math, snapshot file access and the change store moved into focused modules (`agentReviewDiff`, `agentReviewFiles`, `agentReviewStore`); no behavior change.
+- **Usage parsing** — one shared parser now normalizes provider usage payloads for both message rows and the new run totals.
+
+### Docs
+
+- **Remote access deferred** — decision record with the threat model and a read-only P0 scope, linked from the roadmap non-goals.
+
+### Beta caveats
+
+- macOS notarization and Windows code signing remain unconfigured; live provider OAuth flows remain unverified with real credentials.
+- Pi SDK pinned at 0.85.0 — `pi-coding-agent` imports `@earendil-works/pi-server` without declaring it, so OpenPi hosts it as a direct dependency until upstream fixes packaging.
+
 ## [0.2.8] - 2026-09-04
 
 ### Added
