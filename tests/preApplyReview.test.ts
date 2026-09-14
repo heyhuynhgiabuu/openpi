@@ -4,10 +4,11 @@ import path from 'node:path'
 import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-agent'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  approvedHunks,
+  endTurn,
   handleToolCall,
   isOpenPiHost,
   isPreApplyReviewEnabled,
+  parseReviewAnswer,
 } from '../.pi/extensions/openpi-preapply-review/index'
 import {
   confirmMessage,
@@ -43,8 +44,12 @@ interface ContextOptions {
 /** Fake Pi context; the spies record what the gate asked for. */
 function context(options: ContextOptions = {}) {
   const confirm = vi.fn(async (_title: string, _message: string) => options.confirmed ?? false)
-  const input = vi.fn(async (_title: string, _placeholder?: string) => options.reviewAnswer)
-  return { confirm, input, ctx: { cwd, ui: { confirm, input } } }
+  const input = vi.fn(
+    async (_title: string, _placeholder?: string, _opts?: { timeout?: number }) =>
+      options.reviewAnswer
+  )
+  const notify = vi.fn()
+  return { confirm, input, notify, ctx: { cwd, ui: { confirm, input, notify } } }
 }
 
 describe('pre-apply review gate', () => {
@@ -164,11 +169,55 @@ describe('hunk review inside OpenPi', () => {
   })
 
   it('reads approved indexes defensively', () => {
-    expect(approvedHunks('{"approved":[1,0,1]}', 2)).toEqual([0, 1])
-    expect(approvedHunks('{"approved":[2,-1,"x"]}', 2)).toEqual([])
-    expect(approvedHunks('{}', 2)).toBeNull()
-    expect(approvedHunks('not json', 2)).toBeNull()
-    expect(approvedHunks(undefined, 2)).toBeNull()
+    expect(parseReviewAnswer('{"approved":[1,0,1]}', 2)).toEqual({
+      approved: [0, 1],
+      remember: false,
+    })
+    expect(parseReviewAnswer('{"approved":[2,-1,"x"]}', 2)).toEqual({
+      approved: [],
+      remember: false,
+    })
+    expect(parseReviewAnswer('{"approved":[0],"remember":true}', 2)).toEqual({
+      approved: [0],
+      remember: true,
+    })
+    expect(parseReviewAnswer('{}', 2)).toBeNull()
+    expect(parseReviewAnswer('not json', 2)).toBeNull()
+    expect(parseReviewAnswer(undefined, 2)).toBeNull()
+  })
+
+  it('asks the dialog to wait longer than Pi default two minutes', async () => {
+    const { ctx, input } = context({ reviewAnswer: '{"approved":[0,1]}' })
+
+    await handleToolCall({ toolName: 'edit', input: editInput() }, ctx)
+
+    expect(input.mock.calls[0]?.[2]?.timeout).toBe(600_000)
+  })
+
+  it('says so when the review is not answered', async () => {
+    const { ctx, notify } = context({ reviewAnswer: undefined })
+
+    const denied = await handleToolCall({ toolName: 'edit', input: editInput() }, ctx)
+
+    expect(denied?.block).toBe(true)
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('was not answered'), 'warning')
+  })
+
+  it('skips the rest of the turn after the user asks it to', async () => {
+    const first = context({ reviewAnswer: '{"approved":[0,1],"remember":true}' })
+
+    await handleToolCall({ toolName: 'edit', input: editInput() }, first.ctx)
+    const second = context({ reviewAnswer: undefined })
+    const skipped = await handleToolCall({ toolName: 'edit', input: editInput() }, second.ctx)
+
+    expect(skipped).toBeUndefined()
+    expect(second.input).not.toHaveBeenCalled()
+
+    endTurn()
+    const after = context({ reviewAnswer: '{"approved":[]}' })
+    const asked = await handleToolCall({ toolName: 'edit', input: editInput() }, after.ctx)
+    expect(after.input).toHaveBeenCalled()
+    expect(asked?.block).toBe(true)
   })
 
   it('still uses the text dialog for write', async () => {

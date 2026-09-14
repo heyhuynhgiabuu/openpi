@@ -4,7 +4,7 @@ import type { PreapplyReview as Review } from '../lib/extensionUiTypes'
 type Props = {
   title: string
   review: Review
-  onApply: (approved: number[]) => void
+  onApply: (approved: number[], remember: boolean) => void
   onCancel: () => void
 }
 
@@ -16,6 +16,7 @@ export function PreapplyReview(props: Props) {
   const [selected, setSelected] = createSignal<number[]>(
     props.review.hunks.map((_, index) => index)
   )
+  const [remember, setRemember] = createSignal(false)
 
   const toggle = (index: number) => {
     setSelected((current) =>
@@ -63,6 +64,14 @@ export function PreapplyReview(props: Props) {
             )}
           </For>
         </div>
+        <label class="preapply-remember">
+          <input
+            type="checkbox"
+            checked={remember()}
+            onChange={(event) => setRemember(event.currentTarget.checked)}
+          />
+          <span>Skip review for the rest of this turn</span>
+        </label>
         <div class="ask-modal-footer">
           <button type="button" class="ask-btn ask-btn-ghost" onClick={props.onCancel}>
             Deny all
@@ -71,7 +80,7 @@ export function PreapplyReview(props: Props) {
             type="button"
             class="ask-btn ask-btn-primary"
             disabled={selected().length === 0}
-            onClick={() => props.onApply(selected())}
+            onClick={() => props.onApply(selected(), remember())}
           >
             {`Apply ${selected().length} of ${props.review.hunks.length}`}
           </button>

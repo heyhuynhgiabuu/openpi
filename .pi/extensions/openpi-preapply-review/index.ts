@@ -13,6 +13,11 @@
  * text allow/deny, because a rewrite has no hunk to drop. Outside OpenPi (a TUI
  * session) both tools fall back to that text confirm.
  *
+ * The review waits much longer than Pi's two-minute dialog default, because
+ * reviewing a diff is not a yes/no glance; if it does expire, the gate says so
+ * instead of letting the change disappear silently. The user can also skip the
+ * rest of the turn from the modal, which clears at `turn_end`.
+ *
  * Off by default: Pi is YOLO by default and a gate stops every edit until the
  * user answers. Enable it per session with OPENPI_PREAPPLY_REVIEW=1 in the
  * environment OpenPi (and therefore the sidecar) is started with.
@@ -35,8 +40,29 @@ import {
  */
 const REVIEW_MARKER = 'openpi-preapply-review:'
 
+/**
+ * Pi dismisses a dialog after two minutes by default. Reviewing a diff takes
+ * longer than answering a yes/no prompt, so the gate waits ten.
+ */
+const REVIEW_TIMEOUT_MS = 600_000
+
+/**
+ * Set when the user asked to skip review for the rest of the turn, cleared at
+ * `turn_end`. Turn-scoped on purpose: it stops a ten-file refactor from asking
+ * ten times, without letting one answer cover the rest of the session.
+ */
+let skipReviewThisTurn = false
+
 export function isPreApplyReviewEnabled(env: NodeJS.ProcessEnv): boolean {
   return env.OPENPI_PREAPPLY_REVIEW === '1'
+}
+
+export function shouldSkipReview(): boolean {
+  return skipReviewThisTurn
+}
+
+export function endTurn(): void {
+  skipReviewThisTurn = false
 }
 
 /** The part of Pi's tool_call event and context this gate reads. */
@@ -49,7 +75,12 @@ export interface PreApplyContext {
   cwd: string
   ui: {
     confirm: (title: string, message: string) => Promise<boolean>
-    input: (title: string, placeholder?: string) => Promise<string | undefined>
+    input: (
+      title: string,
+      placeholder?: string,
+      opts?: { timeout?: number }
+    ) => Promise<string | undefined>
+    notify: (message: string, type?: 'info' | 'warning' | 'error') => void
   }
 }
 
@@ -63,11 +94,18 @@ export function isOpenPiHost(env: NodeJS.ProcessEnv): boolean {
   return env.OPENPI_BRIDGE_APP === 'openpi'
 }
 
+export interface ReviewAnswer {
+  approved: number[]
+  /** The user asked to skip review for the rest of this turn. */
+  remember: boolean
+}
+
 /**
- * Approved hunk indexes from the review answer, or null when the user cancelled
- * or answered something this gate cannot read (which counts as a denial).
+ * Reads the review answer, or null when the user cancelled, the dialog expired,
+ * or the answer is something this gate cannot read (all of which count as a
+ * denial).
  */
-export function approvedHunks(answer: string | undefined, count: number): number[] | null {
+export function parseReviewAnswer(answer: string | undefined, count: number): ReviewAnswer | null {
   if (answer === undefined) return null
   let raw: unknown
   try {
@@ -76,7 +114,8 @@ export function approvedHunks(answer: string | undefined, count: number): number
     return null
   }
 
-  const list = asRecord(raw).approved
+  const record = asRecord(raw)
+  const list = record.approved
   if (!Array.isArray(list)) return null
 
   const inRange = new Set<number>()
@@ -85,7 +124,7 @@ export function approvedHunks(answer: string | undefined, count: number): number
       inRange.add(value)
     }
   }
-  return [...inRange].sort((a, b) => a - b)
+  return { approved: [...inRange].sort((a, b) => a - b), remember: record.remember === true }
 }
 
 function deny(path: string, why: string): BlockedToolCall {
@@ -114,15 +153,27 @@ async function reviewEdit(
   const review = { path: shownPath, summary: hunksSummary(hunks), hunks }
   const answer = await ctx.ui.input(
     `Review before applying: ${shownPath}`,
-    REVIEW_MARKER + JSON.stringify(review)
+    REVIEW_MARKER + JSON.stringify(review),
+    { timeout: REVIEW_TIMEOUT_MS }
   )
 
-  const approved = approvedHunks(answer, hunks.length)
-  if (!approved || approved.length === 0) return deny(shownPath, 'denied these changes')
-  if (approved.length === hunks.length) return undefined
+  const parsed = parseReviewAnswer(answer, hunks.length)
+  if (!parsed) {
+    // No answer covers cancel and expiry alike. Saying so matters: otherwise the
+    // edit just never lands and the user has no idea the review timed out.
+    ctx.ui.notify(
+      `Pre-apply review of ${shownPath} was not answered; the edit was not applied.`,
+      'warning'
+    )
+    return deny(shownPath, 'did not answer')
+  }
+
+  if (parsed.remember) skipReviewThisTurn = true
+  if (parsed.approved.length === 0) return deny(shownPath, 'denied these changes')
+  if (parsed.approved.length === hunks.length) return undefined
 
   const edits = Array.isArray(input.edits) ? input.edits : []
-  input.edits = approved.map((index) => edits[index])
+  input.edits = parsed.approved.map((index) => edits[index])
   return undefined
 }
 
@@ -135,6 +186,10 @@ export async function handleToolCall(
   event: PreApplyToolCall,
   ctx: PreApplyContext
 ): Promise<BlockedToolCall | undefined> {
+  if (skipReviewThisTurn && (event.toolName === 'edit' || event.toolName === 'write')) {
+    return undefined
+  }
+
   if (event.toolName === 'edit' && isOpenPiHost(process.env)) {
     return reviewEdit(event, ctx)
   }
@@ -154,4 +209,5 @@ export async function handleToolCall(
 export default function (pi: ExtensionAPI) {
   if (!isPreApplyReviewEnabled(process.env)) return
   pi.on('tool_call', (event, ctx) => handleToolCall(event, ctx))
+  pi.on('turn_end', () => endTurn())
 }

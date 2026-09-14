@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount } from 'solid-js'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../lib/extensionUiTypes'
 import { extensionUiRequestSchema } from '../lib/extensionUiTypes'
+import { asUiPromptEvent } from '../lib/sessionEvents'
 
 export function useExtensionUiDialog() {
   const [request, setRequest] = createSignal<ExtensionUiRequest | null>(null)
@@ -16,7 +17,7 @@ export function useExtensionUiDialog() {
   const dismiss = () => respond({ cancelled: true })
 
   onMount(() => {
-    const unsub = window.openpi.onExtensionUiRequest((raw) => {
+    const unsubRequest = window.openpi.onExtensionUiRequest((raw) => {
       const parsed = extensionUiRequestSchema.safeParse(raw)
       if (!parsed.success) {
         console.warn('[openpi] extension_ui_request parse failed', parsed.error.flatten(), raw)
@@ -24,7 +25,19 @@ export function useExtensionUiDialog() {
       }
       setRequest(parsed.data)
     })
-    onCleanup(unsub)
+
+    // A prompt can expire (Pi's dialog timeout) or be dismissed from the other
+    // side. Without this the dialog would stay up and its answer would be
+    // dropped, so the user would think the change went through.
+    const unsubEvent = window.openpi.onSessionEvent((event) => {
+      const prompt = asUiPromptEvent(event)
+      if (prompt?.type !== 'ui_prompt_end') return
+      const current = request()
+      if (current && current.id === prompt.id) setRequest(null)
+    })
+
+    onCleanup(unsubRequest)
+    onCleanup(unsubEvent)
   })
 
   onCleanup(() => {

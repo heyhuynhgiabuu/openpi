@@ -2,6 +2,23 @@ import type { ExtensionResponseMessage, Message, SystemMessage, ToolCard } from 
 import type { SessionEvent } from './ipc'
 import { numeric, parseUsage } from './usageParse'
 
+/** The two ctx.ui prompt events, as declared in sessionEventKnownSchema. */
+export type UiPromptSessionEvent = Extract<
+  SessionEvent,
+  { type: 'ui_prompt_start' | 'ui_prompt_end' }
+>
+
+/**
+ * The session event union keeps an open extension branch whose `type` is any
+ * string, so a `type` check cannot narrow on its own. This returns the declared
+ * shape the schema already validated, or null for every other event.
+ */
+export function asUiPromptEvent(event: SessionEvent): UiPromptSessionEvent | null {
+  if (event.type !== 'ui_prompt_start' && event.type !== 'ui_prompt_end') return null
+  // SAFETY: sessionEventKnownSchema validated id/kind/title for these two types.
+  return event as UiPromptSessionEvent
+}
+
 export function applySessionEvent(
   messages: Message[],
   event: SessionEvent,

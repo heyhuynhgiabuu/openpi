@@ -12,7 +12,7 @@ export function ExtensionUiOverlay() {
       onConfirm={(confirmed) => dialog.respond({ confirmed })}
       onSelect={(value) => dialog.respond(value ? { value } : { cancelled: true })}
       onInput={(value) => dialog.respond(value ? { value } : { cancelled: true })}
-      onApply={(approved) => dialog.respond({ approved })}
+      onApply={(approved, remember) => dialog.respond({ approved, remember })}
     />
   )
 }

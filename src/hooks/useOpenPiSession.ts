@@ -22,7 +22,7 @@ import type {
   SessionStats,
   WorkspaceSummaryInfo,
 } from '../lib/ipc'
-import { applySessionEvent } from '../lib/sessionEvents'
+import { asUiPromptEvent, applySessionEvent } from '../lib/sessionEvents'
 import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessionPrompt'
 import { isSubSessionPath } from '../lib/subSessionNavigation'
 import {
@@ -207,13 +207,9 @@ export function useOpenPiSession() {
       return
     }
 
-    if (event.type === 'ui_prompt_start') {
-      const e = event as { title?: string }
-      setAwaitingPrompt({ title: e.title ?? null })
-      return
-    }
-    if (event.type === 'ui_prompt_end') {
-      setAwaitingPrompt(null)
+    const prompt = asUiPromptEvent(event)
+    if (prompt) {
+      setAwaitingPrompt(prompt.type === 'ui_prompt_start' ? { title: prompt.title } : null)
       return
     }
 

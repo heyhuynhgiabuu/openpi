@@ -28,14 +28,16 @@ function setup() {
   return { onApply, onCancel, ...utils }
 }
 
+/** Hunk checkboxes only: the footer carries a separate "remember" checkbox. */
+function hunkBoxes(container: HTMLElement): HTMLInputElement[] {
+  return [...container.querySelectorAll<HTMLInputElement>('.preapply-hunk input[type="checkbox"]')]
+}
+
 describe('PreapplyReview', () => {
   it('starts with every hunk approved and shows the diff', () => {
-    const { getAllByRole, getByText, container } = setup()
+    const { getByText, container } = setup()
 
-    expect(getAllByRole<HTMLInputElement>('checkbox').map((box) => box.checked)).toEqual([
-      true,
-      true,
-    ])
+    expect(hunkBoxes(container).map((box) => box.checked)).toEqual([true, true])
     expect(getByText('Apply 2 of 2')).toBeTruthy()
     expect(getByText('Hunk 1 · -1 / +1')).toBeTruthy()
     expect(container.querySelectorAll('.diff-added')).toHaveLength(2)
@@ -50,12 +52,12 @@ describe('PreapplyReview', () => {
     expect(getByText('Apply 1 of 2')).toBeTruthy()
 
     fireEvent.click(getByText('Apply 1 of 2'))
-    expect(onApply).toHaveBeenCalledWith([1])
+    expect(onApply).toHaveBeenCalledWith([1], false)
   })
 
   it('will not apply an empty selection, but can deny everything', () => {
-    const { getAllByRole, getByText, onApply, onCancel } = setup()
-    for (const box of getAllByRole<HTMLInputElement>('checkbox')) fireEvent.click(box)
+    const { getByText, onApply, onCancel, container } = setup()
+    for (const box of hunkBoxes(container)) fireEvent.click(box)
 
     const apply = getByText('Apply 0 of 2')
     expect(apply.hasAttribute('disabled')).toBe(true)
@@ -66,6 +68,15 @@ describe('PreapplyReview', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
+  it('can skip review for the rest of the turn', () => {
+    const { getByLabelText, getByText, onApply } = setup()
+
+    fireEvent.click(getByLabelText('Skip review for the rest of this turn'))
+    fireEvent.click(getByText('Apply 2 of 2'))
+
+    expect(onApply).toHaveBeenCalledWith([0, 1], true)
+  })
+
   it('toggles a hunk back on', () => {
     const { getAllByRole, getByText, onApply } = setup()
     const boxes = getAllByRole<HTMLInputElement>('checkbox')
@@ -74,6 +85,6 @@ describe('PreapplyReview', () => {
     fireEvent.click(boxes[1]!)
     fireEvent.click(getByText('Apply 2 of 2'))
 
-    expect(onApply).toHaveBeenCalledWith([0, 1])
+    expect(onApply).toHaveBeenCalledWith([0, 1], false)
   })
 })

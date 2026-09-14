@@ -73,6 +73,8 @@ export const extensionUiResponseSchema = z
     value: z.string().optional(),
     /** Approved hunk indexes of a preapply_review request. */
     approved: z.array(z.number().int().nonnegative()).optional(),
+    /** The user asked to skip review for the rest of the turn. */
+    remember: z.boolean().optional(),
   })
   .strict()
 

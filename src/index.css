@@ -14332,6 +14332,15 @@ body.panel-dragging {
 .preapply-hunk-line {
   display: block;
 }
+.preapply-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 0;
+  font-size: 12px;
+  color: var(--ink-muted, #a3a3a3);
+  cursor: pointer;
+}
 
 /* ── Ask User Question Modal ─────────────────────────────────────────────── */
 .ask-overlay {

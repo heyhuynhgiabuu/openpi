@@ -7,7 +7,7 @@ type Props = {
   onConfirm: (confirmed: boolean) => void
   onSelect: (value: string | undefined) => void
   onInput: (value: string | undefined) => void
-  onApply: (approved: number[]) => void
+  onApply: (approved: number[], remember: boolean) => void
   onCancel: () => void
 }
 

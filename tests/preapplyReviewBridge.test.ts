@@ -36,8 +36,8 @@ describe('pre-apply review bridge', () => {
     expect(request?.method).toBe('preapply_review')
     expect(request?.method === 'preapply_review' ? request.review : null).toEqual(review)
 
-    if (request) fulfillExtensionUiPending({ id: request.id, approved: [1] })
-    await expect(answer).resolves.toBe('{"approved":[1]}')
+    if (request) fulfillExtensionUiPending({ id: request.id, approved: [1], remember: true })
+    await expect(answer).resolves.toBe('{"approved":[1],"remember":true}')
   })
 
   it('treats a cancelled review as no answer', async () => {

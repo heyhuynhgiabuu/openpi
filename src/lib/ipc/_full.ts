@@ -661,6 +661,22 @@ const sessionEventKnownSchema = z.discriminatedUnion('type', [
     id: z.string().optional(),
     delta: z.string(),
   }),
+  z
+    .object({
+      type: z.literal('ui_prompt_start'),
+      id: z.string(),
+      kind: z.string(),
+      title: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal('ui_prompt_end'),
+      id: z.string(),
+      kind: z.string(),
+      title: z.string(),
+    })
+    .passthrough(),
 ])
 
 const knownSessionEventTypes: ReadonlySet<string> = new Set(

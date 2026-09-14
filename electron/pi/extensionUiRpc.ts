@@ -19,10 +19,16 @@ const DEFAULT_DIALOG_TIMEOUT_MS = 120_000
 function emitUiPromptEvent(
   sinks: ExtensionUiBridgeSinks,
   type: 'ui_prompt_start' | 'ui_prompt_end',
-  kind: ExtensionUiRequest['method'],
-  title: string
+  request: Pick<ExtensionUiRequest, 'id' | 'method' | 'title'>
 ): void {
-  sinks.sessionEvent({ type, reason: 'ui_prompt', kind, title })
+  // The id lets the renderer close a dialog whose prompt already expired.
+  sinks.sessionEvent({
+    type,
+    reason: 'ui_prompt',
+    id: request.id,
+    kind: request.method,
+    title: request.title,
+  })
 }
 
 /**
@@ -54,8 +60,6 @@ function dialogPromise<T>(
   const id = crypto.randomUUID()
   const timeoutMs = opts?.timeout ?? DEFAULT_DIALOG_TIMEOUT_MS
   const request = buildRequest(id)
-  const kind = request.method
-  const title = request.title
 
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
@@ -79,11 +83,11 @@ function dialogPromise<T>(
     )
 
     sinks.postExtensionUiRequest(request)
-    emitUiPromptEvent(sinks, 'ui_prompt_start', kind, title)
+    emitUiPromptEvent(sinks, 'ui_prompt_start', request)
   }).finally(() => {
     // .finally fires exactly once however the prompt settles: answer, cancel,
     // timeout, abort, or sidecar teardown.
-    emitUiPromptEvent(sinks, 'ui_prompt_end', kind, title)
+    emitUiPromptEvent(sinks, 'ui_prompt_end', request)
   })
 }
 
@@ -119,7 +123,9 @@ export function createOpenPiExtensionUIContext(sinks: ExtensionUiBridgeSinks): E
           // The gate parses this JSON; no answer (cancel, timeout, malformed)
           // reads as a denial there.
           (r) =>
-            r.cancelled || !r.approved ? undefined : JSON.stringify({ approved: r.approved }),
+            r.cancelled || !r.approved
+              ? undefined
+              : JSON.stringify({ approved: r.approved, remember: r.remember === true }),
           undefined,
           opts
         )

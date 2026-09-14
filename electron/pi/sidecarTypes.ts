@@ -61,6 +61,7 @@ export type SidecarCommand =
       confirmed?: boolean
       value?: string
       approved?: number[]
+      remember?: boolean
     }
   | { type: 'stop' }
 

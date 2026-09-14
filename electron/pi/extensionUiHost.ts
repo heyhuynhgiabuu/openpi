@@ -14,6 +14,7 @@ export function registerExtensionUiHandlers(ipcMain: IpcMain): void {
       confirmed: response.confirmed,
       value: response.value,
       approved: response.approved,
+      remember: response.remember,
     } satisfies SidecarCommand)
   })
 }
