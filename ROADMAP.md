@@ -515,7 +515,7 @@ Each phase gets the smallest reliable verification for its slice.
 - Curated plugin marketplace (discovery UI is fine; marketplace is not)
 - Full IDE replacement (CM6 editor ≠ VS Code)
 - Custom Rust UI renderer
-- Mobile
+- **Mobile app / remote IDE surfaces** — deferred, not rejected. Revisit only after Phase 7 P0 (diff review before apply, test evidence) ships. If revisited: P0 is read-only monitoring + approval via PWA (no native app, no relay), mandatory per-device pairing, and no mutation surface until a separate design is approved. See `docs/decisions/2026-09-13-remote-access-deferred.md` and the PR #10 review findings.
 - Scheduler / cloud agents
 - Automatic third-party package installation
 - Rewriting Pi's agent loop, plan mode, todos, or MCP inside OpenPi main
