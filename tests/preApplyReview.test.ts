@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   confirmMessage,
   handleToolCall,
@@ -9,7 +12,21 @@ import {
   previewForWrite,
 } from '../.pi/extensions/openpi-preapply-review'
 
-const cwd = '/work/repo'
+let cwd: string
+
+beforeEach(() => {
+  cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-preapply-'))
+})
+
+afterEach(() => {
+  fs.rmSync(cwd, { recursive: true, force: true })
+})
+
+function writeFile(relPath: string, content: string): void {
+  const full = path.join(cwd, relPath)
+  fs.mkdirSync(path.dirname(full), { recursive: true })
+  fs.writeFileSync(full, content)
+}
 
 function context(confirm: (title: string, message: string) => Promise<boolean>) {
   return { cwd, ui: { confirm } }
@@ -71,13 +88,13 @@ describe('diffRegion', () => {
   })
 
   it('truncates a long region', () => {
-    const before = Array.from({ length: 40 }, (_, i) => `old-${i}`).join('\n')
-    const after = Array.from({ length: 40 }, (_, i) => `new-${i}`).join('\n')
+    const before = Array.from({ length: 130 }, (_, i) => `old-${i}`).join('\n')
+    const after = Array.from({ length: 130 }, (_, i) => `new-${i}`).join('\n')
 
-    const body = diffRegion(before, after, 10)
+    const body = diffRegion(before, after)
 
-    expect(body.split('\n')).toHaveLength(11)
-    expect(body.endsWith('preview truncated')).toBe(true)
+    expect(body.split('\n')).toHaveLength(121)
+    expect(body.endsWith('… preview truncated')).toBe(true)
   })
 })
 
@@ -100,30 +117,35 @@ describe('previews', () => {
   })
 
   it('marks a new file as a creation and an unchanged write as no change', () => {
-    const created = previewForWrite({ path: 'docs/new.md', content: 'hello\n' }, cwd, () => null)
+    const created = previewForWrite({ path: 'docs/new.md', content: 'hello\n' }, cwd)
     expect(created?.created).toBe(true)
     expect(created?.summary).toBe('create · 1 line')
     expect(created?.body).toBe('+hello')
 
-    const unchanged = previewForWrite(
-      { path: 'docs/old.md', content: 'same\n' },
-      cwd,
-      () => 'same\n'
-    )
+    writeFile('docs/old.md', 'same\n')
+    const unchanged = previewForWrite({ path: 'docs/old.md', content: 'same\n' }, cwd)
     expect(unchanged?.summary).toBe('no change')
     expect(unchanged?.body).toBe('')
   })
 
   it('diffs a rewrite against the file on disk', () => {
-    const preview = previewForWrite(
-      { path: 'src/a.ts', content: 'keep\nnew\n' },
-      cwd,
-      () => 'keep\nold\n'
-    )
+    writeFile('src/a.ts', 'keep\nold\n')
+
+    const preview = previewForWrite({ path: 'src/a.ts', content: 'keep\nnew\n' }, cwd)
 
     expect(preview?.summary).toBe('write · 2 lines → 2 lines')
     expect(preview?.body).toBe('-old\n+new')
     expect(preview?.created).toBe(false)
+  })
+
+  it('does not call an unreadable file a creation', () => {
+    writeFile('blob.bin', 'binary\0content\n')
+
+    const preview = previewForWrite({ path: 'blob.bin', content: 'replacement\n' }, cwd)
+
+    expect(preview?.created).toBe(false)
+    expect(preview?.summary).toBe('overwrite · 1 line, current content not previewable')
+    expect(preview?.body).toBe('')
   })
 
   it('ignores tools and inputs it cannot preview', () => {
@@ -133,7 +155,9 @@ describe('previews', () => {
   })
 
   it('tells the user what allow and deny do', () => {
-    const preview = previewForWrite({ path: 'a.ts', content: 'x\n' }, cwd, () => 'y\n')
+    writeFile('a.ts', 'y\n')
+
+    const preview = previewForWrite({ path: 'a.ts', content: 'x\n' }, cwd)
     const message = preview ? confirmMessage(preview) : ''
 
     expect(message).toContain('-y\n+x')

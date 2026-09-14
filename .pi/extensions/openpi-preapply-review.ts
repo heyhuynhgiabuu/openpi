@@ -56,9 +56,10 @@ function displayPath(cwd: string, path: string): string {
 
 function readTextFile(path: string): string | null {
   try {
-    if (!existsSync(path)) return null
-    if (!statSync(path).isFile()) return null
-    if (statSync(path).size > MAX_PREVIEW_BYTES) return null
+    // statSync throws for a missing file, which the catch turns into null.
+    const stat = statSync(path)
+    if (!stat.isFile()) return null
+    if (stat.size > MAX_PREVIEW_BYTES) return null
     const buffer = readFileSync(path)
     if (buffer.includes(0)) return null
     return buffer.toString('utf-8')
@@ -72,7 +73,7 @@ function readTextFile(path: string): string | null {
  * lines are dropped, and what is left is shown as `-`/`+` lines. Exact enough
  * for a confirmation, and it never needs a line-diff algorithm.
  */
-export function diffRegion(before: string, after: string, maxLines = MAX_PREVIEW_LINES): string {
+export function diffRegion(before: string, after: string): string {
   const beforeLines = before.split('\n')
   const afterLines = after.split('\n')
 
@@ -93,9 +94,9 @@ export function diffRegion(before: string, after: string, maxLines = MAX_PREVIEW
   const removed = beforeLines.slice(head, beforeLines.length - tail)
   const added = afterLines.slice(head, afterLines.length - tail)
   const lines = [...removed.map((line) => `-${line}`), ...added.map((line) => `+${line}`)]
-  if (lines.length > maxLines) {
-    lines.length = maxLines
-    lines.push(`… ${lines.length === maxLines ? 'preview truncated' : 'truncated'}`)
+  if (lines.length > MAX_PREVIEW_LINES) {
+    lines.length = MAX_PREVIEW_LINES
+    lines.push('… preview truncated')
   }
   return lines.join('\n')
 }
@@ -135,20 +136,29 @@ export function previewForEdit(
 /** Preview for Pi's `write` tool: compared against the file on disk. */
 export function previewForWrite(
   input: Record<string, unknown>,
-  cwd: string,
-  readFile: (path: string) => string | null = readTextFile
+  cwd: string
 ): PreApplyPreview | null {
   const path = str(input.path) ?? str(input.file_path)
   const content = typeof input.content === 'string' ? input.content : null
   if (!path || content === null) return null
 
   const absolute = isAbsolute(path) ? path : resolve(cwd, path)
-  const current = readFile(absolute)
+  const current = readTextFile(absolute)
   if (current === null) {
-    const lines = countLines(content)
+    // The file is missing, or it exists but review cannot read it (binary, too
+    // large). Reporting an unreadable file as a creation would be a lie, and the
+    // user would be approving a blind overwrite.
+    if (existsSync(absolute)) {
+      return {
+        path: displayPath(cwd, path),
+        summary: `overwrite · ${lineLabel(countLines(content))}, current content not previewable`,
+        body: '',
+        created: false,
+      }
+    }
     return {
       path: displayPath(cwd, path),
-      summary: `create · ${lineLabel(lines)}`,
+      summary: `create · ${lineLabel(countLines(content))}`,
       body: diffRegion('', content),
       created: true,
     }
@@ -174,12 +184,11 @@ export function previewForWrite(
 export function previewForToolCall(
   toolName: string,
   input: unknown,
-  cwd: string,
-  readFile?: (path: string) => string | null
+  cwd: string
 ): PreApplyPreview | null {
   const record = asRecord(input)
   if (toolName === 'edit') return previewForEdit(record, cwd)
-  if (toolName === 'write') return previewForWrite(record, cwd, readFile)
+  if (toolName === 'write') return previewForWrite(record, cwd)
   return null
 }
 
