@@ -80,6 +80,46 @@ describe('session history along a chosen branch', () => {
     expect(switched.branches.map((branch) => branch.leafId).sort()).toEqual(['a-a', 'a-b'])
   })
 
+  it('ignores usage that only carries the provider-side aliases', async () => {
+    const file = path.join(tempDir, 'aliases.jsonl')
+    fs.writeFileSync(
+      file,
+      `${[
+        JSON.stringify({
+          type: 'message',
+          id: 'u',
+          parentId: null,
+          timestamp: '2026-09-14T00:00:01.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'a',
+          parentId: 'u',
+          timestamp: '2026-09-14T00:00:02.000Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+            usage: {
+              inputTokens: 99,
+              outputTokens: 99,
+              cacheReadTokens: 99,
+              cacheWriteTokens: 99,
+            },
+          },
+        }),
+      ].join('\n')}\n`
+    )
+
+    const page = await readSessionHistoryPage(file, { limit: 10 })
+    const assistant = page.messages.find((entry) => entry.role === 'assistant')
+
+    expect(assistant?.inputTokens).toBe(0)
+    expect(assistant?.outputTokens).toBe(0)
+    expect(assistant?.cacheReadTokens).toBe(0)
+    expect(assistant?.cacheWriteTokens).toBe(0)
+  })
+
   it('reports the fork point with both of its branches', () => {
     const [fork] = buildSessionTree(sessionFile).forkPoints
 

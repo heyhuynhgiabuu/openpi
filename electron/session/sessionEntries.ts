@@ -277,7 +277,9 @@ export function latestSessionName(entries: SessionEntry[]): string {
 export function firstUserMessage(entries: SessionEntry[]): string {
   for (const entry of entries) {
     if (entry.type !== 'message') continue
-    const message = entry.message as { role?: string; content?: unknown }
+    // A truncated or hand-edited file can hold a message entry without a payload.
+    const message = entry.message
+    if (!isRecord(message)) continue
     if (message.role === 'user') return truncate(contentToText(message.content), 140)
   }
   return ''
@@ -287,9 +289,10 @@ export function usageTotals(entries: SessionEntry[]): UsageTotals {
   return entries.reduce<UsageTotals>(
     (totals, entry) => {
       if (entry.type !== 'message') return totals
-      const message = entry.message as { role?: string; usage?: Record<string, unknown> }
-      if (message.role !== 'assistant' || !message.usage) return totals
+      const message = entry.message
+      if (!isRecord(message) || message.role !== 'assistant') return totals
       const usage = message.usage
+      if (!isRecord(usage)) return totals
       totals.inputTokens += numeric(usage.input)
       totals.outputTokens += numeric(usage.output)
       totals.cacheReadTokens += numeric(usage.cacheRead)

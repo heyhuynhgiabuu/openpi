@@ -73,6 +73,33 @@ describe('session usage capture', () => {
     })
   })
 
+  it('ignores usage that only carries the provider-side aliases', () => {
+    // Pi's Usage type is input/output/cacheRead/cacheWrite; the *Tokens aliases
+    // are provider internals and are never persisted.
+    const entries: SessionEntry[] = [
+      {
+        id: 'assistant-1',
+        parentId: null,
+        type: 'message',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        message: {
+          role: 'assistant',
+          content: 'hi',
+          usage: {
+            inputTokens: 99,
+            outputTokens: 99,
+            cacheReadTokens: 99,
+            cacheWriteTokens: 99,
+          },
+        },
+      },
+    ]
+
+    // With the aliases gone the entry contributes no usage at all, so the helper
+    // records no metric for it — the fallbacks used to invent one.
+    expect(usageMetricsByEntryId(entries).get('assistant-1')).toBeUndefined()
+  })
+
   it('uses component sum for totalTokens when usage.totalTokens is inflated', () => {
     const entries: SessionEntry[] = [
       {

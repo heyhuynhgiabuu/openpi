@@ -67,6 +67,17 @@ describe('usageTotalTokens', () => {
     expect(usageTotalTokens({ input: 10, output: 4, cacheRead: 2, cacheWrite: 1 })).toBe(17)
   })
 
+  it('ignores the provider-side aliases Pi never persists', () => {
+    expect(
+      usageTotalTokens({
+        inputTokens: 99,
+        outputTokens: 99,
+        cacheReadTokens: 99,
+        cacheWriteTokens: 99,
+      })
+    ).toBe(0)
+  })
+
   it('treats missing parts as zero', () => {
     expect(usageTotalTokens({ input: 10 })).toBe(10)
     expect(usageTotalTokens({})).toBe(0)

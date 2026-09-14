@@ -36,7 +36,8 @@ export function appendHistoryEntry(
 
   if (entry.type !== 'message') return
 
-  const message = entry.message as unknown as Record<string, unknown>
+  // A truncated or hand-edited file can hold a message entry without a payload.
+  const message = isRecord(entry.message) ? entry.message : {}
   const role = typeof message.role === 'string' ? message.role : ''
 
   if (role === 'user') {

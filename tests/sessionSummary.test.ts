@@ -75,6 +75,8 @@ describe('usageTotals', () => {
       // A user message carrying usage is unusual, but the role check is what keeps
       // it out of the totals, so the fixture has to have one.
       entry('u', 'message', { message: { role: 'user', content: 'hi', usage: { input: 99 } } }),
+      // toolResult carries usage in other providers' shapes; only 'assistant' counts.
+      entry('r', 'message', { message: { role: 'toolResult', usage: { input: 99 } } }),
       entry('t', 'thinking_level_change', { thinkingLevel: 'high' }),
       entry('c', 'compaction', { result: { tokensBefore: 100 } }),
     ])
@@ -86,13 +88,16 @@ describe('usageTotals', () => {
   it('counts only the field names Pi writes', () => {
     // Pi's Usage type is input/output/cacheRead/cacheWrite/totalTokens; the
     // *Tokens aliases some providers use internally are never persisted, so a
-    // usage object that only carries them contributes nothing.
+    // usage object that only carries them contributes nothing. All four are
+    // asserted so re-adding any one of the removed fallbacks fails here.
     const totals = usageTotals([
       assistant({ inputTokens: 99, outputTokens: 99, cacheReadTokens: 99, cacheWriteTokens: 99 }),
     ])
 
     expect(totals.inputTokens).toBe(0)
     expect(totals.outputTokens).toBe(0)
+    expect(totals.cacheReadTokens).toBe(0)
+    expect(totals.cacheWriteTokens).toBe(0)
   })
 
   it('reads a numeric cost and tolerates a missing one', () => {
@@ -112,8 +117,15 @@ describe('latestModel', () => {
     expect(latestModel(entries)).toBe('gpt-5.4')
   })
 
-  it('skips model changes without a model id and reports nothing when there are none', () => {
-    expect(latestModel([entry('m', 'model_change', {}), entry('a', 'message')])).toBe('')
+  it('skips a trailing model change without an id', () => {
+    const entries = [
+      entry('m1', 'model_change', { modelId: 'claude-sonnet-5' }),
+      entry('m2', 'model_change', {}),
+    ]
+
+    // A trailing change without an id is skipped, so the older id still stands.
+    expect(latestModel(entries)).toBe('claude-sonnet-5')
+    expect(latestModel([entry('m', 'model_change', {})])).toBe('')
     expect(latestModel([])).toBe('')
   })
 })
@@ -129,7 +141,13 @@ describe('latestSessionName', () => {
     expect(latestSessionName(entries)).toBe('Renamed')
   })
 
-  it('reports nothing when no name was ever set', () => {
+  it('skips a trailing blank name instead of clearing an earlier one', () => {
+    expect(
+      latestSessionName([
+        entry('s1', 'session_info', { name: 'First' }),
+        entry('s2', 'session_info', { name: '  ' }),
+      ])
+    ).toBe('First')
     expect(latestSessionName([entry('a', 'message')])).toBe('')
   })
 })
@@ -148,6 +166,13 @@ describe('firstUserMessage', () => {
         entry('u', 'message', { message: { role: 'user', content: 'x'.repeat(200) } }),
       ])
     ).toHaveLength(140)
+  })
+
+  it('survives a message entry with no payload', () => {
+    // A truncated or hand-edited file can hold one, and indexing a whole
+    // workspace must not abort on it.
+    expect(firstUserMessage([entry('broken', 'message')])).toBe('')
+    expect(usageTotals([entry('broken', 'message')]).inputTokens).toBe(0)
   })
 
   it('reports nothing without a user message', () => {
