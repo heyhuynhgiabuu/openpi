@@ -67,17 +67,26 @@ function getStub() {
   return vi.mocked(window.openpi.getSessionTree)
 }
 
-function renderMap(options: { onClose?: () => void; loaded?: string[] } = {}) {
+function renderMap(
+  options: {
+    onClose?: () => void
+    loaded?: string[]
+    onBranchFrom?: (id: string) => Promise<void>
+  } = {}
+) {
   const onNavigate = vi.fn()
+  const onBranchFrom = vi.fn(options.onBranchFrom ?? (async () => {}))
   const view = render(() => (
     <SessionMap
       sessionPath="/sessions/example.jsonl"
+      leafId={null}
       onClose={options.onClose ?? (() => {})}
       isEntryLoaded={(entryId) => (options.loaded ?? []).includes(entryId)}
       onNavigate={onNavigate}
+      onBranchFrom={onBranchFrom}
     />
   ))
-  return { ...view, onNavigate }
+  return { ...view, onNavigate, onBranchFrom }
 }
 
 // Every test renders the same tree; only the empty and failed loads differ.
@@ -96,7 +105,7 @@ describe('SessionMap', () => {
     const { findByText, getByText } = renderMap()
 
     expect(await findByText('2 branches · 1 fork')).toBeTruthy()
-    expect(getSessionTree).toHaveBeenCalledWith('/sessions/example.jsonl')
+    expect(getSessionTree).toHaveBeenCalledWith('/sessions/example.jsonl', undefined)
     expect(getByText('Branch 1')).toBeTruthy()
     expect(getByText('Branch 2')).toBeTruthy()
     expect(getByText('current')).toBeTruthy()
@@ -132,7 +141,9 @@ describe('SessionMap', () => {
 
     await findByText('2 branches · 1 fork')
     const cursorIdx = () =>
-      container.querySelector('.session-map-node.is-cursor')?.getAttribute('data-map-idx')
+      container
+        .querySelector('.session-map-node-row.is-cursor [data-map-idx]')
+        ?.getAttribute('data-map-idx')
     // Active leaf is the last node of branch 2 (index 3 of 4).
     expect(cursorIdx()).toBe('3')
 
@@ -239,6 +250,72 @@ describe('SessionMap', () => {
 
     fireEvent.keyDown(getByRole('dialog'), { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('asks before continuing the session from an entry', async () => {
+    const { findByText, getByRole, getByText, onBranchFrom } = renderMap()
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter', shiftKey: true })
+
+    expect(getByText(/Continue from this assistant entry\?/)).toBeTruthy()
+    expect(onBranchFrom).not.toHaveBeenCalled()
+  })
+
+  it('continues from the confirmed entry and closes the map', async () => {
+    const onClose = vi.fn()
+    const { findByText, getByRole, getByText, onBranchFrom } = renderMap({ onClose })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter', shiftKey: true })
+    fireEvent.click(getByText('Branch here'))
+
+    await vi.waitFor(() => expect(onBranchFrom).toHaveBeenCalledWith('leaf-2'))
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('keeps the map open and explains why branching failed', async () => {
+    const onClose = vi.fn()
+    const { findByText, getByRole, getByText } = renderMap({
+      onClose,
+      onBranchFrom: async () => {
+        throw new Error(
+          'Wait for the current response to finish before navigating the session tree.'
+        )
+      },
+    })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter', shiftKey: true })
+    fireEvent.click(getByText('Branch here'))
+
+    expect(await findByText(/Wait for the current response to finish/)).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('cancels a pending branch on Escape without closing the map', async () => {
+    const onClose = vi.fn()
+    const { findByText, getByRole, queryByText } = renderMap({ onClose })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter', shiftKey: true })
+    await findByText(/Continue from this assistant entry\?/)
+
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Escape' })
+    expect(queryByText(/Continue from this assistant entry\?/)).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('starts a branch from the row action button', async () => {
+    const { findByText, container, getByText } = renderMap()
+
+    await findByText('2 branches · 1 fork')
+    const cursorRow = container.querySelector('.session-map-node-row.is-cursor')
+    const button = cursorRow?.querySelector('.session-map-node-branch')
+    if (!button) throw new Error('expected a branch action on the cursor row')
+    fireEvent.click(button)
+
+    expect(getByText(/Continue from this assistant entry\?/)).toBeTruthy()
   })
 
   it('reports an empty session', async () => {

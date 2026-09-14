@@ -9,7 +9,7 @@ import { buildTreeNodes, collectLeaves, traceToRoot } from './sessionTree'
  * Extracted from SessionIndexStore because it is a pure function that
  * does not depend on any class state.
  */
-export function buildSessionTree(sessionPath: string): SessionTreeResponse {
+export function buildSessionTree(sessionPath: string, leafId?: string): SessionTreeResponse {
   try {
     const parsed = parseSessionFile(sessionPath)
     const { entries } = parsed
@@ -68,7 +68,9 @@ export function buildSessionTree(sessionPath: string): SessionTreeResponse {
       }
     }
 
-    const activeLeafId = lastEntryId
+    // A branch switch moves Pi's leaf without writing an entry, so a caller that
+    // just switched names the leaf; otherwise the file's last entry is the leaf.
+    const activeLeafId = leafId && entryById.has(leafId) ? leafId : lastEntryId
 
     return { sessionPath, branches, forkPoints, activeLeafId }
   } catch {

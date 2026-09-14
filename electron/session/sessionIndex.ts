@@ -174,8 +174,8 @@ export class SessionIndexStore {
   }
 
   // ── Session tree ────────────────────────────────────────────────────────────
-  getSessionTree(sessionPath: string): SessionTreeResponse {
-    return buildSessionTree(sessionPath)
+  getSessionTree(sessionPath: string, leafId?: string): SessionTreeResponse {
+    return buildSessionTree(sessionPath, leafId)
   }
 
   // ── Preferences (delegated to sessionQueries) ───────────────────────────────

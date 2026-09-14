@@ -801,6 +801,8 @@ export type Branch = z.infer<typeof branchSchema>
 
 export const sessionTreeRequestSchema = z.object({
   path: z.string().min(1),
+  /** Mark this entry as the current leaf instead of the file's last entry. */
+  leafId: z.string().min(1).optional(),
 })
 export type SessionTreeRequest = z.infer<typeof sessionTreeRequestSchema>
 

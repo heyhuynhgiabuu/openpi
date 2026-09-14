@@ -320,7 +320,7 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GET_SESSION_TREE,
     async (_event, raw: unknown): Promise<SessionTreeResponse> => {
-      const { path: submittedPath } = sessionTreeRequestSchema.parse(raw)
+      const { path: submittedPath, leafId } = sessionTreeRequestSchema.parse(raw)
       const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
       // No file yet means there is no tree to build.
       if (!sessionPath) {
@@ -332,7 +332,7 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
         }
       }
       return (
-        deps.getSessionIndex()?.getSessionTree(sessionPath) ?? {
+        deps.getSessionIndex()?.getSessionTree(sessionPath, leafId) ?? {
           sessionPath,
           branches: [],
           forkPoints: [],

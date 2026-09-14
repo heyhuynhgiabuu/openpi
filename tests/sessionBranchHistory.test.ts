@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { readCurrentBranchIds, readSessionHistoryPage } from '../electron/session/sessionEntries'
+import { buildSessionTree } from '../electron/session/sessionTreeBuilder'
 
 /**
  * A session file with one fork: root → user-a → assistant-a on the first
@@ -67,6 +68,16 @@ describe('session history along a chosen branch', () => {
     const ids = await readCurrentBranchIds(sessionFile, 'u-root')
 
     expect([...ids]).toEqual(['u-root'])
+  })
+
+  it('marks the switched-to leaf as active in the session tree', () => {
+    const defaultTree = buildSessionTree(sessionFile)
+    expect(defaultTree.activeLeafId).toBe('a-b')
+
+    const switched = buildSessionTree(sessionFile, 'a-a')
+    expect(switched.activeLeafId).toBe('a-a')
+    // Both branches are still listed; only the marker moves.
+    expect(switched.branches.map((branch) => branch.leafId).sort()).toEqual(['a-a', 'a-b'])
   })
 
   it('falls back to the file leaf when the requested entry is not in the file', async () => {

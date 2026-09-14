@@ -10,12 +10,19 @@ type IpcHandler = (event: unknown, raw?: unknown) => unknown
 interface Fixture {
   handlers: Map<string, IpcHandler>
   getSessionMessages: ReturnType<typeof vi.fn>
+  getSessionTree: ReturnType<typeof vi.fn>
   requestSidecar: ReturnType<typeof vi.fn>
 }
 
 function createFixture(agentDir: string, sessionFile: string | null = null): Fixture {
   const handlers = new Map<string, IpcHandler>()
   const requestSidecar = vi.fn(async () => ({}))
+  const getSessionTree = vi.fn(() => ({
+    sessionPath: 'unused',
+    branches: [],
+    forkPoints: [],
+    activeLeafId: null,
+  }))
   const getSessionMessages = vi.fn(async () => ({
     messages: [],
     hasMoreBefore: true,
@@ -33,7 +40,7 @@ function createFixture(agentDir: string, sessionFile: string | null = null): Fix
     emitSessionError: vi.fn(),
     ensureActiveSession: vi.fn(async () => null),
     getSessionState: () => (sessionFile ? { sessionFile } : null),
-    getSessionIndex: () => ({ getSessionMessages }),
+    getSessionIndex: () => ({ getSessionMessages, getSessionTree }),
     activeWorkspacePath: () => null,
     createRequestId: () => 'req-test',
     sendSidecar: vi.fn(),
@@ -47,7 +54,7 @@ function createFixture(agentDir: string, sessionFile: string | null = null): Fix
     restoreSessionValues: vi.fn(),
   } as unknown as Parameters<typeof registerSessionsIpc>[0]
   registerSessionsIpc(deps)
-  return { handlers, getSessionMessages, requestSidecar }
+  return { handlers, getSessionMessages, getSessionTree, requestSidecar }
 }
 
 describe('session IPC for a session Pi has not flushed yet', () => {
@@ -123,6 +130,17 @@ describe('session IPC for a session Pi has not flushed yet', () => {
       beforeEntryId: undefined,
       leafId: 'entry-42',
     })
+  })
+
+  it('marks the switched-to leaf as active when building the tree', async () => {
+    const handler = fixture.handlers.get(IPC.GET_SESSION_TREE)
+    if (!handler) throw new Error('Expected GET_SESSION_TREE handler')
+    const existingPath = path.join(sessionDir, 'existing.jsonl')
+    fs.writeFileSync(existingPath, '{"type":"session"}\n')
+
+    await handler({}, { path: existingPath, leafId: 'entry-42' })
+
+    expect(fixture.getSessionTree).toHaveBeenCalledWith(existingPath, 'entry-42')
   })
 
   it('moves the session leaf through the sidecar and reports the new leaf', async () => {

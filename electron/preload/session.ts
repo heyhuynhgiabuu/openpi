@@ -61,8 +61,8 @@ export const sessionApi = {
     ipcRenderer.invoke(IPC.GET_SESSION_MESSAGES, { path, ...options }),
   navigateSessionTree: (payload: NavigateSessionTreeRequest): Promise<NavigateSessionTreeResult> =>
     ipcRenderer.invoke(IPC.NAVIGATE_SESSION_TREE, payload),
-  getSessionTree: (path: string): Promise<SessionTreeResponse> =>
-    ipcRenderer.invoke(IPC.GET_SESSION_TREE, { path }),
+  getSessionTree: (path: string, leafId?: string): Promise<SessionTreeResponse> =>
+    ipcRenderer.invoke(IPC.GET_SESSION_TREE, { path, leafId }),
   openSession: (payload: OpenSession): Promise<void> =>
     ipcRenderer.invoke(IPC.OPEN_SESSION, payload),
   resolveSubSessionPath: (payload: ResolveSubSessionPathPayload): Promise<string | null> =>

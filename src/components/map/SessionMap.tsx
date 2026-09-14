@@ -30,16 +30,23 @@ import {
 
 export interface SessionMapProps {
   sessionPath: string
+  /**
+   * Leaf the session is on when it is not the file's last entry (a branch
+   * switch moves Pi's leaf without writing an entry).
+   */
+  leafId: string | null
   onClose: () => void
   /** True when the conversation has this entry loaded, so jumping to it will land somewhere. */
   isEntryLoaded: (entryId: string) => boolean
   onNavigate: (entryId: string) => void
+  /** Continue the session from this entry; rejects with the reason it could not. */
+  onBranchFrom: (entryId: string) => Promise<void>
 }
 
 export const SessionMap: Component<SessionMapProps> = (props) => {
   const [tree] = createResource(
     () => props.sessionPath,
-    (sessionPath) => window.openpi.getSessionTree(sessionPath)
+    (sessionPath) => window.openpi.getSessionTree(sessionPath, props.leafId ?? undefined)
   )
   // Reading the resource accessor re-throws its error, so the error state is
   // read first and the rest of the component only ever sees loaded data.
@@ -47,6 +54,10 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   const [query, setQuery] = createSignal('')
   const [cursor, setCursor] = createSignal(0)
   const [notice, setNotice] = createSignal<string | null>(null)
+  // Entry the user asked to continue from, held until they confirm: moving the
+  // leaf changes where the next message lands, so it is never a single click.
+  const [pendingBranch, setPendingBranch] = createSignal<TreeEntryNode | null>(null)
+  const [isBranching, setIsBranching] = createSignal(false)
   let listRef: HTMLDivElement | undefined
   let searchRef: HTMLInputElement | undefined
 
@@ -103,6 +114,26 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
     props.onClose()
   }
 
+  const startBranch = (node: TreeEntryNode) => {
+    setNotice(null)
+    setPendingBranch(node)
+  }
+
+  const confirmBranch = async () => {
+    const node = pendingBranch()
+    if (!node || isBranching()) return
+    setIsBranching(true)
+    try {
+      await props.onBranchFrom(node.id)
+      props.onClose()
+    } catch (error) {
+      setPendingBranch(null)
+      setNotice(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsBranching(false)
+    }
+  }
+
   const moveCursor = (next: number) => {
     const total = nodes().length
     if (total === 0) return
@@ -117,8 +148,9 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
-        // First Escape clears the filter, a second one closes the map.
-        if (query().trim()) setQuery('')
+        // Escape unwinds one step at a time: pending branch, then filter, then close.
+        if (pendingBranch()) setPendingBranch(null)
+        else if (query().trim()) setQuery('')
         else props.onClose()
         return
       }
@@ -134,6 +166,19 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
         return
       }
       if (event.key === 'Enter') {
+        // Shift+Enter asks to continue from the entry; plain Enter jumps to it.
+        if (event.shiftKey) {
+          const node = nodes()[cursor()]
+          if (!node) return
+          event.preventDefault()
+          startBranch(node)
+          return
+        }
+        if (pendingBranch()) {
+          event.preventDefault()
+          void confirmBranch()
+          return
+        }
         const node = nodes()[cursor()]
         if (!node) return
         event.preventDefault()
@@ -197,6 +242,33 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
                   onInput={(event) => setQuery(event.currentTarget.value)}
                 />
               </div>
+              <Show when={pendingBranch()}>
+                {(node) => (
+                  <div class="session-map-confirm">
+                    <span>
+                      Continue from this {nodeLabel(node()).toLowerCase()} entry? The next message
+                      becomes its child and the session keeps its history.
+                    </span>
+                    <div class="session-map-confirm-actions">
+                      <button
+                        type="button"
+                        class="session-map-confirm-primary"
+                        disabled={isBranching()}
+                        onClick={() => void confirmBranch()}
+                      >
+                        {isBranching() ? 'Branching…' : 'Branch here'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBranching()}
+                        onClick={() => setPendingBranch(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Show>
               <Show
                 when={nodes().length > 0}
                 fallback={<div class="session-map-empty">No entries match “{query().trim()}”.</div>}
@@ -213,6 +285,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
                           setNotice(null)
                         }}
                         onActivateNode={activate}
+                        onStartBranch={startBranch}
                       />
                     )}
                   </For>

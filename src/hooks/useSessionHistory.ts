@@ -7,6 +7,11 @@ const HISTORY_PAGE_LIMIT = 200
 interface SessionHistoryOptions {
   setMessages: Setter<Message[]>
   setError: Setter<string | null>
+  /**
+   * Branch to read instead of the file's own leaf. Set right after a branch
+   * switch, which moves Pi's leaf without writing an entry to the file.
+   */
+  getLeafId?: () => string | null
 }
 
 export function useSessionHistory(options: SessionHistoryOptions) {
@@ -24,7 +29,10 @@ export function useSessionHistory(options: SessionHistoryOptions) {
   const loadInitialMessages = (sessionFile: string) => {
     latestSessionFile = sessionFile
     window.openpi
-      .getSessionMessages(sessionFile, { limit: HISTORY_PAGE_LIMIT })
+      .getSessionMessages(sessionFile, {
+        limit: HISTORY_PAGE_LIMIT,
+        leafId: options.getLeafId?.() ?? undefined,
+      })
       .then((page) => {
         if (latestSessionFile !== sessionFile) return
         batch(() => {
@@ -46,6 +54,7 @@ export function useSessionHistory(options: SessionHistoryOptions) {
       const page = await window.openpi.getSessionMessages(sessionFile, {
         limit: HISTORY_PAGE_LIMIT,
         beforeEntryId,
+        leafId: options.getLeafId?.() ?? undefined,
       })
       if (latestSessionFile !== sessionFile) return
       options.setMessages((previous) => {

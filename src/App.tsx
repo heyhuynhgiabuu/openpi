@@ -427,6 +427,8 @@ export default function App() {
                     displayPreferences={displayPreferences()}
                     scrollToMessageId={scrollToMessageId()}
                     onNavigateToMessage={navigateToMessage}
+                    branchLeafId={session.branchLeafId()}
+                    onBranchFrom={session.navigateTree}
                     showRemoteSessionBar={showRemoteSessionBar()}
                     promptHistory={promptHistory()}
                     attachedFiles={attachedFiles()}

@@ -100,7 +100,15 @@ export function useOpenPiSession() {
   const trackers = useExtensionTrackers()
   const subagentFiles = useSubagentFileTracker()
   const agentRunMetrics = useAgentRunMetrics()
-  const sessionHistory = useSessionHistory({ setMessages, setError })
+  // Pi's branch switch moves the leaf pointer without writing an entry, so the
+  // file's last entry is the wrong leaf until the next append. This remembers
+  // the leaf the switch landed on.
+  const [branchLeafId, setBranchLeafId] = createSignal<string | null>(null)
+  const sessionHistory = useSessionHistory({
+    setMessages,
+    setError,
+    getLeafId: branchLeafId,
+  })
   const remoteSync = useRemoteSessionSync({
     isStreaming,
     isReady: () => ready() !== null,
@@ -166,6 +174,10 @@ export function useOpenPiSession() {
     if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
       trackers.dispatchEvent(event as Record<string, unknown>, event.type)
     }
+
+    // Any appended entry becomes the file's last line again, so the file order
+    // is authoritative from here on and the branch override would go stale.
+    if (event.type === 'message_start') setBranchLeafId(null)
 
     if (event.type === 'queue_update') {
       const e = event as { steering?: readonly string[]; followUp?: readonly string[] }
@@ -505,6 +517,24 @@ export function useOpenPiSession() {
     }
   }
 
+  /**
+   * Continue the session from an earlier entry (Pi's tree navigation). Stays in
+   * the same session file, unlike forkFromMessage which starts a new one.
+   * Throws so the caller can surface the reason where the action was taken.
+   */
+  const navigateTree = async (entryId: string) => {
+    const sessionFile = ready()?.sessionFile
+    if (!sessionFile) throw new Error('No open session to navigate.')
+    const result = await window.openpi.navigateSessionTree({ path: sessionFile, entryId })
+    if (result.cancelled) return
+    batch(() => {
+      setBranchLeafId(result.leafId)
+      // Pi hands back the target user message so it can be edited and resent.
+      if (result.editorText !== undefined) setInput(result.editorText)
+    })
+    sessionHistory.loadInitialMessages(sessionFile)
+  }
+
   const compactSession = async (customInstructions?: string) => {
     try {
       await window.openpi.compactSession(customInstructions ? { customInstructions } : {})
@@ -712,6 +742,7 @@ export function useOpenPiSession() {
     setBottomRef: (el: HTMLDivElement) => {
       _bottomEl = el
     },
+    branchLeafId,
     setTextareaRef: (el: HTMLTextAreaElement) => {
       textareaEl = el
     },
@@ -734,6 +765,7 @@ export function useOpenPiSession() {
     selectWorkspace: sessionIndex.selectWorkspace,
     loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
     loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
+    navigateTree,
     send,
     sendShell,
     selectModel,

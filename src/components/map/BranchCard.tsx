@@ -4,6 +4,7 @@
  * SessionMap owns the tree data, the cursor and the filtering; this file only
  * knows how to render a single branch and label an entry.
  */
+import { GitBranch } from 'lucide-solid'
 import { For, Show } from 'solid-js'
 import type { TreeEntryNode } from '../../lib/ipc'
 
@@ -57,6 +58,7 @@ export function BranchCard(props: {
   cursor: number
   onFocusNode: (index: number) => void
   onActivateNode: (node: TreeEntryNode) => void
+  onStartBranch: (node: TreeEntryNode) => void
 }) {
   const isActive = () => props.branch.leafId === props.activeLeafId
 
@@ -75,20 +77,33 @@ export function BranchCard(props: {
         <For each={props.branch.nodes}>
           {(node, index) => {
             const flatIndex = () => props.branch.offset + index()
+            const isCursor = () => flatIndex() === props.cursor
+            const isLeaf = () => node.id === props.activeLeafId
             return (
-              <li>
+              <li
+                class={`session-map-node-row${isLeaf() ? ' is-leaf' : ''}${
+                  isCursor() ? ' is-cursor' : ''
+                }`}
+              >
                 <button
                   type="button"
                   data-map-idx={flatIndex()}
-                  class={`session-map-node is-${node.type}${
-                    node.id === props.activeLeafId ? ' is-leaf' : ''
-                  }${flatIndex() === props.cursor ? ' is-cursor' : ''}`}
-                  aria-current={flatIndex() === props.cursor ? 'true' : undefined}
+                  class={`session-map-node is-${node.type}`}
+                  aria-current={isCursor() ? 'true' : undefined}
                   onMouseEnter={() => props.onFocusNode(flatIndex())}
                   onClick={() => props.onActivateNode(node)}
                 >
                   <span class="session-map-node-type">{nodeLabel(node)}</span>
                   <span class="session-map-node-detail">{nodeDetail(node)}</span>
+                </button>
+                <button
+                  type="button"
+                  class="session-map-node-branch"
+                  title="Continue the session from here (shift+enter)"
+                  onClick={() => props.onStartBranch(node)}
+                >
+                  <GitBranch size={11} />
+                  <span>branch</span>
                 </button>
               </li>
             )

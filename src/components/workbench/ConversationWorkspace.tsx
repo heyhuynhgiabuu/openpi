@@ -36,6 +36,10 @@ interface ConversationWorkspaceProps {
   scrollToMessageId: string | null
   /** Jump the conversation to a session entry (the session map drives this). */
   onNavigateToMessage: (entryId: string) => void
+  /** Leaf the session is on when it differs from the file's last entry. */
+  branchLeafId: string | null
+  /** Continue the session from an entry, staying in the same session file. */
+  onBranchFrom: (entryId: string) => Promise<void>
   showRemoteSessionBar: boolean
   promptHistory: string[]
   attachedFiles: string[]
@@ -459,9 +463,11 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
         {(sessionPath) => (
           <SessionMap
             sessionPath={sessionPath()}
+            leafId={props.branchLeafId}
             onClose={() => setSessionMapOpen(false)}
             isEntryLoaded={(entryId) => props.messages.some((message) => message.id === entryId)}
             onNavigate={props.onNavigateToMessage}
+            onBranchFrom={props.onBranchFrom}
           />
         )}
       </Show>

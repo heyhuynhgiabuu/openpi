@@ -15633,14 +15633,35 @@ body.panel-dragging {
   gap: 2px;
 }
 
+.session-map-node-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+}
+
+.session-map-node-row:hover {
+  background: var(--bg-hover, #23232f);
+}
+
+.session-map-node-row.is-leaf {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 12%, transparent);
+}
+
+/* After .is-leaf: the cursor must stay visible when it sits on the leaf node. */
+.session-map-node-row.is-cursor {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent, #7aa2f7);
+}
+
 .session-map-node {
+  flex: 1;
   display: flex;
   align-items: baseline;
   gap: 8px;
-  width: 100%;
+  min-width: 0;
   padding: 3px 6px;
   border: none;
-  border-radius: 6px;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -15649,18 +15670,74 @@ body.panel-dragging {
   cursor: pointer;
 }
 
-.session-map-node:hover {
+/* Row actions stay hidden until the row is hovered or holds the cursor. */
+.session-map-node-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-right: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ash, #9aa0b4);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.session-map-node-row:hover .session-map-node-branch,
+.session-map-node-row.is-cursor .session-map-node-branch,
+.session-map-node-branch:focus-visible {
+  opacity: 1;
+}
+
+.session-map-node-branch:hover {
   background: var(--bg-hover, #23232f);
+  color: var(--ink, #e6e6ef);
 }
 
-.session-map-node.is-leaf {
+.session-map-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent, #7aa2f7);
+  border-radius: 8px;
   background: color-mix(in srgb, var(--accent, #7aa2f7) 12%, transparent);
+  font-size: 12px;
 }
 
-/* After .is-leaf: the cursor must stay visible when it sits on the leaf node. */
-.session-map-node.is-cursor {
-  background: color-mix(in srgb, var(--accent, #7aa2f7) 18%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent, #7aa2f7);
+.session-map-confirm-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.session-map-confirm button {
+  padding: 3px 10px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.session-map-confirm .session-map-confirm-primary {
+  border-color: var(--accent, #7aa2f7);
+  color: var(--accent, #7aa2f7);
+}
+
+.session-map-confirm button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .session-map-node-type {
