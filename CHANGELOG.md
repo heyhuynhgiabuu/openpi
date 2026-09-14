@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-09-14
+
+Fixes for the pre-apply review gate and the review workspace boundary, found by new tests and an independent audit of the 0.2.11 code.
+
+### Fixed
+
+- **Deleting and truncating edits are reviewed again** — an `edit` that removes a block (`newText: ''`) and a `write` with empty content looked like a call with nothing to review, so the two shapes that do the most damage skipped the gate entirely; a call that mixed a deletion with a replacement skipped all of its hunks. (`3c00da9`)
+- **A `write` review no longer expires after two minutes** — it used Pi's dialog default and then told the model the user had denied a change they were never asked about. It now waits the same ten minutes as the hunk review and refuses with "did not approve this change", which is true for a denial and an expiry alike. (`3c00da9`)
+- **Review can no longer reach outside the workspace through a symlink** — the Review tab had its own path check, and it was lexical only, so a workspace symlink pointing outside passed it: a snapshot could read an outside file and a revert could overwrite one. Both now go through the same containment authority as file IPC, which also refuses symlinked components. (`3e3b874`)
+- **IPC events registered with `handleOnce` or `once` were not sender-checked** — the wrapper guarded `handle` and `on` only. All four registration paths share one guard now. (`3e3b874`)
+- Opening a directory as a file reported "Workspace file changed during authorization"; a non-file path now says what it is. (`3e3b874`)
+
+### Changed
+
+- New tests cover the workspace path authority, the review snapshot reader, and the IPC sender check (34 tests), including the frame-URL conjunct that deleting left every test green before. Test count 535 → 575. (`3e3b874`, `3c00da9`)
+
+### Docs
+
+- `STATUS.md` records the manual live check of the gate and the follow-ups the audit left open. (`b02ce20`, `77a48d0`)
+
+### Beta caveats
+
+- The pre-apply gate stays opt-in (**Settings → General → Agent policy**, or `OPENPI_PREAPPLY_REVIEW=1`), and `bash` writes stay ungated.
+- `write` is still whole-file allow/deny through a text confirm. Routing it through the review modal, so an expiry can be reported and an explicit denial left alone, is still open.
+- The gate's end-to-end check needs a model, so it stays manual; CI covers it per seam.
+
 ## [0.2.11] - 2026-09-14
 
 Pre-apply review lands: Pi asks before it writes a file, and OpenPi lets you choose which parts of an edit to keep.
