@@ -275,8 +275,7 @@ export const MarkdownContent: Component<Props> = (props) => {
   }
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: event delegation for copy buttons injected via innerHTML — the <button> elements inside handle their own keyboard events
-    // biome-ignore lint/a11y/useKeyWithClickEvents: copy buttons inside are proper <button type="button"> elements that handle their own keyboard events
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- event delegation for copy buttons injected via innerHTML; the <button> elements inside handle their own keyboard events.
     <div
       class={`md-content${props.streaming ? ' is-streaming' : ''}`}
       innerHTML={html()}

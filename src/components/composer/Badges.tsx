@@ -1,4 +1,3 @@
-// biome-ignore-all lint/a11y/noSvgWithoutTitle: existing composer progress markup is tracked separately from this release.
 import { type Component, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { SessionStats } from '../../lib/ipc'
 import type { RunUsage } from '../../lib/runUsage'

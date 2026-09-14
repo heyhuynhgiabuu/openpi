@@ -5,8 +5,6 @@
  * Authority: purely presentational; parent owns the open-file and search state.
  */
 
-// biome-ignore-all lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions: tab role is interactive; keyboard handled on tabs and buttons
-
 import { Plus, X } from 'lucide-solid'
 import { For } from 'solid-js'
 import { FileIcon } from '../lib/fileIcons'

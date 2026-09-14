@@ -189,7 +189,6 @@ export function DailyModelChart(props: Props) {
         >
           <For each={columns()}>
             {(col, i) => (
-              // biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only updates this role=img chart's visual tooltip
               <div
                 role="presentation"
                 class={`usage-daily-chart-col${hoveredColIdx() === i() ? ' is-hovered' : ''}`}
@@ -199,7 +198,6 @@ export function DailyModelChart(props: Props) {
                 <div class="usage-daily-chart-stack">
                   <For each={col.segments}>
                     {(seg) => (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only highlights a visual chart segment
                       <div
                         class={`usage-daily-chart-seg${
                           activeModelKey() && activeModelKey() !== seg.modelKey ? ' is-dimmed' : ''

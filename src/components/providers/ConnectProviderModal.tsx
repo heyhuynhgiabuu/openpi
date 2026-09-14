@@ -1,4 +1,3 @@
-// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: existing provider modal backdrop interactions are tracked separately from this release.
 import { createEffect, createMemo, createSignal, onMount } from 'solid-js'
 import type { CustomProviderInfo, ProviderInfo } from '../../lib/ipc'
 import { getProviderLabel } from '../../lib/providers'

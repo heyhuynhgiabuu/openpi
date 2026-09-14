@@ -137,10 +137,10 @@ describe('PtyHost', () => {
   it('setSender stores webContents reference', () => {
     const host = new PtyHost()
     // Minimal mock — setSender only needs send() for IPty.onData forwarding.
+    // SAFETY: test double for WebContents — PtyHost only calls send() and isDestroyed().
     const fakeSender = {
       send: vi.fn(),
       isDestroyed: () => false,
-      // biome-ignore lint/suspicious/noExplicitAny: test mock — not a real WebContents
     } as any
     host.setSender(fakeSender)
     // No explicit getter, but the sender is used by PTY events internally.

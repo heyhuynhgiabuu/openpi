@@ -1,4 +1,4 @@
-// biome-ignore-all lint/a11y/noStaticElementInteractions: existing composer picker markup is tracked separately from this release.
+/* oxlint-disable jsx-a11y/no-static-element-interactions -- existing composer picker markup is tracked separately from this release. */
 import { Search } from 'lucide-solid'
 import type { Component } from 'solid-js'
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'

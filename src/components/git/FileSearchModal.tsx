@@ -14,7 +14,7 @@
  * Keybinding: Shift+⌘F / Shift+Ctrl+F (wired in App)
  */
 
-// biome-ignore-all lint/a11y/useKeyWithClickEvents lint/a11y/noStaticElementInteractions lint/a11y/useSemanticElements: existing search modal backdrop/panel interactions are tracked separately from this release.
+/* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions -- existing search modal backdrop/panel interactions are tracked separately from this release. */
 import { Search } from 'lucide-solid'
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { FffGrepMatch } from '../../lib/ipc'

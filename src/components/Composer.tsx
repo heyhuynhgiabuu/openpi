@@ -1,4 +1,3 @@
-// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/noSvgWithoutTitle: existing composer picker/progress markup is tracked separately from this release.
 import { Paperclip } from 'lucide-solid'
 import {
   type Component,

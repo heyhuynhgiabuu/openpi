@@ -1,4 +1,4 @@
-// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: preserves existing provider modal backdrop click behavior.
+/* oxlint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- preserves existing provider modal backdrop click behavior. */
 import { ArrowLeft, Plus, Trash2, X } from 'lucide-solid'
 import { For, Show } from 'solid-js'
 import type { FormErrors, FormState, HeaderRow, ModelRow } from './providerHelpers'

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: pre-existing tool-card file chip
+/* oxlint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- pre-existing tool-card file chip pattern. */
 import { type Component, createEffect, createSignal, For, onCleanup, Show } from 'solid-js'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import { FileIcon } from '../../lib/fileIcons'
