@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-09-14
+
 ### Fixed
 
 - The review snapshot's second read re-resolves the path before reading it, so a file swapped for a symlink between a tool's start and end events cannot put outside content into the review diff. (`7a8e49b`)
