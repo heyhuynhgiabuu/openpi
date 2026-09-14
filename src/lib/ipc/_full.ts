@@ -98,6 +98,8 @@ export const sessionMessagesRequestSchema = z.object({
   limit: z.number().int().positive().max(500).optional(),
   /** Return the page immediately before this rendered message entry id. */
   beforeEntryId: z.string().min(1).optional(),
+  /** Read the branch ending at this entry instead of the file's last entry. */
+  leafId: z.string().min(1).optional(),
 })
 export type SessionMessagesRequest = z.infer<typeof sessionMessagesRequestSchema>
 
@@ -721,6 +723,26 @@ export const forkSessionSchema = z.object({
   entryId: z.string().min(1),
 })
 export type ForkSession = z.infer<typeof forkSessionSchema>
+
+/**
+ * Move the session leaf to an entry in the same session file (Pi's tree
+ * navigation). Unlike fork, no new session file is created and the abandoned
+ * branch stays in the JSONL.
+ */
+export const navigateSessionTreeRequestSchema = z.object({
+  path: z.string().min(1),
+  entryId: z.string().min(1),
+  summarize: z.boolean().optional(),
+})
+export type NavigateSessionTreeRequest = z.infer<typeof navigateSessionTreeRequestSchema>
+
+export const navigateSessionTreeResultSchema = z.object({
+  cancelled: z.boolean(),
+  leafId: z.string().nullable(),
+  /** Text of the target user message, so the composer can offer it for editing. */
+  editorText: z.string().optional(),
+})
+export type NavigateSessionTreeResult = z.infer<typeof navigateSessionTreeResultSchema>
 
 // ─── Session tree ────────────────────────────────────────────────────────────
 

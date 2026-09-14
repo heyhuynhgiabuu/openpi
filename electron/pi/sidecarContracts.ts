@@ -4,6 +4,7 @@ import {
   outputLineSchema,
   providerLoginEventSchema,
   sessionEventSchema,
+  navigateSessionTreeResultSchema,
   sessionInfoSchema,
   sessionReadySchema,
   sessionStatsSchema,
@@ -86,6 +87,14 @@ export const sidecarCommandSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
+      type: z.literal('navigate_tree'),
+      entryId: z.string().min(1),
+      summarize: z.boolean().optional(),
+      requestId: requestIdSchema,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('compact'),
       customInstructions: z.string().optional(),
       requestId: requestIdSchema,
@@ -161,6 +170,13 @@ export const sidecarMessageSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('session_event'), event: sessionEventSchema }).strict(),
+  z
+    .object({
+      type: z.literal('navigate_tree_result'),
+      requestId: requestIdSchema,
+      result: navigateSessionTreeResultSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal('session_error'),

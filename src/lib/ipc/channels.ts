@@ -38,6 +38,7 @@ export const IPC = {
   REMOVE_PACKAGE: 'openpi:remove-package',
   SET_SESSION_NAME: 'openpi:set-session-name',
   FORK_SESSION: 'openpi:fork-session',
+  NAVIGATE_SESSION_TREE: 'openpi:navigate-session-tree',
   GET_SESSION_TREE: 'openpi:get-session-tree',
   COMPACT_SESSION: 'openpi:compact-session',
   RELOAD_SESSION: 'openpi:reload-session',

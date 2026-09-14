@@ -5,6 +5,8 @@ import type {
   CustomizationsInventory,
   DiagnosticsBundle,
   ModelInfo,
+  NavigateSessionTreeRequest,
+  NavigateSessionTreeResult,
   OpenSession,
   PackageOperationRequest,
   PackageOperationResult,
@@ -54,9 +56,11 @@ export const sessionApi = {
     ipcRenderer.invoke(IPC.GET_SESSIONS, options),
   getSessionMessages: (
     path: string,
-    options?: { limit?: number; beforeEntryId?: string }
+    options?: { limit?: number; beforeEntryId?: string; leafId?: string }
   ): Promise<SessionHistoryPage> =>
     ipcRenderer.invoke(IPC.GET_SESSION_MESSAGES, { path, ...options }),
+  navigateSessionTree: (payload: NavigateSessionTreeRequest): Promise<NavigateSessionTreeResult> =>
+    ipcRenderer.invoke(IPC.NAVIGATE_SESSION_TREE, payload),
   getSessionTree: (path: string): Promise<SessionTreeResponse> =>
     ipcRenderer.invoke(IPC.GET_SESSION_TREE, { path }),
   openSession: (payload: OpenSession): Promise<void> =>

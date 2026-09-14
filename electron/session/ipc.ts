@@ -3,6 +3,7 @@ import path from 'node:path'
 import { type BrowserWindow, dialog, type IpcMain } from 'electron'
 import type {
   BashExecutionResult,
+  NavigateSessionTreeResult,
   OutputLine,
   SessionHistoryPage,
   SessionInfo,
@@ -17,6 +18,8 @@ import {
   compactSessionSchema,
   forkSessionSchema,
   IPC,
+  navigateSessionTreeRequestSchema,
+  navigateSessionTreeResultSchema,
   newSessionSchema,
   openSessionSchema,
   readTaskSessionHistorySchema,
@@ -296,12 +299,19 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
   deps.ipcMain.handle(
     IPC.GET_SESSION_MESSAGES,
     async (_event, raw: unknown): Promise<SessionHistoryPage> => {
-      const { path: submittedPath, limit, beforeEntryId } = sessionMessagesRequestSchema.parse(raw)
+      const {
+        path: submittedPath,
+        limit,
+        beforeEntryId,
+        leafId,
+      } = sessionMessagesRequestSchema.parse(raw)
       const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
       // No file yet means the session has no persisted history to load.
       if (!sessionPath) return emptyHistoryPage(limit ?? 0)
       return (
-        (await deps.getSessionIndex()?.getSessionMessages(sessionPath, { limit, beforeEntryId })) ??
+        (await deps
+          .getSessionIndex()
+          ?.getSessionMessages(sessionPath, { limit, beforeEntryId, leafId })) ??
         emptyHistoryPage(limit ?? 0)
       )
     }
@@ -421,6 +431,32 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
       throw error
     }
   })
+
+  deps.ipcMain.handle(
+    IPC.NAVIGATE_SESSION_TREE,
+    async (_event, raw: unknown): Promise<NavigateSessionTreeResult> => {
+      const {
+        path: submittedPath,
+        entryId,
+        summarize,
+      } = navigateSessionTreeRequestSchema.parse(raw)
+      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
+      const current = deps.getSessionState()
+      // Only the session main is hosting can move its leaf.
+      if (!sessionPath || !current || current.sessionFile !== sessionPath) {
+        throw new Error('That session is not open, so its branch cannot be switched.')
+      }
+      const response = await deps.requestSidecar<
+        Extract<SidecarMessage, { type: 'navigate_tree_result' }>
+      >({
+        type: 'navigate_tree',
+        requestId: deps.createRequestId(),
+        entryId,
+        summarize,
+      })
+      return navigateSessionTreeResultSchema.parse(response.result)
+    }
+  )
 
   deps.ipcMain.handle(IPC.COMPACT_SESSION, async (_event, raw: unknown) => {
     if (!deps.getSessionState()) return

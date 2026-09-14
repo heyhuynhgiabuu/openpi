@@ -772,6 +772,29 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
       break
     }
 
+    case 'navigate_tree': {
+      if (!state) {
+        send({ type: 'error', requestId: cmd.requestId, message: 'No active session' })
+        return
+      }
+      // Pi's own tree navigation: moves the leaf pointer in this file (no fork),
+      // rebuilds the agent context from the new leaf, and reports the target
+      // user message text so the composer can offer it for editing.
+      const result = await state.session.navigateTree(cmd.entryId, {
+        summarize: cmd.summarize ?? false,
+      })
+      send({
+        type: 'navigate_tree_result',
+        requestId: cmd.requestId,
+        result: {
+          cancelled: result.cancelled,
+          leafId: state.session.sessionManager.getLeafId(),
+          editorText: result.editorText,
+        },
+      })
+      break
+    }
+
     case 'get_stats': {
       if (!state) {
         send({

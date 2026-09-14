@@ -14,7 +14,9 @@ import type {
 import {
   emptyHistoryPage,
   firstUserMessage,
+  historyPageCacheKey,
   latestModel,
+  normalizeHistoryLimit,
   latestSessionName,
   listSessionInfos,
   parseSessionFile,
@@ -144,7 +146,12 @@ export class SessionIndexStore {
   ): Promise<SessionHistoryPage> {
     try {
       const stat = fs.statSync(sessionPath)
-      const cacheKey = `${sessionPath}\u0000${options.beforeEntryId ?? ''}\u0000${String(options.limit ?? '')}`
+      const cacheKey = historyPageCacheKey(
+        sessionPath,
+        normalizeHistoryLimit(options.limit),
+        options.beforeEntryId,
+        options.leafId
+      )
       const cached = this.messageCache.get(cacheKey)
       if (cached && cached.mtime >= stat.mtimeMs) {
         return cached.page

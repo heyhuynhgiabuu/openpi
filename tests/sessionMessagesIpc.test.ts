@@ -10,10 +10,12 @@ type IpcHandler = (event: unknown, raw?: unknown) => unknown
 interface Fixture {
   handlers: Map<string, IpcHandler>
   getSessionMessages: ReturnType<typeof vi.fn>
+  requestSidecar: ReturnType<typeof vi.fn>
 }
 
-function createFixture(agentDir: string): Fixture {
+function createFixture(agentDir: string, sessionFile: string | null = null): Fixture {
   const handlers = new Map<string, IpcHandler>()
+  const requestSidecar = vi.fn(async () => ({}))
   const getSessionMessages = vi.fn(async () => ({
     messages: [],
     hasMoreBefore: true,
@@ -30,12 +32,12 @@ function createFixture(agentDir: string): Fixture {
     startSession: vi.fn(async () => {}),
     emitSessionError: vi.fn(),
     ensureActiveSession: vi.fn(async () => null),
-    getSessionState: () => null,
+    getSessionState: () => (sessionFile ? { sessionFile } : null),
     getSessionIndex: () => ({ getSessionMessages }),
     activeWorkspacePath: () => null,
     createRequestId: () => 'req-test',
     sendSidecar: vi.fn(),
-    requestSidecar: vi.fn(async () => ({})),
+    requestSidecar,
     buildWorkbenchContextPrefix: () => null,
     confirmHighRiskMutation: vi.fn(async () => true),
     refreshSessionIndex: vi.fn(async () => {}),
@@ -45,7 +47,7 @@ function createFixture(agentDir: string): Fixture {
     restoreSessionValues: vi.fn(),
   } as unknown as Parameters<typeof registerSessionsIpc>[0]
   registerSessionsIpc(deps)
-  return { handlers, getSessionMessages }
+  return { handlers, getSessionMessages, requestSidecar }
 }
 
 describe('session IPC for a session Pi has not flushed yet', () => {
@@ -104,7 +106,58 @@ describe('session IPC for a session Pi has not flushed yet', () => {
     expect(fixture.getSessionMessages).toHaveBeenCalledWith(existingPath, {
       limit: 50,
       beforeEntryId: undefined,
+      leafId: undefined,
     })
+  })
+
+  it('passes the requested branch leaf through to the history reader', async () => {
+    const handler = fixture.handlers.get(IPC.GET_SESSION_MESSAGES)
+    if (!handler) throw new Error('Expected GET_SESSION_MESSAGES handler')
+    const existingPath = path.join(sessionDir, 'existing.jsonl')
+    fs.writeFileSync(existingPath, '{"type":"session"}\n')
+
+    await handler({}, { path: existingPath, limit: 50, leafId: 'entry-42' })
+
+    expect(fixture.getSessionMessages).toHaveBeenCalledWith(existingPath, {
+      limit: 50,
+      beforeEntryId: undefined,
+      leafId: 'entry-42',
+    })
+  })
+
+  it('moves the session leaf through the sidecar and reports the new leaf', async () => {
+    const sessionPath = path.join(sessionDir, 'open.jsonl')
+    fs.writeFileSync(sessionPath, '{"type":"session"}\n')
+    const navigateFixture = createFixture(tempDir, sessionPath)
+    navigateFixture.requestSidecar.mockResolvedValueOnce({
+      result: { cancelled: false, leafId: 'entry-42' },
+    })
+    const handler = navigateFixture.handlers.get(IPC.NAVIGATE_SESSION_TREE)
+    if (!handler) throw new Error('Expected NAVIGATE_SESSION_TREE handler')
+
+    await expect(
+      handler({}, { path: sessionPath, entryId: 'entry-42', summarize: false })
+    ).resolves.toEqual({ cancelled: false, leafId: 'entry-42' })
+
+    expect(navigateFixture.requestSidecar).toHaveBeenCalledWith({
+      type: 'navigate_tree',
+      requestId: 'req-test',
+      entryId: 'entry-42',
+      summarize: false,
+    })
+  })
+
+  it('refuses to switch the branch of a session that is not the open one', async () => {
+    const sessionPath = path.join(sessionDir, 'open.jsonl')
+    const otherPath = path.join(sessionDir, 'other.jsonl')
+    fs.writeFileSync(sessionPath, '{"type":"session"}\n')
+    fs.writeFileSync(otherPath, '{"type":"session"}\n')
+    const navigateFixture = createFixture(tempDir, sessionPath)
+    const handler = navigateFixture.handlers.get(IPC.NAVIGATE_SESSION_TREE)
+    if (!handler) throw new Error('Expected NAVIGATE_SESSION_TREE handler')
+
+    await expect(handler({}, { path: otherPath, entryId: 'entry-42' })).rejects.toThrow(/not open/)
+    expect(navigateFixture.requestSidecar).not.toHaveBeenCalled()
   })
 
   it('keeps OPEN_SESSION strict: a missing file rejects instead of opening an empty session', async () => {

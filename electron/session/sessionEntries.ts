@@ -31,6 +31,8 @@ export type UsageTotals = {
 export type SessionHistoryPageOptions = {
   limit?: number
   beforeEntryId?: string
+  /** Read the branch ending at this entry instead of the file's last entry. */
+  leafId?: string
 }
 
 export const DEFAULT_HISTORY_PAGE_LIMIT = 200
@@ -145,7 +147,7 @@ export async function readSessionHistoryPage(
   options: SessionHistoryPageOptions
 ): Promise<SessionHistoryPage> {
   const limit = normalizeHistoryLimit(options.limit)
-  const branchIds = await readCurrentBranchIds(filePath)
+  const branchIds = await readCurrentBranchIds(filePath, options.leafId)
   if (branchIds.size === 0) return emptyHistoryPage(limit)
 
   const messages: SessionHistoryMessage[] = []
@@ -170,19 +172,29 @@ export async function readSessionHistoryPage(
   }
 }
 
-export async function readCurrentBranchIds(filePath: string): Promise<Set<string>> {
+/**
+ * Entry ids on the path from the root to `leafId`. Without a leafId the branch
+ * ends at the last entry in the file, which is the leaf Pi resumes from — a
+ * branch switch moves the leaf pointer in memory without writing an entry, so
+ * callers that just switched pass the target explicitly.
+ */
+export async function readCurrentBranchIds(
+  filePath: string,
+  leafId?: string
+): Promise<Set<string>> {
   const parents = new Map<string, string | null>()
-  let leafId: string | null = null
+  let fileLeafId: string | null = null
 
   for await (const fileEntry of streamSessionEntries(filePath)) {
     const entry = normalizeSessionEntry(fileEntry)
     if (!entry) continue
     parents.set(entry.id, entry.parentId)
-    leafId = entry.id
+    fileLeafId = entry.id
   }
 
+  // A leaf that is not in this file (stale id) falls back to the file's own leaf.
   const branchIds = new Set<string>()
-  let currentId = leafId
+  let currentId = leafId && parents.has(leafId) ? leafId : fileLeafId
   while (currentId && !branchIds.has(currentId)) {
     branchIds.add(currentId)
     currentId = parents.get(currentId) ?? null
@@ -230,9 +242,10 @@ export function normalizeHistoryLimit(limit: number | undefined): number {
 export function historyPageCacheKey(
   sessionPath: string,
   limit: number,
-  beforeEntryId: string | undefined
+  beforeEntryId: string | undefined,
+  leafId: string | undefined
 ): string {
-  return `${sessionPath}\u0000${limit}\u0000${beforeEntryId ?? ''}`
+  return `${sessionPath}\u0000${limit}\u0000${beforeEntryId ?? ''}\u0000${leafId ?? ''}`
 }
 
 export function emptyHistoryPage(limit: number): SessionHistoryPage {
