@@ -15543,6 +15543,12 @@ body.panel-dragging {
   background: var(--bg-hover, #23232f);
 }
 
+.session-map-notice {
+  margin: 6px 0 0;
+  color: var(--amber, #e0af68);
+  font-size: 12px;
+}
+
 .session-map-empty {
   padding: 18px 4px;
   color: var(--ash, #9aa0b4);
@@ -15605,9 +15611,25 @@ body.panel-dragging {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  width: 100%;
   padding: 3px 6px;
+  border: none;
   border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-map-node:hover {
+  background: var(--bg-hover, #23232f);
+}
+
+.session-map-node.is-cursor {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent, #7aa2f7);
 }
 
 .session-map-node.is-leaf {

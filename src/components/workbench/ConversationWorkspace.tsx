@@ -34,6 +34,8 @@ interface ConversationWorkspaceProps {
   isStreaming: boolean
   displayPreferences: DisplayPreferences
   scrollToMessageId: string | null
+  /** Jump the conversation to a session entry (the session map drives this). */
+  onNavigateToMessage: (entryId: string) => void
   showRemoteSessionBar: boolean
   promptHistory: string[]
   attachedFiles: string[]
@@ -455,7 +457,12 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
 
       <Show when={sessionMapOpen() ? (props.session.ready?.sessionFile ?? null) : null}>
         {(sessionPath) => (
-          <SessionMap sessionPath={sessionPath()} onClose={() => setSessionMapOpen(false)} />
+          <SessionMap
+            sessionPath={sessionPath()}
+            onClose={() => setSessionMapOpen(false)}
+            isEntryLoaded={(entryId) => props.messages.some((message) => message.id === entryId)}
+            onNavigate={props.onNavigateToMessage}
+          />
         )}
       </Show>
     </div>

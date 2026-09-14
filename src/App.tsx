@@ -48,7 +48,9 @@ export default function App() {
   const [newTerminalRequest, setNewTerminalRequest] = createSignal(0)
   const [gitPanelOpen, _setGitPanelOpen] = createSignal(false)
   const [rightPanelOpen, setRightPanelOpen] = createSignal(true)
-  const [scrollToMessageId, _setScrollToMessageId] = createSignal<string | null>(null)
+  const [scrollToMessageId, setScrollToMessageId] = createSignal<string | null>(null)
+  // ConversationPane strips the `:` suffix; the nonce makes a repeat jump re-fire.
+  const navigateToMessage = (entryId: string) => setScrollToMessageId(`${entryId}:${Date.now()}`)
   const [homescreenOpen, setHomescreenOpen] = createSignal(false)
 
   const {
@@ -424,6 +426,7 @@ export default function App() {
                     isStreaming={conversationStreaming()}
                     displayPreferences={displayPreferences()}
                     scrollToMessageId={scrollToMessageId()}
+                    onNavigateToMessage={navigateToMessage}
                     showRemoteSessionBar={showRemoteSessionBar()}
                     promptHistory={promptHistory()}
                     attachedFiles={attachedFiles()}

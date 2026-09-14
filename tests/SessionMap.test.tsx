@@ -62,6 +62,19 @@ function stubTree(payload: SessionTreeResponse | Error) {
   return getSessionTree
 }
 
+function renderMap(options: { onClose?: () => void; loaded?: string[] } = {}) {
+  const onNavigate = vi.fn()
+  const view = render(() => (
+    <SessionMap
+      sessionPath="/sessions/example.jsonl"
+      onClose={options.onClose ?? (() => {})}
+      isEntryLoaded={(entryId) => (options.loaded ?? []).includes(entryId)}
+      onNavigate={onNavigate}
+    />
+  ))
+  return { ...view, onNavigate }
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -70,9 +83,7 @@ afterEach(() => {
 describe('SessionMap', () => {
   it('renders every branch, marking the active one', async () => {
     const getSessionTree = stubTree(tree)
-    const { findByText, getByText } = render(() => (
-      <SessionMap sessionPath="/sessions/example.jsonl" onClose={() => {}} />
-    ))
+    const { findByText, getByText } = renderMap()
 
     expect(await findByText('2 branches · 1 fork')).toBeTruthy()
     expect(getSessionTree).toHaveBeenCalledWith('/sessions/example.jsonl')
@@ -85,9 +96,7 @@ describe('SessionMap', () => {
 
   it('labels nodes by type and shows their detail line', async () => {
     stubTree(tree)
-    const { findByText, getAllByText, getByText } = render(() => (
-      <SessionMap sessionPath="/sessions/example.jsonl" onClose={() => {}} />
-    ))
+    const { findByText, getAllByText, getByText } = renderMap()
 
     await findByText('2 branches · 1 fork')
     expect(getAllByText('You').length).toBe(2)
@@ -100,9 +109,7 @@ describe('SessionMap', () => {
   it('closes on Escape and on the close button', async () => {
     stubTree(tree)
     const onClose = vi.fn()
-    const { findByText, getByLabelText, getByRole } = render(() => (
-      <SessionMap sessionPath="/sessions/example.jsonl" onClose={onClose} />
-    ))
+    const { findByText, getByLabelText, getByRole } = renderMap({ onClose })
 
     await findByText('2 branches · 1 fork')
     fireEvent.keyDown(getByRole('dialog'), { key: 'a' })
@@ -112,6 +119,68 @@ describe('SessionMap', () => {
     expect(onClose).toHaveBeenCalledTimes(2)
   })
 
+  it('moves the cursor with the arrow keys and starts on the active leaf', async () => {
+    stubTree(tree)
+    const { findByText, getByRole, container } = renderMap()
+
+    await findByText('2 branches · 1 fork')
+    const cursorIdx = () =>
+      container.querySelector('.session-map-node.is-cursor')?.getAttribute('data-map-idx')
+    // Active leaf is the last node of branch 2 (index 3 of 4).
+    expect(cursorIdx()).toBe('3')
+
+    const dialog = getByRole('dialog')
+    fireEvent.keyDown(dialog, { key: 'ArrowUp' })
+    expect(cursorIdx()).toBe('2')
+    fireEvent.keyDown(dialog, { key: 'Home' })
+    expect(cursorIdx()).toBe('0')
+    fireEvent.keyDown(dialog, { key: 'ArrowUp' })
+    expect(cursorIdx()).toBe('0')
+    fireEvent.keyDown(dialog, { key: 'End' })
+    expect(cursorIdx()).toBe('3')
+    fireEvent.keyDown(dialog, { key: 'ArrowDown' })
+    expect(cursorIdx()).toBe('3')
+  })
+
+  it('jumps to the selected entry and closes when the conversation has it', async () => {
+    stubTree(tree)
+    const onClose = vi.fn()
+    const { findByText, getByRole, onNavigate } = renderMap({ onClose, loaded: ['leaf-2'] })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter' })
+
+    expect(onNavigate).toHaveBeenCalledWith('leaf-2')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('explains instead of jumping when the entry is not loaded or not a message', async () => {
+    stubTree(tree)
+    const { findByText, getByText, getByRole, onNavigate } = renderMap({ loaded: [] })
+
+    await findByText('2 branches · 1 fork')
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter' })
+    expect(onNavigate).not.toHaveBeenCalled()
+    expect(getByText(/Not loaded in the conversation yet/)).toBeTruthy()
+
+    // Cursor up to the compaction entry, which never has a conversation row.
+    fireEvent.keyDown(getByRole('dialog'), { key: 'ArrowUp' })
+    fireEvent.keyDown(getByRole('dialog'), { key: 'Enter' })
+    expect(getByText('This entry has no message in the conversation.')).toBeTruthy()
+  })
+
+  it('navigates on click as well', async () => {
+    stubTree(tree)
+    const { findByText, getAllByText, onNavigate } = renderMap({ loaded: ['root'] })
+
+    await findByText('2 branches · 1 fork')
+    const [firstNode] = getAllByText('You')
+    if (!firstNode) throw new Error('expected the root entry to render in both branches')
+    fireEvent.click(firstNode)
+
+    expect(onNavigate).toHaveBeenCalledWith('root')
+  })
+
   it('reports an empty session', async () => {
     stubTree({
       sessionPath: '/sessions/empty.jsonl',
@@ -119,18 +188,14 @@ describe('SessionMap', () => {
       forkPoints: [],
       activeLeafId: null,
     })
-    const { findByText } = render(() => (
-      <SessionMap sessionPath="/sessions/empty.jsonl" onClose={() => {}} />
-    ))
+    const { findByText } = renderMap()
 
     expect(await findByText('This session has no entries yet.')).toBeTruthy()
   })
 
   it('reports a failed load instead of taking the overlay down', async () => {
     stubTree(new Error('ENOENT'))
-    const { findByText } = render(() => (
-      <SessionMap sessionPath="/sessions/missing.jsonl" onClose={() => {}} />
-    ))
+    const { findByText } = renderMap()
 
     expect(await findByText('Could not load the session tree.')).toBeTruthy()
   })
