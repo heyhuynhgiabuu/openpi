@@ -26,7 +26,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ### Next (Phase 7 — see ROADMAP)
 
-- **P0:** pre-apply diff review — needs an architecture decision, because Pi owns tool execution; broader critical-path `npm test` coverage.
+- **P0:** pre-apply diff review — slice 1 is implemented on `main` and unreleased: the opt-in `.pi/extensions/openpi-preapply-review.ts` gate (`OPENPI_PREAPPLY_REVIEW=1`) uses Pi's `tool_call` hook to preview the `edit`/`write` change and blocks the write when the user denies. The split-diff modal with per-hunk choice (slice 2) still needs an approved design; `bash` writes stay ungated. Broader critical-path `npm test` coverage.
 
 - **P1:** Session map v2 is implemented on `main` and unreleased: read-only tree overlay, keyboard navigation, jump to an entry, text filter, branch switching through Pi's tree navigation, live refresh while Pi writes entries. Remaining: subagent card polish.
 - **P2:** Workbench context bridge, signed/notarized auto-update rollout.
