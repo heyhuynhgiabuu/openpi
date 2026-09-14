@@ -3,7 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import type { SessionHistoryMessage, SessionHistoryPage } from '../../src/lib/ipc'
-import { canonicalizePath, contentToText, isRecord, numeric, truncate } from './sessionEntryUtils'
+import {
+  canonicalizePath,
+  contentToText,
+  isRecord,
+  readUsageParts,
+  truncate,
+} from './sessionEntryUtils'
 import { appendHistoryEntry, type HistoryReadState, trimHistoryMessages } from './sessionHistory'
 
 export type FileEntry = Record<string, unknown> & { type: string }
@@ -286,21 +292,37 @@ export function firstUserMessage(entries: SessionEntry[]): string {
 }
 
 export function usageTotals(entries: SessionEntry[]): UsageTotals {
-  return entries.reduce<UsageTotals>(
-    (totals, entry) => {
-      if (entry.type !== 'message') return totals
-      const message = entry.message
-      if (!isRecord(message) || message.role !== 'assistant') return totals
-      const usage = message.usage
-      if (!isRecord(usage)) return totals
-      totals.inputTokens += numeric(usage.input)
-      totals.outputTokens += numeric(usage.output)
-      totals.cacheReadTokens += numeric(usage.cacheRead)
-      totals.cacheWriteTokens += numeric(usage.cacheWrite)
-      const cost = usage.cost as { total?: unknown } | number | undefined
-      totals.cost += typeof cost === 'number' ? cost : numeric(cost?.total)
-      return totals
-    },
-    { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cost: 0 }
-  )
+  const totals: UsageTotals = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cost: 0,
+  }
+
+  const add = (usage: Record<string, unknown>): void => {
+    const parts = readUsageParts(usage)
+    totals.inputTokens += parts.inputTokens
+    totals.outputTokens += parts.outputTokens
+    totals.cacheReadTokens += parts.cacheReadTokens
+    totals.cacheWriteTokens += parts.cacheWriteTokens
+    totals.cost += parts.cost
+  }
+
+  for (const entry of entries) {
+    // Pi records the summarization call's usage on the entry itself, and the
+    // session format counts it in the session totals. A compaction's
+    // `retainedTail` holds copies of entries counted separately, so only the
+    // entry-level usage is added here.
+    if (entry.type === 'compaction' || entry.type === 'branch_summary') {
+      if (isRecord(entry.usage)) add(entry.usage)
+      continue
+    }
+    if (entry.type !== 'message') continue
+    const message = entry.message
+    if (!isRecord(message) || message.role !== 'assistant') continue
+    if (isRecord(message.usage)) add(message.usage)
+  }
+
+  return totals
 }

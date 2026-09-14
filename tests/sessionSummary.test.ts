@@ -44,6 +44,11 @@ interface EntryFields {
   result?: { tokensBefore?: number }
   name?: string
   modelId?: string
+  /** Summarization entries carry their own usage and, for compactions, a tail. */
+  usage?: UsageFields
+  reason?: string
+  summary?: string
+  retainedTail?: Array<{ role: string; content?: unknown; usage?: UsageFields }>
 }
 
 function entry(id: string, type: string, fields: EntryFields = {}): SessionEntry {
@@ -103,6 +108,51 @@ describe('usageTotals', () => {
   it('reads a numeric cost and tolerates a missing one', () => {
     expect(usageTotals([assistant({ input: 1, cost: 0.125 })]).cost).toBe(0.125)
     expect(usageTotals([assistant({ input: 1 })]).cost).toBe(0)
+  })
+})
+
+describe('usageTotals with summarization calls', () => {
+  const compaction = entry('k', 'compaction', {
+    reason: 'context limit',
+    usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 0, cost: { total: 1.5 } },
+  })
+
+  it('counts the usage Pi records on a compaction', () => {
+    const totals = usageTotals([assistant({ input: 10, output: 1, cost: 0.1 }), compaction])
+
+    expect(totals.inputTokens).toBe(110)
+    expect(totals.outputTokens).toBe(21)
+    expect(totals.cacheReadTokens).toBe(5)
+    expect(totals.cost).toBeCloseTo(1.6)
+  })
+
+  it('counts a branch summary the same way', () => {
+    const totals = usageTotals([
+      entry('b', 'branch_summary', { summary: 'left', usage: { input: 7, output: 3 } }),
+    ])
+
+    expect(totals.inputTokens).toBe(7)
+    expect(totals.outputTokens).toBe(3)
+  })
+
+  it('does not count the retained tail a compaction carries', () => {
+    // retainedTail holds copies of messages that are already entries of their own,
+    // so counting them here would double the session total.
+    const withTail = entry('k', 'compaction', {
+      usage: { input: 100 },
+      retainedTail: [{ role: 'assistant', content: 'kept', usage: { input: 999, output: 999 } }],
+    })
+
+    expect(usageTotals([withTail]).inputTokens).toBe(100)
+    expect(usageTotals([withTail]).outputTokens).toBe(0)
+  })
+
+  it('ignores a summarization entry without usage and one carrying only aliases', () => {
+    expect(usageTotals([entry('k', 'compaction', { reason: 'manual' })]).inputTokens).toBe(0)
+    expect(
+      usageTotals([entry('k', 'compaction', { usage: { inputTokens: 99, outputTokens: 99 } })])
+        .inputTokens
+    ).toBe(0)
   })
 })
 

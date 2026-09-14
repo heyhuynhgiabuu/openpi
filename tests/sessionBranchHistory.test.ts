@@ -80,6 +80,40 @@ describe('session history along a chosen branch', () => {
     expect(switched.branches.map((branch) => branch.leafId).sort()).toEqual(['a-a', 'a-b'])
   })
 
+  it('totals a message from its usage parts', async () => {
+    const file = path.join(tempDir, 'total.jsonl')
+    fs.writeFileSync(
+      file,
+      `${[
+        JSON.stringify({
+          type: 'message',
+          id: 'u',
+          parentId: null,
+          timestamp: '2026-09-14T00:00:01.000Z',
+          message: { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+        }),
+        JSON.stringify({
+          type: 'message',
+          id: 'a',
+          parentId: 'u',
+          timestamp: '2026-09-14T00:00:02.000Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'hello' }],
+            // A stored total that disagrees with the parts: the parts win, as in
+            // Pi's own session totals and in the usage dashboard.
+            usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2, totalTokens: 999 },
+          },
+        }),
+      ].join('\n')}\n`
+    )
+
+    const page = await readSessionHistoryPage(file, { limit: 10 })
+    const assistant = page.messages.find((entry) => entry.role === 'assistant')
+
+    expect(assistant?.totalTokens).toBe(20)
+  })
+
   it('ignores usage that only carries the provider-side aliases', async () => {
     const file = path.join(tempDir, 'aliases.jsonl')
     fs.writeFileSync(

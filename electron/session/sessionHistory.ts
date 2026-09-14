@@ -11,7 +11,7 @@ import {
   entryTimestampMs,
   isRecord,
   numeric,
-  usageTotalTokens,
+  readUsageParts,
 } from './sessionEntryUtils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -53,7 +53,8 @@ export function appendHistoryEntry(
 
   if (role === 'assistant') {
     const usage = isRecord(message.usage) ? message.usage : {}
-    const cost = isRecord(usage.cost) ? numeric(usage.cost.total) : numeric(usage.cost)
+    const parts = readUsageParts(usage)
+    const cost = parts.cost
     const durationMs = durationFrom(state.lastUserTimestampMs, entryTimestampMs(entry, message))
     pushRenderableMessage(messages, {
       id: entry.id,
@@ -61,11 +62,11 @@ export function appendHistoryEntry(
       text: assistantText(message.content),
       thinking: assistantThinking(message.content) || undefined,
       toolCards: toolCallsFromContent(message.content),
-      inputTokens: numeric(usage.input),
-      outputTokens: numeric(usage.output),
-      cacheReadTokens: numeric(usage.cacheRead),
-      cacheWriteTokens: numeric(usage.cacheWrite),
-      totalTokens: usageTotalTokens(usage),
+      inputTokens: parts.inputTokens,
+      outputTokens: parts.outputTokens,
+      cacheReadTokens: parts.cacheReadTokens,
+      cacheWriteTokens: parts.cacheWriteTokens,
+      totalTokens: parts.totalTokens,
       durationMs,
       cost: cost || undefined,
       streaming: false,

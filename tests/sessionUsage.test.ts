@@ -100,6 +100,90 @@ describe('session usage capture', () => {
     expect(usageMetricsByEntryId(entries).get('assistant-1')).toBeUndefined()
   })
 
+  it('attributes a compaction to the turn it summarized', () => {
+    const entries: SessionEntry[] = [
+      {
+        id: 'assistant-1',
+        parentId: null,
+        type: 'message',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        message: { role: 'assistant', content: 'hi', usage: { input: 10, output: 5 } },
+      },
+      {
+        id: 'compaction-1',
+        parentId: 'assistant-1',
+        type: 'compaction',
+        timestamp: '2026-01-01T00:00:04.000Z',
+        usage: { input: 100, output: 20, cost: { total: 1.5 } },
+      },
+    ]
+
+    const metrics = usageMetricsByEntryId(entries)
+
+    // One row, not two: the summary call is part of that turn's cost, and `Turns`
+    // counts assistant turns.
+    expect(metrics.size).toBe(1)
+    const turn = metrics.get('assistant-1')
+    expect(turn?.inputTokens).toBe(110)
+    expect(turn?.outputTokens).toBe(25)
+    expect(turn?.totalTokens).toBe(135)
+    expect(turn?.cost).toBeCloseTo(1.5)
+  })
+
+  it('attributes a summary to the last turn, not the first', () => {
+    const entries: SessionEntry[] = [
+      {
+        id: 'assistant-1',
+        parentId: null,
+        type: 'message',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        message: { role: 'assistant', content: 'first', usage: { input: 10 } },
+      },
+      {
+        id: 'assistant-2',
+        parentId: 'assistant-1',
+        type: 'message',
+        timestamp: '2026-01-01T00:01:03.000Z',
+        message: { role: 'assistant', content: 'second', usage: { input: 20 } },
+      },
+      {
+        id: 'branch-1',
+        parentId: 'assistant-2',
+        type: 'branch_summary',
+        timestamp: '2026-01-01T00:01:04.000Z',
+        usage: { input: 5 },
+      },
+      {
+        id: 'compaction-1',
+        parentId: 'branch-1',
+        type: 'compaction',
+        timestamp: '2026-01-01T00:01:05.000Z',
+        usage: { input: 7 },
+      },
+    ]
+
+    const metrics = usageMetricsByEntryId(entries)
+
+    // Both summaries land on the newest turn, and neither becomes a row.
+    expect(metrics.size).toBe(2)
+    expect(metrics.get('assistant-1')?.inputTokens).toBe(10)
+    expect(metrics.get('assistant-2')?.inputTokens).toBe(32)
+  })
+
+  it('ignores a summarization entry that has no turn to attribute it to', () => {
+    const entries: SessionEntry[] = [
+      {
+        id: 'compaction-1',
+        parentId: null,
+        type: 'compaction',
+        timestamp: '2026-01-01T00:00:04.000Z',
+        usage: { input: 100 },
+      },
+    ]
+
+    expect(usageMetricsByEntryId(entries).size).toBe(0)
+  })
+
   it('uses component sum for totalTokens when usage.totalTokens is inflated', () => {
     const entries: SessionEntry[] = [
       {

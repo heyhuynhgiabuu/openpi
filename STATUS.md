@@ -33,6 +33,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ## Open review follow-ups
 
+- Session totals count assistant messages plus the summarization calls on `compaction`/`branch_summary` entries. Pi's own `getSessionStats` also counts `toolResult` message usage; OpenPi does not, and no entry in the local corpus carries it, so it is a gap rather than a live discrepancy.
 - Review reads a path, not a file descriptor, so a swap that lands after the resolver runs can still put outside content into a review diff. Display only — reverts re-resolve and refuse — and both `captureToolStart` and `captureToolEnd` have the window; closing it means reading through `readWorkspaceBytes`-style `O_NOFOLLOW` plus a dev/ino check.
 - The gate ignores the tool-call signal while a modal is open, so an aborted run leaves the modal until it is answered or the ten-minute timeout expires. The write is never applied either way.
 - `readWorkspaceBytes`'s dev/ino branch (a file replaced between open and check) has no test; it needs fs injection to be deterministic.

@@ -6,6 +6,8 @@
 
 ### Fixed
 
+- **Summarization calls count in session totals** — Pi records the usage of a compaction or branch-summary call on the entry itself, and its session format counts that usage in the session token and cost totals; OpenPi read only assistant messages, so sessions that compacted under-reported tokens and cost. Per-turn usage attributes that call to the turn whose context was summarized, so per-turn rows still add up to the session total and "Turns" stays a count of assistant turns. A conversation's per-message token total now uses the component sum like the dashboard and Pi's own session totals, which changes the number shown for the ~0.5% of messages whose provider total disagrees. Stored usage is recomputed on the next index. (`7a1c285`)
+
 - The review snapshot's second read re-resolves the path before reading it, so a file swapped for a symlink between a tool's start and end events cannot put outside content into the review diff. (`7a8e49b`)
 - The pre-apply gate's turn-scoped "skip review" is cleared when a session starts, so a new, resumed, forked, or reloaded session cannot inherit it. (`1609ae3`)
 - Two workspace-path tests assumed POSIX `O_NOFOLLOW` semantics and failed the Windows release job, which is why v0.2.12 was tagged but never published. They now assert the refusal without pinning the errno, and keep asserting that the file outside the workspace is untouched. (`1816210`)
@@ -252,7 +254,6 @@ Pre-apply review lands: Pi asks before it writes a file, and OpenPi lets you cho
 - **Empty <selected_code> in review comments**: the file content IPC was returning null for review file paths. The review view already has the full new/old content loaded; added it as a fallback in the fileContent accessor. Also wrapped handleLineSelected in .then() after ensureFileContent to fix the race where the draft was set before the file content was loaded.
 - **Review FileCard no longer calls handleLineSelected before the file content is loaded**: was a race between the async IPC and the synchronous draft set. Now the call is chained via .then() in all three entry points (line select, line number click, hover comment select).
 
-
 ### Fixed
 
 - **Task guard was letting through model-hallucinated `task_id`s from old sessions.** The model (grok-composer-2.5-fast) recycles a `task_id` it saw earlier in the conversation — e.g. `mqzhz574-b765` after that task was already cancelled. The old guard only stripped UUIDs and format-invalid ids; well-formed but already-terminal ids passed through, and pi-task tried to "resume" the old task. The new guard reads `.pi/task-session-history.json` and strips any well-formed `task_id` whose id is in the history with status `done` / `cancelled` / `timeout` / `failed` (the "model is recycling a hallucinated id" case). Only an id that is `running` (i.e. a legitimate resume) or not in the history is allowed through. Added 7 new tests (`tests/openpiTaskGuard.test.ts`: 15 total) pinning the contract for the cancellation case, the legitimate-resume case, and the no-history fail-open case.
@@ -364,7 +365,6 @@ Pre-apply review lands: Pi asks before it writes a file, and OpenPi lets you cho
 ### Fixed
 
 - Emit `session_shutdown` before `session.reload()` so pi-task (and other extensions) stop background timers that use a captured `ExtensionAPI` — fixes stale extension ctx errors after `/reload` or resource reload.
-
 
 - **File preview saves** — saving from CodeMirror now refreshes file-tree and Git-status observers so OpenPi surfaces update after edits. (21f3002)
 - **Markdown task lists** — TODO-style checklists (`- [ ]` / `- [x]`) now render as checkboxes in OpenPi markdown surfaces, including generated `TODO.md` files. (bf2624f)
@@ -608,7 +608,6 @@ OpenPi v0.1.10 consolidates the CI hermetic fixes, packaged-app sidecar launch f
 - **CI: bare remote default branch** — `git init --bare` on ubuntu-latest defaults to `master`; tests now pass `-b main` explicitly so the bare remote's HEAD matches the branch we push (`19d670a`)
 - **CI: hermetic git identity** — pin `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars in the git integration test file so runners with no global git identity don't fail commits (`6558204`)
 
-
 ## [0.1.9] - 2026-05-14
 
 OpenPi v0.1.9 ships Phase 5 Git workflow, merge conflict resolution UI, and two critical bug fixes for slash commands and skill injection.
@@ -637,7 +636,6 @@ OpenPi v0.1.9 ships Phase 5 Git workflow, merge conflict resolution UI, and two 
 ### Changed
 
 - Sync and search buttons in Git panel header are icon-only for a cleaner toolbar (`dc622bc`)
-
 
 ## [0.1.8] - 2026-05-14
 
@@ -734,7 +732,6 @@ OpenPi v0.1.2 enables Pi package extensions in sessions and makes package-loadin
 - **Pi packages can load session extensions** — Removed the `noExtensions: true` resource-loader setting so user-configured Pi packages such as `@heyhuynhgiabuu/pi-diff`, `@heyhuynhgiabuu/pi-pretty`, and `@heyhuynhgiabuu/pi-search` can register their tools and extensions in OpenPi sessions.
 - **Non-fatal package reload failures** — Wrapped Pi resource-loader reload paths so one failing package no longer crashes session startup.
 
-
 ## [0.1.1] - 2026-05-13
 
 # OpenPi v0.1.1
@@ -757,7 +754,6 @@ OpenPi depends on `@earendil-works/pi-coding-agent` and intentionally does not r
 - macOS notarization and Windows code signing are not configured yet; expect OS trust warnings on downloaded installers.
 - Permission gates, workspace trust hardening, and keychain-backed secrets are roadmap items before broad stable distribution.
 - This beta is for early testers comfortable running local developer tools.
-
 
 ## [0.1.0] - 2026-05-13
 

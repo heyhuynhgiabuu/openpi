@@ -37,6 +37,37 @@ export function usageTotalTokens(usage: Record<string, unknown>): number {
   )
 }
 
+export interface UsageParts {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  totalTokens: number
+  cost: number
+}
+
+/**
+ * The usage fields Pi writes, read in one place so every total counts the same
+ * ones. `Usage` is input/output/cacheRead/cacheWrite/totalTokens plus a cost
+ * object; the *Tokens aliases some providers use internally are never persisted.
+ */
+export function readUsageParts(usage: Record<string, unknown>): UsageParts {
+  const inputTokens = numeric(usage.input)
+  const outputTokens = numeric(usage.output)
+  const cacheReadTokens = numeric(usage.cacheRead)
+  const cacheWriteTokens = numeric(usage.cacheWrite)
+  const cost = usage.cost
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens:
+      inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens || usageTotalTokens(usage),
+    cost: isRecord(cost) ? numeric(cost.total) : numeric(cost),
+  }
+}
+
 export function entryTimestampMs(
   entry: SessionEntry,
   message: Record<string, unknown>

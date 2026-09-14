@@ -9,13 +9,7 @@ import type {
 } from '../../src/lib/ipc'
 import { resolveTokenRates } from '../services/modelPricing'
 import type { SessionEntry } from './sessionEntries'
-import {
-  durationFrom,
-  entryTimestampMs,
-  isRecord,
-  numeric,
-  usageTotalTokens,
-} from './sessionEntryUtils'
+import { durationFrom, entryTimestampMs, isRecord, readUsageParts } from './sessionEntryUtils'
 
 const DEFAULT_USAGE_DAYS = 365
 const USAGE_DAY_MS = 86_400_000
@@ -128,12 +122,29 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
   let lastUserTimestampMs: number | null = null
   let currentModel = ''
   let currentProvider = ''
+  let lastMetrics: UsageEntryMetrics | null = null
 
   for (const entry of entries) {
     if (entry.type === 'model_change') {
       const e = entry as unknown as { modelId?: string; provider?: string }
       if (e.modelId) currentModel = e.modelId
       if (typeof e.provider === 'string' && e.provider) currentProvider = e.provider
+      continue
+    }
+
+    if (entry.type === 'compaction' || entry.type === 'branch_summary') {
+      // Pi records the summarization call's usage on the entry itself. Attribute it
+      // to the turn whose context it summarized: per-turn rows then add up to the
+      // session total, and `Turns` stays a count of assistant turns.
+      if (lastMetrics && isRecord(entry.usage)) {
+        const parts = readUsageParts(entry.usage)
+        lastMetrics.inputTokens += parts.inputTokens
+        lastMetrics.outputTokens += parts.outputTokens
+        lastMetrics.cacheReadTokens += parts.cacheReadTokens
+        lastMetrics.cacheWriteTokens += parts.cacheWriteTokens
+        lastMetrics.totalTokens += parts.totalTokens
+        lastMetrics.cost += parts.cost
+      }
       continue
     }
 
@@ -149,14 +160,8 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
 
     if (role !== 'assistant') continue
     const usage = isRecord(message.usage) ? message.usage : {}
-    const inputTokens = numeric(usage.input)
-    const outputTokens = numeric(usage.output)
-    const cacheReadTokens = numeric(usage.cacheRead)
-    const cacheWriteTokens = numeric(usage.cacheWrite)
-    const totalTokens =
-      inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens || usageTotalTokens(usage)
-    const costValue = usage.cost
-    const cost = isRecord(costValue) ? numeric(costValue.total) : numeric(costValue)
+    const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost } =
+      readUsageParts(usage)
     const durationMs = durationFrom(lastUserTimestampMs, entryTimestampMs(entry, message)) ?? 0
     const messageModel =
       typeof message.model === 'string' && message.model.trim()
@@ -168,7 +173,7 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
         : currentProvider
 
     if (totalTokens <= 0 && cost <= 0 && durationMs <= 0) continue
-    metricsById.set(entry.id, {
+    const metrics: UsageEntryMetrics = {
       inputTokens,
       outputTokens,
       cacheReadTokens,
@@ -178,7 +183,9 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
       cost,
       model: messageModel,
       provider: messageProvider,
-    })
+    }
+    metricsById.set(entry.id, metrics)
+    lastMetrics = metrics
   }
 
   return metricsById

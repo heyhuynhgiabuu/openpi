@@ -42,7 +42,9 @@ import { countBranches } from './sessionTree'
 import { buildSessionTree } from './sessionTreeBuilder'
 import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './sessionUsage'
 
-const USAGE_INDEX_VERSION = 3
+// Bump when the usage computation changes, so stored rows are recomputed.
+// 4: summarization usage (compaction, branch_summary) counts in the totals.
+const USAGE_INDEX_VERSION = 4
 
 export class SessionIndexStore {
   private readonly db: Database.Database
