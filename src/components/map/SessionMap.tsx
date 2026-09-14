@@ -57,27 +57,22 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   }
 
   // Branches keep their original number so "Branch 2" stays Branch 2 while a
-  // filter hides the branches that have no match.
-  const branches = createMemo<VisibleBranch[]>(() =>
-    (data()?.branches ?? [])
-      .map((branch, index) => ({
-        leafId: branch.leafId,
-        position: index + 1,
-        nodes: branch.nodes.filter(matches),
-      }))
-      .filter((branch) => branch.nodes.length > 0)
-  )
-  // Branches render in order, so one flat index addresses every visible node.
-  const nodes = createMemo(() => branches().flatMap((branch) => branch.nodes))
-  const branchOffsets = createMemo(() => {
+  // filter hides the branches that have no match. Each visible branch carries
+  // the offset of its first node, because the cursor addresses nodes by their
+  // position in the flat list of visible nodes.
+  const branches = createMemo<VisibleBranch[]>(() => {
+    const visible: VisibleBranch[] = []
     let offset = 0
-    return branches().map((branch) => {
-      const start = offset
-      offset += branch.nodes.length
-      return start
-    })
+    for (const [index, branch] of (data()?.branches ?? []).entries()) {
+      const nodes = branch.nodes.filter(matches)
+      if (nodes.length === 0) continue
+      visible.push({ leafId: branch.leafId, position: index + 1, offset, nodes })
+      offset += nodes.length
+    }
+    return visible
   })
-  const totalCount = () =>
+  const nodes = createMemo(() => branches().flatMap((branch) => branch.nodes))
+  const entryCount = () =>
     (data()?.branches ?? []).reduce((sum, branch) => sum + branch.nodes.length, 0)
 
   // Keep the cursor on the leaf the session is at; when the filter hides it,
@@ -161,7 +156,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
               <Show when={query().trim()}>
                 {' · '}
                 {countLabel(nodes().length, 'match', 'matches')} of{' '}
-                {countLabel(totalCount(), 'entry', 'entries')}
+                {countLabel(entryCount(), 'entry', 'entries')}
               </Show>
             </p>
             <Show when={notice()}>
@@ -187,7 +182,7 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
         <Show when={data()}>
           {(payload) => (
             <Show
-              when={totalCount() > 0}
+              when={entryCount() > 0}
               fallback={<div class="session-map-empty">This session has no entries yet.</div>}
             >
               <div class="session-map-search-row">
@@ -208,11 +203,10 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
               >
                 <div class="session-map-branches" ref={listRef}>
                   <For each={branches()}>
-                    {(branch, index) => (
+                    {(branch) => (
                       <BranchCard
                         branch={branch}
                         activeLeafId={payload().activeLeafId}
-                        nodeOffset={branchOffsets()[index()] ?? 0}
                         cursor={cursor()}
                         onFocusNode={(nodeIndex) => {
                           setCursor(nodeIndex)

@@ -12,6 +12,8 @@ export interface VisibleBranch {
   leafId: string
   /** 1-based position in the unfiltered branch list, so labels stay stable. */
   position: number
+  /** Index of this branch's first node in the flattened, filtered node list. */
+  offset: number
   nodes: TreeEntryNode[]
 }
 
@@ -52,8 +54,6 @@ export function nodeDetail(node: TreeEntryNode): string {
 export function BranchCard(props: {
   branch: VisibleBranch
   activeLeafId: string | null
-  /** Index of this branch's first node in the flattened, filtered node list. */
-  nodeOffset: number
   cursor: number
   onFocusNode: (index: number) => void
   onActivateNode: (node: TreeEntryNode) => void
@@ -74,7 +74,7 @@ export function BranchCard(props: {
       <ol class="session-map-nodes">
         <For each={props.branch.nodes}>
           {(node, index) => {
-            const flatIndex = () => props.nodeOffset + index()
+            const flatIndex = () => props.branch.offset + index()
             return (
               <li>
                 <button

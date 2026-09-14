@@ -15491,7 +15491,6 @@ body.panel-dragging {
   background: color-mix(in srgb, var(--bg, #0b0b12) 72%, transparent);
   backdrop-filter: blur(3px);
   overflow-y: auto;
-  outline: none;
 }
 
 .session-map-shell {
@@ -15547,7 +15546,7 @@ body.panel-dragging {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 14px 8px;
+  padding: 0 0 8px;
 }
 
 .session-map-search-icon {
@@ -15654,20 +15653,20 @@ body.panel-dragging {
   background: var(--bg-hover, #23232f);
 }
 
+.session-map-node.is-leaf {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 12%, transparent);
+}
+
+/* After .is-leaf: the cursor must stay visible when it sits on the leaf node. */
 .session-map-node.is-cursor {
   background: color-mix(in srgb, var(--accent, #7aa2f7) 18%, transparent);
   box-shadow: inset 2px 0 0 var(--accent, #7aa2f7);
-}
-
-.session-map-node.is-leaf {
-  background: color-mix(in srgb, var(--accent, #7aa2f7) 12%, transparent);
 }
 
 .session-map-node-type {
   flex: none;
   min-width: 78px;
   color: var(--ash, #9aa0b4);
-  font-variant-numeric: tabular-nums;
 }
 
 .session-map-node.is-compaction .session-map-node-type,
