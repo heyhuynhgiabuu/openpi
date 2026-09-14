@@ -45,7 +45,10 @@ interface ContextOptions {
 
 /** Fake Pi context; the spies record what the gate asked for. */
 function context(options: ContextOptions = {}) {
-  const confirm = vi.fn(async (_title: string, _message: string) => options.confirmed ?? false)
+  const confirm = vi.fn(
+    async (_title: string, _message: string, _opts?: { timeout?: number }) =>
+      options.confirmed ?? false
+  )
   const input = vi.fn(
     async (_title: string, _placeholder?: string, _opts?: { timeout?: number }) =>
       options.reviewAnswer
@@ -76,7 +79,8 @@ describe('tool_call handling', () => {
     const denied = await handleToolCall({ toolName: 'edit', input: editInput }, ctx)
 
     expect(denied?.block).toBe(true)
-    expect(denied?.reason).toContain('denied')
+    // A boolean confirm cannot tell a denial from an expiry, so the reason covers both.
+    expect(denied?.reason).toContain('did not approve')
     expect(confirm.mock.calls[0]?.[0]).toBe('Review before applying: a.ts')
     expect(confirm.mock.calls[0]?.[1]).toContain('-x\n+y')
     expect(input).not.toHaveBeenCalled()
@@ -135,6 +139,39 @@ describe('hunk review inside OpenPi', () => {
         { diff: '-two\n+TWO', removed: 1, added: 1 },
       ],
     })
+  })
+
+  it('reviews an edit that deletes a block', async () => {
+    const input: EditToolInput = {
+      path: 'src/App.tsx',
+      edits: [{ oldText: 'gone\n', newText: '' }],
+    }
+    const { ctx, input: dialog } = context({ reviewAnswer: '{"approved":[0]}' })
+
+    await handleToolCall({ toolName: 'edit', input }, ctx)
+
+    const payload: unknown = JSON.parse(
+      (dialog.mock.calls[0]?.[1] ?? '').slice('openpi-preapply-review:'.length)
+    )
+    expect(payload).toMatchObject({
+      summary: 'edit · -1 line / +0 lines',
+      hunks: [{ diff: '-gone', removed: 1, added: 0 }],
+    })
+  })
+
+  it('reviews a call that mixes a deletion with a replacement', async () => {
+    const input: EditToolInput = {
+      path: 'src/App.tsx',
+      edits: [
+        { oldText: 'one\n', newText: 'ONE\n' },
+        { oldText: 'two\n', newText: '' },
+      ],
+    }
+    const { ctx, input: dialog } = context({ reviewAnswer: '{"approved":[1]}' })
+
+    expect(await handleToolCall({ toolName: 'edit', input }, ctx)).toBeUndefined()
+    expect(input.edits).toEqual([{ oldText: 'two\n', newText: '' }])
+    expect(dialog.mock.calls[0]?.[1]).toContain('2 hunks')
   })
 
   it('keeps only the approved hunks by rewriting the call input', async () => {
@@ -236,6 +273,39 @@ describe('hunk review inside OpenPi', () => {
 
     expect(after.input).toHaveBeenCalled()
     expect(asked?.block).toBe(true)
+  })
+
+  it('asks about a write that truncates the file to nothing', async () => {
+    writeFile('a.txt', 'content\n')
+    const { confirm, ctx } = context({ confirmed: false })
+    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: '' }
+
+    const blocked = await handleToolCall({ toolName: 'write', input }, ctx)
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(blocked?.block).toBe(true)
+  })
+
+  it('waits as long for a write as for a hunk review', async () => {
+    writeFile('a.txt', 'content\n')
+    const { confirm, ctx } = context({ confirmed: true })
+    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
+
+    await handleToolCall({ toolName: 'write', input }, ctx)
+
+    expect(confirm).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      timeout: 600_000,
+    })
+  })
+
+  it('does not call an unanswered write a denial', async () => {
+    writeFile('a.txt', 'content\n')
+    const { ctx } = context({ confirmed: false })
+    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
+
+    const blocked = await handleToolCall({ toolName: 'write', input }, ctx)
+
+    expect(blocked?.reason).toContain('did not approve')
   })
 
   it('still uses the text dialog for write', async () => {

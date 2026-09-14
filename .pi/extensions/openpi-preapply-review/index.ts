@@ -70,7 +70,7 @@ export interface PreApplyToolCall {
 export interface PreApplyContext {
   cwd: string
   ui: {
-    confirm: (title: string, message: string) => Promise<boolean>
+    confirm: (title: string, message: string, opts?: { timeout?: number }) => Promise<boolean>
     input: (
       title: string,
       placeholder?: string,
@@ -197,11 +197,14 @@ export async function handleToolCall(
 
   const allowed = await ctx.ui.confirm(
     `Review before applying: ${preview.path}`,
-    `${preview.summary}\n\n${confirmMessage(preview)}`
+    `${preview.summary}\n\n${confirmMessage(preview)}`,
+    // A boolean answer cannot tell a denial from an expiry, so the gate waits as
+    // long as the hunk review and words the refusal for both cases.
+    { timeout: REVIEW_TIMEOUT_MS }
   )
   if (allowed) return undefined
 
-  return deny(preview.path, 'denied this change')
+  return deny(preview.path, 'did not approve this change')
 }
 
 export default function (pi: ExtensionAPI) {

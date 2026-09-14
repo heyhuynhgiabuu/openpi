@@ -34,6 +34,15 @@ export function str(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
+/**
+ * Like `str`, but an empty string is a real value: `edit` deletes a block with
+ * `newText: ''` and `write` truncates a file with empty `content`, so treating
+ * those as missing would let the highest-risk calls through unreviewed.
+ */
+export function text(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
 export function displayPath(cwd: string, path: string): string {
   const absolute = isAbsolute(path) ? path : resolve(cwd, path)
   const prefix = `${resolve(cwd)}/`
@@ -119,7 +128,7 @@ export function editHunks(input: Record<string, unknown>): ReviewHunk[] | null {
   const hunks: ReviewHunk[] = []
   for (const entry of edits) {
     const oldText = str(asRecord(entry).oldText)
-    const newText = str(asRecord(entry).newText)
+    const newText = text(asRecord(entry).newText)
     if (oldText === null || newText === null) return null
     hunks.push({
       diff: diffRegion(oldText, newText),
@@ -161,7 +170,7 @@ export function previewForWrite(
   cwd: string
 ): PreApplyPreview | null {
   const path = str(input.path)
-  const content = str(input.content)
+  const content = text(input.content)
   if (!path || content === null) return null
 
   const absolute = isAbsolute(path) ? path : resolve(cwd, path)
