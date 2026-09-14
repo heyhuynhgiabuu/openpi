@@ -211,4 +211,6 @@ export default function (pi: ExtensionAPI) {
   if (!isPreApplyReviewEnabled(process.env)) return
   pi.on('tool_call', (event, ctx) => handleToolCall(event, ctx))
   pi.on('turn_end', () => endTurn())
+  // A replacement session must not inherit "skip review" from the previous one.
+  pi.on('session_start', () => endTurn())
 }

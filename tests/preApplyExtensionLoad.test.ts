@@ -45,6 +45,9 @@ describe('pre-apply review extension under Pi extension loader', () => {
 
     expect(errors).toEqual([])
     expect(extension?.handlers.get('tool_call')).toHaveLength(1)
+    expect(extension?.handlers.get('turn_end')).toHaveLength(1)
+    // A replacement session must not inherit the turn-scoped skip.
+    expect(extension?.handlers.get('session_start')).toHaveLength(1)
   })
 
   it('loads inert when the gate is off', async () => {
