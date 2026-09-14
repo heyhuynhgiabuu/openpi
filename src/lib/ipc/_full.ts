@@ -985,6 +985,16 @@ export type GitSyncResult = z.infer<typeof gitSyncResultSchema>
 export const agentReviewChangeStatusSchema = z.enum(['created', 'modified', 'deleted'])
 export type AgentReviewChangeStatus = z.infer<typeof agentReviewChangeStatusSchema>
 
+/** One keepable/revertable region of a modified file, with 1-based line starts. */
+export const agentReviewHunkSchema = z.object({
+  index: z.number(),
+  beforeStart: z.number(),
+  afterStart: z.number(),
+  added: z.number(),
+  removed: z.number(),
+})
+export type AgentReviewHunk = z.infer<typeof agentReviewHunkSchema>
+
 export const agentReviewChangeSchema = z.object({
   id: z.string(),
   path: z.string(),
@@ -998,6 +1008,8 @@ export const agentReviewChangeSchema = z.object({
   totalAdded: z.number(),
   totalRemoved: z.number(),
   truncated: z.boolean(),
+  /** Empty for created/deleted files and for truncated diffs — those stay whole-file. */
+  hunks: z.array(agentReviewHunkSchema),
 })
 export type AgentReviewChange = z.infer<typeof agentReviewChangeSchema>
 
@@ -1007,6 +1019,11 @@ export const agentReviewSummarySchema = z.object({
 export type AgentReviewSummary = z.infer<typeof agentReviewSummarySchema>
 
 export const agentReviewChangeRequestSchema = z.object({ id: z.string().min(1) })
+
+export const agentReviewHunkRequestSchema = z.object({
+  id: z.string().min(1),
+  index: z.number().int().min(0),
+})
 export type AgentReviewChangeRequest = z.infer<typeof agentReviewChangeRequestSchema>
 
 export const agentReviewClearRequestSchema = z

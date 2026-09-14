@@ -3,6 +3,7 @@ import {
   type AgentReviewSummary,
   agentReviewChangeRequestSchema,
   agentReviewClearRequestSchema,
+  agentReviewHunkRequestSchema,
   agentReviewSummarySchema,
   IPC,
 } from '../../src/lib/ipc'
@@ -10,8 +11,10 @@ import {
   clearAgentReviewChanges,
   getAgentReviewSummary,
   keepAgentReviewChange,
+  keepAgentReviewHunk,
   revertAgentReviewChange,
   revertAgentReviewChanges,
+  revertAgentReviewHunk,
 } from '../services/agentReview'
 
 interface AgentReviewIpcDeps {
@@ -20,20 +23,33 @@ interface AgentReviewIpcDeps {
 }
 
 export function registerAgentReviewIpc(deps: AgentReviewIpcDeps): void {
-  deps.ipcMain.handle(IPC.AGENT_REVIEW_LIST, (): AgentReviewSummary => {
-    return agentReviewSummarySchema.parse(getAgentReviewSummary(deps.getCwd()))
-  })
+  const summarize = (): AgentReviewSummary =>
+    agentReviewSummarySchema.parse(getAgentReviewSummary(deps.getCwd()))
+
+  deps.ipcMain.handle(IPC.AGENT_REVIEW_LIST, summarize)
 
   deps.ipcMain.handle(IPC.AGENT_REVIEW_KEEP, (_event, raw: unknown): AgentReviewSummary => {
     const { id } = agentReviewChangeRequestSchema.parse(raw)
     keepAgentReviewChange(id)
-    return agentReviewSummarySchema.parse(getAgentReviewSummary(deps.getCwd()))
+    return summarize()
   })
 
   deps.ipcMain.handle(IPC.AGENT_REVIEW_REVERT, (_event, raw: unknown): AgentReviewSummary => {
     const { id } = agentReviewChangeRequestSchema.parse(raw)
     revertAgentReviewChange(id)
-    return agentReviewSummarySchema.parse(getAgentReviewSummary(deps.getCwd()))
+    return summarize()
+  })
+
+  deps.ipcMain.handle(IPC.AGENT_REVIEW_KEEP_HUNK, (_event, raw: unknown): AgentReviewSummary => {
+    const { id, index } = agentReviewHunkRequestSchema.parse(raw)
+    keepAgentReviewHunk(id, index)
+    return summarize()
+  })
+
+  deps.ipcMain.handle(IPC.AGENT_REVIEW_REVERT_HUNK, (_event, raw: unknown): AgentReviewSummary => {
+    const { id, index } = agentReviewHunkRequestSchema.parse(raw)
+    revertAgentReviewHunk(id, index)
+    return summarize()
   })
 
   deps.ipcMain.handle(IPC.AGENT_REVIEW_REVERT_ALL, (): AgentReviewSummary => {

@@ -17,6 +17,8 @@ interface AgentReviewController {
   error: string | null
   keep: (id: string) => Promise<void>
   revert: (id: string) => Promise<void>
+  keepHunk: (id: string, index: number) => Promise<void>
+  revertHunk: (id: string, index: number) => Promise<void>
   revertAll: () => Promise<void>
   clear: () => Promise<void>
 }
@@ -304,6 +306,8 @@ export function ReviewPane(props: ReviewPaneProps) {
                   isCommentActive={activeCommentPath() === item.path}
                   onKeep={async (id) => props.agentReview.keep(id)}
                   onRevert={async (id) => props.agentReview.revert(id)}
+                  onKeepReviewHunk={async (id, index) => props.agentReview.keepHunk(id, index)}
+                  onRevertReviewHunk={async (id, index) => props.agentReview.revertHunk(id, index)}
                   comments={props.comments}
                   onAddComment={props.onAddComment}
                   onRemoveComment={props.onRemoveComment}

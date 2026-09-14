@@ -2,20 +2,20 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { BrowserWindow } from 'electron'
 import { type AgentReviewChange, type AgentReviewSummary, IPC } from '../../src/lib/ipc'
-
-const MAX_REVIEW_FILE_BYTES = 500_000
-const MAX_DIFF_LINES = 700
-const MAX_DIFF_LINE_LENGTH = 2_000
-const MAX_DIFF_CELLS = 250_000
-
-type Snapshot = {
-  cwd: string
-  relPath: string
-  fullPath: string
-  beforeContent: string | null
-  beforeExists: boolean
-  skipped?: string
-}
+import {
+  readCurrentText,
+  readSnapshot,
+  resolveWorkspacePath,
+  safeResolveWorkspacePath,
+  type Snapshot,
+} from './agentReviewFiles'
+import {
+  computeReviewHunks,
+  createUnifiedDiff,
+  keepHunkInBefore,
+  revertHunkInAfter,
+  type ReviewHunk,
+} from './agentReviewDiff'
 
 type PendingTool = {
   toolCallId: string
@@ -28,6 +28,7 @@ type StoredChange = AgentReviewChange & {
   cwd: string
   beforeContent: string | null
   afterContent: string | null
+  hunks: ReviewHunk[]
 }
 
 type ToolEvent = {
@@ -93,6 +94,81 @@ export function revertAgentReviewChanges(cwd?: string | null): AgentReviewSummar
   return getAgentReviewSummary(cwd)
 }
 
+/**
+ * Accepts one hunk: the baseline adopts that hunk's lines, so it stops being
+ * reported as a change. Nothing is written to disk — the file already holds it.
+ */
+export function keepAgentReviewHunk(id: string, index: number): AgentReviewSummary {
+  const change = changes.get(id)
+  if (!change) return getAgentReviewSummary()
+  const hunk = selectHunk(change, index)
+
+  storeReviewedContent(
+    change,
+    keepHunkInBefore(change.beforeContent ?? '', hunk),
+    change.afterContent ?? ''
+  )
+  emitChanged(change.cwd)
+  return getAgentReviewSummary(change.cwd)
+}
+
+/** Rejects one hunk: its before lines go back into the file on disk. */
+export function revertAgentReviewHunk(id: string, index: number): AgentReviewSummary {
+  const change = changes.get(id)
+  if (!change) return getAgentReviewSummary()
+  const hunk = selectHunk(change, index)
+
+  validateRevert(change)
+  const afterContent = revertHunkInAfter(change.afterContent ?? '', hunk)
+  writeReviewedContent(change, afterContent)
+
+  storeReviewedContent(change, change.beforeContent ?? '', afterContent)
+  emitChanged(change.cwd)
+  return getAgentReviewSummary(change.cwd)
+}
+
+/**
+ * Hunk review applies to modified files only. Created and deleted files are
+ * reviewed as a whole: keeping part of a new file would silently turn its
+ * "revert" into "empty the file" instead of "delete it".
+ */
+function selectHunk(change: StoredChange, index: number): ReviewHunk {
+  if (change.status !== 'modified') {
+    throw new Error(
+      `Refusing hunk review for ${change.path}: ${change.status} files are whole-file`
+    )
+  }
+  if (change.truncated) {
+    throw new Error(`Refusing hunk review for ${change.path}: diff is too large to split`)
+  }
+  const hunk = change.hunks[index]
+  if (!hunk) throw new Error(`Unknown hunk ${index} for ${change.path}`)
+  return hunk
+}
+
+/** Rewrites the stored change from new content, dropping it once nothing is left to review. */
+function storeReviewedContent(
+  change: StoredChange,
+  beforeContent: string,
+  afterContent: string
+): void {
+  if (beforeContent === afterContent) {
+    changes.delete(change.id)
+    return
+  }
+  const diff = createUnifiedDiff(change.path, beforeContent, afterContent)
+  changes.set(change.id, {
+    ...change,
+    beforeContent,
+    afterContent,
+    diff: diff.text,
+    totalAdded: diff.added,
+    totalRemoved: diff.removed,
+    truncated: diff.truncated,
+    hunks: hunksFor('modified', diff.truncated, beforeContent, afterContent),
+  })
+}
+
 function validateRevert(change: StoredChange): void {
   const fullPath = resolveWorkspacePath(change.cwd, change.path)
   const current = readCurrentText(fullPath)
@@ -103,13 +179,18 @@ function validateRevert(change: StoredChange): void {
 }
 
 function applyRevert(change: StoredChange): void {
-  const fullPath = resolveWorkspacePath(change.cwd, change.path)
   if (change.beforeContent === null) {
+    const fullPath = resolveWorkspacePath(change.cwd, change.path)
     if (fs.existsSync(fullPath)) fs.rmSync(fullPath, { force: true })
-  } else {
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true })
-    fs.writeFileSync(fullPath, change.beforeContent, 'utf-8')
+    return
   }
+  writeReviewedContent(change, change.beforeContent)
+}
+
+function writeReviewedContent(change: StoredChange, content: string): void {
+  const fullPath = resolveWorkspacePath(change.cwd, change.path)
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true })
+  fs.writeFileSync(fullPath, content, 'utf-8')
 }
 
 export function captureAgentReviewEvent(cwd: string | null, event: ToolEvent): void {
@@ -177,6 +258,7 @@ function captureToolEnd(cwd: string, toolCallId: string): void {
       totalAdded: diff.added,
       totalRemoved: diff.removed,
       truncated: diff.truncated,
+      hunks: hunksFor(status, diff.truncated, before, afterContent),
     })
     changed = true
   }
@@ -199,6 +281,17 @@ function reviewStatus(
   return 'modified'
 }
 
+/** Only modified files can be split into hunks; truncated diffs cannot be mapped to regions. */
+function hunksFor(
+  status: AgentReviewChange['status'],
+  truncated: boolean,
+  beforeContent: string | null,
+  afterContent: string | null
+): ReviewHunk[] {
+  if (status !== 'modified' || truncated) return []
+  return computeReviewHunks(beforeContent ?? '', afterContent ?? '')
+}
+
 function publicChange(change: StoredChange): AgentReviewChange {
   return {
     id: change.id,
@@ -213,60 +306,18 @@ function publicChange(change: StoredChange): AgentReviewChange {
     totalAdded: change.totalAdded,
     totalRemoved: change.totalRemoved,
     truncated: change.truncated,
+    hunks: change.hunks.map((hunk) => ({
+      index: hunk.index,
+      beforeStart: hunk.beforeStart,
+      afterStart: hunk.afterStart,
+      added: hunk.added,
+      removed: hunk.removed,
+    })),
   }
 }
 
 function emitChanged(cwd?: string | null): void {
   mainWindow?.webContents.send(IPC.AGENT_REVIEW_CHANGED, getAgentReviewSummary(cwd))
-}
-
-function safeResolveWorkspacePath(
-  cwd: string,
-  candidate: string
-): { relPath: string; fullPath: string } | null {
-  const raw = candidate.trim()
-  if (!raw || raw === '.' || raw.includes('\0')) return null
-  const fullPath = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(cwd, raw)
-  const resolvedCwd = path.resolve(cwd)
-  if (fullPath !== resolvedCwd && !fullPath.startsWith(resolvedCwd + path.sep)) return null
-  const relPath = path.relative(resolvedCwd, fullPath).split(path.sep).join('/')
-  if (!relPath || relPath.startsWith('..')) return null
-  return { relPath, fullPath }
-}
-
-function resolveWorkspacePath(cwd: string, relPath: string): string {
-  const resolved = safeResolveWorkspacePath(cwd, relPath)
-  if (!resolved) throw new Error(`Invalid review path: ${relPath}`)
-  return resolved.fullPath
-}
-
-function readSnapshot(cwd: string, relPath: string, fullPath: string): Snapshot {
-  const current = readCurrentText(fullPath)
-  return {
-    cwd,
-    relPath,
-    fullPath,
-    beforeContent: current.content,
-    beforeExists: current.exists,
-    skipped: current.skipped,
-  }
-}
-
-function readCurrentText(fullPath: string): {
-  exists: boolean
-  content: string | null
-  skipped?: string
-} {
-  if (!fs.existsSync(fullPath)) return { exists: false, content: null }
-  const stat = fs.statSync(fullPath)
-  if (!stat.isFile()) return { exists: true, content: null, skipped: 'Review supports files only' }
-  if (stat.size > MAX_REVIEW_FILE_BYTES) {
-    return { exists: true, content: null, skipped: 'Review skipped a large file' }
-  }
-  const buffer = fs.readFileSync(fullPath)
-  if (buffer.includes(0))
-    return { exists: true, content: null, skipped: 'Review skipped a binary file' }
-  return { exists: true, content: buffer.toString('utf-8') }
 }
 
 function extractMutablePaths(toolName: string, args: unknown): string[] {
@@ -314,77 +365,4 @@ function addPatchPaths(paths: string[], value: unknown): void {
     const gitMatch = /^(?:---|\+\+\+)\s+(?:a\/|b\/)?(.+)$/.exec(trimmed)
     if (gitMatch && gitMatch[1] !== '/dev/null') paths.push(gitMatch[1])
   }
-}
-
-function createUnifiedDiff(
-  filePath: string,
-  beforeContent: string,
-  afterContent: string
-): { text: string; added: number; removed: number; truncated: boolean } {
-  const before = beforeContent.split('\n')
-  const after = afterContent.split('\n')
-  let truncated = false
-  let diffLines: string[]
-
-  if (before.length * after.length > MAX_DIFF_CELLS) {
-    truncated = true
-    diffLines = [
-      `--- ${filePath}`,
-      `+++ ${filePath}`,
-      `@@ large file diff omitted; ${before.length} → ${after.length} lines @@`,
-    ]
-  } else {
-    diffLines = [`--- ${filePath}`, `+++ ${filePath}`, '@@ snapshot diff @@']
-    for (const line of lineDiff(before, after)) {
-      const safeText =
-        line.text.length > MAX_DIFF_LINE_LENGTH
-          ? `${line.text.slice(0, MAX_DIFF_LINE_LENGTH)}…`
-          : line.text
-      diffLines.push(`${line.kind}${safeText}`)
-      if (diffLines.length >= MAX_DIFF_LINES) {
-        truncated = true
-        diffLines.push('… diff truncated …')
-        break
-      }
-    }
-  }
-
-  const added = diffLines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length
-  const removed = diffLines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length
-  return { text: diffLines.join('\n'), added, removed, truncated }
-}
-
-function lineDiff(
-  before: string[],
-  after: string[]
-): Array<{ kind: ' ' | '+' | '-'; text: string }> {
-  const rows = before.length + 1
-  const cols = after.length + 1
-  const dp = Array.from({ length: rows }, () => new Uint16Array(cols))
-  for (let i = before.length - 1; i >= 0; i--) {
-    for (let j = after.length - 1; j >= 0; j--) {
-      dp[i][j] =
-        before[i] === after[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
-    }
-  }
-
-  const output: Array<{ kind: ' ' | '+' | '-'; text: string }> = []
-  let i = 0
-  let j = 0
-  while (i < before.length && j < after.length) {
-    if (before[i] === after[j]) {
-      output.push({ kind: ' ', text: before[i] })
-      i++
-      j++
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      output.push({ kind: '-', text: before[i] })
-      i++
-    } else {
-      output.push({ kind: '+', text: after[j] })
-      j++
-    }
-  }
-  while (i < before.length) output.push({ kind: '-', text: before[i++] })
-  while (j < after.length) output.push({ kind: '+', text: after[j++] })
-  return output
 }

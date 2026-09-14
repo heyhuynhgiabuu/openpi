@@ -110,6 +110,10 @@ export const gitApi = {
       ipcRenderer.invoke(IPC.AGENT_REVIEW_KEEP, { id }),
     revert: (id: string): Promise<AgentReviewSummary> =>
       ipcRenderer.invoke(IPC.AGENT_REVIEW_REVERT, { id }),
+    keepHunk: (id: string, index: number): Promise<AgentReviewSummary> =>
+      ipcRenderer.invoke(IPC.AGENT_REVIEW_KEEP_HUNK, { id, index }),
+    revertHunk: (id: string, index: number): Promise<AgentReviewSummary> =>
+      ipcRenderer.invoke(IPC.AGENT_REVIEW_REVERT_HUNK, { id, index }),
     revertAll: (): Promise<AgentReviewSummary> => ipcRenderer.invoke(IPC.AGENT_REVIEW_REVERT_ALL),
     clear: (): Promise<AgentReviewSummary> => ipcRenderer.invoke(IPC.AGENT_REVIEW_CLEAR),
 

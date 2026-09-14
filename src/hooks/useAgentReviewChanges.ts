@@ -1,5 +1,5 @@
 import { batch, createSignal, onCleanup, onMount } from 'solid-js'
-import type { AgentReviewChange } from '../lib/ipc'
+import type { AgentReviewChange, AgentReviewSummary } from '../lib/ipc'
 
 export function useAgentReviewChanges() {
   const [changes, setChanges] = createSignal<AgentReviewChange[]>([])
@@ -16,61 +16,32 @@ export function useAgentReviewChanges() {
     })
   }
 
-  const refresh = async () => {
+  const applySummary = (summary: AgentReviewSummary) => {
+    applyChanges(summary.changes)
+    setError(null)
+  }
+
+  /** Runs a review operation and applies the summary it returns; failures land in `error`. */
+  const run = async (operation: () => Promise<AgentReviewSummary>): Promise<void> => {
     try {
-      const summary = await window.openpi.agentReview.list()
-      applyChanges(summary.changes)
-      setError(null)
+      applySummary(await operation())
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
 
-  const keep = async (id: string) => {
-    try {
-      const summary = await window.openpi.agentReview.keep(id)
-      applyChanges(summary.changes)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const revert = async (id: string) => {
-    try {
-      const summary = await window.openpi.agentReview.revert(id)
-      applyChanges(summary.changes)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const revertAll = async () => {
-    try {
-      const summary = await window.openpi.agentReview.revertAll()
-      applyChanges(summary.changes)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const clear = async () => {
-    try {
-      const summary = await window.openpi.agentReview.clear()
-      applyChanges(summary.changes)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const refresh = () => run(() => window.openpi.agentReview.list())
+  const keep = (id: string) => run(() => window.openpi.agentReview.keep(id))
+  const revert = (id: string) => run(() => window.openpi.agentReview.revert(id))
+  const keepHunk = (id: string, index: number) =>
+    run(() => window.openpi.agentReview.keepHunk(id, index))
+  const revertHunk = (id: string, index: number) =>
+    run(() => window.openpi.agentReview.revertHunk(id, index))
+  const revertAll = () => run(() => window.openpi.agentReview.revertAll())
+  const clear = () => run(() => window.openpi.agentReview.clear())
 
   onMount(() => {
-    const unsubscribe = window.openpi.agentReview.onChanged((summary) => {
-      applyChanges(summary.changes)
-      setError(null)
-    })
+    const unsubscribe = window.openpi.agentReview.onChanged(applySummary)
     void refresh()
     onCleanup(unsubscribe)
   })
@@ -92,6 +63,8 @@ export function useAgentReviewChanges() {
     setActiveId,
     keep,
     revert,
+    keepHunk,
+    revertHunk,
     revertAll,
     clear,
     refresh,

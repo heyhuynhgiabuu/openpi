@@ -97,6 +97,8 @@ export const IPC = {
   AGENT_REVIEW_LIST: 'openpi:agent-review-list',
   AGENT_REVIEW_KEEP: 'openpi:agent-review-keep',
   AGENT_REVIEW_REVERT: 'openpi:agent-review-revert',
+  AGENT_REVIEW_KEEP_HUNK: 'openpi:agent-review-keep-hunk',
+  AGENT_REVIEW_REVERT_HUNK: 'openpi:agent-review-revert-hunk',
   AGENT_REVIEW_REVERT_ALL: 'openpi:agent-review-revert-all',
   AGENT_REVIEW_CLEAR: 'openpi:agent-review-clear',
 

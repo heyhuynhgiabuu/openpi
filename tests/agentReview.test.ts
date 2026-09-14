@@ -7,8 +7,10 @@ import {
   clearAgentReviewChanges,
   getAgentReviewSummary,
   keepAgentReviewChange,
+  keepAgentReviewHunk,
   revertAgentReviewChange,
   revertAgentReviewChanges,
+  revertAgentReviewHunk,
 } from '../electron/services/agentReview'
 
 let tmp: string | null = null
@@ -215,5 +217,102 @@ describe('agent review snapshots', () => {
     fs.writeFileSync(file, 'three\n', 'utf-8')
     expect(() => revertAgentReviewChange(change.id)).toThrow(/changed since review/)
     expect(fs.readFileSync(file, 'utf-8')).toBe('three\n')
+  })
+})
+
+describe('agent review hunk operations', () => {
+  const baseline = 'alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\n'
+  const edited = 'alpha\nBETA\ngamma\ndelta\nepsilon\nZETA\neta\n'
+  /** `edited` with the second region reverted back to its baseline lines. */
+  const secondRegionReverted = 'alpha\nBETA\ngamma\ndelta\nepsilon\nzeta\neta\n'
+
+  function captureEditedFile() {
+    const cwd = makeWorkspace()
+    const file = path.join(cwd, 'note.txt')
+    fs.writeFileSync(file, baseline, 'utf-8')
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_start',
+      toolCallId: 'tool-hunk',
+      toolName: 'edit',
+      args: { path: 'note.txt' },
+    })
+    fs.writeFileSync(file, edited, 'utf-8')
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_end',
+      toolCallId: 'tool-hunk',
+      toolName: 'edit',
+    })
+    const change = getAgentReviewSummary(cwd).changes[0]
+    if (!change) throw new Error('expected a captured change')
+    return { file, change }
+  }
+
+  it('exposes one hunk per changed region', () => {
+    const { change } = captureEditedFile()
+
+    expect(change.hunks.map((hunk) => [hunk.beforeStart, hunk.added, hunk.removed])).toEqual([
+      [2, 1, 1],
+      [6, 1, 1],
+    ])
+  })
+
+  it('keeping a hunk accepts one region and leaves the file untouched', () => {
+    const { file, change } = captureEditedFile()
+
+    const [remaining] = keepAgentReviewHunk(change.id, 0).changes
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(edited)
+    expect(remaining?.hunks).toHaveLength(1)
+    expect(remaining?.hunks[0]?.beforeStart).toBe(6)
+    expect(remaining?.totalAdded).toBe(1)
+    expect(remaining?.totalRemoved).toBe(1)
+  })
+
+  it('reverting a hunk restores only that region on disk', () => {
+    const { file, change } = captureEditedFile()
+
+    const [remaining] = revertAgentReviewHunk(change.id, 1).changes
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(secondRegionReverted)
+    expect(remaining?.hunks).toHaveLength(1)
+    expect(remaining?.hunks[0]?.beforeStart).toBe(2)
+  })
+
+  it('drops the review item once every hunk is resolved', () => {
+    const { file, change } = captureEditedFile()
+    keepAgentReviewHunk(change.id, 0)
+
+    const summary = revertAgentReviewHunk(change.id, 0)
+
+    expect(summary.changes).toHaveLength(0)
+    expect(fs.readFileSync(file, 'utf-8')).toBe(secondRegionReverted)
+  })
+
+  it('keeps created files whole-file and refuses their hunk review', () => {
+    const cwd = makeWorkspace()
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_start',
+      toolCallId: 'tool-new',
+      toolName: 'write',
+      args: { path: 'created.txt' },
+    })
+    fs.writeFileSync(path.join(cwd, 'created.txt'), 'hello\n', 'utf-8')
+    captureAgentReviewEvent(cwd, {
+      type: 'tool_execution_end',
+      toolCallId: 'tool-new',
+      toolName: 'write',
+    })
+    const change = getAgentReviewSummary(cwd).changes[0]
+    if (!change) throw new Error('expected a captured change')
+
+    expect(change.hunks).toEqual([])
+    expect(() => keepAgentReviewHunk(change.id, 0)).toThrow(/whole-file/)
+  })
+
+  it('refuses to revert a hunk when the file changed after the snapshot', () => {
+    const { file, change } = captureEditedFile()
+    fs.writeFileSync(file, 'externally changed\n', 'utf-8')
+
+    expect(() => revertAgentReviewHunk(change.id, 0)).toThrow(/changed since review/)
   })
 })

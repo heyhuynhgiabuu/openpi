@@ -9,6 +9,7 @@ import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComm
 import type { AgentReviewChange, GitChangedFile, GitFileDiff } from '../../lib/ipc'
 import type { DiffScope } from '../git/DiffScopeSwitcher'
 import { GitHunkActions } from '../git/GitHunkActions'
+import { ReviewHunkActions } from './ReviewHunkActions'
 import { ReviewLineCommentAnnotation } from './ReviewLineCommentAnnotation'
 import { ReviewLineCommentChip } from './ReviewLineCommentChip'
 import {
@@ -47,6 +48,9 @@ export interface ReviewFileCardProps {
   isCommentActive: boolean
   onKeep: (id: string) => Promise<void>
   onRevert: (id: string) => Promise<void>
+  /** Hunk-level review of the last-turn diff (index-based; main owns the snapshots). */
+  onKeepReviewHunk: (id: string, index: number) => Promise<void>
+  onRevertReviewHunk: (id: string, index: number) => Promise<void>
   comments: FileLineComment[]
   onAddComment: (comment: NewFileLineComment) => void
   onRemoveComment: (id: string) => void
@@ -206,6 +210,13 @@ export function ReviewFileCard(props: ReviewFileCardProps) {
                     Revert
                   </button>
                 </div>
+                <Show when={change().status === 'modified' && change().hunks.length > 1}>
+                  <ReviewHunkActions
+                    change={change()}
+                    onKeepHunk={(index) => props.onKeepReviewHunk(change().id, index)}
+                    onRevertHunk={(index) => props.onRevertReviewHunk(change().id, index)}
+                  />
+                </Show>
                 <AgentDiffRenderer
                   change={change()}
                   diffStyle={props.diffStyle}
