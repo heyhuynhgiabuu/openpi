@@ -149,10 +149,10 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
 
     if (role !== 'assistant') continue
     const usage = isRecord(message.usage) ? message.usage : {}
-    const inputTokens = numeric(usage.input) || numeric(usage.inputTokens)
-    const outputTokens = numeric(usage.output) || numeric(usage.outputTokens)
-    const cacheReadTokens = numeric(usage.cacheRead) || numeric(usage.cacheReadTokens)
-    const cacheWriteTokens = numeric(usage.cacheWrite) || numeric(usage.cacheWriteTokens)
+    const inputTokens = numeric(usage.input)
+    const outputTokens = numeric(usage.output)
+    const cacheReadTokens = numeric(usage.cacheRead)
+    const cacheWriteTokens = numeric(usage.cacheWrite)
     const totalTokens =
       inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens || usageTotalTokens(usage)
     const costValue = usage.cost

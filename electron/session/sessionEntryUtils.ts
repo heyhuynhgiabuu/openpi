@@ -30,10 +30,10 @@ export function numeric(value: unknown): number {
 export function usageTotalTokens(usage: Record<string, unknown>): number {
   return (
     numeric(usage.totalTokens) ||
-    (numeric(usage.input) || numeric(usage.inputTokens)) +
-      (numeric(usage.output) || numeric(usage.outputTokens)) +
-      (numeric(usage.cacheRead) || numeric(usage.cacheReadTokens)) +
-      (numeric(usage.cacheWrite) || numeric(usage.cacheWriteTokens))
+    numeric(usage.input) +
+      numeric(usage.output) +
+      numeric(usage.cacheRead) +
+      numeric(usage.cacheWrite)
   )
 }
 

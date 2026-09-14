@@ -290,10 +290,10 @@ export function usageTotals(entries: SessionEntry[]): UsageTotals {
       const message = entry.message as { role?: string; usage?: Record<string, unknown> }
       if (message.role !== 'assistant' || !message.usage) return totals
       const usage = message.usage
-      totals.inputTokens += numeric(usage.input) || numeric(usage.inputTokens)
-      totals.outputTokens += numeric(usage.output) || numeric(usage.outputTokens)
-      totals.cacheReadTokens += numeric(usage.cacheRead) || numeric(usage.cacheReadTokens)
-      totals.cacheWriteTokens += numeric(usage.cacheWrite) || numeric(usage.cacheWriteTokens)
+      totals.inputTokens += numeric(usage.input)
+      totals.outputTokens += numeric(usage.output)
+      totals.cacheReadTokens += numeric(usage.cacheRead)
+      totals.cacheWriteTokens += numeric(usage.cacheWrite)
       const cost = usage.cost as { total?: unknown } | number | undefined
       totals.cost += typeof cost === 'number' ? cost : numeric(cost?.total)
       return totals
