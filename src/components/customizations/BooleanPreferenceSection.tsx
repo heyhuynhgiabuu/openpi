@@ -1,23 +1,26 @@
 import { Check, RotateCcw } from 'lucide-solid'
 import { For, Show } from 'solid-js'
 
-interface BooleanPreferenceItem {
-  key: string
+interface BooleanPreferenceItem<Key extends string> {
+  key: Key
   label: string
   description: string
   defaultValue: boolean
 }
 
-interface BooleanPreferenceSectionProps {
+interface BooleanPreferenceSectionProps<Key extends string> {
   title: string
-  items: readonly BooleanPreferenceItem[]
-  values: Record<string, boolean>
+  items: readonly BooleanPreferenceItem<Key>[]
+  values: Record<Key, boolean>
   savedKey: string | null
-  onSave: (key: string, value: boolean) => void
-  onReset: (key: string) => void
+  onSave: (key: Key, value: boolean) => void
+  onReset: (key: Key) => void
 }
 
-export function BooleanPreferenceSection(props: BooleanPreferenceSectionProps) {
+/** Generic over the key so callers pass their own key union instead of casting. */
+export function BooleanPreferenceSection<Key extends string>(
+  props: BooleanPreferenceSectionProps<Key>
+) {
   return (
     <section class="osp-section">
       <div class="osp-section-head">{props.title}</div>

@@ -2,6 +2,7 @@ import { Check, ExternalLink, RotateCcw } from 'lucide-solid'
 import { For, Show } from 'solid-js'
 import type { PiUpdateCheckResult } from '../../lib/ipc'
 import { UPDATE_PREFERENCES } from '../../lib/updatePreferences'
+import type { UpdatePreferenceKey } from '../../lib/updatePreferences'
 
 interface UpdateSectionProps {
   updatePrefs: Record<string, boolean>
@@ -10,8 +11,8 @@ interface UpdateSectionProps {
   checkingUpdates: boolean
   installingUpdate: boolean
   installOutput: string | null
-  onToggle: (key: string, value: boolean) => void
-  onReset: (key: string) => void
+  onToggle: (key: UpdatePreferenceKey, value: boolean) => void
+  onReset: (key: UpdatePreferenceKey) => void
   onCheck: () => void
   onInstall: () => void
 }

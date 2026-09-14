@@ -1,11 +1,8 @@
 import { Show } from 'solid-js'
 import type { AppearancePreferences } from '../../lib/appearancePreferences'
-import { DISPLAY_PREFERENCES, type DisplayPreferenceKey } from '../../lib/displayPreferences'
-import {
-  NOTIFICATION_PREFERENCES,
-  type NotificationPreferenceKey,
-} from '../../lib/notificationPreferences'
-import type { UpdatePreferenceKey } from '../../lib/updatePreferences'
+import { DISPLAY_PREFERENCES } from '../../lib/displayPreferences'
+import { NOTIFICATION_PREFERENCES } from '../../lib/notificationPreferences'
+import { POLICY_PREFERENCES } from '../../lib/policyPreferences'
 import { AppearanceSection } from './AppearanceSection'
 import { BooleanPreferenceSection } from './BooleanPreferenceSection'
 import { DiagnosticsSection } from './DiagnosticsSection'
@@ -18,6 +15,7 @@ export function GeneralPane(props: GeneralPaneProps) {
   const {
     prefs,
     notificationPrefs,
+    policyPrefs,
     soundPrefs,
     updatePrefs,
     updateStatus,
@@ -35,6 +33,8 @@ export function GeneralPane(props: GeneralPaneProps) {
     resetValue,
     saveNotificationValue,
     resetNotificationValue,
+    savePolicyValue,
+    resetPolicyValue,
     saveSoundValue,
     resetSoundValue,
     previewSound,
@@ -72,8 +72,8 @@ export function GeneralPane(props: GeneralPaneProps) {
             items={NOTIFICATION_PREFERENCES}
             values={notificationPrefs()}
             savedKey={savedKey()}
-            onSave={(key, value) => saveNotificationValue(key as NotificationPreferenceKey, value)}
-            onReset={(key) => resetNotificationValue(key as NotificationPreferenceKey)}
+            onSave={saveNotificationValue}
+            onReset={resetNotificationValue}
           />
 
           <SoundSection
@@ -92,8 +92,17 @@ export function GeneralPane(props: GeneralPaneProps) {
             items={DISPLAY_PREFERENCES}
             values={prefs()}
             savedKey={savedKey()}
-            onSave={(key, value) => saveValue(key as DisplayPreferenceKey, value)}
-            onReset={(key) => resetValue(key as DisplayPreferenceKey)}
+            onSave={saveValue}
+            onReset={resetValue}
+          />
+
+          <BooleanPreferenceSection
+            title="Agent policy"
+            items={POLICY_PREFERENCES}
+            values={policyPrefs()}
+            savedKey={savedKey()}
+            onSave={savePolicyValue}
+            onReset={resetPolicyValue}
           />
 
           <DiagnosticsSection
@@ -110,10 +119,8 @@ export function GeneralPane(props: GeneralPaneProps) {
             checkingUpdates={checkingUpdates()}
             installingUpdate={installingUpdate()}
             installOutput={installOutput()}
-            onToggle={(key: string, value: boolean) =>
-              saveUpdateValue(key as UpdatePreferenceKey, value)
-            }
-            onReset={(key: string) => resetUpdateValue(key as UpdatePreferenceKey)}
+            onToggle={saveUpdateValue}
+            onReset={resetUpdateValue}
             onCheck={checkForUpdates}
             onInstall={installUpdate}
           />

@@ -14,7 +14,6 @@ import {
   loadNotificationPreferences,
   NOTIFICATION_PREFERENCES,
   type NotificationPreferenceKey,
-  type NotificationPreferences,
 } from '../../lib/notificationPreferences'
 import {
   DEFAULT_SOUND_PREFERENCES,
@@ -31,12 +30,20 @@ import {
   type UpdatePreferenceKey,
   type UpdatePreferences,
 } from '../../lib/updatePreferences'
+import {
+  DEFAULT_POLICY_PREFERENCES,
+  loadPolicyPreferences,
+  POLICY_PREFERENCES,
+  type PolicyPreferenceKey,
+} from '../../lib/policyPreferences'
 import type { GeneralPaneProps } from './generalPaneTypes'
 import { useAppearancePrefs } from './useAppearancePrefs'
+import { useBooleanPrefs } from './useBooleanPrefs'
 
 type SavedKey =
   | DisplayPreferenceKey
   | NotificationPreferenceKey
+  | PolicyPreferenceKey
   | SoundPreferenceKey
   | UpdatePreferenceKey
   | keyof AppearancePreferences
@@ -46,12 +53,6 @@ type SavedKey =
   | 'installPiUpdate'
 
 export function useGeneralPaneState(props: GeneralPaneProps) {
-  const [prefs, setPrefs] = createSignal<DisplayPreferences>({
-    ...DEFAULT_DISPLAY_PREFERENCES,
-  })
-  const [notificationPrefs, setNotificationPrefs] = createSignal<NotificationPreferences>({
-    ...DEFAULT_NOTIFICATION_PREFERENCES,
-  })
   const [soundPrefs, setSoundPrefs] = createSignal<SoundPreferences>({
     ...DEFAULT_SOUND_PREFERENCES,
   })
@@ -71,17 +72,12 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
 
   onMount(() => {
     void Promise.all([
-      loadDisplayPreferences(),
-      loadNotificationPreferences(),
-      loadSoundPreferences(),
-      loadUpdatePreferences(),
+      display.load(),
+      notification.load(),
+      policy.load(),
+      loadSoundPreferences().then(setSoundPrefs),
+      loadUpdatePreferences().then(setUpdatePrefs),
     ])
-      .then(([displayPrefs, notificationPreferences, soundPreferences, updatePreferences]) => {
-        setPrefs(displayPrefs)
-        setNotificationPrefs(notificationPreferences)
-        setSoundPrefs(soundPreferences)
-        setUpdatePrefs(updatePreferences)
-      })
       .catch((err) => props.onError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false))
   })
@@ -113,6 +109,22 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
     savedTimer = setTimeout(() => setSavedKey(null), 1800)
   }
 
+  const notification = useBooleanPrefs({
+    metas: NOTIFICATION_PREFERENCES,
+    defaults: DEFAULT_NOTIFICATION_PREFERENCES,
+    load: loadNotificationPreferences,
+    markSaved,
+    onError: props.onError,
+  })
+
+  const policy = useBooleanPrefs({
+    metas: POLICY_PREFERENCES,
+    defaults: DEFAULT_POLICY_PREFERENCES,
+    load: loadPolicyPreferences,
+    markSaved,
+    onError: props.onError,
+  })
+
   const { appearanceRows, saveAppearance, resetAppearance } = useAppearancePrefs({
     onError: props.onError,
     markSaved,
@@ -122,45 +134,14 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
     window.dispatchEvent(new CustomEvent(DISPLAY_PREFERENCES_CHANGED_EVENT, { detail: next }))
   }
 
-  const saveValue = (key: DisplayPreferenceKey, value: boolean) => {
-    const meta = DISPLAY_PREFERENCES.find((item) => item.key === key)
-    if (!meta) return
-
-    setPrefs((prev) => {
-      const next = { ...prev, [key]: value }
-      announceDisplayChange(next)
-      return next
-    })
-
-    void window.openpi
-      .setPref(meta.storageKey, String(value))
-      .then(() => markSaved(key))
-      .catch((err) => props.onError(err instanceof Error ? err.message : String(err)))
-  }
-
-  const resetValue = (key: DisplayPreferenceKey) => {
-    const meta = DISPLAY_PREFERENCES.find((item) => item.key === key)
-    if (!meta) return
-    saveValue(key, meta.defaultValue)
-  }
-
-  const saveNotificationValue = (key: NotificationPreferenceKey, value: boolean) => {
-    const meta = NOTIFICATION_PREFERENCES.find((item) => item.key === key)
-    if (!meta) return
-
-    setNotificationPrefs((prev) => ({ ...prev, [key]: value }))
-
-    void window.openpi
-      .setPref(meta.storageKey, String(value))
-      .then(() => markSaved(key))
-      .catch((err) => props.onError(err instanceof Error ? err.message : String(err)))
-  }
-
-  const resetNotificationValue = (key: NotificationPreferenceKey) => {
-    const meta = NOTIFICATION_PREFERENCES.find((item) => item.key === key)
-    if (!meta) return
-    saveNotificationValue(key, meta.defaultValue)
-  }
+  const display = useBooleanPrefs({
+    metas: DISPLAY_PREFERENCES,
+    defaults: DEFAULT_DISPLAY_PREFERENCES,
+    load: loadDisplayPreferences,
+    markSaved,
+    onError: props.onError,
+    onChange: announceDisplayChange,
+  })
 
   const saveSoundValue = (key: SoundPreferenceKey, value: SoundEffectId) => {
     const meta = SOUND_PREFERENCES.find((item) => item.key === key)
@@ -278,8 +259,9 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
   }
 
   return {
-    prefs,
-    notificationPrefs,
+    prefs: display.values,
+    notificationPrefs: notification.values,
+    policyPrefs: policy.values,
     soundPrefs,
     updatePrefs,
     updateStatus,
@@ -293,10 +275,12 @@ export function useGeneralPaneState(props: GeneralPaneProps) {
     savedKey,
     loading,
     closeSoundMenu,
-    saveValue,
-    resetValue,
-    saveNotificationValue,
-    resetNotificationValue,
+    saveValue: display.save,
+    resetValue: display.reset,
+    saveNotificationValue: notification.save,
+    resetNotificationValue: notification.reset,
+    savePolicyValue: policy.save,
+    resetPolicyValue: policy.reset,
     saveSoundValue,
     resetSoundValue,
     previewSound,

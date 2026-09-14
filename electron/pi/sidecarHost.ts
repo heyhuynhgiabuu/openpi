@@ -119,6 +119,7 @@ export class PiSidecarHost {
   private child: SidecarProcess | null = null
   private readonly onMessage: (msg: SidecarMessage) => void
   private readonly onCrash: () => void
+  private readonly getPolicyEnv: () => Record<string, string>
   private readonly pendingRequests = new Map<string, PendingRequest>()
   private restartCount = 0
   private stopping = false
@@ -126,9 +127,15 @@ export class PiSidecarHost {
   private _stdoutBuf = ''
   private _stderrBuf = ''
 
-  constructor(opts: { onMessage: (msg: SidecarMessage) => void; onCrash: () => void }) {
+  constructor(opts: {
+    onMessage: (msg: SidecarMessage) => void
+    onCrash: () => void
+    /** Policy environment, read once per spawn. */
+    getPolicyEnv?: () => Record<string, string>
+  }) {
     this.onMessage = opts.onMessage
     this.onCrash = opts.onCrash
+    this.getPolicyEnv = opts.getPolicyEnv ?? (() => ({}))
   }
 
   /** PID of the sidecar child process, or undefined before spawn. */
@@ -144,8 +151,13 @@ export class PiSidecarHost {
 
   private spawnChild(): void {
     const nodeExecutable = findNodeExecutable()
-    // Let the openpi-bridge extension identify itself as OpenPi
-    const bridgeEnv = { ...process.env, OPENPI_BRIDGE_APP: 'openpi' }
+    // Let the openpi-bridge extension identify itself as OpenPi, and hand the
+    // extensions the app-level policy the user enabled.
+    const bridgeEnv = {
+      ...process.env,
+      OPENPI_BRIDGE_APP: 'openpi',
+      ...this.getPolicyEnv(),
+    }
     const child: SidecarProcess = nodeExecutable
       ? fork(SIDECAR_PATH, [], {
           execPath: nodeExecutable,

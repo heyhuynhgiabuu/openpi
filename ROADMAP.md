@@ -480,7 +480,7 @@ Build notes:
 
 Acceptance criteria:
 - `npm test` green for IPC, session index, PTY, permission gates (expand suites as needed).
-- Agent tool edits can be reviewed in the unified Review tab as Last turn changes with safe snapshot-backed Keep/Revert/Revert all (P0 MVP shipped); diff line comments preserve selected file snippets as structured prompt context; hunk-level review remains future polish. Pre-apply review ships as the opt-in `.pi/extensions/openpi-preapply-review/` gate: Pi's `tool_call` hook previews `edit`/`write` and blocks the write when the user denies, and inside OpenPi an `edit` call opens a hunk review where unselected entries are dropped before Pi's tool runs.
+- Agent tool edits can be reviewed in the unified Review tab as Last turn changes with safe snapshot-backed Keep/Revert/Revert all (P0 MVP shipped); diff line comments preserve selected file snippets as structured prompt context; hunk-level review remains future polish. Pre-apply review ships as the opt-in `.pi/extensions/openpi-preapply-review/` gate (Settings → General → Agent policy): Pi's `tool_call` hook previews `edit`/`write` and blocks the write when the user denies, and inside OpenPi an `edit` call opens a hunk review where unselected entries are dropped before Pi's tool runs.
 - Turn-level token/cost visible while streaming (P0).
 - Session tree navigable with fork actions (P1).
 - No new features justified only by external “Codex replacement” or Kun stacks.

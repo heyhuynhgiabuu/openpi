@@ -1,8 +1,10 @@
 import type { BrowserWindow } from 'electron'
 import { IPC, type OutputLine, type SessionReady } from '../../src/lib/ipc'
+import { readPolicyPreferences } from '../../src/lib/policyPreferences'
 import { removeWorktree } from '../git/worktree'
 import type { SidecarMessage } from '../pi/sidecar'
 import { PiSidecarHost } from '../pi/sidecarHost'
+import { sidecarPolicyEnv } from '../pi/sidecarPolicyEnv'
 import { emitSessionError } from '../services/notificationHost'
 import type { SessionIndexStore } from './sessionIndex'
 import { threadCwdRegistry } from './threadCwd'
@@ -109,6 +111,8 @@ export function ensurePiSidecarStarted(): PiSidecarHost {
     _piSidecarHost = new PiSidecarHost({
       onMessage: (msg) => _onSidecarMessage?.(msg),
       onCrash: () => emitSessionError('Pi sidecar crashed repeatedly.', 'pi_sidecar_crashed'),
+      getPolicyEnv: () =>
+        sidecarPolicyEnv(readPolicyPreferences((key) => _sessionIndex?.getPref(key) ?? null)),
     })
     _piSidecarHost.start()
   }
