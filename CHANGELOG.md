@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-09-14
+
+Pre-apply review lands: Pi asks before it writes a file, and OpenPi lets you choose which parts of an edit to keep.
+
+### Added
+
+- **Pre-apply review** — an opt-in gate that stops Pi's `edit`/`write` before the write lands. Turn it on in **Settings → General → Agent policy** (or `OPENPI_PREAPPLY_REVIEW=1`) and restart OpenPi; Pi then reports the refusal back to the model instead of failing silently. (`a0bfece`)
+- **Hunk review** — inside OpenPi an `edit` opens a review modal with one checkbox per hunk. Unselected entries are dropped from the tool call, so Pi's own tool applies exactly what you kept, and its result diff tells the model what was skipped. (`eee936b`)
+- **Skip the rest of the turn** — a checkbox in the review stops further prompts until the turn ends, so a multi-file refactor does not become ten modals. (`f268d26`)
+- **Task cards** — clicking a `task` row expands phase, tool-call count, duration, and a result preview, with a separate **Open sub-session** action; a running background task can be cancelled from its card. (`bdb0ff9`, `0c782e4`)
+
+### Fixed
+
+- **Edits never reached the review** — the gate read a top-level `oldText`/`newText` that Pi's `edit` does not send; the tool takes `edits[]`. The gate silently did nothing for edits and only worked for `write`. (`fbe4c17`)
+- **An unanswered review failed silently** — after Pi's two-minute dialog default the change was denied while the modal stayed on screen, so clicking Apply did nothing. The review now waits ten minutes, closes when its prompt ends, and reports an unanswered review instead of letting the edit vanish. (`f268d26`)
+- **Denying was treated as not answering** — "Deny all" now tells the model the change was refused, and no longer raises an unanswered-review warning. (`c0bbe32`)
+- **An unreadable file was called new** — a binary or oversized file that review cannot read was previewed as `create` with no diff, i.e. a blind overwrite; it now reads `overwrite · current content not previewable`. (`2a32e44`)
+
+### Changed
+
+- Boolean settings in the General pane share one implementation, and the section component is generic over its key union, which removed six type assertions. (`8e05624`)
+- `ctx.ui` prompt session events now carry the request id and are declared in the session event schema instead of relying on the open extension branch. (`f268d26`)
+
+### Docs
+
+- `STATUS.md` and `ROADMAP.md` record the pre-apply review decision, how to enable it, and what stays ungated.
+
+### Beta caveats
+
+- Pre-apply review covers Pi's `edit` and `write` tools; `bash` can still write files unreviewed.
+- Per-hunk selection applies to `edit`. `write` is whole-file allow/deny, because a rewrite has no hunk to drop.
+- The Settings toggle is read when the Pi sidecar starts, so it takes effect after restarting OpenPi.
+- The review has no end-to-end test against a live model yet; it is covered per seam (Pi extension loader, sidecar bridge, IPC, component).
+
 ## [0.2.10] - 2026-09-14
 
 ### Added
