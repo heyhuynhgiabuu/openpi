@@ -5,6 +5,9 @@ describe('sidecar wire contracts', () => {
   it('rejects malformed known commands', () => {
     expect(sidecarCommandSchema.safeParse({ type: 'start_session', cwd: '' }).success).toBe(false)
     expect(sidecarCommandSchema.safeParse({ type: 'get_stats' }).success).toBe(false)
+    expect(
+      sidecarCommandSchema.safeParse({ type: 'navigate_tree', requestId: 'request-4' }).success
+    ).toBe(false)
     expect(sidecarCommandSchema.safeParse({ type: 'stop', unexpected: true }).success).toBe(false)
   })
 
@@ -26,6 +29,20 @@ describe('sidecar wire contracts', () => {
     ).toBe(true)
     expect(
       sidecarMessageSchema.safeParse({ type: 'compact_result', requestId: 'request-3' }).success
+    ).toBe(true)
+    expect(
+      sidecarCommandSchema.safeParse({
+        type: 'navigate_tree',
+        requestId: 'request-4',
+        entryId: 'entry-42',
+      }).success
+    ).toBe(true)
+    expect(
+      sidecarMessageSchema.safeParse({
+        type: 'navigate_tree_result',
+        requestId: 'request-4',
+        result: { cancelled: false, leafId: 'entry-42' },
+      }).success
     ).toBe(true)
   })
 
