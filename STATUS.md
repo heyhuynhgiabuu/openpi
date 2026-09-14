@@ -33,10 +33,10 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ## Open review follow-ups
 
-- Review snapshots resolve paths once, at `tool_execution_start`; `captureToolEnd` re-reads the stored path, so a file swapped for a symlink between the two events could still put outside content into the review diff (display only — reverts re-resolve).
-- The pre-apply gate's turn-scoped skip is module state in the long-lived sidecar. The normal replacement path ends the turn, which clears it; clearing on session start as well would close the residual case.
+- Review reads a path, not a file descriptor, so a swap that lands after the resolver runs can still put outside content into a review diff. Display only — reverts re-resolve and refuse — and both `captureToolStart` and `captureToolEnd` have the window; closing it means reading through `readWorkspaceBytes`-style `O_NOFOLLOW` plus a dev/ino check.
 - The gate ignores the tool-call signal while a modal is open, so an aborted run leaves the modal until it is answered or the ten-minute timeout expires. The write is never applied either way.
 - `readWorkspaceBytes`'s dev/ino branch (a file replaced between open and check) has no test; it needs fs injection to be deterministic.
+- The loader test pins which handlers the gate registers, not what they do: a no-op `session_start` handler would still pass it.
 
 ## Known constraints
 

@@ -2,7 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The review snapshot's second read re-resolves the path before reading it, so a file swapped for a symlink between a tool's start and end events cannot put outside content into the review diff. (`7a8e49b`)
+- The pre-apply gate's turn-scoped "skip review" is cleared when a session starts, so a new, resumed, forked, or reloaded session cannot inherit it. (`1609ae3`)
+- Two workspace-path tests assumed POSIX `O_NOFOLLOW` semantics and failed the Windows release job, which is why v0.2.12 was tagged but never published. They now assert the refusal without pinning the errno, and keep asserting that the file outside the workspace is untouched. (`1816210`)
+
+### Changed
+
+- CI runs the test suite on Windows, so a POSIX-only assumption fails before a tag is pushed instead of after. (`1816210`)
+
 ## [0.2.12] - 2026-09-14
+
+_Not published: the Windows release job failed on two test assertions that assumed POSIX `O_NOFOLLOW`. The fixes ship in 0.2.13._
 
 Fixes for the pre-apply review gate and the review workspace boundary, found by new tests and an independent audit of the 0.2.11 code.
 
