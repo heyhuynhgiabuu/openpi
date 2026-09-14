@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import type { EditToolInput, WriteToolInput } from '@earendil-works/pi-coding-agent'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   confirmMessage,
@@ -41,7 +42,13 @@ describe('pre-apply review gate', () => {
 })
 
 describe('tool_call handling', () => {
-  const editCall = { toolName: 'edit', input: { path: 'a.ts', oldText: 'x\n', newText: 'y\n' } }
+  // Typed with Pi's own tool input types so a schema change fails typecheck
+  // instead of silently skipping the gate.
+  const editInput: EditToolInput = {
+    path: 'a.ts',
+    edits: [{ oldText: 'x\n', newText: 'y\n' }],
+  }
+  const editCall = { toolName: 'edit', input: editInput }
 
   it('blocks the tool when the user denies, and stays out of the way when they allow', async () => {
     const seen: string[] = []
@@ -99,15 +106,13 @@ describe('diffRegion', () => {
 })
 
 describe('previews', () => {
-  it('describes an edit as the block it replaces', () => {
-    const preview = previewForEdit(
-      {
-        path: 'src/App.tsx',
-        oldText: 'const a = 1\nconst b = 2',
-        newText: 'const a = 1\nconst b = 3',
-      },
-      cwd
-    )
+  it('describes an edit as the blocks it replaces', () => {
+    const input: EditToolInput = {
+      path: 'src/App.tsx',
+      edits: [{ oldText: 'const a = 1\nconst b = 2', newText: 'const a = 1\nconst b = 3' }],
+    }
+
+    const preview = previewForEdit(input, cwd)
 
     expect(preview).not.toBeNull()
     expect(preview?.path).toBe('src/App.tsx')
@@ -116,14 +121,35 @@ describe('previews', () => {
     expect(preview?.created).toBe(false)
   })
 
+  it('previews every edit of a multi-edit call', () => {
+    const input: EditToolInput = {
+      path: 'src/App.tsx',
+      edits: [
+        { oldText: 'one\n', newText: 'ONE\n' },
+        { oldText: 'two\n', newText: 'TWO\n' },
+      ],
+    }
+
+    const preview = previewForEdit(input, cwd)
+
+    expect(preview?.summary).toBe('edit · -2 lines / +2 lines · 2 hunks')
+    expect(preview?.body).toBe('-one\n+ONE\n\n-two\n+TWO')
+  })
+
   it('marks a new file as a creation and an unchanged write as no change', () => {
-    const created = previewForWrite({ path: 'docs/new.md', content: 'hello\n' }, cwd)
+    const created = previewForWrite(
+      { path: 'docs/new.md', content: 'hello\n' } satisfies WriteToolInput,
+      cwd
+    )
     expect(created?.created).toBe(true)
     expect(created?.summary).toBe('create · 1 line')
     expect(created?.body).toBe('+hello')
 
     writeFile('docs/old.md', 'same\n')
-    const unchanged = previewForWrite({ path: 'docs/old.md', content: 'same\n' }, cwd)
+    const unchanged = previewForWrite(
+      { path: 'docs/old.md', content: 'same\n' } satisfies WriteToolInput,
+      cwd
+    )
     expect(unchanged?.summary).toBe('no change')
     expect(unchanged?.body).toBe('')
   })
@@ -131,7 +157,10 @@ describe('previews', () => {
   it('diffs a rewrite against the file on disk', () => {
     writeFile('src/a.ts', 'keep\nold\n')
 
-    const preview = previewForWrite({ path: 'src/a.ts', content: 'keep\nnew\n' }, cwd)
+    const preview = previewForWrite(
+      { path: 'src/a.ts', content: 'keep\nnew\n' } satisfies WriteToolInput,
+      cwd
+    )
 
     expect(preview?.summary).toBe('write · 2 lines → 2 lines')
     expect(preview?.body).toBe('-old\n+new')

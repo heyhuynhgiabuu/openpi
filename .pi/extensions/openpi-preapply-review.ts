@@ -11,10 +11,10 @@
  * user answers. Enable it per session with OPENPI_PREAPPLY_REVIEW=1 in the
  * environment OpenPi (and therefore the sidecar) is started with.
  *
- * Scope: Pi's built-in `edit` and `write` tools. `edit` replaces one contiguous
- * block, so its preview is that block; `write` is compared against the file on
- * disk. A preview trims the unchanged prefix and suffix, so it shows the changed
- * region instead of the whole file.
+ * Scope: Pi's built-in `edit` and `write` tools. `edit` carries `edits[]`, each
+ * replacing one contiguous block, so every entry becomes a hunk of the preview;
+ * `write` is compared against the file on disk. A preview trims the unchanged
+ * prefix and suffix, so it shows the changed region instead of the whole file.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
@@ -113,22 +113,37 @@ function countLines(text: string): number {
   return text.endsWith('\n') ? segments.length - 1 : segments.length
 }
 
-/** Preview for Pi's `edit` tool: the replacement block is the change. */
+/**
+ * Preview for Pi's `edit` tool. One call carries `edits[]`, and each entry
+ * replaces one contiguous block, so each entry is a hunk. An `edit` with no
+ * usable entry would fail in the tool itself, which is why the gate stays out
+ * of the way instead of asking about it.
+ */
 export function previewForEdit(
   input: Record<string, unknown>,
   cwd: string
 ): PreApplyPreview | null {
-  const path = str(input.path) ?? str(input.file_path)
-  const oldText = str(input.oldText)
-  const newText = str(input.newText)
-  if (!path || oldText === null || newText === null) return null
+  const path = str(input.path)
+  const edits = Array.isArray(input.edits) ? input.edits : []
+  if (!path || edits.length === 0) return null
 
-  const removed = countLines(oldText)
-  const added = countLines(newText)
+  const hunks: string[] = []
+  let removed = 0
+  let added = 0
+  for (const entry of edits) {
+    const oldText = str(asRecord(entry).oldText)
+    const newText = str(asRecord(entry).newText)
+    if (oldText === null || newText === null) return null
+    removed += countLines(oldText)
+    added += countLines(newText)
+    hunks.push(diffRegion(oldText, newText))
+  }
+
+  const count = edits.length > 1 ? ` · ${edits.length} hunks` : ''
   return {
     path: displayPath(cwd, path),
-    summary: `edit · -${lineLabel(removed)} / +${lineLabel(added)}`,
-    body: diffRegion(oldText, newText),
+    summary: `edit · -${lineLabel(removed)} / +${lineLabel(added)}${count}`,
+    body: hunks.join('\n\n'),
     created: false,
   }
 }
@@ -138,8 +153,8 @@ export function previewForWrite(
   input: Record<string, unknown>,
   cwd: string
 ): PreApplyPreview | null {
-  const path = str(input.path) ?? str(input.file_path)
-  const content = typeof input.content === 'string' ? input.content : null
+  const path = str(input.path)
+  const content = str(input.content)
   if (!path || content === null) return null
 
   const absolute = isAbsolute(path) ? path : resolve(cwd, path)
