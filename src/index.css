@@ -15275,44 +15275,22 @@ body.panel-dragging {
 }
 
 /* TaskToolRow — single-line task delegation (flush, matches .tool-ran-header chrome) */
+/* Task cards reuse the generic tool-row header (layout, hover, chevron); only
+   the task-specific typography, status colors and detail panel live here. */
 .tool-row.task-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  width: fit-content;
-  max-width: 100%;
   margin: 4px 0 0;
-  padding: 3px 0;
-  border: none;
-  background: transparent;
-  border-radius: var(--r-sm);
+}
+
+.tool-row.task-tool .tool-ran-header {
   font-family: var(--font-sans);
-  font-size: 12.5px;
-  color: var(--graphite);
-  cursor: default;
-  transition: color 120ms ease;
 }
 
-.tool-row.task-tool:not(:disabled) {
-  cursor: pointer;
-}
-
-.tool-row.task-tool:not(:disabled):hover {
+.tool-row.task-tool[data-status="pending"] .tool-ran-header {
   color: var(--ink);
 }
 
-.tool-row.task-tool:not(:disabled):hover .tool-chevron {
-  opacity: 1;
-  transform: translateX(1px);
-}
-
-.tool-row.task-tool[data-status="pending"] {
-  color: var(--ink);
-}
-
-.tool-row.task-tool[data-status="failed"],
-.tool-row.task-tool.is-error {
+.tool-row.task-tool[data-status="failed"] .tool-ran-header,
+.tool-row.task-tool.is-error .tool-ran-header {
   color: var(--danger, #f87171);
 }
 
@@ -15364,15 +15342,39 @@ body.panel-dragging {
 }
 
 .tool-row.task-tool .tool-chevron {
-  font-size: 16px;
-  line-height: 1;
-  color: var(--graphite);
-  opacity: 0;
-  flex: 0 0 auto;
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
   margin-left: 2px;
+}
+
+.task-tool-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline, #2a2a38);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bg-hover, #1d1d28) 60%, transparent);
+}
+
+.task-tool-facts {
+  color: var(--graphite);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-tool-open {
+  padding: 3px 9px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.task-tool-open:hover {
+  background: var(--bg-hover, #23232f);
 }
 
 

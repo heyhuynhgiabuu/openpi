@@ -1,6 +1,7 @@
-import { type Component, createMemo, Show } from 'solid-js'
+import { type Component, createMemo, createSignal, Show } from 'solid-js'
 import { labelForTool } from '../../lib/sessionView'
 import {
+  formatTaskDurationMs,
   isBackgroundHandoff,
   isValidPiTaskId,
   parseTaskDetails,
@@ -16,7 +17,11 @@ type TaskToolRowProps = {
   resolveTaskStatus?: (taskId: string) => string | null
 }
 
+/** Result text shown inline; the sub-session holds the full transcript. */
+const RESULT_PREVIEW_CHARS = 4000
+
 export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
+  const [open, setOpen] = createSignal(false)
   const details = (): TaskToolDetails => parseTaskDetails(props.card.args, props.card.details)
 
   const taskId = createMemo<string | null>(() => {
@@ -65,47 +70,80 @@ export const TaskToolRow: Component<TaskToolRowProps> = (props) => {
 
   const canNavigate = () => Boolean(taskId() && props.onOpenSubSession)
 
-  const handleClick = () => {
-    if (canNavigate()) {
-      props.onOpenSubSession?.(taskId())
+  /** Everything the tool call reported about the run, minus the result text. */
+  const facts = createMemo(() => {
+    const d = details()
+    const out: string[] = []
+    if (d.phase) out.push(`phase ${d.phase}`)
+    out.push(d.background ? 'background' : 'foreground')
+    // parseTaskDetails already narrowed these to number | undefined.
+    if (d.tool_uses !== undefined) {
+      out.push(`${d.tool_uses} tool ${d.tool_uses === 1 ? 'call' : 'calls'}`)
     }
-  }
+    if (d.duration_ms !== undefined) out.push(formatTaskDurationMs(d.duration_ms))
+    if (d.conversation_id) out.push(`conversation ${d.conversation_id}`)
+    if (d.tmux_session) out.push(`tmux ${d.tmux_session}`)
+    return out
+  })
 
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      handleClick()
-    }
-  }
+  const result = () => props.card.output?.trim() ?? ''
+  const resultPreview = () =>
+    result().length > RESULT_PREVIEW_CHARS
+      ? `${result().slice(0, RESULT_PREVIEW_CHARS)}…`
+      : result()
 
   return (
-    <button
-      type="button"
+    <div
       class={`tool-row task-tool${props.card.isError ? ' is-error' : ''}`}
       data-component="task-tool"
       data-status={status()}
-      disabled={!canNavigate()}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
     >
-      <Show when={progressStatus()}>{(mode) => <SessionProgressDot status={mode()} />}</Show>
-      <span class="tool-row-title">
-        Task · {details().agent_type ?? 'agent'} · {title()}
-      </span>
-      <Show when={handoff()}>
-        <span class="tool-row-meta">background</span>
-      </Show>
-      <Show when={taskId()}>
-        <span class="tool-row-meta">id: {taskId()}</span>
-      </Show>
-      <span class="tool-row-status" data-status={status()}>
-        {statusLabel()}
-      </span>
-      <Show when={canNavigate()}>
-        <span class="tool-chevron" aria-hidden="true">
-          ›
+      <button
+        type="button"
+        class="tool-ran-header"
+        aria-expanded={open()}
+        title={open() ? 'Hide task details' : 'Show task details'}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Show when={progressStatus()}>{(mode) => <SessionProgressDot status={mode()} />}</Show>
+        <span class="tool-row-title">
+          Task · {details().agent_type ?? 'agent'} · {title()}
         </span>
+        <Show when={handoff()}>
+          <span class="tool-row-meta">background</span>
+        </Show>
+        <Show when={taskId()}>
+          <span class="tool-row-meta">id: {taskId()}</span>
+        </Show>
+        <span class="tool-row-status" data-status={status()}>
+          {statusLabel()}
+        </span>
+        <span class="tool-chevron" data-open={open()} aria-hidden="true">
+          {open() ? '⌄' : '›'}
+        </span>
+      </button>
+
+      <Show when={open()}>
+        <div class="tool-output-connector">
+          <div class="task-tool-panel">
+            <div class="task-tool-facts">{facts().join(' · ')}</div>
+            <Show when={canNavigate()}>
+              <button
+                type="button"
+                class="task-tool-open"
+                onClick={() => props.onOpenSubSession?.(taskId())}
+              >
+                Open sub-session ›
+              </button>
+            </Show>
+            <Show when={result()}>
+              <div class={`tool-ran-output${props.card.isError ? ' is-error' : ''}`}>
+                <pre>{resultPreview()}</pre>
+              </div>
+            </Show>
+          </div>
+        </div>
       </Show>
-    </button>
+    </div>
   )
 }
