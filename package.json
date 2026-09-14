@@ -18,7 +18,7 @@
     "lint:fix": "oxlint --fix && oxfmt .",
     "format": "oxfmt .",
     "typecheck": "tsc --noEmit && npm run typecheck:extensions",
-    "typecheck:extensions": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --types node .pi/extensions/openpi-task-guard.ts .pi/extensions/openpi-bridge.ts",
+    "typecheck:extensions": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --types node .pi/extensions/openpi-task-guard.ts .pi/extensions/openpi-bridge.ts .pi/extensions/openpi-preapply-review.ts",
     "test": "vitest run",
     "smoke:electron": "npm run build && node scripts/smoke-electron.mjs",
     "test:e2e": "npm run build && playwright test",
