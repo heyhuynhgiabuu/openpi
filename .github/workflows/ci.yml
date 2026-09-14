@@ -36,6 +36,28 @@ jobs:
       - name: Test
         run: npm test -- --reporter=verbose
 
+  test-windows:
+    name: Test (Windows)
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The release workflow runs the suite on Windows, so a POSIX-only
+      # assumption has to fail here instead of after a tag is pushed.
+      - name: Test
+        run: npm test
+
   build:
     name: Build (${{ matrix.os }})
     needs: verify

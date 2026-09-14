@@ -84,7 +84,10 @@ describe('readWorkspaceBytes', () => {
   })
 
   it('refuses to follow a symlinked file', () => {
-    expect(() => readWorkspaceBytes(path.join(ws, 'file-link.txt'), ws)).toThrow(/ELOOP/)
+    // POSIX raises ELOOP from O_NOFOLLOW; Windows has no O_NOFOLLOW and the
+    // not-a-file check refuses instead. Both must refuse, so neither errno nor
+    // message is pinned beyond that.
+    expect(() => readWorkspaceBytes(path.join(ws, 'file-link.txt'), ws)).toThrow(/ELOOP|not a file/)
   })
 
   it('refuses a directory', () => {
@@ -107,7 +110,11 @@ describe('writeWorkspaceBytes', () => {
   })
 
   it('refuses to write through a symlink', () => {
-    expect(() => writeWorkspaceFile(path.join(ws, 'file-link.txt'), 'x', ws)).toThrow(/ELOOP/)
+    // The refusal is checked before the truncate, so the target stays intact on
+    // every platform — that is the property worth pinning, not the errno.
+    expect(() => writeWorkspaceFile(path.join(ws, 'file-link.txt'), 'x', ws)).toThrow(
+      /ELOOP|not a file/
+    )
     expect(fs.readFileSync(path.join(outside, 'secret.txt'), 'utf-8')).toBe('secret')
   })
 })
