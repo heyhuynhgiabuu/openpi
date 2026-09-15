@@ -63,19 +63,6 @@ export function splitRawPatch(raw: string): string[] {
 }
 
 /**
- * Count addition/deletion lines in a hunk patch.
- */
-export function countHunkLines(patch: string): { adds: number; dels: number } {
-  let adds = 0
-  let dels = 0
-  for (const line of patch.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) adds++
-    else if (line.startsWith('-') && !line.startsWith('---')) dels++
-  }
-  return { adds, dels }
-}
-
-/**
  * Extract the @@ header line from a hunk patch for display.
  */
 export function hunkHeading(patch: string): string {

@@ -14,7 +14,7 @@ import type {
   GitStatusResult,
   WorkspaceSummaryInfo,
 } from '../../src/lib/ipc'
-import { countContentLines, countDiffLines } from './gitDiffCount'
+import { countContentLines, countDiffLines } from '../../src/lib/diffCount'
 import { withGitLock } from './gitLock'
 
 // ─── Internal helpers ──────────────────────────────────────────────────────

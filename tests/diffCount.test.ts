@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countContentLines, countDiffLines } from '../electron/git/gitDiffCount'
+import { countContentLines, countDiffLines } from '../src/lib/diffCount'
 
 describe('countContentLines', () => {
   it('counts a file without a trailing newline', () => {
@@ -191,5 +191,40 @@ describe('countDiffLines hunk state', () => {
     ].join('\n')
 
     expect(countDiffLines(combined)).toEqual({ added: 0, removed: 0 })
+  })
+})
+
+describe('countDiffLines on a hunk fragment', () => {
+  it('counts additions and deletions correctly', () => {
+    const patch = `@@ -1,3 +1,4 @@
+ function bar() {
+-  return 1
++  return 2
++  // new comment
+ }`
+    const result = countDiffLines(patch)
+    expect(result.added).toBe(2)
+    expect(result.removed).toBe(1)
+  })
+
+  it('ignores +++ and --- header lines', () => {
+    const patch = `--- a/foo.ts
++++ b/foo.ts
+@@ -1,2 +1,2 @@
+-old line
++new line`
+    const result = countDiffLines(patch)
+    expect(result.added).toBe(1)
+    expect(result.removed).toBe(1)
+  })
+
+  it('returns zeros for context-only patch', () => {
+    const patch = `@@ -1,3 +1,3 @@
+ context line 1
+ context line 2
+ context line 3`
+    const result = countDiffLines(patch)
+    expect(result.added).toBe(0)
+    expect(result.removed).toBe(0)
   })
 })

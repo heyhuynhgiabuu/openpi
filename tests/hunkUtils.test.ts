@@ -1,10 +1,6 @@
+import { countDiffLines } from '../src/lib/diffCount'
 import { describe, expect, it } from 'vitest'
-import {
-  countHunkLines,
-  extractFileHeader,
-  hunkHeading,
-  splitRawPatch,
-} from '../src/components/git/hunkUtils'
+import { extractFileHeader, hunkHeading, splitRawPatch } from '../src/components/git/hunkUtils'
 
 // A realistic multi-hunk unified diff for testing
 const MULTI_HUNK_DIFF = `diff --git a/src/foo.ts b/src/foo.ts
@@ -121,41 +117,6 @@ describe('splitRawPatch', () => {
   })
 })
 
-describe('countHunkLines', () => {
-  it('counts additions and deletions correctly', () => {
-    const patch = `@@ -1,3 +1,4 @@
- function bar() {
--  return 1
-+  return 2
-+  // new comment
- }`
-    const result = countHunkLines(patch)
-    expect(result.adds).toBe(2)
-    expect(result.dels).toBe(1)
-  })
-
-  it('ignores +++ and --- header lines', () => {
-    const patch = `--- a/foo.ts
-+++ b/foo.ts
-@@ -1,2 +1,2 @@
--old line
-+new line`
-    const result = countHunkLines(patch)
-    expect(result.adds).toBe(1)
-    expect(result.dels).toBe(1)
-  })
-
-  it('returns zeros for context-only patch', () => {
-    const patch = `@@ -1,3 +1,3 @@
- context line 1
- context line 2
- context line 3`
-    const result = countHunkLines(patch)
-    expect(result.adds).toBe(0)
-    expect(result.dels).toBe(0)
-  })
-})
-
 describe('hunkHeading', () => {
   it('extracts the @@ header line', () => {
     const patch = `diff --git a/x b/x
@@ -176,5 +137,40 @@ describe('hunkHeading', () => {
       '@@ -1,5 +1,7 @@ function someVeryLongFunctionNameThatExceedsTheLimit(args: string) {'
     const result = hunkHeading(longHeader)
     expect(result.length).toBeLessThanOrEqual(60)
+  })
+})
+
+describe('per-hunk counts agree with the whole patch', () => {
+  it('sums to the total the pane shows, including a removed markdown rule', () => {
+    const raw = [
+      'diff --git a/README.md b/README.md',
+      'index 1111111..2222222 100644',
+      '--- a/README.md',
+      '+++ b/README.md',
+      '@@ -1,5 +1,3 @@',
+      ' title',
+      '',
+      '---- ',
+      '-old line',
+      '+new line',
+      ' after',
+      '@@ -10,3 +8,3 @@',
+      '-second hunk out',
+      '+second hunk in',
+      ' tail',
+    ].join('\n')
+
+    const hunks = splitRawPatch(raw)
+    const perHunk = hunks.reduce(
+      (total, hunk) => {
+        const counts = countDiffLines(hunk)
+        return { added: total.added + counts.added, removed: total.removed + counts.removed }
+      },
+      { added: 0, removed: 0 }
+    )
+
+    expect(hunks).toHaveLength(2)
+    expect(perHunk).toEqual(countDiffLines(raw))
+    expect(countDiffLines(raw)).toEqual({ added: 2, removed: 3 })
   })
 })

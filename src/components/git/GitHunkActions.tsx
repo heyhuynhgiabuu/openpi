@@ -9,7 +9,8 @@
 import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { GitFileDiff } from '../../lib/ipc'
 import type { DiffScope } from './DiffScopeSwitcher'
-import { countHunkLines, hunkHeading, splitRawPatch } from './hunkUtils'
+import { countDiffLines } from '../../lib/diffCount'
+import { hunkHeading, splitRawPatch } from './hunkUtils'
 
 interface GitHunkActionsProps {
   diff: GitFileDiff
@@ -147,14 +148,14 @@ export function GitHunkActions(props: GitHunkActionsProps) {
         <div class="git-hunk-list">
           <For each={hunks()}>
             {(hunkPatch, index) => {
-              const counts = countHunkLines(hunkPatch)
+              const counts = countDiffLines(hunkPatch)
               const result = () => hunkResults()[index()]
               return (
                 <div class="git-hunk-item" data-hunk-index={index()}>
                   <div class="git-hunk-header">
                     <code class="git-hunk-heading">{hunkHeading(hunkPatch)}</code>
                     <span class="git-hunk-lines-count">
-                      +{counts.adds}/-{counts.dels}
+                      +{counts.added}/-{counts.removed}
                     </span>
                     <Show when={result()}>
                       <span class="git-hunk-result">{result()}</span>

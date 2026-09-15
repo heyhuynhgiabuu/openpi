@@ -1,10 +1,13 @@
 /**
- * gitDiffCount.ts — count added/removed lines in a git patch.
+ * diffCount.ts — count added/removed lines in a git patch.
  *
  * Counting by line prefix alone is ambiguous: a removed line whose content is
  * `-- ` arrives in the patch as `--- ` and looks exactly like a file header.
  * These helpers track hunk state instead, so only lines inside a hunk body are
  * counted, and the marker git wrote is the line's first character.
+ *
+ * Shared by the Git host in Electron main and the renderer's hunk list, so a
+ * per-hunk count and the pane's total are computed the same way.
  */
 
 /** Added and removed line counts for one patch. */
