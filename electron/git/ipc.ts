@@ -1,7 +1,6 @@
 import path from 'node:path'
 import type { IpcMain } from 'electron'
 import type {
-  FileContentHit,
   FileTreeResult,
   GenerateCommitMessageResult,
   GitCheckoutBranchResult,
@@ -37,7 +36,6 @@ import {
   gitSyncSchema,
   gitUnstageSchema,
   IPC,
-  searchFileContentsRequestSchema,
 } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
 import type { filterBlockedPaths as filterProtectedPaths } from '../services/protectedPaths'
@@ -382,17 +380,6 @@ export function registerGitIpc(deps: GitIpcDeps): void {
       const status = await git.getGitStatus(cwd)
       const staged = status?.files.filter((file) => file.staged) ?? []
       return { message: git.generateCommitMessage(staged, await deps.getCommitAgentContext()) }
-    }
-  )
-
-  deps.ipcMain.handle(
-    IPC.SEARCH_FILE_CONTENTS,
-    async (_event, raw: unknown): Promise<FileContentHit[]> => {
-      const cwd = requireCwd(deps)
-      if (!cwd) return []
-      const { query, matchCase, wholeWord, useRegex } = searchFileContentsRequestSchema.parse(raw)
-      const git = await deps.getGitHost()
-      return git.searchFileContents(cwd, query, matchCase, wholeWord, useRegex)
     }
   )
 

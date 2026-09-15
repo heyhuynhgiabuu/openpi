@@ -114,7 +114,6 @@ export const IPC = {
   FORMAT_FILE: 'openpi:format-file',
   SET_EXTENSION_ENABLED: 'openpi:set-extension-enabled',
   GET_FIRST_RUN: 'openpi:get-first-run',
-  SEARCH_FILE_CONTENTS: 'openpi:search-file-contents',
   LIST_PROMPT_TEMPLATES: 'openpi:list-prompt-templates',
   LIST_SLASH_COMMANDS: 'openpi:list-slash-commands',
   FFF_FILE_SEARCH: 'openpi:fff-file-search',

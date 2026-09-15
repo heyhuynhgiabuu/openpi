@@ -4,7 +4,6 @@ import type {
   FffFileResult,
   FffGrepMatch,
   FileContent,
-  FileContentHit,
   FileTreeResult,
   GitBranchInfo,
   GitChangedFile,
@@ -123,14 +122,6 @@ export const gitApi = {
       return () => ipcRenderer.removeListener(IPC.AGENT_REVIEW_CHANGED, handler)
     },
   },
-
-  searchFileContents: (
-    query: string,
-    matchCase: boolean,
-    wholeWord: boolean,
-    useRegex: boolean
-  ): Promise<FileContentHit[]> =>
-    ipcRenderer.invoke(IPC.SEARCH_FILE_CONTENTS, { query, matchCase, wholeWord, useRegex }),
 
   readFile: (relPath: string, cwd?: string): Promise<FileContent | null> =>
     ipcRenderer.invoke(IPC.READ_FILE, cwd ? { path: relPath, cwd } : { path: relPath }),

@@ -45,7 +45,6 @@ export {
   unstageFile,
   unstageHunk,
 } from './gitMutations'
-export { searchFileContents } from './gitSearch'
 
 // ─── Polling watcher ────────────────────────────────────────────────────────
 

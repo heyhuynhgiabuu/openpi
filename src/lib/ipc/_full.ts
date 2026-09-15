@@ -1216,33 +1216,6 @@ export const fileTreeResultSchema = z.object({
 })
 export type FileTreeResult = z.infer<typeof fileTreeResultSchema>
 
-// ─── Content search schemas ─────────────────────────────────────────────────
-
-export const searchFileContentsRequestSchema = z.object({
-  query: z.string().max(1000),
-  matchCase: z.boolean(),
-  wholeWord: z.boolean(),
-  useRegex: z.boolean(),
-})
-export type SearchFileContentsRequest = z.infer<typeof searchFileContentsRequestSchema>
-
-export const contentMatchSchema = z.object({
-  /** 1-based line number */
-  lineNumber: z.number().int().positive(),
-  /** The full matching line text (un-trimmed) */
-  text: z.string(),
-  /** Inclusive [start, end] character indices for highlighted regions within `text` */
-  ranges: z.array(z.tuple([z.number(), z.number()])),
-})
-export type ContentMatch = z.infer<typeof contentMatchSchema>
-
-export const fileContentHitSchema = z.object({
-  /** Workspace-relative file path */
-  path: z.string(),
-  matches: z.array(contentMatchSchema),
-})
-export type FileContentHit = z.infer<typeof fileContentHitSchema>
-
 // ─── File content ───────────────────────────────────────────────────────────
 
 export const readFileRequestSchema = z.object({
