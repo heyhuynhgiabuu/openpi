@@ -1231,7 +1231,7 @@ export const contentMatchSchema = z.object({
   lineNumber: z.number().int().positive(),
   /** The full matching line text (un-trimmed) */
   text: z.string(),
-  /** [start, end] inclusive index pairs for highlighted regions within `text` */
+  /** Inclusive [start, end] character indices for highlighted regions within `text` */
   ranges: z.array(z.tuple([z.number(), z.number()])),
 })
 export type ContentMatch = z.infer<typeof contentMatchSchema>
@@ -1494,6 +1494,7 @@ export const fffGrepMatchSchema = z.object({
   fileName: z.string(),
   lineNumber: z.number(),
   lineContent: z.string(),
+  /** Inclusive [start, end] character indices within `lineContent`, for the renderer's highlighter */
   matchRanges: z.array(z.tuple([z.number(), z.number()])),
 })
 export type FffGrepMatch = z.infer<typeof fffGrepMatchSchema>

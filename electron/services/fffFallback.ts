@@ -7,6 +7,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { FffFileResult, FffGrepMatch, FffGrepOpts } from './fffHost'
 
+/** Matches the native index's per-file cap: reading a huge file blocks main. */
+const MAX_FILE_SIZE = 10_000_000
+
 const FALLBACK_SKIP_DIRS = new Set([
   '.git',
   'node_modules',
@@ -85,12 +88,24 @@ function fallbackScore(relativePath: string, fileName: string, query: string): n
 
 export function fallbackGrep(cwd: string | null, query: string, opts: FffGrepOpts): FffGrepMatch[] {
   if (!cwd) return []
-  const matched = grepDir(cwd, '', query, opts)
-  return matched
+  // The host passes its own default through, so an unbounded walk is only
+  // possible when a caller asks for one explicitly.
+  const deadline = Date.now() + Math.max(0, opts.timeBudgetMs ?? 3000)
+  return grepDir(cwd, '', query, opts, deadline)
 }
 
-function grepDir(cwd: string, relDir: string, query: string, opts: FffGrepOpts): FffGrepMatch[] {
+function grepDir(
+  cwd: string,
+  relDir: string,
+  query: string,
+  opts: FffGrepOpts,
+  deadline: number
+): FffGrepMatch[] {
   const results: FffGrepMatch[] = []
+  // Checked per directory: the walk is recursive, so this bounds the whole tree
+  // without a clock read per entry. A single directory with a very large number
+  // of files is still walked to the end.
+  if (Date.now() >= deadline) return results
   const absDir = relDir ? path.join(cwd, relDir) : cwd
   let entries: fs.Dirent[]
   try {
@@ -99,6 +114,8 @@ function grepDir(cwd: string, relDir: string, query: string, opts: FffGrepOpts):
     return results
   }
 
+  const matcher = createFallbackMatcher(query, opts)
+
   for (const entry of entries) {
     if (FALLBACK_SKIP_DIRS.has(entry.name)) continue
     if (entry.name.startsWith('.')) continue
@@ -106,15 +123,14 @@ function grepDir(cwd: string, relDir: string, query: string, opts: FffGrepOpts):
     const childRel = relDir ? `${relDir}/${entry.name}` : entry.name
 
     if (entry.isDirectory()) {
-      results.push(...grepDir(cwd, childRel, query, opts))
+      results.push(...grepDir(cwd, childRel, query, opts, deadline))
     } else if (entry.isFile()) {
-      const matcher = createFallbackMatcher(query, opts)
       const fullPath = path.join(cwd, childRel)
       try {
+        if (fs.statSync(fullPath).size > MAX_FILE_SIZE) continue
         const content = fs.readFileSync(fullPath, 'utf-8')
         if (/\0/.test(content)) continue
-        const match = matcher(content, childRel)
-        if (match) results.push(match)
+        results.push(...matcher(content, childRel))
       } catch {
         // skip unreadable files
       }
@@ -127,26 +143,49 @@ function grepDir(cwd: string, relDir: string, query: string, opts: FffGrepOpts):
 function createFallbackMatcher(
   query: string,
   opts: FffGrepOpts
-): (content: string, relativePath: string) => FffGrepMatch | null {
-  const flags = opts.smartCase && query === query.toLowerCase() ? 'gi' : 'g'
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-  return (content: string, relativePath: string): FffGrepMatch | null => {
-    const regex = new RegExp(escaped, flags)
-    const match = regex.exec(content)
-    if (!match) return null
-
-    const lineStart = content.lastIndexOf('\n', match.index) + 1
-    const lineEnd = content.indexOf('\n', match.index + match[0].length)
-    const lineContent =
-      lineEnd !== -1 ? content.slice(lineStart, lineEnd) : content.slice(lineStart)
-
-    return {
-      relativePath,
-      fileName: path.basename(relativePath),
-      lineNumber: content.slice(0, match.index).split('\n').length,
-      lineContent,
-      matchRanges: [[match.index - lineStart, match.index + match[0].length - lineStart]],
-    }
+): (content: string, relativePath: string) => FffGrepMatch[] {
+  // Defaults match what fffGrep passes to the native search.
+  const smartCase = opts.smartCase ?? true
+  const flags = smartCase && query === query.toLowerCase() ? 'gi' : 'g'
+  // A regex search that silently ran as a literal one matched the pattern's own
+  // text and missed real hits.
+  const pattern = opts.mode === 'regex' ? query : escapeSearchQuery(query)
+  const limit = Math.max(1, opts.maxMatchesPerFile ?? 5)
+  let regex: RegExp | null = null
+  try {
+    regex = new RegExp(pattern, flags)
+  } catch {
+    regex = null
   }
+
+  return (content: string, relativePath: string): FffGrepMatch[] => {
+    if (!regex) return []
+    const matches: FffGrepMatch[] = []
+    regex.lastIndex = 0
+    for (let match = regex.exec(content); match !== null && matches.length < limit;) {
+      // A zero-length match highlights nothing, and advancing past it keeps the
+      // scan moving.
+      if (match[0].length > 0) {
+        const lineStart = content.lastIndexOf('\n', match.index) + 1
+        const lineEnd = content.indexOf('\n', match.index + match[0].length)
+        const lineContent =
+          lineEnd !== -1 ? content.slice(lineStart, lineEnd) : content.slice(lineStart)
+        const start = match.index - lineStart
+        matches.push({
+          relativePath,
+          fileName: path.basename(relativePath),
+          lineNumber: content.slice(0, match.index).split('\n').length,
+          lineContent,
+          matchRanges: [[start, start + match[0].length - 1]],
+        })
+      }
+      if (match[0].length === 0) regex.lastIndex += 1
+      match = regex.exec(content)
+    }
+    return matches
+  }
+}
+
+function escapeSearchQuery(query: string): string {
+  return query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

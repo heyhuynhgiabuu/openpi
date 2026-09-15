@@ -11,6 +11,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { FileFinder, FileItem, GrepMatch, GrepOptions, SearchOptions } from '@ff-labs/fff-node'
 import { fallbackFileSearch, fallbackGrep } from './fffFallback'
+import { byteRangeToInclusiveChars } from './fffRanges'
 
 // ─── Exported result shapes (IPC-safe, lean) ──────────────────────────────────
 
@@ -27,7 +28,7 @@ export interface FffGrepMatch {
   /** 1-based line number */
   lineNumber: number
   lineContent: string
-  /** [start, end] byte-offset pairs within lineContent */
+  /** Inclusive [start, end] character indices within lineContent, for the renderer's highlighter */
   matchRanges: [number, number][]
 }
 
@@ -170,13 +171,16 @@ function fileItemToResult(item: FileItem): FffFileResult {
   return { relativePath: item.relativePath, fileName: item.fileName, dir }
 }
 
-function grepMatchToResult(m: GrepMatch): FffGrepMatch {
+/** Exported for tests: converts one native grep hit into the IPC shape. */
+export function grepMatchToResult(m: GrepMatch): FffGrepMatch {
   return {
     relativePath: m.relativePath,
     fileName: m.fileName,
     lineNumber: m.lineNumber,
     lineContent: m.lineContent,
-    matchRanges: m.matchRanges,
+    // The native search reports byte offsets with an exclusive end; the
+    // renderer slices inclusive character indices.
+    matchRanges: m.matchRanges.map((range) => byteRangeToInclusiveChars(m.lineContent, range)),
   }
 }
 

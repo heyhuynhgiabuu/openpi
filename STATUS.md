@@ -39,6 +39,9 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - The gate ignores the tool-call signal while a modal is open, so an aborted run leaves the modal until it is answered or the ten-minute timeout expires. The write is never applied either way.
 - `readWorkspaceBytes`'s dev/ino branch (a file replaced between open and check) has no test; it needs fs injection to be deterministic.
 - The loader test pins which handlers the gate registers, not what they do: a no-op `session_start` handler would still pass it.
+- The search fallback treats `mode: 'fuzzy'` as a literal search (it cannot rank fuzzy hits), returns one entry per occurrence where the native index returns one per line, and skips `dist`/`out`/`release` where the native index walks them. `timeBudgetMs: 0` means "stop now" rather than the native's "no limit", which the IPC schema cannot produce because it requires a positive value.
+- The fallback checks its time budget once per directory, so one directory with a very large number of files is still walked to the end. The native index truncates a matched line at 512 bytes; the fallback does not.
+- The search highlight range mapping assumes the line was decoded from the bytes the native offsets point into. That holds except for invalid UTF-8, where a lossy replacement character is treated as the single byte it came from; a genuinely invalid multi-byte sequence can still shift a highlight.
 - `electron/git/ipc.ts:385` returns `{ message }` from the commit-message generator without the `generateCommitMessageResultSchema.parse(...)` its neighbouring handlers use.
 - `gitCommitMessage.ts` scope rules `^electron/piSidecar` and `^src/components/session/` match no real path; the legacy `^electron/gitHost` rule is pinned by `tests/gitHostFileTree.test.ts`. Its test file also still builds fixtures with `as never` and the stale `additions`/`deletions` field names.
 
