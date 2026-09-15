@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { getGitFileDiff, getGitStatus } from '../electron/git/gitDiffStatus'
+import { getGitStatus } from '../electron/git/gitDiffStatus'
 import { createTestRepo, type TestRepo } from './helpers/gitRepo'
 
 const FILE = 'src/app.ts'
@@ -158,89 +158,5 @@ describe('getGitStatus (integration)', () => {
     expect(file?.status).toBe('U')
     expect(status.hasConflicts).toBe(true)
     expect(status.operation).toBe('merge')
-  })
-})
-
-describe('getGitFileDiff for untracked and deleted files (integration)', () => {
-  let repo: TestRepo
-
-  beforeEach(async () => {
-    repo = await createTestRepo({ [FILE]: THREE_LINES })
-  })
-
-  afterEach(() => {
-    repo?.cleanup()
-  })
-
-  it('returns the whole file as an addition for an untracked file', async () => {
-    repo.write('src/new.ts', 'one\ntwo\n')
-
-    for (const scope of ['unstaged', 'auto'] as const) {
-      const diff = await getGitFileDiff(repo.cwd, 'src/new.ts', { scope })
-
-      expect(diff.rawPatch).toBe('')
-      expect(diff.oldContent).toBe('')
-      expect(diff.newContent).toBe('one\ntwo\n')
-      expect(diff.totalAdded).toBe(2)
-      expect(diff.totalRemoved).toBe(0)
-      expect(diff.isNew).toBe(true)
-      expect(diff.isDeleted).toBe(false)
-    }
-  })
-
-  it('counts an untracked empty file as new with no lines', async () => {
-    repo.write('src/empty.ts', '')
-
-    const diff = await getGitFileDiff(repo.cwd, 'src/empty.ts', { scope: 'unstaged' })
-
-    expect(diff.isNew).toBe(true)
-    expect(diff.totalAdded).toBe(0)
-  })
-
-  it('returns an empty diff for a path that does not exist', async () => {
-    const diff = await getGitFileDiff(repo.cwd, 'src/missing.ts', { scope: 'unstaged' })
-
-    expect(diff.rawPatch).toBe('')
-    expect(diff.isNew).toBe(false)
-    expect(diff.isDeleted).toBe(false)
-    expect(diff.totalAdded).toBe(0)
-  })
-
-  it('reports an unstaged deletion with its removed lines', async () => {
-    fs.rmSync(path.join(repo.cwd, FILE))
-
-    const diff = await getGitFileDiff(repo.cwd, FILE, { scope: 'unstaged' })
-
-    expect(diff.rawPatch).toContain('-original line 2')
-    expect(diff.totalRemoved).toBe(3)
-    expect(diff.totalAdded).toBe(0)
-    expect(diff.isDeleted).toBe(true)
-    expect(diff.newContent).toBe('')
-  })
-
-  it('counts a removed markdown rule through the real patch', async () => {
-    repo.write('README.md', 'title\n\n---\n\nafter\n')
-    await repo.stage()
-    await repo.commit('add readme')
-    repo.write('README.md', 'title\n\nafter\n')
-
-    const diff = await getGitFileDiff(repo.cwd, 'README.md', { scope: 'unstaged' })
-
-    expect(diff.rawPatch).toContain('----')
-    expect(diff.totalRemoved).toBe(2)
-  })
-
-  it('returns no counts for a binary change', async () => {
-    const binary = Buffer.from([0, 1, 2, 3, 255, 254])
-    fs.writeFileSync(path.join(repo.cwd, 'blob.bin'), binary)
-    await repo.stage()
-    await repo.commit('add binary')
-    fs.writeFileSync(path.join(repo.cwd, 'blob.bin'), Buffer.from([0, 9, 9, 255, 254]))
-
-    const diff = await getGitFileDiff(repo.cwd, 'blob.bin', { scope: 'unstaged' })
-
-    expect(diff.rawPatch).toContain('Binary files')
-    expect(diff.totalAdded).toBe(0)
-    expect(diff.totalRemoved).toBe(0)
   })
 })

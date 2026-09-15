@@ -14,6 +14,7 @@ import type {
   GitStatusResult,
   WorkspaceSummaryInfo,
 } from '../../src/lib/ipc'
+import { countContentLines, countDiffLines } from './gitDiffCount'
 import { withGitLock } from './gitLock'
 
 // ─── Internal helpers ──────────────────────────────────────────────────────
@@ -50,13 +51,6 @@ function readWorkingText(cwd: string, filePath: string): string | null {
   } catch {
     return null
   }
-}
-
-export function countContentLines(contents: string): number {
-  if (!contents) return 0
-  return contents.endsWith('\n')
-    ? contents.split(/\r?\n/).length - 1
-    : contents.split(/\r?\n/).length
 }
 
 async function readDiffContents(
@@ -213,19 +207,6 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
 }
 
 // ─── File diff ─────────────────────────────────────────────────────────────
-
-export function countDiffLines(raw: string): { added: number; removed: number } {
-  let added = 0
-  let removed = 0
-  for (const line of raw.split('\n')) {
-    // Git writes the file headers as `+++ b/path` / `--- a/path`, with a space.
-    // Without requiring it, a removed markdown `---` line arrives as `----` and
-    // was dropped from the count.
-    if (line.startsWith('+') && !line.startsWith('+++ ')) added++
-    else if (line.startsWith('-') && !line.startsWith('--- ')) removed++
-  }
-  return { added, removed }
-}
 
 export async function getGitFileDiff(
   cwd: string,
