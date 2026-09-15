@@ -34,10 +34,16 @@ process.env.GIT_COMMITTER_NAME = 'OpenPi Test'
 process.env.GIT_COMMITTER_EMAIL = 'openpi@example.com'
 
 let tmp: string | null = null
+// Local bare-remote Git operations can exceed Vitest's default on Windows CI.
+const WINDOWS_GIT_TEST_TIMEOUT_MS = 60_000
 
 function makeWorkspace(): string {
   tmp = mkdtempSync(join(tmpdir(), 'openpi-file-tree-'))
   return tmp
+}
+
+function itWithGitTimeout(name: string, fn: () => Promise<void>): void {
+  it(name, fn, WINDOWS_GIT_TEST_TIMEOUT_MS)
 }
 
 function runGit(cwd: string, args: string[]): string {
@@ -71,7 +77,12 @@ function flattenTreePaths(tree: ReturnType<typeof getFileTree>): string[] {
 
 afterEach(() => {
   if (tmp) {
-    rmSync(tmp, { recursive: true, force: true })
+    rmSync(tmp, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    })
     tmp = null
   }
 })
@@ -109,47 +120,50 @@ describe('getFileTree', () => {
 })
 
 describe('getGitStatus', () => {
-  it('reports branch, upstream, stash, staged, unstaged, and untracked state', async () => {
-    const root = makeWorkspace()
-    const repo = join(root, 'repo')
-    const remote = join(root, 'remote.git')
-    mkdirSync(repo)
+  itWithGitTimeout(
+    'reports branch, upstream, stash, staged, unstaged, and untracked state',
+    async () => {
+      const root = makeWorkspace()
+      const repo = join(root, 'repo')
+      const remote = join(root, 'remote.git')
+      mkdirSync(repo)
 
-    initRepo(repo)
-    writeFileSync(join(repo, 'README.md'), 'initial\n')
-    commitPaths(repo, 'initial', ['README.md'])
-    runGit(root, ['init', '--bare', '-b', 'main', remote])
-    runGit(repo, ['remote', 'add', 'origin', remote])
-    runGit(repo, ['push', '-u', 'origin', 'main'])
+      initRepo(repo)
+      writeFileSync(join(repo, 'README.md'), 'initial\n')
+      commitPaths(repo, 'initial', ['README.md'])
+      runGit(root, ['init', '--bare', '-b', 'main', remote])
+      runGit(repo, ['remote', 'add', 'origin', remote])
+      runGit(repo, ['push', '-u', 'origin', 'main'])
 
-    writeFileSync(join(repo, 'README.md'), 'stashed\n')
-    runGit(repo, ['stash', 'push', '-m', 'saved work'])
-    writeFileSync(join(repo, 'README.md'), 'modified\n')
-    writeFileSync(join(repo, 'staged.txt'), 'staged\n')
-    runGit(repo, ['add', '--', 'staged.txt'])
-    writeFileSync(join(repo, 'untracked.txt'), 'untracked\n')
+      writeFileSync(join(repo, 'README.md'), 'stashed\n')
+      runGit(repo, ['stash', 'push', '-m', 'saved work'])
+      writeFileSync(join(repo, 'README.md'), 'modified\n')
+      writeFileSync(join(repo, 'staged.txt'), 'staged\n')
+      runGit(repo, ['add', '--', 'staged.txt'])
+      writeFileSync(join(repo, 'untracked.txt'), 'untracked\n')
 
-    const status = await getGitStatus(repo)
+      const status = await getGitStatus(repo)
 
-    expect(gitStatusResultSchema.parse(status)).toEqual(status)
-    expect(status).toMatchObject({
-      branch: 'main',
-      upstream: 'origin/main',
-      ahead: 0,
-      behind: 0,
-      isDetached: false,
-      hasConflicts: false,
-      operation: 'none',
-      stashCount: 1,
-    })
-    expect(status.files).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: 'README.md', status: 'M', staged: false }),
-        expect.objectContaining({ path: 'staged.txt', status: 'A', staged: true }),
-        expect.objectContaining({ path: 'untracked.txt', status: '?', staged: false }),
-      ])
-    )
-  })
+      expect(gitStatusResultSchema.parse(status)).toEqual(status)
+      expect(status).toMatchObject({
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 0,
+        behind: 0,
+        isDetached: false,
+        hasConflicts: false,
+        operation: 'none',
+        stashCount: 1,
+      })
+      expect(status.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: 'README.md', status: 'M', staged: false }),
+          expect.objectContaining({ path: 'staged.txt', status: 'A', staged: true }),
+          expect.objectContaining({ path: 'untracked.txt', status: '?', staged: false }),
+        ])
+      )
+    }
+  )
 
   it('marks detached HEAD explicitly', async () => {
     const repo = makeWorkspace()
@@ -169,7 +183,7 @@ describe('getGitStatus', () => {
 })
 
 describe('syncRemote', () => {
-  it('pushes the current branch through the main-owned Git host', async () => {
+  itWithGitTimeout('pushes the current branch through the main-owned Git host', async () => {
     const root = makeWorkspace()
     const repo = join(root, 'repo')
     const remote = join(root, 'remote.git')
@@ -208,7 +222,7 @@ describe('syncRemote', () => {
 })
 
 describe('git refs and branch checkout', () => {
-  it('lists local branches, remote branches, and stashes', async () => {
+  itWithGitTimeout('lists local branches, remote branches, and stashes', async () => {
     const root = makeWorkspace()
     const repo = join(root, 'repo')
     const remote = join(root, 'remote.git')
