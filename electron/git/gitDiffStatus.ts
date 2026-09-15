@@ -175,9 +175,14 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
 
     const files: GitChangedFile[] = status.files.map((f) => {
       const isStaged = f.index !== ' ' && f.index !== '?' && f.index !== ''
+      const stagedStats = stagedMap.get(f.path) ?? { added: 0, removed: 0 }
+      const unstagedStats = unstagedMap.get(f.path) ?? { added: 0, removed: 0 }
       const stats = isStaged
-        ? (stagedMap.get(f.path) ?? { added: 0, removed: 0 })
-        : (unstagedMap.get(f.path) ?? { added: 0, removed: 0 })
+        ? {
+            added: stagedStats.added + unstagedStats.added,
+            removed: stagedStats.removed + unstagedStats.removed,
+          }
+        : unstagedStats
       return {
         path: f.path,
         status: effectiveStatus(f.index, f.working_dir),

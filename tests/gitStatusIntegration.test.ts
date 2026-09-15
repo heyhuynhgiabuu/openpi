@@ -71,18 +71,17 @@ describe('getGitStatus (integration)', () => {
     expect(file?.removed).toBe(1)
   })
 
-  it('counts only the staged side when a file is staged and modified again', async () => {
+  it('counts staged and working-tree changes when a file is staged and modified again', async () => {
     repo.write(FILE, ['line 1', 'STAGED', 'line 3', ''].join('\n'))
     await repo.stage()
-    repo.write(FILE, ['line 1', 'STAGED', 'line 3', 'UNSTAGED', ''].join('\n'))
+    repo.write(FILE, ['line 1', 'STAGED', 'UNSTAGED', ''].join('\n'))
 
     const file = await statusFor(FILE)
 
     expect(file?.status).toBe('M')
     expect(file?.staged).toBe(true)
-    // The staged map wins, so the working-tree delta is not added on top.
-    expect(file?.added).toBe(1)
-    expect(file?.removed).toBe(1)
+    expect(file?.added).toBe(2)
+    expect(file?.removed).toBe(2)
   })
 
   it('reports a staged addition with its line count', async () => {
