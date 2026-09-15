@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   readCurrentText,
   readSnapshot,
@@ -71,14 +71,29 @@ describe('resolveWorkspacePath', () => {
 
 describe('readCurrentText', () => {
   it('reads text and reports a missing file as absent', () => {
-    expect(readCurrentText(path.join(ws, 'sub', 'a.txt'))).toEqual({ content: 'before' })
-    expect(readCurrentText(path.join(ws, 'sub', 'missing.txt'))).toEqual({ content: null })
+    expect(readCurrentText(path.join(ws, 'sub', 'a.txt'), ws)).toEqual({ content: 'before' })
+    expect(readCurrentText(path.join(ws, 'sub', 'missing.txt'), ws)).toEqual({ content: null })
+  })
+
+  it('reports a non-missing stat error as unreadable', () => {
+    const lstatSpy = vi.spyOn(fs, 'lstatSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+    })
+
+    try {
+      expect(readCurrentText(path.join(ws, 'sub', 'a.txt'), ws)).toEqual({
+        content: null,
+        skipped: 'Review could not read this file',
+      })
+    } finally {
+      lstatSpy.mockRestore()
+    }
   })
 
   it('skips a binary file', () => {
     const target = path.join(ws, 'sub', 'blob.bin')
     fs.writeFileSync(target, Buffer.from([0x00, 0x01, 0x02]))
-    expect(readCurrentText(target)).toEqual({
+    expect(readCurrentText(target, ws)).toEqual({
       content: null,
       skipped: 'Review skipped a binary file',
     })
@@ -87,17 +102,35 @@ describe('readCurrentText', () => {
   it('skips a large file', () => {
     const target = path.join(ws, 'sub', 'big.txt')
     fs.writeFileSync(target, Buffer.alloc(500_001, 0x61))
-    expect(readCurrentText(target)).toEqual({
+    expect(readCurrentText(target, ws)).toEqual({
       content: null,
       skipped: 'Review skipped a large file',
     })
   })
 
   it('skips a directory', () => {
-    expect(readCurrentText(path.join(ws, 'sub'))).toEqual({
+    expect(readCurrentText(path.join(ws, 'sub'), ws)).toEqual({
       content: null,
       skipped: 'Review supports files only',
     })
+  })
+
+  it('skips a file whose identity changes during the secure read', () => {
+    const realFstatSync = fs.fstatSync.bind(fs)
+    const fstatSpy = vi.spyOn(fs, 'fstatSync').mockImplementation((descriptor) => {
+      const stat = realFstatSync(descriptor)
+      Object.defineProperty(stat, 'ino', { value: stat.ino + 1 })
+      return stat
+    })
+
+    try {
+      expect(readCurrentText(path.join(ws, 'sub', 'a.txt'), ws)).toEqual({
+        content: null,
+        skipped: 'Review could not read this file',
+      })
+    } finally {
+      fstatSpy.mockRestore()
+    }
   })
 })
 

@@ -6,7 +6,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveWorkspacePath as resolveContainedPath } from './workspacePath'
+import { readWorkspaceBytes, resolveWorkspacePath as resolveContainedPath } from './workspacePath'
 
 const MAX_REVIEW_FILE_BYTES = 500_000
 
@@ -45,7 +45,7 @@ export function resolveWorkspacePath(cwd: string, relPath: string): string {
 }
 
 export function readSnapshot(cwd: string, relPath: string, fullPath: string): Snapshot {
-  const current = readCurrentText(fullPath)
+  const current = readCurrentText(fullPath, cwd)
   return {
     cwd,
     relPath,
@@ -61,14 +61,29 @@ export interface CurrentText {
   skipped?: string
 }
 
-export function readCurrentText(fullPath: string): CurrentText {
-  if (!fs.existsSync(fullPath)) return { content: null }
-  const stat = fs.statSync(fullPath)
+export function readCurrentText(fullPath: string, workspaceRoot: string): CurrentText {
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(fullPath)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      return { content: null }
+    }
+    return { content: null, skipped: 'Review could not read this file' }
+  }
   if (!stat.isFile()) return { content: null, skipped: 'Review supports files only' }
   if (stat.size > MAX_REVIEW_FILE_BYTES) {
     return { content: null, skipped: 'Review skipped a large file' }
   }
-  const buffer = fs.readFileSync(fullPath)
-  if (buffer.includes(0)) return { content: null, skipped: 'Review skipped a binary file' }
-  return { content: buffer.toString('utf-8') }
+
+  try {
+    const buffer = readWorkspaceBytes(fullPath, workspaceRoot)
+    if (buffer.byteLength > MAX_REVIEW_FILE_BYTES) {
+      return { content: null, skipped: 'Review skipped a large file' }
+    }
+    if (buffer.includes(0)) return { content: null, skipped: 'Review skipped a binary file' }
+    return { content: buffer.toString('utf-8') }
+  } catch {
+    return { content: null, skipped: 'Review could not read this file' }
+  }
 }

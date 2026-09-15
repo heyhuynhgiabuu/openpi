@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   moveWorkspaceEntryNoReplace,
   readWorkspaceBytes,
@@ -92,6 +92,23 @@ describe('readWorkspaceBytes', () => {
 
   it('refuses a directory', () => {
     expect(() => readWorkspaceBytes(ws, ws)).toThrow('Refusing to open a path that is not a file')
+  })
+
+  it('refuses a file whose identity changes during authorization', () => {
+    const realFstatSync = fs.fstatSync.bind(fs)
+    const fstatSpy = vi.spyOn(fs, 'fstatSync').mockImplementation((descriptor) => {
+      const stat = realFstatSync(descriptor)
+      Object.defineProperty(stat, 'ino', { value: stat.ino + 1 })
+      return stat
+    })
+
+    try {
+      expect(() => readWorkspaceBytes(path.join(ws, 'sub', 'a.txt'), ws)).toThrow(
+        'Workspace file changed during authorization'
+      )
+    } finally {
+      fstatSpy.mockRestore()
+    }
   })
 })
 

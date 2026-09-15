@@ -69,12 +69,17 @@ export interface PreApplyToolCall {
 
 export interface PreApplyContext {
   cwd: string
+  signal?: AbortSignal
   ui: {
-    confirm: (title: string, message: string, opts?: { timeout?: number }) => Promise<boolean>
+    confirm: (
+      title: string,
+      message: string,
+      opts?: { signal?: AbortSignal; timeout?: number }
+    ) => Promise<boolean>
     input: (
       title: string,
       placeholder?: string,
-      opts?: { timeout?: number }
+      opts?: { signal?: AbortSignal; timeout?: number }
     ) => Promise<string | undefined>
     notify: (message: string, type?: 'info' | 'warning' | 'error') => void
   }
@@ -150,7 +155,7 @@ async function reviewEdit(
   const answer = await ctx.ui.input(
     `Review before applying: ${shownPath}`,
     REVIEW_MARKER + JSON.stringify(review),
-    { timeout: REVIEW_TIMEOUT_MS }
+    { signal: ctx.signal, timeout: REVIEW_TIMEOUT_MS }
   )
 
   const parsed = parseReviewAnswer(answer, hunks.length)
@@ -200,7 +205,7 @@ export async function handleToolCall(
     `${preview.summary}\n\n${confirmMessage(preview)}`,
     // A boolean answer cannot tell a denial from an expiry, so the gate waits as
     // long as the hunk review and words the refusal for both cases.
-    { timeout: REVIEW_TIMEOUT_MS }
+    { signal: ctx.signal, timeout: REVIEW_TIMEOUT_MS }
   )
   if (allowed) return undefined
 

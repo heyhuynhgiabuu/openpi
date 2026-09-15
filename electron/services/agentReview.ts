@@ -150,7 +150,7 @@ function storeReviewedContent(
 
 function validateRevert(change: StoredChange): void {
   const fullPath = resolveWorkspacePath(change.cwd, change.path)
-  const current = readCurrentText(fullPath)
+  const current = readCurrentText(fullPath, change.cwd)
   if (current.skipped) throw new Error(current.skipped)
   if (current.content !== change.afterContent) {
     throw new Error(`Refusing to revert ${change.path}: file changed since review item was created`)

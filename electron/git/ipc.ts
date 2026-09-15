@@ -22,6 +22,7 @@ import {
   gitCreateBranchResultSchema,
   gitCreateBranchSchema,
   gitDiffRequestSchema,
+  generateCommitMessageResultSchema,
   gitDiscardSchema,
   gitFileDiffSchema,
   gitHistoryRequestSchema,
@@ -379,7 +380,9 @@ export function registerGitIpc(deps: GitIpcDeps): void {
       const git = await deps.getGitHost()
       const status = await git.getGitStatus(cwd)
       const staged = status?.files.filter((file) => file.staged) ?? []
-      return { message: git.generateCommitMessage(staged, await deps.getCommitAgentContext()) }
+      return generateCommitMessageResultSchema.parse({
+        message: git.generateCommitMessage(staged, await deps.getCommitAgentContext()),
+      })
     }
   )
 
