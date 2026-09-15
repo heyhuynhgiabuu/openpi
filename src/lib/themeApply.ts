@@ -13,6 +13,7 @@
  * priority-ordered list of candidate names for each OpenPi CSS var.
  */
 
+import { z } from 'zod'
 import type { ThemeTokens } from './ipc'
 
 const STORAGE_KEY = 'openpi-active-theme-vars'
@@ -55,7 +56,31 @@ const OPENPI_OWN_VARS = [
   '--shiki-token-punctuation',
 ] as const
 
+const OPENPI_OWN_VAR_SET: ReadonlySet<string> = new Set(OPENPI_OWN_VARS)
+
+/** Shape written by `persistAppliedVars`; localStorage is outside our control. */
+const storedVarsSchema = z.record(z.string())
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Parse a stored snapshot, or return null when it is not a string map.
+ * `JSON.parse` can yield `null`, a number or an object of objects; a raw cast
+ * would hand any of those to `style.setProperty`.
+ */
+function readStoredVars(raw: string): Record<string, string> | null {
+  try {
+    const parsed = storedVarsSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+/** True when the snapshot carries at least one of our vars with a value. */
+function hasAppliedVars(snapshot: Record<string, string>): boolean {
+  return Object.entries(snapshot).some(([k, val]) => val.trim() !== '' && OPENPI_OWN_VAR_SET.has(k))
+}
 
 /** Return first non-empty value found in `vars` for any of the given keys. */
 function tryVars(vars: Record<string, string>, ...keys: string[]): string | undefined {
@@ -70,6 +95,12 @@ function set(cssVar: string, val: string | undefined | null): void {
   if (val) document.documentElement.style.setProperty(cssVar, val)
 }
 
+/** Remove every var this module owns, so index.css defaults take over again. */
+function clearOwnVars(): void {
+  const root = document.documentElement
+  for (const v of OPENPI_OWN_VARS) root.style.removeProperty(v)
+}
+
 // ─── Core mapping ─────────────────────────────────────────────────────────────
 
 /**
@@ -82,6 +113,10 @@ function set(cssVar: string, val: string | undefined | null): void {
 export function applyThemeTokens(tokens: ThemeTokens): void {
   const v = tokens.vars // palette, hex
   const c = tokens.colors // semantic, hex
+
+  // Start from a clean slate: a theme that omits a token must fall back to the
+  // index.css default, not keep the colour the previously applied theme left.
+  clearOwnVars()
 
   // ── Background layers ─────────────────────────────────────────────────────
   // darkest                            Catppuccin  TN
@@ -144,8 +179,7 @@ export function applyThemeTokens(tokens: ThemeTokens): void {
 
 /** Remove all OpenPi CSS vars we may have set → reverts to index.css defaults. */
 export function resetTheme(): void {
-  const root = document.documentElement
-  for (const v of OPENPI_OWN_VARS) root.style.removeProperty(v)
+  clearOwnVars()
   localStorage.removeItem(STORAGE_KEY)
 }
 
@@ -164,20 +198,31 @@ function persistAppliedVars(): void {
 export function restoreThemeFromStorage(): void {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) return
-  try {
-    const snapshot = JSON.parse(raw) as Record<string, string>
-    const root = document.documentElement
-    for (const [k, val] of Object.entries(snapshot)) {
-      if (val && OPENPI_OWN_VARS.includes(k as (typeof OPENPI_OWN_VARS)[number])) {
-        root.style.setProperty(k, val)
-      }
-    }
-  } catch {
+  const snapshot = readStoredVars(raw)
+  if (!snapshot) {
     localStorage.removeItem(STORAGE_KEY)
+    return
+  }
+  const root = document.documentElement
+  for (const [k, val] of Object.entries(snapshot)) {
+    if (!OPENPI_OWN_VAR_SET.has(k)) continue
+    // An empty or whitespace-only entry means "no value for this var", so drop
+    // it rather than leaving whatever the document already had. Writing
+    // whitespace would win the cascade and shadow the index.css default.
+    const trimmed = val.trim()
+    if (trimmed) root.style.setProperty(k, trimmed)
+    else root.style.removeProperty(k)
   }
 }
 
-/** True if any theme vars are currently applied (i.e. theme is active). */
+/**
+ * True if any theme vars are currently applied (i.e. theme is active).
+ * A stored snapshot that parsed to nothing usable — `{}`, only unknown keys,
+ * or a value that is not a string map — does not count as an applied theme.
+ */
 export function isThemeApplied(): boolean {
-  return Boolean(localStorage.getItem(STORAGE_KEY))
+  const raw = localStorage.getItem(STORAGE_KEY)
+  if (!raw) return false
+  const snapshot = readStoredVars(raw)
+  return snapshot !== null && hasAppliedVars(snapshot)
 }
