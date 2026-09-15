@@ -167,7 +167,9 @@ describe('getGitFileDiff for untracked and deleted files (integration)', () => {
         repo.cleanup()
       }
     }
-  })
+    // Four repositories with branch, commit and merge work each; the Windows
+    // runner needs more than the 5s default.
+  }, 60_000)
 
   it('returns no counts for a binary change', async () => {
     const binary = Buffer.from([0, 1, 2, 3, 255, 254])
