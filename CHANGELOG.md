@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **Search highlights landed on the wrong characters** — the native file index reports match ranges as byte offsets, and the renderer highlights character indices, so every content-search highlight covered one extra character and drifted right on any line with non-ASCII text before the match (accented Vietnamese text, for example). Ranges are converted before they leave the main process. (`3e58357`)
+- **The search fallback ignored the options the UI sends** — when the native index is unavailable, a regex search ran as a literal one (so `\d+` matched the text `\d+` and missed real digits), only one match per file was returned, and the time budget did not bound the walk. It now matches the native defaults, skips files above the size the index would skip, and honours the budget. (`3e58357`)
+
+### Fixed
+
 - **Commit message suggestions no longer misread the staged set** — a file whose name merely contains "test" or "spec" (for example `latestStatus.ts`) was typed as a test change, every `.pi/` change was typed as CI, a commit of only conflicted files produced an empty subject, a conflicted file was left out of the counts when mixed with other changes, and an agent reply that was only a code block produced an empty subject. Scope detection also follows the current `electron/git/` and `electron/pi/` layout. (`0a1102d`)
 
 ## [0.2.13] - 2026-09-14
