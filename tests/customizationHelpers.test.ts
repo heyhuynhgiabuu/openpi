@@ -78,21 +78,18 @@ describe('extension entry rules', () => {
     fixture.write('ext/withTs/index.ts')
     fixture.write('ext/withJs/index.js')
     fixture.write('ext/plain/other.ts')
-    expect(
-      collectExtensionFiles(path.join(fixture.root, 'ext')).map((file) =>
-        file.slice(fixture.root.length)
-      )
-    ).toEqual(['/ext/withJs/index.js', '/ext/withTs/index.ts'])
+    expect(collectExtensionFiles(path.join(fixture.root, 'ext'))).toEqual([
+      path.join(fixture.root, 'ext', 'withJs', 'index.js'),
+      path.join(fixture.root, 'ext', 'withTs', 'index.ts'),
+    ])
   })
 
   it('prefers index.ts when a directory has both entry points', () => {
     fixture.write('ext/both/index.ts')
     fixture.write('ext/both/index.js')
-    expect(
-      collectExtensionFiles(path.join(fixture.root, 'ext')).map((file) =>
-        file.slice(fixture.root.length)
-      )
-    ).toEqual(['/ext/both/index.ts'])
+    expect(collectExtensionFiles(path.join(fixture.root, 'ext'))).toEqual([
+      path.join(fixture.root, 'ext', 'both', 'index.ts'),
+    ])
   })
 
   it('sorts a listing it is handed, independent of the filesystem order', () => {
@@ -222,12 +219,11 @@ describe('resource labels', () => {
   })
 
   it('resolves a configured path against its base directory', () => {
-    const sep = path.sep
-    expect(resolveConfiguredPath(`${sep}abs${sep}one.ts`, `${sep}base`)).toBe(
-      `${sep}abs${sep}one.ts`
-    )
-    expect(resolveConfiguredPath('sub/one.ts', `${sep}base`)).toBe(
-      `${sep}base${sep}sub${sep}one.ts`
+    const absolute = path.join(fixture.root, 'abs', 'one.ts')
+    // An absolute path is used as-is; a relative one is resolved against the base.
+    expect(resolveConfiguredPath(absolute, fixture.root)).toBe(absolute)
+    expect(resolveConfiguredPath('sub/one.ts', fixture.root)).toBe(
+      path.join(fixture.root, 'sub', 'one.ts')
     )
   })
 
