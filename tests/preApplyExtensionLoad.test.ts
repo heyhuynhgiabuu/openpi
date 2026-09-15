@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { discoverAndLoadExtensions } from '@earendil-works/pi-coding-agent'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const extensionDir = path.resolve(import.meta.dirname, '../.pi/extensions/openpi-preapply-review')
 const entryPath = path.join(extensionDir, 'index.ts')
@@ -48,6 +48,34 @@ describe('pre-apply review extension under Pi extension loader', () => {
     expect(extension?.handlers.get('turn_end')).toHaveLength(1)
     // A replacement session must not inherit the turn-scoped skip.
     expect(extension?.handlers.get('session_start')).toHaveLength(1)
+  })
+
+  it('runs the loaded handler and blocks a denied write', async () => {
+    process.env.OPENPI_PREAPPLY_REVIEW = '1'
+
+    const { errors, extension } = await load()
+    expect(errors).toEqual([])
+    const handler = extension?.handlers.get('tool_call')?.[0]
+    if (!handler) throw new Error('Expected the loaded extension to register tool_call')
+
+    const confirm = vi.fn(async () => false)
+    const input = vi.fn(async () => undefined)
+    const notify = vi.fn()
+    const result = await handler(
+      { toolName: 'write', input: { path: 'notes.txt', content: 'hello\n' } },
+      { cwd, ui: { confirm, input, notify } }
+    )
+
+    expect(result).toEqual({
+      block: true,
+      reason: expect.stringContaining('notes.txt'),
+    })
+    expect(confirm).toHaveBeenCalledWith(
+      'Review before applying: notes.txt',
+      expect.stringContaining('+hello'),
+      expect.objectContaining({ timeout: 600_000 })
+    )
+    expect(input).not.toHaveBeenCalled()
   })
 
   it('loads inert when the gate is off', async () => {
