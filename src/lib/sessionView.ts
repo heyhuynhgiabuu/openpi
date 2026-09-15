@@ -31,7 +31,10 @@ export const TOOL_LABEL: Record<string, string> = {
 }
 
 export function labelForTool(name: string): string {
-  return TOOL_LABEL[name] ?? 'Tool'
+  // `TOOL_LABEL` inherits from `Object.prototype`, so a tool named `toString`
+  // or `constructor` would return a function from the index access and reach
+  // the renderer as a non-string child.
+  return Object.hasOwn(TOOL_LABEL, name) ? TOOL_LABEL[name] : 'Tool'
 }
 
 export function groupSessions(sessions: SessionListItem[], groupBy: GroupMode): SessionGroup[] {
@@ -54,7 +57,11 @@ export function groupSessions(sessions: SessionListItem[], groupBy: GroupMode): 
 
 export function formatRelativeTime(value: string): string {
   const diff = Date.now() - new Date(value).getTime()
-  const minutes = Math.max(0, Math.floor(diff / 60_000))
+  // Every comparison below is false for NaN, so an unparseable timestamp used
+  // to fall through to the month branch and render as "NaNmo".
+  if (!Number.isFinite(diff)) return 'unknown'
+  // A timestamp in the future lands here as a negative and reads 'now' too.
+  const minutes = Math.floor(diff / 60_000)
   if (minutes < 1) return 'now'
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
@@ -82,15 +89,17 @@ export function formatCurrency(value: number): string {
  * claude-opus-4     → "opus 4"
  * gpt-4o            → "gpt-4o"
  * gemini-2.5-pro    → "gemini-2.5"
+ *
+ * The registry spells the same family three ways, so all of these compact to
+ * "sonnet 4.5": `claude-sonnet-4-5`, `claude-sonnet-4.5` (OpenRouter-style
+ * aliases) and `claude-sonnet-4-5-20250929` (the dated Anthropic/Bedrock IDs).
  */
 export function formatModelName(modelId: string): string {
   if (!modelId) return ''
-  // New Pi format: claude-<name>-<major>-<minor>
-  const newFmt = modelId.match(/^claude-([a-z]+)-(\d+)-(\d+)$/)
-  if (newFmt) return `${newFmt[1]} ${newFmt[2]}.${newFmt[3]}`
-  // claude-<name>-<major> (no minor)
-  const noMinor = modelId.match(/^claude-([a-z]+)-(\d+)$/)
-  if (noMinor) return `${noMinor[1]} ${noMinor[2]}`
+  // claude-<name>-<major>[-|.]<minor> with an optional -YYYYMMDD release date
+  const claude = modelId.match(/^claude-([a-z]+)-(\d+)(?:[.-](\d{1,7}))?(?:-\d{8})?$/)
+  if (claude)
+    return claude[3] ? `${claude[1]} ${claude[2]}.${claude[3]}` : `${claude[1]} ${claude[2]}`
   // gemini-2.5-pro → gemini-2.5
   const gemini = modelId.match(/^(gemini-[\d.]+)/)
   if (gemini) return gemini[1]
