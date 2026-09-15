@@ -4,11 +4,16 @@
 
 ### Fixed
 
+- **Git panel counts both halves of a staged-then-modified file** — a file with staged changes that was edited again (`MM`) showed only the staged delta in its `+N/-N` row; the working-tree changes are now included in the same row. (`cca8e75`)
+- **Diff line counts no longer misread content as diff headers** — a content line that begins with `-- ` or `++ ` was counted as a removal or addition, and lines outside hunks leaked into counts. Counting now tracks hunk state, and main and the renderer share one counter so the Git panel and the review cannot disagree about the same patch. (`1e0f72e`, `7f1eb57`, `0c17cfa`)
+- **Review snapshots and Git IPC hardened** — review snapshot and revert reads re-check containment and refuse a path swapped for a symlink mid-review, generated commit messages are schema-validated at the IPC boundary, and aborting a run now cancels a pending pre-apply review instead of leaving it waiting. (`9b22f73`)
+- **The Customizations panel lists the extensions Pi actually loads** — `.js` entry files, a subdirectory's `index.js`, paths resolved against `<cwd>/.pi`, and symlinked entries now appear; a dangling symlink no longer takes the whole inventory down. (`7c1764b`)
+- **Skill frontmatter is stripped the way Pi strips it** — a SKILL.md with CRLF line endings leaked `\r` into the attached-skill block, and an indented `---` was swallowed along with the lines under it. (`0c8ec9d`)
+- **Switching themes clears colours the new theme omits** — applying theme B after theme A kept A's `--accent`, `--surface-card` and `--hairline` for every token B omits, and persisted them; the stored palette is also validated before use. (`d411441`)
+- **Session sidebar labels survive hostile input** — a tool named `toString` handed the renderer a non-string label, an unparseable timestamp rendered "NaNmo", and 11 of 23 `claude-*` model ids fell through uncompacted. (`9a0a253`)
+- **A truncated session file no longer aborts indexing** — a `{ type: 'message' }` line with no payload threw and took down session indexing for the whole scope; such entries are skipped now. (`1cc0c57`)
 - **Search highlights landed on the wrong characters** — the native file index reports match ranges as byte offsets, and the renderer highlights character indices, so every content-search highlight covered one extra character and drifted right on any line with non-ASCII text before the match (accented Vietnamese text, for example). Ranges are converted before they leave the main process. (`3e58357`)
 - **The search fallback ignored the options the UI sends** — when the native index is unavailable, a regex search ran as a literal one (so `\d+` matched the text `\d+` and missed real digits), only one match per file was returned, and the time budget did not bound the walk. It now matches the native defaults, skips files above the size the index would skip, and honours the budget. (`3e58357`)
-
-### Fixed
-
 - **Commit message suggestions no longer misread the staged set** — a file whose name merely contains "test" or "spec" (for example `latestStatus.ts`) was typed as a test change, every `.pi/` change was typed as CI, a commit of only conflicted files produced an empty subject, a conflicted file was left out of the counts when mixed with other changes, and an agent reply that was only a code block produced an empty subject. Scope detection also follows the current `electron/git/` and `electron/pi/` layout. (`0a1102d`)
 
 ## [0.2.13] - 2026-09-14

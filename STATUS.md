@@ -6,7 +6,7 @@ Surface state of the desktop workbench as of the latest release. Not a rule surf
 
 OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`): make sessions **visible** and **steerable**, keep the **MIT agent core** in Pi (not a second runtime), and treat the user as the **quality gate** — aligned with Pi’s minimal harness and inspectability goals. See **Philosophy** in `ROADMAP.md`.
 
-## Beta (v0.2.9)
+## Beta (v0.2.13)
 
 ### Shipped
 
@@ -35,7 +35,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 - Per-turn usage attributes a summarization call to the last assistant turn in file order. A `model_change` between that turn and the compaction (15 of 160 locally) credits the summary's tokens to the earlier model in per-model buckets, and a branch switch could point at a turn on another branch; walking the compaction's parent chain would be the precise fix.
 - Session totals count assistant messages plus the summarization calls on `compaction`/`branch_summary` entries. Pi's own `getSessionStats` also counts `toolResult` message usage; OpenPi does not, and no entry in the local corpus carries it, so it is a gap rather than a live discrepancy.
-- The loader test pins which handlers the gate registers, not what they do: a no-op `session_start` handler would still pass it.
+- The loader test runs the loaded `tool_call` handler through Pi's extension loader (the deny path), but `session_start` and `turn_end` are still only counted there, not executed; their behavior is covered by the direct unit tests.
 - The search fallback treats `mode: 'fuzzy'` as a literal search (it cannot rank fuzzy hits), returns one entry per occurrence where the native index returns one per line, and skips `dist`/`out`/`release` where the native index walks them. `timeBudgetMs: 0` means "stop now" rather than the native's "no limit", which the IPC schema cannot produce because it requires a positive value.
 - The fallback checks its time budget once per directory, so one directory with a very large number of files is still walked to the end. The native index truncates a matched line at 512 bytes; the fallback does not.
 - The search highlight range mapping assumes the line was decoded from the bytes the native offsets point into. That holds except for invalid UTF-8, where a lossy replacement character is treated as the single byte it came from; a genuinely invalid multi-byte sequence can still shift a highlight.
