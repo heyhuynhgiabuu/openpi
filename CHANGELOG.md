@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Commit message suggestions no longer misread the staged set** — a file whose name merely contains "test" or "spec" (for example `latestStatus.ts`) was typed as a test change, every `.pi/` change was typed as CI, a commit of only conflicted files produced an empty subject, a conflicted file was left out of the counts when mixed with other changes, and an agent reply that was only a code block produced an empty subject. Scope detection also follows the current `electron/git/` and `electron/pi/` layout. (`0a1102d`)
+
 ## [0.2.13] - 2026-09-14
 
 ### Fixed

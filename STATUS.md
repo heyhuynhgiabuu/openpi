@@ -39,6 +39,8 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - The gate ignores the tool-call signal while a modal is open, so an aborted run leaves the modal until it is answered or the ten-minute timeout expires. The write is never applied either way.
 - `readWorkspaceBytes`'s dev/ino branch (a file replaced between open and check) has no test; it needs fs injection to be deterministic.
 - The loader test pins which handlers the gate registers, not what they do: a no-op `session_start` handler would still pass it.
+- `electron/git/ipc.ts:385` returns `{ message }` from the commit-message generator without the `generateCommitMessageResultSchema.parse(...)` its neighbouring handlers use.
+- `gitCommitMessage.ts` scope rules `^electron/piSidecar` and `^src/components/session/` match no real path; the legacy `^electron/gitHost` rule is pinned by `tests/gitHostFileTree.test.ts`. Its test file also still builds fixtures with `as never` and the stale `additions`/`deletions` field names.
 
 ## Known constraints
 
