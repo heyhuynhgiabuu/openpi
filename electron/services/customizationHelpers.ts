@@ -3,8 +3,9 @@
  * Extracted from customizations.ts.
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { collectExtensionFiles } from './extensionFiles'
 import type { SettingsManager } from '@earendil-works/pi-coding-agent'
 import type {
   CustomizationDiagnostic,
@@ -29,12 +30,6 @@ export type DiagnosticLike = {
   type?: string
   message?: string
   path?: string
-}
-
-const EXTENSION_ENTRY_EXTENSIONS = new Set(['.ts'])
-
-export function isExtensionEntryFile(filePath: string): boolean {
-  return EXTENSION_ENTRY_EXTENSIONS.has(path.extname(filePath))
 }
 
 export function riskLevelForType(type: CustomizationItem['type']): ResourceRiskLevel {
@@ -70,13 +65,22 @@ export function sourceFrom(
   }
 }
 
+const AGENT_DIR_SEGMENT = `${path.sep}.pi${path.sep}agent${path.sep}`
+
+/** The global agent directory is the user's, even though it sits under `.pi/`. */
+function isGlobalAgentPath(filePath: string): boolean {
+  return filePath.includes(AGENT_DIR_SEGMENT)
+}
+
 export function inferScope(filePath: string | null | undefined): SourceScope {
-  if (filePath?.includes(`${path.sep}.pi${path.sep}`)) return 'project'
+  if (!filePath || isGlobalAgentPath(filePath)) return 'user'
+  if (filePath.includes(`${path.sep}.pi${path.sep}`)) return 'project'
   return 'user'
 }
 
 export function inferSource(filePath: string | null | undefined): string {
   if (!filePath) return 'built-in'
+  if (isGlobalAgentPath(filePath)) return 'user-global'
   if (filePath.includes(`${path.sep}.pi${path.sep}`)) return 'project-local'
   return 'user-global'
 }
@@ -105,7 +109,8 @@ export function extensionName(filePath: string): string {
 export function discoverExtensionItems(options: {
   cwd: string
   agentDir: string
-  settingsManager: SettingsManager
+  /** Only the two settings getters are read, so callers can pass a stand-in. */
+  settingsManager: Pick<SettingsManager, 'getGlobalSettings' | 'getProjectSettings'>
   diagnostics: CustomizationDiagnostic[]
   workspaceTrusted: boolean
 }): CustomizationItem[] {
@@ -149,7 +154,8 @@ export function discoverExtensionItems(options: {
 
   for (const configuredPath of projectSettings.extensions ?? []) {
     items.push(
-      ...collectExtensionPath(resolveConfiguredPath(configuredPath, cwd), {
+      // Pi resolves a project's configured extension paths against `<cwd>/.pi`.
+      ...collectExtensionPath(resolveConfiguredPath(configuredPath, path.join(cwd, '.pi')), {
         scope: 'project',
         origin: 'settings',
         source: '.pi/settings.json',
@@ -208,35 +214,6 @@ export function collectExtensionPath(
     riskLevel: 'high' as const,
     lastModifiedAt: mtimeIso(filePath),
   }))
-}
-
-export function collectExtensionFiles(targetPath: string): string[] {
-  const resolvedPath = path.resolve(targetPath)
-  const stats = statSync(resolvedPath)
-  if (stats.isFile()) {
-    if (isExtensionEntryFile(resolvedPath)) return [resolvedPath]
-    return []
-  }
-  if (!stats.isDirectory()) return []
-
-  const files: string[] = []
-
-  for (const entry of readdirSync(resolvedPath, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue
-    const entryPath = path.join(resolvedPath, entry.name)
-    if (entry.isFile() && isExtensionEntryFile(entryPath)) {
-      files.push(entryPath)
-      continue
-    }
-    if (entry.isDirectory()) {
-      const indexPath = path.join(entryPath, 'index.ts')
-      if (existsSync(indexPath) && statSync(indexPath).isFile()) {
-        files.push(indexPath)
-      }
-    }
-  }
-
-  return files.sort((a, b) => a.localeCompare(b))
 }
 
 export function itemId(type: CustomizationItem['type'], key: string): string {
