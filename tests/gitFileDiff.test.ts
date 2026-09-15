@@ -4,6 +4,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getGitFileDiff } from '../electron/git/gitDiffStatus'
 import { createTestRepo, type TestRepo } from './helpers/gitRepo'
 
+/** One conflict setup: what each side committed, and an optional hand-resolved worktree. */
+interface ConflictCase {
+  name: string
+  base: string
+  ours: string
+  theirs: string
+  worktree?: string
+}
+
 const FILE = 'src/app.ts'
 const THREE_LINES = ['line 1', 'original line 2', 'line 3', ''].join('\n')
 
@@ -91,7 +100,7 @@ describe('getGitFileDiff for untracked and deleted files (integration)', () => {
   })
 
   it('matches git own line counts for each conflict case', async () => {
-    const conflicts = [
+    const conflicts: ConflictCase[] = [
       {
         name: 'symmetric',
         base: ['line 1', 'original', 'line 3', ''].join('\n'),
@@ -110,6 +119,16 @@ describe('getGitFileDiff for untracked and deleted files (integration)', () => {
         ours: ['line 1', 'MAIN', 'line 3', ''].join('\n'),
         theirs: ['line 1', 'line 3', ''].join('\n'),
       },
+      {
+        // The conflict markers stay, but the theirs-only line is gone, which is
+        // the only shape that puts a `-` in the second column. Counting the last
+        // column would report 5/2 where git reports 3/0.
+        name: 'theirs-only line dropped from the worktree',
+        base: ['l1', 'l2', 'l3', 'l4', ''].join('\n'),
+        ours: ['l1', 'O2', 'l3', 'l4', ''].join('\n'),
+        theirs: ['l1', 'T2', 'l3', 'l4', ''].join('\n'),
+        worktree: 'l1\n<<<<<<< HEAD\nO2\n=======\n>>>>>>> other\nl3\nl4\n',
+      },
     ]
 
     for (const conflict of conflicts) {
@@ -126,6 +145,7 @@ describe('getGitFileDiff for untracked and deleted files (integration)', () => {
         await repo.commit('ours')
 
         await repo.git.merge(['other']).catch(() => undefined)
+        if (conflict.worktree) repo.write(FILE, conflict.worktree)
 
         const diff = await getGitFileDiff(repo.cwd, FILE, { scope: 'unstaged' })
         // Git's own count for the same path is the oracle: the combined diff's
