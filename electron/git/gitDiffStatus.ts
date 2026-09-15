@@ -17,8 +17,10 @@ import type {
 import { withGitLock } from './gitLock'
 
 // ─── Internal helpers ──────────────────────────────────────────────────────
+// The pure ones are exported so the status codes, line counting and ref
+// resolution can be tested without a repository.
 
-function effectiveStatus(index: string, workingDir: string): GitChangedFile['status'] {
+export function effectiveStatus(index: string, workingDir: string): GitChangedFile['status'] {
   if (index === 'U' || workingDir === 'U') return 'U'
   // Prefer staged status; fall back to working-dir status.
   const s = index !== ' ' && index !== '?' && index !== '' ? index : workingDir
@@ -50,7 +52,7 @@ function readWorkingText(cwd: string, filePath: string): string | null {
   }
 }
 
-function countContentLines(contents: string): number {
+export function countContentLines(contents: string): number {
   if (!contents) return 0
   return contents.endsWith('\n')
     ? contents.split(/\r?\n/).length - 1
@@ -73,9 +75,8 @@ async function readDiffContents(
   return { oldContent, newContent }
 }
 
-function resolveGitDir(cwd: string, gitDir: string): string {
+export function resolveGitDir(cwd: string, gitDir: string): string {
   if (gitDir.startsWith('/')) return gitDir
-  if (gitDir.startsWith('.')) return path.resolve(cwd, gitDir)
   return path.resolve(cwd, gitDir)
 }
 
@@ -103,7 +104,7 @@ async function detectGitOperation(cwd: string): Promise<GitOperation> {
 
 // ─── Workspace summary ─────────────────────────────────────────────────────
 
-function timestampFromDate(value: string | Date | null | undefined): number | null {
+export function timestampFromDate(value: string | Date | null | undefined): number | null {
   if (!value) return null
   const d = value instanceof Date ? value : new Date(value)
   return Number.isNaN(d.getTime()) ? null : d.getTime()
@@ -213,12 +214,15 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
 
 // ─── File diff ─────────────────────────────────────────────────────────────
 
-function countDiffLines(raw: string): { added: number; removed: number } {
+export function countDiffLines(raw: string): { added: number; removed: number } {
   let added = 0
   let removed = 0
   for (const line of raw.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) added++
-    else if (line.startsWith('-') && !line.startsWith('---')) removed++
+    // Git writes the file headers as `+++ b/path` / `--- a/path`, with a space.
+    // Without requiring it, a removed markdown `---` line arrives as `----` and
+    // was dropped from the count.
+    if (line.startsWith('+') && !line.startsWith('+++ ')) added++
+    else if (line.startsWith('-') && !line.startsWith('--- ')) removed++
   }
   return { added, removed }
 }
