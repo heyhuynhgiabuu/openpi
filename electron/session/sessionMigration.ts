@@ -1,5 +1,25 @@
 import type Database from 'better-sqlite3'
 
+/**
+ * Columns added to tables that predate them. Exported so a test can walk the
+ * list and prove each one is restored on an older database.
+ */
+export const ADDITIVE_COLUMNS: Array<[string, string]> = [
+  ['sessions', "add column last_model text not null default ''"],
+  ['sessions', 'add column file_mtime integer not null default 0'],
+  ['sessions', 'add column usage_index_version integer not null default 0'],
+  ['session_entries', 'add column input_tokens integer not null default 0'],
+  ['session_entries', 'add column output_tokens integer not null default 0'],
+  ['session_entries', 'add column cache_read_tokens integer not null default 0'],
+  ['session_entries', 'add column cache_write_tokens integer not null default 0'],
+  ['session_entries', 'add column total_tokens integer not null default 0'],
+  ['session_entries', 'add column duration_ms integer not null default 0'],
+  ['session_entries', 'add column cost real not null default 0'],
+  ['session_entries', "add column model text not null default ''"],
+  ['session_entries', "add column provider text not null default ''"],
+  ['workspaces', 'add column trusted_at text'],
+]
+
 export function runMigrations(db: Database.Database): void {
   db.exec(`
     create table if not exists workspaces (
@@ -68,23 +88,7 @@ export function runMigrations(db: Database.Database): void {
 
   // Additive migrations — safe to run on existing DBs.
   // Each block uses try/catch so they are idempotent on re-open.
-  const addColumns: Array<[string, string]> = [
-    ['sessions', "add column last_model text not null default ''"],
-    ['sessions', 'add column file_mtime integer not null default 0'],
-    ['sessions', 'add column usage_index_version integer not null default 0'],
-    ['session_entries', 'add column input_tokens integer not null default 0'],
-    ['session_entries', 'add column output_tokens integer not null default 0'],
-    ['session_entries', 'add column cache_read_tokens integer not null default 0'],
-    ['session_entries', 'add column cache_write_tokens integer not null default 0'],
-    ['session_entries', 'add column total_tokens integer not null default 0'],
-    ['session_entries', 'add column duration_ms integer not null default 0'],
-    ['session_entries', 'add column cost real not null default 0'],
-    ['session_entries', "add column model text not null default ''"],
-    ['session_entries', "add column provider text not null default ''"],
-    ['workspaces', 'add column trusted_at text'],
-  ]
-
-  for (const [table, clause] of addColumns) {
+  for (const [table, clause] of ADDITIVE_COLUMNS) {
     try {
       db.exec(`alter table ${table} ${clause}`)
     } catch {
