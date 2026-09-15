@@ -6,16 +6,20 @@ interface ReadFileContent {
 
 /**
  * Strip YAML frontmatter from a SKILL.md file before sending to the LLM.
- * Matches Pi SDK's internal stripFrontmatter() used in _expandSkillCommand().
- * Frontmatter is metadata for the skill registry — the LLM only needs the body.
+ * Mirrors Pi SDK's `stripFrontmatter` (`utils/frontmatter.js`), which normalizes
+ * line endings and only treats a `---` at the very start as frontmatter: a
+ * leading-space `---` is body text there, and a CRLF file must not leak `\r`
+ * into the prompt.
  */
 export function stripSkillFrontmatter(content: string): string {
-  const trimmed = content.trimStart()
-  if (!trimmed.startsWith('---')) return trimmed
-  const afterOpen = trimmed.slice(3)
-  const closeIdx = afterOpen.indexOf('\n---')
-  if (closeIdx === -1) return trimmed
-  return afterOpen.slice(closeIdx + 4).trimStart()
+  const normalized = content
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+  if (!normalized.startsWith('---')) return normalized
+  const endIndex = normalized.indexOf('\n---', 3)
+  if (endIndex === -1) return normalized
+  return normalized.slice(endIndex + 4).trim()
 }
 
 export function buildSkillContextBlocks(
@@ -27,7 +31,9 @@ export function buildSkillContextBlocks(
       if (!content) return null
       const skill = skills[index]
       if (!skill) return null
-      const body = stripSkillFrontmatter(content)
+      // Pi's own expansion trims the body (`agent-session.js`), so a skill that
+      // reaches the model through this path reads the same as `/skill:`.
+      const body = stripSkillFrontmatter(content).trim()
       return `<skill name="${skill.name}" location="${skill.path}/SKILL.md">\nReferences are relative to ${skill.path}.\n\n${body}\n</skill>`
     })
     .filter((block): block is string => Boolean(block))
