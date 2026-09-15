@@ -1,6 +1,5 @@
 import { batch, createSignal } from 'solid-js'
 import type { SessionListItem, SessionListOptions, WorkspaceInfo } from '../lib/ipc'
-import { groupSessions } from '../lib/sessionView'
 import type { GroupMode, SortMode } from '../types/session'
 
 const RECENT_DAYS = 30
@@ -14,7 +13,6 @@ export function useSessionIndex(getFallbackWorkspacePath: () => string | null) {
   const [sortBy, setSortBy] = createSignal<SortMode>('created')
   const [groupBy, setGroupBy] = createSignal<GroupMode>('workspace')
   const [showRecent, setShowRecent] = createSignal(true)
-  const [collapsedGroups, setCollapsedGroups] = createSignal<Set<string>>(new Set())
 
   const selectedWorkspaceForQuery = () => selectedWorkspacePath() ?? getFallbackWorkspacePath()
 
@@ -56,19 +54,6 @@ export function useSessionIndex(getFallbackWorkspacePath: () => string | null) {
     })
   }
 
-  const toggleGroup = (group: string) => {
-    setCollapsedGroups((previous) => {
-      const next = new Set(previous)
-      if (next.has(group)) next.delete(group)
-      else next.add(group)
-      return next
-    })
-  }
-
-  const collapseAllGroups = () => {
-    setCollapsedGroups(new Set(groupSessions(sessions(), groupBy()).map((group) => group.key)))
-  }
-
   return {
     workspaces,
     sessions,
@@ -77,7 +62,6 @@ export function useSessionIndex(getFallbackWorkspacePath: () => string | null) {
     sortBy,
     groupBy,
     showRecent,
-    collapsedGroups,
     setSelectedWorkspacePath,
     setSessionQuery,
     setSortBy,
@@ -87,7 +71,5 @@ export function useSessionIndex(getFallbackWorkspacePath: () => string | null) {
     loadSessionIndex,
     selectWorkspace,
     loadWorkspacePreview,
-    toggleGroup,
-    collapseAllGroups,
   }
 }

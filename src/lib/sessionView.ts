@@ -72,12 +72,6 @@ export function formatRelativeTime(value: string): string {
   return `${months}mo`
 }
 
-export function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m tok`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k tok`
-  return `${value} tok`
-}
-
 export function formatCurrency(value: number): string {
   return `$${value >= 1 ? value.toFixed(2) : value.toFixed(4)}`
 }

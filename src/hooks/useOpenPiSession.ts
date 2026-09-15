@@ -657,9 +657,6 @@ export function useOpenPiSession() {
     get showRecent() {
       return sessionIndex.showRecent()
     },
-    get collapsedGroups() {
-      return sessionIndex.collapsedGroups()
-    },
     get gitBranch() {
       return gitBranch()
     },
@@ -800,8 +797,6 @@ export function useOpenPiSession() {
     selectModel,
     refreshModels,
     selectThinkingLevel,
-    toggleGroup: sessionIndex.toggleGroup,
-    collapseAllGroups: sessionIndex.collapseAllGroups,
     setSessionName,
     forkFromMessage,
     compactSession,
