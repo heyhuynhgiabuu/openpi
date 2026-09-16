@@ -33,6 +33,7 @@ export class RemoteHost {
   private server: RunningRemoteServer | null = null
   private hub: SseHub | null = null
   private registry: GateRegistry | null = null
+  private auth: RemoteAuth | null = null
   private starting: Promise<RemoteToggleResult> | null = null
 
   constructor(private readonly deps: RemoteHostDeps) {}
@@ -61,6 +62,7 @@ export class RemoteHost {
     this.server = null
     this.hub = null
     this.registry = null
+    this.auth = null
     hub?.stop()
     await server?.stop()
   }
@@ -70,27 +72,68 @@ export class RemoteHost {
     this.hub?.onSessionEvent(event)
   }
 
+  /** Kills a device's access instantly: revocation plus any live SSE streams. */
+  revokeDevice(deviceId: number): boolean {
+    const revoked = this.auth?.revokeDevice(deviceId) ?? false
+    this.hub?.dropDevice(deviceId)
+    return revoked
+  }
+
   pendingGates(): GateSnapshot[] {
     return this.registry?.listPending() ?? []
   }
 
   private async doEnable(index: SessionIndexStore): Promise<RemoteToggleResult> {
-    const store = new RemoteDeviceStore(index.database)
-    const auth = new RemoteAuth(store)
-    this.registry = new GateRegistry()
-    this.hub = new SseHub(this.registry)
-    const handlers = createRemoteHandlers({
-      auth: this.deps.sessionAuth,
-      sessionIndex: this.deps.sessionIndex,
-      registry: this.registry,
-    })
-    this.server = await startRemoteServer({
-      auth,
-      handlers,
-      port: this.deps.port ?? REMOTE_PORT,
-      hub: this.hub,
-    })
-    this.hub.start()
-    return { port: this.server.port }
+    try {
+      const store = new RemoteDeviceStore(index.database)
+      const auth = new RemoteAuth(store)
+      const registry = new GateRegistry()
+      const hub = new SseHub(registry)
+      const handlers = createRemoteHandlers({
+        auth: this.deps.sessionAuth,
+        sessionIndex: this.deps.sessionIndex,
+        registry,
+      })
+      const server = await startRemoteServer({
+        auth,
+        handlers,
+        port: this.deps.port ?? REMOTE_PORT,
+        hub,
+      })
+      // Commit only once the socket is live: a failed enable leaves no state.
+      this.auth = auth
+      this.registry = registry
+      this.hub = hub
+      this.server = server
+      hub.start()
+      return { port: server.port }
+    } catch (error) {
+      this.auth = null
+      this.registry = null
+      this.hub = null
+      this.server = null
+      throw error
+    }
   }
+}
+
+// ── main.ts factory ──────────────────────────────────────────────────────────
+
+export interface RemoteHostFactoryDeps {
+  sessionIndex: () => SessionIndexStore | null
+  getAgentDir: () => string
+  getSessionState: () => SessionAuthDeps['getSessionState'] extends () => infer T ? T : never
+  activeWorkspacePath: () => string | null
+}
+
+export function createRemoteHost(deps: RemoteHostFactoryDeps): RemoteHost {
+  return new RemoteHost({
+    sessionIndex: deps.sessionIndex,
+    sessionAuth: {
+      getAgentDir: deps.getAgentDir,
+      getSessionState: deps.getSessionState,
+      getSessionIndex: deps.sessionIndex,
+      activeWorkspacePath: deps.activeWorkspacePath,
+    },
+  })
 }

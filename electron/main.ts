@@ -7,7 +7,7 @@ import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
-import { RemoteHost } from './remote/remoteHost'
+import { createRemoteHost, type RemoteHost } from './remote/remoteHost'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
@@ -233,14 +233,11 @@ app.whenReady().then(() => {
   setSessionIndex(sessionIndex)
   setSessionHostSessionIndex(sessionIndex)
 
-  remoteHost = new RemoteHost({
+  remoteHost = createRemoteHost({
     sessionIndex: () => sessionIndex,
-    sessionAuth: {
-      getAgentDir: () => getAgentDir(),
-      getSessionState,
-      getSessionIndex: () => sessionIndex,
-      activeWorkspacePath,
-    },
+    getAgentDir,
+    getSessionState,
+    activeWorkspacePath,
   })
 
   // Wire sessionHost callbacks

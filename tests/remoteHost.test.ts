@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RemoteAuth } from '../electron/remote/auth'
 import { RemoteDeviceStore } from '../electron/remote/devices'
 import { RemoteHost, REMOTE_PORT } from '../electron/remote/remoteHost'
@@ -90,8 +90,10 @@ describe('RemoteHost lifecycle', () => {
     const { port } = await host.enable()
     const base = `http://127.0.0.1:${port}`
 
-    const authProbe = new RemoteAuth(new RemoteDeviceStore(db))
-    const { code } = authProbe.beginPairing()
+    // A pairing code minted outside the host's own auth instance must be
+    // rejected — pairing secrets are not portable across RemoteAuth instances.
+    const foreign = new RemoteAuth(new RemoteDeviceStore(db))
+    const { code } = foreign.beginPairing()
     // The host has its own auth/store; pair through HTTP instead.
     const pairResponse = await fetch(`${base}/api/pair`, {
       method: 'POST',

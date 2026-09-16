@@ -55,12 +55,17 @@ interface Entry {
   settle: (outcome: GateOutcome | { expired: true }) => void
 }
 
+interface Tombstone {
+  gateToken: string
+  expiresAt: number
+}
+
 /** Bounded tombstones so a settled gate answers already_resolved, not unknown. */
 const MAX_TOMBSTONES = 128
 
 export class GateRegistry {
   private entries = new Map<string, Entry>()
-  private tombstones = new Map<string, string>()
+  private tombstones = new Map<string, Tombstone>()
   private listeners = new Set<() => void>()
 
   /**
@@ -102,7 +107,7 @@ export class GateRegistry {
   settleLocally(id: string, outcome: GateOutcome): boolean {
     const entry = this.entries.get(id)
     if (!entry) return false
-    this.tombstone(id, entry.gateToken)
+    this.tombstone(id, entry)
     entry.settle(outcome)
     this.notify()
     return true
@@ -117,9 +122,11 @@ export class GateRegistry {
     const entry = this.entries.get(id)
     if (!entry) {
       // Settled gates keep answering already_resolved to the right token;
-      // anything else is indistinguishable from an unknown gate.
-      const settledToken = this.tombstones.get(id)
-      if (settledToken !== undefined && safeEqualStrings(settledToken, gateToken)) {
+      // expired gates answer expired; anything else is indistinguishable from
+      // an unknown gate.
+      const settled = this.tombstones.get(id)
+      if (settled !== undefined && safeEqualStrings(settled.gateToken, gateToken)) {
+        if (Date.now() > settled.expiresAt) return { ok: false, reason: 'expired' }
         return { ok: false, reason: 'already_resolved' }
       }
       return { ok: false, reason: 'unknown_gate' }
@@ -128,14 +135,14 @@ export class GateRegistry {
       return { ok: false, reason: 'bad_token' }
     }
     if (Date.now() > entry.snapshot.expiresAt) {
-      this.tombstone(id, entry.gateToken)
+      this.tombstone(id, entry)
       entry.settle({ expired: true })
       this.notify()
       return { ok: false, reason: 'expired' }
     }
     // Tombstone first: a second resolution attempt — desktop or remote — sees
     // already_resolved instead of double-resolving the promise.
-    this.tombstone(id, entry.gateToken)
+    this.tombstone(id, entry)
     const outcome: GateOutcome = { approved: decision.approved, via: 'remote' }
     if (decision.approvedIndexes !== undefined) outcome.approvedIndexes = decision.approvedIndexes
     entry.settle(outcome)
@@ -148,7 +155,7 @@ export class GateRegistry {
     let swept = false
     for (const [id, entry] of this.entries) {
       if (now > entry.snapshot.expiresAt) {
-        this.tombstone(id, entry.gateToken)
+        this.tombstone(id, entry)
         entry.settle({ expired: true })
         swept = true
       } else {
@@ -170,9 +177,9 @@ export class GateRegistry {
     for (const listener of this.listeners) listener()
   }
 
-  private tombstone(id: string, gateToken: string): void {
+  private tombstone(id: string, entry: Entry): void {
     this.entries.delete(id)
-    this.tombstones.set(id, gateToken)
+    this.tombstones.set(id, { gateToken: entry.gateToken, expiresAt: entry.snapshot.expiresAt })
     while (this.tombstones.size > MAX_TOMBSTONES) {
       const oldest = this.tombstones.keys().next().value
       if (oldest === undefined) break

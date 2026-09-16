@@ -105,6 +105,11 @@ export class RemoteAuth {
     this.pending = null
   }
 
+  /** Revokes a paired device immediately; its token stops verifying. */
+  revokeDevice(deviceId: number): boolean {
+    return this.store.revoke(deviceId, new Date(this.now()))
+  }
+
   private isRateLimited(ip: string): boolean {
     const cutoff = this.now() - ATTEMPTS_WINDOW_MS
     this.attempts = this.attempts.filter((attempt) => attempt.at >= cutoff)

@@ -83,9 +83,11 @@ need — while keeping the token in the `Authorization` header (no query-string
 secrets) and giving the PWA trivial reconnect. Same auth model as the other GETs.
 
 Event subset: `agent_start/end`, `message_start/update/end`,
-`tool_execution_start/update/end`, `queue_update`, `gate_open/gate_closed`
-(new synthetic events from the registry). Payloads are the same envelopes the
-desktop renderer already receives — one producer, two consumers.
+`tool_execution_start/update/end`, `queue_update`, `gate_update`
+(synthetic registry snapshots). Payloads are the same envelopes the
+desktop renderer already receives — one producer, two consumers. The PWA
+consumes the stream with fetch-streaming and its own SSE parser: native
+`EventSource` cannot set the `Authorization` header.
 
 ## Pending-gate registry (the only mutation path)
 
@@ -96,14 +98,19 @@ pre-apply review, extension `ctx.ui` confirms). These calls gain a registry hop:
   summary (for pre-apply: the hunk payload), `createdAt`, and the dialog's own
   expiry. Registry entries are tombstoned on resolution.
 - Desktop modal and remote endpoint resolve the **same pending promise**. First
-  resolver wins; the loser (remote) gets `409 already_resolved`. A used or
-  unknown `gateToken` → `410`. An expired gate is removed by its existing
-  timeout, and the remote list reflects that on the next snapshot/WS event.
+  resolver wins; the loser gets a conflict: `409 already_resolved` for a
+  correct one-time token on a settled gate, `410` (gone) for an unknown id, a
+  wrong token, or a gate past its expiry — the phone can tell "someone else
+  answered" apart from "this gate no longer exists".
 - Approve/deny bodies carry `{gateToken}` plus, for pre-apply hunk gates, the
   approved-index array — validated by the same `preapplyReviewSchema` shape the
   desktop modal produces. No new decision logic exists remotely; the remote
   client renders state and submits intent, main decides.
-- `gate_open` / resolution events go out on WS so the phone's badge is live.
+- `gate_update` snapshot events go out on the SSE stream whenever a gate
+  opens, settles, or is swept (every new stream also receives one on attach),
+  so the phone's badge is live. (Amendment 2026-09-16, slice 3: snapshot
+  semantics replace the earlier `gate_open`/`gate_closed` pair — one event
+  shape cannot go stale.)
 
 ## Module layout (each ≤300 LOC)
 
@@ -119,12 +126,13 @@ pre-apply review, extension `ctx.ui` confirms). These calls gain a registry hop:
 ## Test matrix (all negative paths first)
 
 401 without token; 401 with wrong/revoked token; 403 foreign Origin on POST and
-WS upgrade; WS upgrade without token; 501 for every non-allowlisted channel
+SSE; SSE without token; 501 for every non-allowlisted channel
 (including `session.prompt`, `pty.*`, `git.*`); path-authorization rejection for
 a session outside the authorized set; pairing rate limit and single-use code;
-replayed gate token → 410; desktop-vs-remote race → 409; malformed bodies → 400
-per schema. Plus one shipped-path-style integration test: enable server on an
-ephemeral port, pair, stream a scripted session, approve a scripted gate.
+wrong gate token on a live gate → 410; correct token on a settled gate → 409;
+expired gate → 410 expired; desktop-vs-remote race → 409; malformed bodies →
+400 per schema. Plus one shipped-path-style integration test: enable server on
+an ephemeral port, pair, stream a scripted session, approve a scripted gate.
 
 ## Explicit non-goals (P0)
 

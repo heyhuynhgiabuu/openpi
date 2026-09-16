@@ -138,6 +138,9 @@ describe('gate endpoints over HTTP', () => {
     })
     expect(approve.status).toBe(200)
     expect(await approve.json()).toEqual({ ok: true })
+    // The promise the desktop modal awaits must carry the clamped indexes.
+    const outcome = await opened.wait()
+    expect(outcome).toEqual({ approved: true, approvedIndexes: [0], via: 'remote' })
 
     // Settled: a different token cannot even tell the gate existed.
     const replay = await fetch(`${base}/api/gates/${opened.gate.id}/deny`, {
@@ -168,6 +171,23 @@ describe('gate endpoints over HTTP', () => {
     })
     expect(response.status).toBe(409)
     expect(await response.json()).toEqual({ error: 'already_resolved' })
+  })
+
+  it('answers 410 expired to the correct token on a timed-out gate', async () => {
+    const opened = registry.open({ kind: 'confirm', title: 't', summary: 's', ttlMs: 1 })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    const response = await fetch(`${base}/api/gates/${opened.gate.id}/deny`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: base,
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ gateToken: opened.gateToken }),
+    })
+    expect(response.status).toBe(410)
+    expect(await response.json()).toEqual({ error: 'expired' })
   })
 
   it('answers 410 for a wrong gate token on a live gate', async () => {
