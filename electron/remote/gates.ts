@@ -67,6 +67,7 @@ export class GateRegistry {
   private entries = new Map<string, Entry>()
   private tombstones = new Map<string, Tombstone>()
   private listeners = new Set<() => void>()
+  private timers = new Map<string, NodeJS.Timeout>()
 
   /**
    * Registers a gate. `ttlMs` should match the underlying dialog's own expiry;
@@ -98,6 +99,14 @@ export class GateRegistry {
         settle: resolve,
       })
     })
+    // Self-sweep: the design's "removed by its existing timeout" — wait()
+    // must resolve at expiry even when nothing else touches the registry.
+    const timer = setTimeout(() => {
+      this.timers.delete(gate.id)
+      this.listPending()
+    }, input.ttlMs + 5)
+    timer.unref?.()
+    this.timers.set(gate.id, timer)
     this.notify()
 
     return { gate, gateToken, wait: () => promise }
@@ -193,6 +202,11 @@ export class GateRegistry {
 
   private tombstone(id: string, entry: Entry): void {
     this.entries.delete(id)
+    const timer = this.timers.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      this.timers.delete(id)
+    }
     this.tombstones.set(id, { gateToken: entry.gateToken, expiresAt: entry.snapshot.expiresAt })
     while (this.tombstones.size > MAX_TOMBSTONES) {
       const oldest = this.tombstones.keys().next().value

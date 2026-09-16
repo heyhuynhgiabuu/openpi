@@ -8,9 +8,11 @@ import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
 import { createRemoteHost, defaultShellDir, type RemoteHost } from './remote/remoteHost'
+import { runGatedConfirm } from './remote/gateBridge'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
+import { createHighRiskConfirm } from './services/highRiskConfirm'
 import { installProcessCrashHooks } from './services/processCrashHooks'
 import { handleLocalFileProtocol, registerLocalFileScheme } from './services/localFileProtocol'
 import {
@@ -70,24 +72,11 @@ enrichPathFromLoginShell()
 app.setName('OpenPi')
 app.setAppUserModelId('dev.openpi.app')
 
-async function confirmHighRiskMutation(options: {
-  title: string
-  message: string
-  detail: string
-}): Promise<boolean> {
-  if (!mainWindow) return false
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    title: options.title,
-    message: options.message,
-    detail: options.detail,
-    buttons: ['Cancel', 'Approve'],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  })
-  return result.response === 1
-}
+const confirmHighRiskMutation = createHighRiskConfirm({
+  getMainWindow: () => mainWindow,
+  openBridgeGate: (input) => remoteHost?.openBridgeGate(input) ?? null,
+  settleBridgeGate: (gateId, approved) => remoteHost?.settleBridgeGate(gateId, approved) ?? false,
+})
 
 // ─── Session state ─────────────────────────────────────────────────────────────
 // Module state is owned by sessionHost.ts; main.ts reads it via getters.

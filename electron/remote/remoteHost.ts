@@ -16,7 +16,7 @@ import type { SessionIndexStore } from '../session/sessionIndex'
 import { RemoteAuth } from './auth'
 import type { RemoteDeviceRow } from './devices'
 import { RemoteDeviceStore } from './devices'
-import { GateRegistry, type GateSnapshot } from './gates'
+import { GateRegistry, type GateSnapshot, type OpenedGate } from './gates'
 import { createRemoteHandlers } from './handlers'
 import { SseHub } from './sse'
 import { startRemoteServer, type RunningRemoteServer } from './server'
@@ -119,6 +119,22 @@ export class RemoteHost {
 
   pendingGates(): GateSnapshot[] {
     return this.registry?.listPending() ?? []
+  }
+
+  /** Bridge hop for desktop confirms; null when remote is off. */
+  openBridgeGate(input: { title: string; summary: string; ttlMs: number }): OpenedGate | null {
+    if (!this.registry || !this.server) return null
+    return this.registry.open({
+      kind: 'confirm',
+      title: input.title,
+      summary: input.summary,
+      ttlMs: input.ttlMs,
+    })
+  }
+
+  /** Desktop-side settlement of a bridged gate; false when remote won first. */
+  settleBridgeGate(gateId: string, approved: boolean): boolean {
+    return this.registry?.settleLocally(gateId, { approved, via: 'desktop' }) ?? false
   }
 
   private async doEnable(index: SessionIndexStore): Promise<RemoteToggleResult> {
