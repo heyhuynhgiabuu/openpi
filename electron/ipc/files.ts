@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { BrowserWindow, dialog, type IpcMain, shell } from 'electron'
+import { BrowserWindow, type IpcMain, shell } from 'electron'
 import type { FileContent } from '../../src/lib/ipc'
 import {
   copyFileRequestSchema,
@@ -15,6 +15,8 @@ import {
   writeFileRequestSchema,
 } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
+import { isGitMetadataPath } from './fileGuards'
+import { registerDeleteFileIpc } from './fileDelete'
 import { checkProtectedPath } from '../services/protectedPaths'
 import {
   moveWorkspaceEntryNoReplace,
@@ -31,7 +33,7 @@ interface ConfirmMutationOptions {
   detail: string
 }
 
-interface FileIpcDeps {
+export interface FileIpcDeps {
   ipcMain: IpcMain
   getCwd: () => string | null
   getMainWindow: () => BrowserWindow | null
@@ -39,12 +41,8 @@ interface FileIpcDeps {
   confirmHighRiskMutation: (options: ConfirmMutationOptions) => Promise<boolean>
 }
 
-function isGitMetadataPath(relPath: string): boolean {
-  const parts = relPath.split(/[\\/]+/).filter(Boolean)
-  return parts.includes('.git')
-}
-
 export function registerFileIpc(deps: FileIpcDeps): void {
+  registerDeleteFileIpc(deps)
   deps.ipcMain.handle(IPC.READ_FILE, (_event, raw: unknown): FileContent | null => {
     const parsed = readFileRequestSchema.parse(raw)
     const cwd = deps.getCwd()
@@ -126,68 +124,6 @@ export function registerFileIpc(deps: FileIpcDeps): void {
       const git = await deps.getGitHost()
       deps.getMainWindow()?.webContents.send(IPC.GIT_STATUS_CHANGED, await git.getGitStatus(cwd))
     } catch {}
-  })
-
-  deps.ipcMain.handle(IPC.DELETE_FILE, async (event, raw: unknown): Promise<unknown> => {
-    const parsed = deleteFileRequestSchema.parse(raw)
-    const cwd = deps.getCwd()
-    if (!cwd) {
-      console.warn(`[openpi:fs] DELETE_FILE no cwd (path=${parsed.path})`)
-      throw new Error('No active workspace')
-    }
-    const { path: relPath } = parsed
-    const full = resolveWorkspacePath(cwd, relPath, 'delete')
-
-    if (isGitMetadataPath(relPath)) {
-      throw new Error('Refusing to delete Git metadata')
-    }
-
-    const violation = checkProtectedPath(full, cwd)
-    if (violation && violation.level !== 'soft') {
-      throw new Error(`Refusing to delete protected path: ${violation.reason}`)
-    }
-
-    const stat = fs.lstatSync(full)
-    const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? deps.getMainWindow()
-    const confirmOptions = {
-      type: 'warning' as const,
-      buttons: ['Move to Trash', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      title: `Delete ${stat.isDirectory() ? 'folder' : 'file'}?`,
-      message: `Move ${path.basename(full)} to Trash?`,
-      detail: relPath,
-    }
-    const { response } = parentWindow
-      ? await dialog.showMessageBox(parentWindow, confirmOptions)
-      : await dialog.showMessageBox(confirmOptions)
-    if (response !== 0) return deleteFileResultSchema.parse({ trashed: false })
-
-    const authorizedFull = resolveWorkspacePath(cwd, relPath, 'delete')
-    const confirmedStat = fs.lstatSync(authorizedFull)
-    if (stat.dev !== confirmedStat.dev || stat.ino !== confirmedStat.ino) {
-      throw new Error('File changed while deletion confirmation was open')
-    }
-    const stagedTrashPath = resolveWorkspacePath(
-      cwd,
-      path.relative(cwd, path.join(path.dirname(authorizedFull), `.openpi-trash-${randomUUID()}`)),
-      'delete'
-    )
-    moveWorkspaceEntryNoReplace(authorizedFull, stagedTrashPath)
-    try {
-      await shell.trashItem(stagedTrashPath)
-    } catch (error) {
-      moveWorkspaceEntryNoReplace(stagedTrashPath, authorizedFull)
-      throw error
-    }
-    deps.getMainWindow()?.webContents.send(IPC.FILE_TREE_CHANGED)
-    try {
-      const git = await deps.getGitHost()
-      deps.getMainWindow()?.webContents.send(IPC.GIT_STATUS_CHANGED, await git.getGitStatus(cwd))
-    } catch {
-      // Git status refresh is best-effort; the file-tree refresh above is authoritative here.
-    }
-    return deleteFileResultSchema.parse({ trashed: true })
   })
 
   deps.ipcMain.handle(IPC.RENAME_FILE, async (_event, raw: unknown): Promise<string> => {

@@ -117,6 +117,17 @@ pre-apply review, extension `ctx.ui` confirms). These calls gain a registry hop:
   semantics replace the earlier `gate_open`/`gate_closed` pair — one event
   shape cannot go stale.)
 
+**Bridge amendment (2026-09-16, slice 5):** bridged today — high-risk shell
+commands, workspace trust/delete, extension re-enable, and file/folder
+deletion (all `confirmHighRiskMutation` call sites plus `DELETE_FILE`).
+Deferred to a follow-up slice: extension `ctx.ui` confirms and the pre-apply
+review modal — they ride the sidecar↔renderer `extension_ui_request` path, a
+different choke point. Known constraint: when remote expiry settles a gate,
+the still-open desktop dialog cannot be dismissed programmatically; its late
+click is inert (fail-safe: the mutation is denied). Bridged gates carry a
+10-minute TTL and the registry self-sweeps at expiry so `wait()` always
+resolves.
+
 ## Module layout (each ≤300 LOC)
 
 - `electron/remote/server.ts` — http/WS lifecycle, bound to the Settings toggle
