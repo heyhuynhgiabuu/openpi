@@ -24,7 +24,7 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 ---
 
-## Current Status (beta) — v0.2.13
+## Current Status (beta) — v0.2.14
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
@@ -39,6 +39,9 @@ Done so far:
 - **Harness lint pre-commit hook** and full docs/ product documentation directory.
 - Runtime OpenPi branding: app name/version from Electron main, shared metadata, OpenPi icon set.
 - CI/CD baseline: PR/main verification, tag-triggered beta release across macOS/Windows/Linux.
+- **Shipped-path verification (v0.2.14)**: an end-to-end test boots the real bundled sidecar, loads a fixture extension through the real resource loader, and asserts the full event order; CI runs smoke/e2e on every push across all four platforms. v0.2.14 was the first release cut with CI green on every OS before tagging.
+- **Session export + trajectory ledger (v0.2.14)**: `/export-session` writes a checksummed bundle (exact session JSONL copy, referenced pi-task sub-sessions, manifest); the session map gains a Tree/Trajectory toggle with per-entry timing/token/cost rows.
+- **Extension diagnostics (v0.2.14)**: extension load failures and resource conflicts surface as conversation error cards instead of silent tool/command loss; protected-path confirmation now also guards rename-to, copy-to, and format on protected paths.
 - **Pi-task delegation UI**: task-history polling and sub-session navigation for `@heyhuynhgiabuu/pi-task` (`task-session-history.json`, `task-sessions.json`, `artifacts/tasks/sessions/`). No built-in `Agent` customTools on the sidecar — delegation is the pi-task package.
 - **Custom agent discovery**: the composer's `@mention` suggestions come from the effective pi-task catalog — pi-task's own discovery over bundled agents + `~/.pi/agent/agents/*.md` + `<workspace>/.pi/agents/*.md` (precedence: bundled < user < project), with provenance and read-only badges. Authority stays in pi-task; OpenPi only displays what the `task` tool could run.
 - **Subagent widget**: live status tray with Bot icon, elapsed timer, expandable detail panel (ID/status/turns/tools/4K result preview), background completion notification banner. Status bugfixes: onToolEnd no longer overwrites background status; clearFinished preserves background agents.
@@ -49,8 +52,9 @@ Done so far:
 
 Still beta-blocking:
 - macOS notarization and Windows code signing not configured (see Phase 6 slice 10).
-- Phase 7 automated test coverage gaps (`npm test`) before broad beta.
 - CI lint/test must stay green.
+
+Test posture is no longer the blocker it was: 948 tests across 132 files plus the shipped-path sidecar e2e run in CI on every push; remaining coverage gaps are tracked in `STATUS.md` (pre-apply `write` routing, review-flow leg of the e2e).
 
 ---
 
@@ -461,13 +465,13 @@ Acceptance criteria:
 
 | P | Slice | Why |
 |---|---|---|
-| **P0** | **Automated tests** | `npm test` covers IPC, session index, PTY, permission gates; expand Vitest where gaps remain. An Electron launch smoke runs in CI on Linux. |
+| **P0** | **Automated tests** ✅ (core posture) | 948 tests across 132 files: IPC Zod roundtrips, session index/SQLite, PTY, permission/protected-path gates, git read models, plus a **shipped-path e2e** that drives the real bundled sidecar (fixture extension through the real loader, event-order assertions) — all in CI on Linux/macOS/Windows. Remaining gaps tracked in `STATUS.md`. |
 | **P0** | **Unified Review tab MVP** ✅ | Human quality gate after agent writes: Review source dropdown for Git changes vs Last turn changes, snapshot-backed file accordions, Keep/Revert/Revert all, without blocking Pi’s tool loop. |
 | **P0** | **Pre-apply diff review** ✅ (v0.2.11) | Opt-in gate that stops Pi’s `edit`/`write` before the write lands; hunk review inside OpenPi. Follow-up: route `write` through the review modal. |
 | **P0** | **Live token/cost per turn** ✅ | Inspectability during streaming, not only post-`agent_end`. Shipped: composer badge + usage rows. |
 | **P1** | **Session map v2** ✅ (v0.2.10) | Pi’s tree model visible: branches, compaction, labels, navigate/fork. Shipped; subagent card polish remains. |
 | **P1** | **Subagent/task card polish** | Expand/collapse, abort — UI on existing OpenPi subagent tools; don’t add new agent runtimes. |
-| **P2** | **Workbench context bridge** | cwd / visible file / terminal snippet for steering — narrow scope. |
+| **P2** | **Workbench context bridge** ◐ partial | Visible-file leg shipped (preview-pane file reported to main over a Zod-validated channel); terminal-snippet attachment for steering remains. |
 | **P2** | **Auto-updater** | Release hygiene once signing (Phase 6 #10) exists. |
 
 Build notes:
@@ -476,7 +480,7 @@ Build notes:
 3. **Live token/cost per turn** ✅ — conversation header during `message_update` / `turn_end`.
 4. **Session map v2** ✅ — tree UI over JSONL `parentId` / compaction entries.
 5. **Subagent/task cards** — richer cards for `Agent` / task tooling already in use.
-7. **Context bridge** — optional composer attachment of “what user is viewing.”
+7. **Context bridge** — visible-file reporting shipped; optional terminal-snippet attachment is the remaining leg.
 8. **Auto-updater** — `electron-updater` wired to release channel.
 
 Acceptance criteria:
