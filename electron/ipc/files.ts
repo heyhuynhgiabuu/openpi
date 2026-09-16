@@ -1,13 +1,10 @@
 import { execFileSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { BrowserWindow, type IpcMain, shell } from 'electron'
+import { BrowserWindow, type IpcMain } from 'electron'
 import type { FileContent } from '../../src/lib/ipc'
 import {
   copyFileRequestSchema,
-  deleteFileRequestSchema,
-  deleteFileResultSchema,
   formatFileRequestSchema,
   IPC,
   readFileRequestSchema,
