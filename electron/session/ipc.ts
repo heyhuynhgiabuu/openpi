@@ -1,52 +1,34 @@
-import * as crypto from 'node:crypto'
-import path from 'node:path'
+/**
+ * ipc.ts — session IPC registrar: core messaging/steering, active-session
+ * guards, and sidebar listing. Domain handlers live beside it:
+ *   inspectionIpc.ts — read models (history, tree, trajectory, usage,
+ *                      sub-sessions) and the export bundle
+ *   lifecycleIpc.ts  — active-session mutations (open/new/fork/navigate/
+ *                      compact/reload/name/info/copy)
+ *   sessionAuth.ts   — shared deny-only path authorization
+ * The renderer only ever talks to these typed channels.
+ */
 import { type BrowserWindow, dialog, type IpcMain } from 'electron'
 import type {
   BashExecutionResult,
-  NavigateSessionTreeResult,
   OutputLine,
-  SessionHistoryPage,
-  SessionInfo,
   SessionListItem,
   SessionReady,
   SessionStats,
-  SessionTreeResponse,
-  UsageSummary,
   WorkspaceInfo,
 } from '../../src/lib/ipc'
 import {
-  compactSessionSchema,
-  forkSessionSchema,
   IPC,
-  navigateSessionTreeRequestSchema,
-  navigateSessionTreeResultSchema,
-  newSessionSchema,
-  openSessionSchema,
-  readTaskSessionHistorySchema,
-  resolveSubSessionPathSchema,
   sessionBashSchema,
-  sessionInfoSchema,
   sessionListOptionsSchema,
-  sessionMessagesRequestSchema,
   sessionPromptSchema,
-  sessionTreeRequestSchema,
-  setSessionNameSchema,
-  usageSummaryRequestSchema,
 } from '../../src/lib/ipc'
-import { createWorktree, generateWorktreePath, getCurrentBranch } from '../git/worktree'
 import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
-import {
-  readTaskSessionHistory,
-  resolveMostRecentSubSessionPath,
-  resolveSubSessionPath,
-} from '../services/piTaskArtifacts'
 import { highRiskShellReason } from '../services/shellEnv'
-import { resolveWorkspacePath } from '../services/workspacePath'
-import { emptyHistoryPage } from '../session/sessionEntries'
-import type { SessionState } from '../session/sessionHost'
-import type { SessionIndexStore } from '../session/sessionIndex'
-import { resolveAuthorizedFile } from '../session/sessionPath'
-import { emptyUsageSummary } from '../session/sessionUsage'
+import { registerSessionInspectionIpc } from './inspectionIpc'
+import { registerSessionLifecycleIpc } from './lifecycleIpc'
+import type { SessionState } from './sessionHost'
+import type { SessionIndexStore } from './sessionIndex'
 
 interface ConfirmMutationOptions {
   title: string
@@ -87,46 +69,13 @@ interface SessionsIpcDeps {
   restoreSessionValues: (state: SessionState) => void
 }
 
-function authorizedWorkspacePath(deps: SessionsIpcDeps, submittedCwd: string): string {
-  const candidate = path.resolve(submittedCwd)
-  const active = deps.activeWorkspacePath()
-  if (active && path.resolve(active) === candidate) return active
-  const known = deps
-    .getSessionIndex()
-    ?.listWorkspaces()
-    .find((workspace) => path.resolve(workspace.path) === candidate)
-  if (known) return known.path
-  throw new Error('Unknown workspace')
-}
-
-function authorizedSessionPath(deps: SessionsIpcDeps, submittedPath: string): string {
-  const workspaceRoots = [deps.getSessionState()?.cwd, deps.activeWorkspacePath()]
-    .filter((root): root is string => typeof root === 'string')
-    .map((root) => ({ anchor: root, root: path.join(root, '.pi', 'artifacts') }))
-  const agentDir = deps.getAgentDir()
-  return resolveAuthorizedFile(
-    submittedPath,
-    [{ anchor: agentDir, root: path.join(agentDir, 'sessions') }, ...workspaceRoots],
-    ['.jsonl']
-  )
-}
-
-/**
- * Like authorizedSessionPath, but returns null while Pi has not flushed the
- * session's JSONL yet: the file appears only when the first assistant message
- * is appended, so a brand-new session has a valid path with no file. Every
- * other authorization failure still throws.
- */
-function authorizedSessionPathIfPresent(
-  deps: SessionsIpcDeps,
-  submittedPath: string
-): string | null {
-  try {
-    return authorizedSessionPath(deps, submittedPath)
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
-    throw error
-  }
+function injectWorkbenchPrefix(
+  contextPrefix: string | undefined,
+  buildWorkbenchContextPrefix: () => string | null
+): string | undefined {
+  const workbenchPrefix = buildWorkbenchContextPrefix()
+  if (!workbenchPrefix) return contextPrefix
+  return contextPrefix ? `${workbenchPrefix}\n${contextPrefix}` : workbenchPrefix
 }
 
 function emptySessionStats(): SessionStats {
@@ -145,16 +94,10 @@ function emptySessionStats(): SessionStats {
   }
 }
 
-function injectWorkbenchPrefix(
-  contextPrefix: string | undefined,
-  buildWorkbenchContextPrefix: () => string | null
-): string | undefined {
-  const workbenchPrefix = buildWorkbenchContextPrefix()
-  if (!workbenchPrefix) return contextPrefix
-  return contextPrefix ? `${workbenchPrefix}\n${contextPrefix}` : workbenchPrefix
-}
-
 export function registerSessionsIpc(deps: SessionsIpcDeps): void {
+  registerSessionInspectionIpc(deps)
+  registerSessionLifecycleIpc(deps)
+
   deps.ipcMain.handle(IPC.SEND_PROMPT, async (_event, raw: unknown): Promise<void> => {
     const request = raw as { text?: string }
     if (request.text) {
@@ -263,19 +206,6 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
     return response.stats as SessionStats
   })
 
-  deps.ipcMain.handle(
-    IPC.GET_USAGE_SUMMARY,
-    async (_event, raw: unknown): Promise<UsageSummary> => {
-      const request = usageSummaryRequestSchema.parse(raw)
-      const sessionIndex = deps.getSessionIndex()
-      if (!sessionIndex) return emptyUsageSummary(request)
-
-      const activeSessionPath = deps.getSessionState()?.sessionFile ?? null
-      await sessionIndex.refreshSessions(activeSessionPath, request.workspacePath)
-      return sessionIndex.getUsageSummary(request)
-    }
-  )
-
   deps.ipcMain.handle(IPC.GET_WORKSPACES, async (): Promise<WorkspaceInfo[]> => {
     return deps.getSessionIndex()?.listWorkspaces() ?? []
   })
@@ -295,221 +225,6 @@ export function registerSessionsIpc(deps: SessionsIpcDeps): void {
       return sessionIndex.listSessions(options, activeSessionPath, workspacePath)
     }
   )
-
-  deps.ipcMain.handle(
-    IPC.GET_SESSION_MESSAGES,
-    async (_event, raw: unknown): Promise<SessionHistoryPage> => {
-      const {
-        path: submittedPath,
-        limit,
-        beforeEntryId,
-        leafId,
-      } = sessionMessagesRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
-      // No file yet means the session has no persisted history to load.
-      if (!sessionPath) return emptyHistoryPage(limit ?? 0)
-      return (
-        (await deps
-          .getSessionIndex()
-          ?.getSessionMessages(sessionPath, { limit, beforeEntryId, leafId })) ??
-        emptyHistoryPage(limit ?? 0)
-      )
-    }
-  )
-
-  deps.ipcMain.handle(
-    IPC.GET_SESSION_TREE,
-    async (_event, raw: unknown): Promise<SessionTreeResponse> => {
-      const { path: submittedPath, leafId } = sessionTreeRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
-      // No file yet means there is no tree to build.
-      if (!sessionPath) {
-        return {
-          sessionPath: path.resolve(submittedPath),
-          branches: [],
-          forkPoints: [],
-          activeLeafId: null,
-        }
-      }
-      return (
-        deps.getSessionIndex()?.getSessionTree(sessionPath, leafId) ?? {
-          sessionPath,
-          branches: [],
-          forkPoints: [],
-          activeLeafId: null,
-        }
-      )
-    }
-  )
-
-  deps.ipcMain.handle(IPC.RESOLVE_SUB_SESSION_PATH, async (_event, raw: unknown) => {
-    const parsed = resolveSubSessionPathSchema.parse(raw)
-    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
-    const { taskId } = parsed
-    const artifactsDir = resolveWorkspacePath(cwd, '.pi/artifacts', 'read task artifacts')
-    return resolveSubSessionPath(artifactsDir, taskId)
-  })
-
-  deps.ipcMain.handle(IPC.READ_TASK_SESSION_HISTORY, async (_event, raw: unknown) => {
-    const parsed = readTaskSessionHistorySchema.parse(raw)
-    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
-    return readTaskSessionHistory(cwd)
-  })
-
-  deps.ipcMain.handle(IPC.RESOLVE_MOST_RECENT_SUB_SESSION_PATH, async (_event, raw: unknown) => {
-    const parsed = readTaskSessionHistorySchema.parse(raw)
-    const cwd = authorizedWorkspacePath(deps, parsed.cwd)
-    const artifactsDir = resolveWorkspacePath(cwd, '.pi/artifacts', 'read task artifacts')
-    return resolveMostRecentSubSessionPath(artifactsDir)
-  })
-
-  deps.ipcMain.handle(IPC.OPEN_SESSION, async (_event, raw: unknown) => {
-    const { path: submittedPath } = openSessionSchema.parse(raw)
-    const sessionPath = authorizedSessionPath(deps, submittedPath)
-    const cwd =
-      deps.getSessionIndex()?.getSessionWorkspace(sessionPath) ?? deps.getSessionState()?.cwd
-    if (!cwd) return
-    await deps.startSession(cwd, { sessionFile: sessionPath })
-  })
-
-  deps.ipcMain.handle(IPC.NEW_SESSION, async (_event, raw: unknown) => {
-    const { cwd, mode, baseBranch } = newSessionSchema.parse(raw)
-    const submittedWorkspace =
-      cwd ?? deps.getSessionState()?.cwd ?? deps.getSessionIndex()?.getLastWorkspace()
-    const workspacePath = submittedWorkspace
-      ? authorizedWorkspacePath(deps, submittedWorkspace)
-      : null
-    if (!workspacePath) return
-
-    if (mode === 'worktree') {
-      const threadId = crypto.randomUUID()
-      const wtPath = generateWorktreePath(workspacePath, threadId)
-      const branch = baseBranch ?? (await getCurrentBranch(workspacePath))
-      try {
-        await createWorktree({
-          repoPath: workspacePath,
-          baseBranch: branch,
-          worktreePath: wtPath,
-        })
-      } catch (err) {
-        console.error('[worktree] creation failed:', err)
-        throw err
-      }
-      await deps.startSession(wtPath, { worktreePath: wtPath, rootCwd: workspacePath })
-    } else {
-      await deps.startSession(workspacePath)
-    }
-  })
-
-  deps.ipcMain.handle(IPC.SET_SESSION_NAME, (_event, raw: unknown) => {
-    if (!deps.getSessionState()) return
-    const { name } = setSessionNameSchema.parse(raw)
-    deps.sendSidecar({ type: 'set_session_name', name })
-  })
-
-  deps.ipcMain.handle(IPC.FORK_SESSION, async (_event, raw: unknown) => {
-    if (!deps.getSessionState()) return
-    const { entryId } = forkSessionSchema.parse(raw)
-    const current = deps.getSessionState()
-    if (!current) return
-    const workspaceTrusted = deps.getSessionIndex()?.isWorkspaceTrusted(current.cwd) ?? false
-    deps.suspendSessionValues()
-    try {
-      const response = await deps.requestSidecar<
-        Extract<SidecarMessage, { type: 'session_ready' }>
-      >({
-        type: 'fork_session',
-        requestId: deps.createRequestId(),
-        entryId,
-        workspaceTrusted,
-      })
-      const ready = deps.normalizeSessionReady(response.payload as SessionReady)
-      deps.applySessionValues(ready)
-      await deps.refreshSessionIndex()
-    } catch (error) {
-      deps.restoreSessionValues(current)
-      throw error
-    }
-  })
-
-  deps.ipcMain.handle(
-    IPC.NAVIGATE_SESSION_TREE,
-    async (_event, raw: unknown): Promise<NavigateSessionTreeResult> => {
-      const { path: submittedPath, entryId } = navigateSessionTreeRequestSchema.parse(raw)
-      const sessionPath = authorizedSessionPathIfPresent(deps, submittedPath)
-      const current = deps.getSessionState()
-      // Only the session main is hosting can move its leaf.
-      if (!sessionPath || !current || current.sessionFile !== sessionPath) {
-        throw new Error('That session is not open, so its branch cannot be switched.')
-      }
-      const response = await deps.requestSidecar<
-        Extract<SidecarMessage, { type: 'navigate_tree_result' }>
-      >({
-        type: 'navigate_tree',
-        requestId: deps.createRequestId(),
-        entryId,
-      })
-      return navigateSessionTreeResultSchema.parse(response.result)
-    }
-  )
-
-  deps.ipcMain.handle(IPC.COMPACT_SESSION, async (_event, raw: unknown) => {
-    if (!deps.getSessionState()) return
-    const { customInstructions } = compactSessionSchema.parse(raw)
-    const command: Extract<SidecarCommand, { type: 'compact' }> = {
-      type: 'compact',
-      requestId: deps.createRequestId(),
-    }
-    if (customInstructions) command.customInstructions = customInstructions
-    await deps
-      .requestSidecar<
-        | Extract<SidecarMessage, { type: 'compact_result' }>
-        | Extract<SidecarMessage, { type: 'error' }>
-      >(command)
-      .catch((err) => {
-        // The Pi SDK emits `compaction_end` (success or with errorMessage)
-        // as a session event, so the renderer already sees the outcome.
-        // We swallow the request error here to avoid a noisy toast.
-        if (err && typeof err === 'object' && 'message' in err) return
-        throw err
-      })
-  })
-
-  deps.ipcMain.handle(IPC.RELOAD_SESSION, async () => {
-    if (!deps.getSessionState()) return
-    deps.suspendSessionValues()
-    const response = await deps.requestSidecar<Extract<SidecarMessage, { type: 'session_ready' }>>({
-      type: 'reload_session',
-      requestId: deps.createRequestId(),
-    })
-    const ready = deps.normalizeSessionReady(response.payload as SessionReady)
-    deps.applySessionValues(ready)
-    await deps.refreshSessionIndex()
-  })
-
-  deps.ipcMain.handle(IPC.GET_SESSION_INFO, async (): Promise<SessionInfo | null> => {
-    if (!deps.getSessionState()) return null
-    const response = await deps.requestSidecar<
-      Extract<SidecarMessage, { type: 'session_info_result' }>
-    >({
-      type: 'get_session_info',
-      requestId: deps.createRequestId(),
-    })
-    return sessionInfoSchema.parse(response.info)
-  })
-
-  deps.ipcMain.handle(IPC.COPY_LAST_ASSISTANT_TEXT, async () => {
-    if (!deps.getSessionState()) return
-    const response = await deps.requestSidecar<
-      Extract<SidecarMessage, { type: 'last_assistant_text_result' }>
-    >({
-      type: 'copy_last_assistant_text',
-      requestId: deps.createRequestId(),
-    })
-    if (response.text) {
-      const { clipboard } = await import('electron')
-      clipboard.writeText(response.text)
-    }
-    return response.text
-  })
 }
+
+export type { SessionsIpcDeps }
