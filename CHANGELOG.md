@@ -11,6 +11,7 @@
 ### Fixed
 
 - **Broken extensions no longer vanish silently** — when an extension fails to load (throwing factory, wrong export), OpenPi now shows an error card in the conversation and logs it, instead of starting the session with tools, commands, or providers mysteriously missing. Resource conflicts between extensions (same tool or command name) are surfaced through the same card. (Investigation also cleared the sidecar's TypeScript extension support: a `.ts` extension with a complete provider config loads and registers fine.)
+- **Protected paths now guard rename, copy, and format** — the confirmation gate covered writes, edits, and deletes, but renaming or copying a file to a protected path and formatting a protected file went straight through. All three require the same confirmation now, and a rename target is re-checked (dev/ino) after the save dialog in case the path was swapped while it was open. (`d51b68e`)
 - **Git panel counts both halves of a staged-then-modified file** — a file with staged changes that was edited again (`MM`) showed only the staged delta in its `+N/-N` row; the working-tree changes are now included in the same row. (`cca8e75`)
 - **Diff line counts no longer misread content as diff headers** — a content line that begins with `-- ` or `++ ` was counted as a removal or addition, and lines outside hunks leaked into counts. Counting now tracks hunk state, and main and the renderer share one counter so the Git panel and the review cannot disagree about the same patch. (`1e0f72e`, `7f1eb57`, `0c17cfa`)
 - **Review snapshots and Git IPC hardened** — review snapshot and revert reads re-check containment and refuse a path swapped for a symlink mid-review, generated commit messages are schema-validated at the IPC boundary, and aborting a run now cancels a pending pre-apply review instead of leaving it waiting. (`9b22f73`)
@@ -22,6 +23,11 @@
 - **Search highlights landed on the wrong characters** — the native file index reports match ranges as byte offsets, and the renderer highlights character indices, so every content-search highlight covered one extra character and drifted right on any line with non-ASCII text before the match (accented Vietnamese text, for example). Ranges are converted before they leave the main process. (`3e58357`)
 - **The search fallback ignored the options the UI sends** — when the native index is unavailable, a regex search ran as a literal one (so `\d+` matched the text `\d+` and missed real digits), only one match per file was returned, and the time budget did not bound the walk. It now matches the native defaults, skips files above the size the index would skip, and honours the budget. (`3e58357`)
 - **Commit message suggestions no longer misread the staged set** — a file whose name merely contains "test" or "spec" (for example `latestStatus.ts`) was typed as a test change, every `.pi/` change was typed as CI, a commit of only conflicted files produced an empty subject, a conflicted file was left out of the counts when mixed with other changes, and an agent reply that was only a code block produced an empty subject. Scope detection also follows the current `electron/git/` and `electron/pi/` layout. (`0a1102d`)
+
+### Changed
+
+- CI now drives the real Pi sidecar end-to-end on every push: a shipped-path test boots the bundled sidecar, loads a fixture extension through the real resource loader, and asserts the full event order (including extension-error delivery), alongside the smoke/e2e suites in the CI matrix. (`c54b30f`, `7670016`)
+- Internal: the largest modules (sidecar entry, session hook, usage dashboard, app root, conversation workspace, git/usage read models) were split into focused modules under the 300-line cap with no behavior change. (`7b235e5`, `163ff6c`, `5e4db37`, `08a382b`, `9dec43f`, `ace1b0d`)
 
 ## [0.2.13] - 2026-09-14
 
