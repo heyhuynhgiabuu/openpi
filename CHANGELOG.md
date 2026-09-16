@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-09-16
+
+- Session export, a trajectory ledger, and the real pi-task agent catalog in the composer; broken extensions now surface errors, and protected paths cover rename, copy, and format.
+
 ### Added
 
 - **Real pi-task agent catalog in the composer** — `@mention` agent suggestions are no longer a hardcoded list of five: OpenPi asks pi-task's own discovery for the effective catalog (bundled agents overridden by `~/.pi/agent/agents/*.md`, then `<workspace>/.pi/agents/*.md`), so the picker shows exactly what the `task` tool can run, with source badges (bundled/global/project) and a read-only marker for agents whose frontmatter denies mutating tools. Hidden agents stay hidden; with pi-task not installed the list is empty instead of lying.
