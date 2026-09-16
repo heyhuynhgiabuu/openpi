@@ -73,11 +73,7 @@ export class GateRegistry {
     summary: string
     payload?: unknown
     ttlMs: number
-  }): {
-    gate: GateSnapshot
-    gateToken: string
-    wait: () => Promise<GateOutcome | { expired: true }>
-  } {
+  }): OpenedGate {
     const now = Date.now()
     const gate: GateSnapshot = {
       id: randomBytes(12).toString('base64url'),

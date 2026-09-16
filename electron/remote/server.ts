@@ -3,8 +3,8 @@
  *
  * Request order is the security contract (see the design doc):
  *   1. allowlist match — anything unmatched answers 501 without side effects
- *   2. body size cap
- *   3. Origin check on POST (CSRF; GETs are auth-guarded instead)
+ *   2. Origin check on POST (CSRF; GETs are auth-guarded instead)
+ *   3. body size cap and JSON parse
  *   4. bearer auth, except the pairing route
  *   5. handler dispatch; a route whose handler is not wired yet answers 501
  *
