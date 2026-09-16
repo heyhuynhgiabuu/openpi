@@ -50,6 +50,11 @@ const USAGE_INDEX_VERSION = 4
 
 export class SessionIndexStore {
   private readonly db: Database.Database
+
+  /** Read-only handle for sibling stores in the same database (e.g. remote devices). */
+  get database(): Database.Database {
+    return this.db
+  }
   private readonly MAX_CACHE_ENTRIES = 8
 
   /** mtime-keyed bounded page cache — never retains full large transcripts in main */

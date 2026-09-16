@@ -16,6 +16,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { createServer } from 'node:http'
 import { matchRemoteRoute, type RemoteHandlerId } from './allowlist'
 import type { RemoteAuth } from './auth'
+import type { SseHub } from './sse'
 import { pairRequestSchema } from './protocol'
 
 export const MAX_BODY_BYTES = 64 * 1024
@@ -41,6 +42,8 @@ export interface RemoteServerOptions {
   handlers: RemoteHandlers
   port: number
   host?: string
+  /** SSE hub for the /api/events stream; authenticated before attach. */
+  hub?: SseHub
 }
 
 export interface RunningRemoteServer {
@@ -121,6 +124,23 @@ async function handleRequest(
       return
     }
 
+    // The SSE stream is adopted here, after auth: from this point the
+    // response is write-only and the request is never read again.
+    if (match.route.handler === 'events') {
+      if (!options.hub) {
+        respond(response, 501, { error: 'not_in_allowlist' })
+        return
+      }
+      response.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+        connection: 'keep-alive',
+      })
+      options.hub.attach(response)
+      return
+    }
+
     const handler = options.handlers[match.route.handler]
     if (!handler) {
       // Allowlisted but not wired yet (read models arrive in a later slice).
@@ -129,6 +149,10 @@ async function handleRequest(
     }
 
     const result = await handler({ params: match.params, body, deviceId: device.id })
+    if (isStatusResult(result)) {
+      respond(response, result.status, result.body)
+      return
+    }
     respond(response, 200, result ?? { ok: true })
   } catch {
     // Any unhandled failure answers a bare 500; no internals leak.
@@ -264,6 +288,16 @@ function readJsonBody(request: IncomingMessage): Promise<BodyParse> {
 }
 
 // ── responses ────────────────────────────────────────────────────────────────
+
+function isStatusResult(value: unknown): value is { status: number; body: unknown } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'status' in value &&
+    typeof (value as { status: unknown }).status === 'number' &&
+    'body' in value
+  )
+}
 
 function respond(response: ServerResponse, status: number, body: unknown): void {
   if (response.headersSent) {

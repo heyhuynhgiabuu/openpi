@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod'
+import type { SessionTrajectoryResponse } from '../../src/lib/ipc'
 
 /** Body of POST /api/pair. The name is what the desktop device list shows. */
 export const pairRequestSchema = z
@@ -30,3 +31,9 @@ export const gateDecisionSchema = z
   })
   .strict()
 export type GateDecision = z.infer<typeof gateDecisionSchema>
+
+/** Body of GET /api/session/:id — trajectory rows for one authorized session. */
+export interface RemoteSessionView {
+  sessionPath: string
+  trajectory: SessionTrajectoryResponse
+}

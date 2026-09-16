@@ -7,6 +7,7 @@ import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
+import { RemoteHost } from './remote/remoteHost'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
@@ -28,7 +29,7 @@ import {
   setSessionIndex,
   showSystemNotification,
 } from './services/notificationHost'
-import { dockIconPath, enrichPathFromLoginShell } from './services/shellEnv'
+import { dockIconPath, enrichPathFromLoginShell, getAgentDir } from './services/shellEnv'
 import { startStatusWatchers } from './services/statusWatchers'
 import { checkForAppUpdate, initAutoUpdater } from './services/updater'
 import { createMainWindow } from './services/windowHost'
@@ -94,6 +95,13 @@ async function confirmHighRiskMutation(options: {
 
 let mainWindow: BrowserWindow | null = null
 let sessionIndex: SessionIndexStore | null = null
+
+// Remote P0: off until the user enables it; never auto-starts (design doc).
+let remoteHost: RemoteHost | null = null
+
+function emitSessionEventToRemote(event: { type?: string }): void {
+  remoteHost?.dispatchSessionEvent(event)
+}
 
 // ── Output ring buffer ─────────────────────────────────────────────────
 // Lines emitted before the Output pane opens are held here so they are
@@ -163,6 +171,7 @@ const handleSidecarMessage = createSidecarMessageHandler({
   getGitHost,
   emitSessionError,
   emitOutputLine,
+  emitSessionEvent: emitSessionEventToRemote,
 })
 
 // ─── IPC handlers ──────────────────────────────────────────────────────────────
@@ -223,6 +232,16 @@ app.whenReady().then(() => {
   sessionIndex = new SessionIndexStore(path.join(app.getPath('userData'), 'openpi.sqlite'))
   setSessionIndex(sessionIndex)
   setSessionHostSessionIndex(sessionIndex)
+
+  remoteHost = new RemoteHost({
+    sessionIndex: () => sessionIndex,
+    sessionAuth: {
+      getAgentDir: () => getAgentDir(),
+      getSessionState,
+      getSessionIndex: () => sessionIndex,
+      activeWorkspacePath,
+    },
+  })
 
   // Wire sessionHost callbacks
   setOnSidecarMessage(handleSidecarMessage)
@@ -290,5 +309,6 @@ app.on('quit', () => {
   if (getPiSidecarHost()) void getPiSidecarHost()!.stop()
   clearSessionState()
   if (hasPtyHost()) void getPtyHost().then((p) => p.closeAll())
+  void remoteHost?.disable()
   sessionIndex?.close()
 })

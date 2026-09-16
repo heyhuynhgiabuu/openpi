@@ -24,6 +24,8 @@ interface SidecarMessageDeps {
   getGitHost: () => Promise<typeof GitHost>
   emitSessionError: (message: string, code?: string) => void
   emitOutputLine: (line: OutputLine) => void
+  /** Remote SSE fan-out: receives every validated session event. */
+  emitSessionEvent?: (event: { type?: string }) => void
 }
 
 interface SessionEventSummary {
@@ -59,6 +61,7 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         const window = deps.getMainWindow()
         setAgentReviewWindow(window)
         deps.getMainWindow()?.webContents.send(IPC.SESSION_EVENT, parsedEvent.data)
+        deps.emitSessionEvent?.(parsedEvent.data)
         if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
           captureAgentReviewEvent(deps.resolveActiveCwd(), parsedEvent.data)
         }
