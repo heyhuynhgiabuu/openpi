@@ -31,9 +31,9 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ### Next (Phase 7 — see ROADMAP)
 
-- **P0:** broader critical-path `npm test` coverage. Pre-apply gate follow-ups: route `write` through the review modal (the boolean confirm cannot tell a denial from an expiry and does not notify); `bash` writes stay ungated by decision. The gate's end-to-end check needs a model, so it stays manual — a live run in `pi --mode rpc` with the gate on confirmed Pi applies exactly the approved hunk subset, and a run without `OPENPI_BRIDGE_APP` fell back to the text confirm instead of leaking the marker payload; CI covers the gate per seam.
+- **P0:** broader critical-path `npm test` coverage. Pre-apply gate: `write` now routes through the hunk review modal (one contiguous region, all-or-nothing; unanswered reviews warn and deny); `bash` writes stay ungated by decision. The gate's end-to-end check needs a model, so it stays manual — a live run in `pi --mode rpc` with the gate on confirmed Pi applies exactly the approved hunk subset, and a run without `OPENPI_BRIDGE_APP` fell back to the text confirm instead of leaking the marker payload; CI covers the gate per seam.
 
-- **P1:** subagent/task card polish.
+- **P1:** subagent/task card polish — the live tray's elapsed timer now ticks (it froze at first render); the conversation card already carries expand/collapse, background-task cancel, and sub-session navigation.
 - **P2:** terminal-snippet leg of the workbench context bridge, signed/notarized auto-update rollout.
 
 ## Open review follow-ups

@@ -1,4 +1,4 @@
-import { For, Show } from 'solid-js'
+import { createSignal, For, onCleanup, Show } from 'solid-js'
 import type { TrackedTask } from '../lib/extensionTrackers'
 import { formatTaskDurationMs } from '../lib/taskToolHelpers'
 
@@ -10,6 +10,14 @@ import { formatTaskDurationMs } from '../lib/taskToolHelpers'
  */
 export function SubagentWidget(props: { tasks: TrackedTask[] }) {
   const active = () => props.tasks.filter((t) => t.status === 'running' || t.status === 'queued')
+
+  // Elapsed time only recomputes when something reactive changes, so without a
+  // tick the shown duration freezes at first render. One-second cadence matches
+  // the displayed precision; when no task is active nothing subscribes, so the
+  // updates are idle churn at worst.
+  const [now, setNow] = createSignal(Date.now())
+  const tick = setInterval(() => setNow(Date.now()), 1_000)
+  onCleanup(() => clearInterval(tick))
 
   return (
     <Show when={active().length > 0}>
@@ -39,7 +47,7 @@ export function SubagentWidget(props: { tasks: TrackedTask[] }) {
                 <span data-slot="subagent-item-agent">{task.agentType}</span>
 
                 <span data-slot="subagent-item-elapsed">
-                  {formatTaskDurationMs(Date.now() - task.startedAt)}
+                  {formatTaskDurationMs(now() - task.startedAt)}
                 </span>
 
                 <Show when={task.description}>
