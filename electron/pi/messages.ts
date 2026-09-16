@@ -1,7 +1,9 @@
 import path from 'node:path'
 import { type BrowserWindow, shell } from 'electron'
 import type { OutputLine, SessionReady } from '../../src/lib/ipc'
+import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import { IPC, sessionEventSchema } from '../../src/lib/ipc'
+import { extensionUiRequestSchema } from '../../src/lib/extensionUiTypes'
 import type * as GitHost from '../git/gitHost'
 import { captureAgentReviewEvent } from '../services/agentReview'
 import { setAgentReviewWindow } from '../services/agentReviewStore'
@@ -26,6 +28,13 @@ interface SidecarMessageDeps {
   emitOutputLine: (line: OutputLine) => void
   /** Remote SSE fan-out: receives every validated session event. */
   emitSessionEvent?: (event: { type?: string }) => void
+  /** Remote registry hop for extension UI prompts. */
+  bridgeExtensionUi?: (
+    request: ExtensionUiRequest,
+    relay: (response: ExtensionUiResponse) => void
+  ) => boolean
+  /** Sends an extension response to the sidecar (used by the remote hop). */
+  sendExtensionUiResponse?: (response: ExtensionUiResponse) => void
 }
 
 interface SessionEventSummary {
@@ -141,9 +150,18 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
         deps.emitOutputLine(msg.line as OutputLine)
         return
 
-      case 'extension_ui_request':
+      case 'extension_ui_request': {
+        // Remote hop: bridged prompts hold their sidecar response until the
+        // desktop dialog or a paired device settles the gate (first wins).
+        const bridged = extensionUiRequestSchema.safeParse(msg.request)
+        if (bridged.success) {
+          deps.bridgeExtensionUi?.(bridged.data, (response) => {
+            deps.sendExtensionUiResponse?.(response)
+          })
+        }
         deps.getMainWindow()?.webContents.send(IPC.EXTENSION_UI_REQUEST, msg.request)
         return
+      }
 
       case 'error':
         deps.emitSessionError(msg.message)

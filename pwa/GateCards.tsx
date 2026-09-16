@@ -21,7 +21,11 @@ export function GateCards(props: { state: GateState; onUnauthenticated: () => vo
     setBusyId(gate.id)
     setError('')
     try {
-      await api.decideGate(gate.id, approve, gate.gateToken)
+      // Hunk gates approve as a whole from the phone: all indexes or none.
+      const hunks = (gate.payload as { hunks?: unknown[] } | undefined)?.hunks
+      const approvedIndexes =
+        approve && Array.isArray(hunks) ? hunks.map((_, index) => index) : undefined
+      await api.decideGate(gate.id, approve, gate.gateToken, approvedIndexes)
     } catch (err) {
       // 409/410: answered elsewhere or expired — the next gate_update drops
       // the card. 401: pairing is dead; reset to the pair screen.

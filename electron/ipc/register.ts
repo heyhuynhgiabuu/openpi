@@ -113,7 +113,10 @@ export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): v
     ...rawDeps,
     ipcMain: createAuthorizedIpcMain(rawDeps.ipcMain, rawDeps.getMainWindow),
   }
-  registerExtensionUiHandlers(deps.ipcMain)
+  registerExtensionUiHandlers(
+    deps.ipcMain,
+    (response) => deps.getRemoteHost()?.resolveExtensionUiFromRenderer(response) ?? 'relay'
+  )
   registerProviderHandlers(deps.ipcMain)
   registerUpdateIpc({
     ipcMain: deps.ipcMain,

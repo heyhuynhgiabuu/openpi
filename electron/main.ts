@@ -144,6 +144,17 @@ const handleSidecarMessage = createSidecarMessageHandler({
   emitSessionError,
   emitOutputLine,
   emitSessionEvent: emitSessionEventToRemote,
+  bridgeExtensionUi: (request, relay) => remoteHost?.bridgeExtensionUi(request, relay) ?? false,
+  sendExtensionUiResponse: (response) =>
+    getPiSidecarHost()?.send({
+      type: 'extension_ui_response',
+      id: response.id,
+      cancelled: response.cancelled,
+      confirmed: response.confirmed,
+      value: response.value,
+      approved: response.approved,
+      remember: response.remember,
+    }),
 })
 
 // ─── IPC handlers ──────────────────────────────────────────────────────────────

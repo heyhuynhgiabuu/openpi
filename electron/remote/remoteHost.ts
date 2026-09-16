@@ -17,6 +17,12 @@ import { RemoteAuth } from './auth'
 import type { RemoteDeviceRow } from './devices'
 import { RemoteDeviceStore } from './devices'
 import { GateRegistry, type GateSnapshot, type OpenedGate } from './gates'
+import {
+  interceptExtensionUi,
+  resolveFromRenderer,
+  type ExtensionUiRelay,
+} from './extensionUiBridge'
+import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import { createRemoteHandlers } from './handlers'
 import { SseHub } from './sse'
 import { startRemoteServer, type RunningRemoteServer } from './server'
@@ -122,12 +128,18 @@ export class RemoteHost {
   }
 
   /** Bridge hop for desktop confirms; null when remote is off. */
-  openBridgeGate(input: { title: string; summary: string; ttlMs: number }): OpenedGate | null {
+  openBridgeGate(input: {
+    title: string
+    summary: string
+    payload?: unknown
+    ttlMs: number
+  }): OpenedGate | null {
     if (!this.registry || !this.server) return null
     return this.registry.open({
       kind: 'confirm',
       title: input.title,
       summary: input.summary,
+      payload: input.payload,
       ttlMs: input.ttlMs,
     })
   }
@@ -135,6 +147,29 @@ export class RemoteHost {
   /** Desktop-side settlement of a bridged gate; false when remote won first. */
   settleBridgeGate(gateId: string, approved: boolean): boolean {
     return this.registry?.settleLocally(gateId, { approved, via: 'desktop' }) ?? false
+  }
+
+  /**
+   * Registry hop for extension UI prompts (confirms + preapply reviews).
+   * Returns true when bridged; the renderer gets the dialog either way.
+   */
+  bridgeExtensionUi(request: ExtensionUiRequest, relay: ExtensionUiRelay): boolean {
+    if (!this.server || !this.registry) return false
+    return interceptExtensionUi({
+      request,
+      openGate: (gate) => this.openBridgeGate(gate),
+      settle: (gate, approved) =>
+        this.registry?.settleLocally(gate.gate.id, { approved, via: 'desktop' }) ?? false,
+      relay,
+    })
+  }
+
+  /**
+   * Renderer answered a bridged prompt: 'drop' means remote already answered
+   * and the sidecar must not see a second response for the id.
+   */
+  resolveExtensionUiFromRenderer(response: ExtensionUiResponse): 'relay' | 'drop' {
+    return resolveFromRenderer(response)
   }
 
   private async doEnable(index: SessionIndexStore): Promise<RemoteToggleResult> {

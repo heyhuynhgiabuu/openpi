@@ -115,9 +115,14 @@ export const api = {
     request<{
       changes: Array<{ path: string; status: string; totalAdded: number; totalRemoved: number }>
     }>('/api/turn-changes'),
-  decideGate: (id: string, approve: boolean, gateToken: string): Promise<unknown> =>
+  decideGate: (
+    id: string,
+    approve: boolean,
+    gateToken: string,
+    approvedIndexes?: number[]
+  ): Promise<unknown> =>
     request(`/api/gates/${encodeURIComponent(id)}/${approve ? 'approve' : 'deny'}`, {
       method: 'POST',
-      body: JSON.stringify({ gateToken }),
+      body: JSON.stringify(approvedIndexes ? { gateToken, approvedIndexes } : { gateToken }),
     }),
 }
