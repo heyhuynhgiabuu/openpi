@@ -1,32 +1,28 @@
-import { createMemo, createResource, createSignal, For, Show } from 'solid-js'
-import type { UsageDay, UsageModelBucket, UsageSummary } from '../../lib/ipc'
-import { formatCurrency, formatModelName } from '../../lib/sessionView'
-import { ModelUsagePanel } from './ModelUsagePanel'
-import { ProviderShareChart } from './ProviderShareChart'
-import { downloadUsageCsv, downloadUsageJson } from './usageExport'
-import { formatProviderLabel, formatTokenMetric } from './usageFormat'
-import { modelPricingExtras, sumCacheSavingsForModels } from './usagePricing'
-import { providerChartColor } from './usageProviderTrend'
-import './usage.css'
+/**
+ * UsageCard — the usage dashboard: hero with range tabs, four metric panels,
+ * and an activity/models/market-share tab body over locally indexed sessions.
+ * Pure helpers live in usageHeatmap/usageFormat/usageAggregates; the metric
+ * grid and the activity and provider panels are separate components.
+ */
 
-const HEATMAP_WEEKS = 53
-const DAYS_PER_WEEK = 7
-const DAY_MS = 86_400_000
-const MONTH_LABELS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-]
-const RANGE_KEYS = ['7d', '30d', '90d', 'all'] as const
+import { createMemo, createResource, createSignal, For, Show } from 'solid-js'
+import type { UsageModelBucket } from '../../lib/ipc'
+import {
+  cacheHitRate,
+  formatRelativeGenerated,
+  formatRangeSpan,
+  workspaceScopeFromPath,
+} from './usageFormat'
+import { aggregateProviders } from './usageAggregates'
+import { rangeLabel, rangeToDays, RANGE_KEYS, type RangeKey } from './usageRange'
+import { heatmapWeeksForRange } from './usageHeatmap'
+import { sumCacheSavingsForModels } from './usagePricing'
+import { downloadUsageCsv, downloadUsageJson } from './usageExport'
+import { ModelUsagePanel } from './ModelUsagePanel'
+import { UsageActivityPanel } from './UsageActivityPanel'
+import { UsageMetricPanels } from './UsageMetricPanels'
+import { ProviderUsagePanel } from './ProviderUsagePanel'
+import './usage.css'
 
 type Props = {
   workspacePath: string | null
@@ -34,22 +30,8 @@ type Props = {
   refreshRevision: string
 }
 
-type RangeKey = (typeof RANGE_KEYS)[number]
-
-type HeatmapCell = {
-  date: string
-  tokens: number
-  level: number
-  future: boolean
-}
-
 export function UsageCard(props: Props) {
   const [range, setRange] = createSignal<RangeKey>('30d')
-  const [hoveredHeatmapDay, setHoveredHeatmapDay] = createSignal<HeatmapCell | null>(null)
-  const [activityPreviewPosition, setActivityPreviewPosition] = createSignal({
-    left: 0,
-    top: 0,
-  })
   const [activeTab, setActiveTab] = createSignal<'activity' | 'models' | 'providers'>('activity')
   const [pinnedModelKey, setPinnedModelKey] = createSignal<string | null>(null)
 
@@ -66,6 +48,19 @@ export function UsageCard(props: Props) {
 
   const filteredDaily = createMemo(() => usageSummary()?.daily ?? [])
   const filteredModels = createMemo(() => usageSummary()?.models ?? [])
+  const dailyModelsByDate = createMemo(() => {
+    const map = new Map<string, UsageModelBucket[]>()
+    for (const row of usageSummary()?.dailyModels ?? []) {
+      const list = map.get(row.date) ?? []
+      list.push(row)
+      map.set(row.date, list)
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => b.totalTokens - a.totalTokens)
+    }
+    return map
+  })
+
   const providerBuckets = createMemo(() => aggregateProviders(filteredModels()))
 
   const rangeTotals = createMemo(() => {
@@ -104,23 +99,6 @@ export function UsageCard(props: Props) {
     return 26
   })
 
-  const heatmapWeekCount = createMemo(() => heatmapWeeksForRange(range()))
-  const heatmapWeeks = createMemo(() => buildHeatmapWeeks(filteredDaily(), heatmapWeekCount()))
-  const monthLabels = createMemo(() => buildMonthLabels(heatmapWeeks()))
-
-  const dailyModelsByDate = createMemo(() => {
-    const map = new Map<string, UsageModelBucket[]>()
-    for (const row of usageSummary()?.dailyModels ?? []) {
-      const list = map.get(row.date) ?? []
-      list.push(row)
-      map.set(row.date, list)
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => b.totalTokens - a.totalTokens)
-    }
-    return map
-  })
-
   const rangeDateSpan = createMemo(() => formatRangeSpan(filteredDaily(), range()))
 
   const rangeSessionCount = createMemo(() => {
@@ -145,34 +123,11 @@ export function UsageCard(props: Props) {
     return rangeTotals().totalTokens / sessions
   })
 
-  const heatmapPreview = createMemo(() => {
-    const cell = hoveredHeatmapDay()
-    if (!cell) return null
-    const day = filteredDaily().find((d) => d.date === cell.date)
-    return {
-      date: cell.date,
-      future: cell.future,
-      totalTokens: day?.totalTokens ?? cell.tokens,
-      turnCount: day?.turnCount ?? 0,
-      cost: day?.cost ?? 0,
-      cacheHitRate: day?.cacheHitRate ?? null,
-      models: dailyModelsByDate().get(cell.date) ?? [],
-    }
-  })
-
-  const updateHeatmapPreview = (day: HeatmapCell, event: PointerEvent) => {
-    const gap = 14
-    const width = 270
-    const estimatedHeight = 250
-    const viewportWidth = typeof window === 'undefined' ? 1200 : window.innerWidth
-    const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight
-    const fitsRight = event.clientX + gap + width <= viewportWidth - 8
-    const maxTop = Math.max(8, viewportHeight - estimatedHeight - 8)
-    setActivityPreviewPosition({
-      left: fitsRight ? event.clientX + gap : Math.max(8, event.clientX - gap - width),
-      top: Math.max(8, Math.min(event.clientY - 12, maxTop)),
-    })
-    setHoveredHeatmapDay(day)
+  const exportCurrent = (kind: 'json' | 'csv'): void => {
+    const summary = usageSummary()
+    if (!summary) return
+    if (kind === 'json') downloadUsageJson(summary, scopeLabel())
+    else downloadUsageCsv(summary, scopeLabel())
   }
 
   return (
@@ -229,98 +184,14 @@ export function UsageCard(props: Props) {
       >
         {(summary) => (
           <>
-            <div class="usage-metric-grid">
-              <article class="usage-metric-panel">
-                <header class="usage-metric-panel-head">
-                  <h3 class="usage-section-title">
-                    Activity<span class="usage-section-dot">.</span>
-                  </h3>
-                  <p class="usage-section-desc">Captured tokens in this range.</p>
-                </header>
-                <p class="usage-metric-hero">{formatTokenMetric(rangeTotals().totalTokens)}</p>
-                <dl class="usage-metric-kv">
-                  <div>
-                    <dt>Turns</dt>
-                    <dd>{rangeTotals().turns.toLocaleString()}</dd>
-                  </div>
-                  <div>
-                    <dt>Sessions</dt>
-                    <dd>{rangeSessionCount().toLocaleString()}</dd>
-                  </div>
-                </dl>
-                <p class="usage-metric-foot">{rangeDateSpan()}</p>
-              </article>
-
-              <article class="usage-metric-panel">
-                <header class="usage-metric-panel-head">
-                  <h3 class="usage-section-title">
-                    Cache ratio<span class="usage-section-dot">.</span>
-                  </h3>
-                  <p class="usage-section-desc">Share of billed input served from cache.</p>
-                </header>
-                <p class="usage-metric-hero">
-                  {rangeCacheHitRate() != null ? formatCacheHitRate(rangeCacheHitRate()) : '—'}
-                </p>
-                <dl class="usage-metric-kv">
-                  <div>
-                    <dt>Cached</dt>
-                    <dd>{formatTokenMetric(rangeTotals().cacheReadTokens)}</dd>
-                  </div>
-                  <div>
-                    <dt>Uncached input</dt>
-                    <dd>{formatTokenMetric(rangeTotals().inputTokens)}</dd>
-                  </div>
-                </dl>
-                <p class="usage-metric-foot usage-pricing-foot">
-                  <Show
-                    when={rangeCacheSavingsUsd() != null && rangeCacheSavingsUsd()! > 0}
-                    fallback="Savings use pi-ai catalog rates when recognized."
-                  >
-                    Est. saved {formatCurrency(rangeCacheSavingsUsd()!)} from cache.
-                  </Show>
-                </p>
-              </article>
-
-              <article class="usage-metric-panel">
-                <header class="usage-metric-panel-head">
-                  <h3 class="usage-section-title">
-                    Spend<span class="usage-section-dot">.</span>
-                  </h3>
-                  <p class="usage-section-desc">Reported session cost when providers expose it.</p>
-                </header>
-                <p class="usage-metric-hero">
-                  {rangeTotals().cost > 0 ? formatCurrency(rangeTotals().cost) : '—'}
-                </p>
-                <dl class="usage-metric-kv">
-                  <div>
-                    <dt>Cost / session</dt>
-                    <dd>{formatCostPerSession(rangeTotals().cost, rangeSessionCount())}</dd>
-                  </div>
-                </dl>
-              </article>
-
-              <article class="usage-metric-panel">
-                <header class="usage-metric-panel-head">
-                  <h3 class="usage-section-title">
-                    Per session<span class="usage-section-dot">.</span>
-                  </h3>
-                  <p class="usage-section-desc">Average load per session in this range.</p>
-                </header>
-                <p class="usage-metric-hero">
-                  {tokensPerSession() != null ? formatTokenMetric(tokensPerSession()!) : '—'}
-                </p>
-                <dl class="usage-metric-kv">
-                  <div>
-                    <dt>Turns / session</dt>
-                    <dd>
-                      {rangeSessionCount() > 0
-                        ? (rangeTotals().turns / rangeSessionCount()).toFixed(1)
-                        : '—'}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-            </div>
+            <UsageMetricPanels
+              rangeTotals={rangeTotals}
+              rangeSessionCount={rangeSessionCount}
+              rangeDateSpan={rangeDateSpan}
+              rangeCacheHitRate={rangeCacheHitRate}
+              rangeCacheSavingsUsd={rangeCacheSavingsUsd}
+              tokensPerSession={tokensPerSession}
+            />
 
             <div class="usage-dashboard-body">
               <div class="usage-activity-header">
@@ -359,119 +230,11 @@ export function UsageCard(props: Props) {
               </div>
 
               <Show when={activeTab() === 'activity'}>
-                <div class="usage-panel">
-                  <header class="usage-panel-head">
-                    <h3 class="usage-section-title">
-                      Heatmap<span class="usage-section-dot">.</span>
-                    </h3>
-                    <p class="usage-section-desc">Each square is one day of captured usage.</p>
-                  </header>
-                  <div
-                    class="usage-activity-content"
-                    onPointerLeave={() => setHoveredHeatmapDay(null)}
-                  >
-                    <div
-                      class="usage-heatmap-wrap"
-                      style={{
-                        '--usage-heatmap-weeks': String(heatmapWeekCount()),
-                      }}
-                    >
-                      <div class="usage-heatmap-months">
-                        <For each={monthLabels()}>{(label) => <span>{label}</span>}</For>
-                      </div>
-                      <div class="usage-heatmap" role="img" aria-label="Daily token usage heatmap">
-                        <For each={heatmapWeeks()}>
-                          {(week) => (
-                            <div class="usage-heatmap-week">
-                              <For each={week}>
-                                {(day) => (
-                                  <button
-                                    type="button"
-                                    class={`usage-heatmap-dot level-${day.level}${day.future ? ' is-future' : ''}${hoveredHeatmapDay()?.date === day.date ? ' is-selected' : ''}`}
-                                    title={heatmapTooltip(
-                                      day,
-                                      dailyModelsByDate().get(day.date) ?? []
-                                    )}
-                                    aria-label={heatmapAriaLabel(day)}
-                                    onPointerEnter={(event) => updateHeatmapPreview(day, event)}
-                                    onPointerMove={(event) => updateHeatmapPreview(day, event)}
-                                    onFocus={() => setHoveredHeatmapDay(day)}
-                                    onBlur={() => setHoveredHeatmapDay(null)}
-                                  />
-                                )}
-                              </For>
-                            </div>
-                          )}
-                        </For>
-                      </div>
-                    </div>
-                    <Show when={heatmapPreview()}>
-                      {(preview) => (
-                        <aside
-                          class="usage-day-drawer"
-                          aria-label={`Usage on ${preview().date}`}
-                          style={{
-                            left: `${activityPreviewPosition().left}px`,
-                            top: `${activityPreviewPosition().top}px`,
-                          }}
-                        >
-                          <div class="usage-day-detail-header">
-                            <span class="usage-day-detail-date">
-                              {formatDisplayDate(preview().date)}
-                            </span>
-                          </div>
-                          <div class="usage-day-detail-stats">
-                            <div>
-                              <strong>{formatTokenMetric(preview().totalTokens)}</strong>
-                              <span>tokens</span>
-                            </div>
-                            <div>
-                              <strong>{preview().turnCount.toLocaleString()}</strong>
-                              <span>turns</span>
-                            </div>
-                            <div>
-                              <strong>
-                                {preview().cost > 0 ? formatCurrency(preview().cost) : '—'}
-                              </strong>
-                              <span>cost</span>
-                            </div>
-                            <Show when={preview().cacheHitRate != null}>
-                              <div>
-                                <strong>{formatCacheHitRate(preview().cacheHitRate)}</strong>
-                                <span>cache</span>
-                              </div>
-                            </Show>
-                          </div>
-                          <div class="usage-day-models">
-                            <span class="usage-day-models-title">Top models</span>
-                            <Show
-                              when={preview().models.length > 0}
-                              fallback={
-                                <p class="usage-day-empty">
-                                  {preview().future
-                                    ? 'No usage yet.'
-                                    : 'No model breakdown captured for this day.'}
-                                </p>
-                              }
-                            >
-                              <ol class="usage-day-model-list">
-                                <For each={preview().models.slice(0, 5)}>
-                                  {(model, index) => (
-                                    <li>
-                                      <span>{String(index() + 1).padStart(2, '0')}</span>
-                                      <strong>{formatModelName(model.model) || model.model}</strong>
-                                      <em>{formatTokenMetric(model.totalTokens)}</em>
-                                    </li>
-                                  )}
-                                </For>
-                              </ol>
-                            </Show>
-                          </div>
-                        </aside>
-                      )}
-                    </Show>
-                  </div>
-                </div>
+                <UsageActivityPanel
+                  range={range()}
+                  days={filteredDaily}
+                  dailyModelsByDate={dailyModelsByDate}
+                />
               </Show>
 
               <Show when={activeTab() === 'models'}>
@@ -507,15 +270,11 @@ export function UsageCard(props: Props) {
                 <button
                   type="button"
                   class="usage-export-btn"
-                  onClick={() => exportCurrent(summary(), scopeLabel(), 'json')}
+                  onClick={() => exportCurrent('json')}
                 >
                   Export JSON
                 </button>
-                <button
-                  type="button"
-                  class="usage-export-btn"
-                  onClick={() => exportCurrent(summary(), scopeLabel(), 'csv')}
-                >
+                <button type="button" class="usage-export-btn" onClick={() => exportCurrent('csv')}>
                   Export CSV
                 </button>
               </fieldset>
@@ -525,294 +284,4 @@ export function UsageCard(props: Props) {
       </Show>
     </section>
   )
-}
-
-type ProviderBucket = UsageModelBucket & { model: string }
-
-function aggregateProviders(models: UsageModelBucket[]): ProviderBucket[] {
-  const map = new Map<string, ProviderBucket>()
-  for (const row of models) {
-    const key = providerGroupKey(row.provider)
-    const label = formatProviderLabel(row.provider) || 'Unknown'
-    const existing = map.get(key)
-    if (!existing) {
-      map.set(key, {
-        model: label,
-        provider: row.provider,
-        inputTokens: row.inputTokens,
-        outputTokens: row.outputTokens,
-        cacheReadTokens: row.cacheReadTokens,
-        cacheWriteTokens: row.cacheWriteTokens,
-        totalTokens: row.totalTokens,
-        durationMs: row.durationMs,
-        cost: row.cost,
-        turnCount: row.turnCount,
-        sessionCount: row.sessionCount,
-        cacheHitRate: null,
-      })
-      continue
-    }
-    existing.inputTokens += row.inputTokens
-    existing.outputTokens += row.outputTokens
-    existing.cacheReadTokens += row.cacheReadTokens
-    existing.cacheWriteTokens += row.cacheWriteTokens
-    existing.totalTokens += row.totalTokens
-    existing.durationMs += row.durationMs
-    existing.cost += row.cost
-    existing.turnCount += row.turnCount
-    existing.sessionCount = Math.max(existing.sessionCount, row.sessionCount)
-    existing.cacheHitRate = cacheHitRate(existing.inputTokens, existing.cacheReadTokens)
-  }
-  return [...map.values()].sort((a, b) => b.totalTokens - a.totalTokens)
-}
-
-function providerGroupKey(provider: string | undefined): string {
-  const p = provider?.trim().toLowerCase()
-  return p || '__unknown__'
-}
-
-function ProviderUsagePanel(props: {
-  providers: ProviderBucket[]
-  dailyModels: UsageSummary['dailyModels']
-  maxTrendWeeks: number
-  allModels: UsageModelBucket[]
-}) {
-  const totalTokens = createMemo(() =>
-    props.providers.reduce((sum, row) => sum + row.totalTokens, 0)
-  )
-
-  const [activeProviderKey, setActiveProviderKey] = createSignal<string | null>(null)
-
-  const providerSavings = createMemo(() => {
-    const map = new Map<string, number>()
-    for (const m of props.allModels) {
-      const key = providerGroupKey(m.provider)
-      const { cacheSavings } = modelPricingExtras(m)
-      if (cacheSavings == null) continue
-      map.set(key, (map.get(key) ?? 0) + cacheSavings)
-    }
-    return map
-  })
-
-  return (
-    <div class="usage-panel">
-      <header class="usage-panel-head">
-        <h3 class="usage-section-title">
-          Market share<span class="usage-section-dot">.</span>
-        </h3>
-        <p class="usage-section-desc">
-          Token share by provider in this range · {formatTokenMetric(totalTokens())} total
-        </p>
-      </header>
-      <div class="usage-panel-subsection">
-        <h4 class="usage-subsection-title">Share over time</h4>
-        <ProviderShareChart
-          dailyModels={props.dailyModels}
-          maxWeeks={props.maxTrendWeeks}
-          activeProviderKey={activeProviderKey()}
-          onActiveProviderChange={setActiveProviderKey}
-        />
-      </div>
-      <Show
-        when={props.providers.length > 0}
-        fallback={
-          <div class="usage-models-placeholder">
-            No provider breakdown yet. Assistant turns with model metadata will appear after
-            sessions are indexed.
-          </div>
-        }
-      >
-        <div class="usage-provider-grid">
-          <For each={props.providers}>
-            {(row, index) => {
-              const share = totalTokens() > 0 ? (row.totalTokens / totalTokens()) * 100 : 0
-              const pk = providerGroupKey(row.provider)
-              const color = providerChartColor(pk, index())
-              const savings = providerSavings().get(pk)
-              const isActive = activeProviderKey() === pk
-              const isDimmed = activeProviderKey() != null && !isActive
-              return (
-                <button
-                  type="button"
-                  class={`usage-provider-card${isActive ? ' is-pinned' : ''}${isDimmed ? ' is-dimmed' : ''}`}
-                  onPointerEnter={(event) => {
-                    if (event.pointerType === 'touch') return
-                    setActiveProviderKey(pk)
-                  }}
-                  onPointerLeave={() => setActiveProviderKey(null)}
-                >
-                  <span class="usage-provider-swatch" style={{ background: color }} />
-                  <span class="usage-provider-rank">{String(index() + 1).padStart(2, '0')}</span>
-                  <span class="usage-provider-name">{row.model}</span>
-                  <span class="usage-provider-volume">{formatTokenMetric(row.totalTokens)}</span>
-                  <span class="usage-provider-share">{formatSharePct(share)}</span>
-                  <Show when={(savings ?? 0) > 0}>
-                    <span class="usage-provider-saving">saved {formatCurrency(savings ?? 0)}</span>
-                  </Show>
-                </button>
-              )
-            }}
-          </For>
-        </div>
-      </Show>
-    </div>
-  )
-}
-
-function heatmapWeeksForRange(range: RangeKey): number {
-  if (range === '7d') return 2
-  if (range === '30d') return 6
-  if (range === '90d') return 14
-  return HEATMAP_WEEKS
-}
-
-function buildHeatmapWeeks(days: UsageDay[], weekCount = HEATMAP_WEEKS): HeatmapCell[][] {
-  const byDate = new Map(days.map((day) => [day.date, day.totalTokens]))
-  const today = startOfUtcDay(new Date())
-  const weeksToShow = Math.min(HEATMAP_WEEKS, Math.max(2, weekCount))
-  const start = addDays(today, -((weeksToShow - 1) * DAYS_PER_WEEK + today.getUTCDay()))
-
-  const weeks = Array.from({ length: weeksToShow }, (_, weekIndex) =>
-    Array.from({ length: DAYS_PER_WEEK }, (_, dayIndex): HeatmapCell => {
-      const date = addDays(start, weekIndex * DAYS_PER_WEEK + dayIndex)
-      const dateId = dateKey(date)
-      const future = date.getTime() > today.getTime()
-      return {
-        date: dateId,
-        tokens: future ? 0 : (byDate.get(dateId) ?? 0),
-        level: 0,
-        future,
-      }
-    })
-  )
-
-  const maxTokens = Math.max(0, ...weeks.flat().map((day) => day.tokens))
-  for (const day of weeks.flat()) {
-    day.level = usageLevel(day.tokens, maxTokens)
-  }
-
-  return weeks
-}
-
-function buildMonthLabels(weeks: HeatmapCell[][]): string[] {
-  const labels: string[] = []
-  let previousMonth = -1
-  for (const week of weeks) {
-    const firstDay = week[0]
-    if (!firstDay) continue
-    const month = Number(firstDay.date.slice(5, 7)) - 1
-    if (month === previousMonth) {
-      labels.push('')
-      continue
-    }
-    labels.push(MONTH_LABELS[month] ?? '')
-    previousMonth = month
-  }
-  return labels
-}
-
-function usageLevel(tokens: number, maxTokens: number): number {
-  if (tokens <= 0 || maxTokens <= 0) return 0
-  const ratio = tokens / maxTokens
-  if (ratio >= 0.75) return 4
-  if (ratio >= 0.4) return 3
-  if (ratio >= 0.15) return 2
-  return 1
-}
-
-function rangeLabel(key: RangeKey): string {
-  if (key === '7d') return '1W'
-  if (key === '30d') return '1M'
-  if (key === '90d') return '3M'
-  return 'All'
-}
-
-function rangeToDays(key: RangeKey): number {
-  if (key === '7d') return 7
-  if (key === '30d') return 30
-  if (key === '90d') return 90
-  return 365
-}
-
-function formatSharePct(pct: number): string {
-  const clamped = Math.min(100, Math.max(0, pct))
-  return `${clamped.toFixed(clamped >= 10 ? 0 : 1)}%`
-}
-
-function cacheHitRate(inputTokens: number, cacheReadTokens: number): number | null {
-  const billed = inputTokens + cacheReadTokens
-  if (billed <= 0) return null
-  return cacheReadTokens / billed
-}
-
-function formatCacheHitRate(rate: number | null | undefined): string {
-  if (rate == null || !Number.isFinite(rate)) return '—'
-  return `${Math.round(rate * 100)}%`
-}
-
-function formatCostPerSession(cost: number, sessions: number): string {
-  if (cost <= 0 || sessions <= 0) return '—'
-  return formatCurrency(cost / sessions)
-}
-
-function formatRangeSpan(days: UsageDay[], range: RangeKey): string {
-  if (days.length === 0) return `${rangeLabel(range)} · no activity`
-  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date))
-  const first = sorted[0]?.date
-  const last = sorted[sorted.length - 1]?.date
-  if (!first || !last) return ''
-  return `${formatDisplayDate(first)} → ${formatDisplayDate(last)}`
-}
-
-function formatDisplayDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-').map(Number)
-  if (!y || !m || !d) return isoDate
-  const month = MONTH_LABELS[m - 1] ?? String(m)
-  return `${month} ${d}, ${y}`
-}
-
-function formatRelativeGenerated(iso: string): string {
-  const then = Date.parse(iso)
-  if (!Number.isFinite(then)) return ''
-  const sec = Math.floor((Date.now() - then) / 1000)
-  if (sec < 60) return 'just now'
-  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`
-  if (sec < 86_400) return `${Math.floor(sec / 3600)}h ago`
-  return `${Math.floor(sec / 86_400)}d ago`
-}
-
-function workspaceScopeFromPath(path: string | null): string {
-  if (!path?.trim()) return 'All projects'
-  const parts = path.replace(/\/$/, '').split(/[/\\]/)
-  return parts[parts.length - 1] || path
-}
-
-function exportCurrent(summary: UsageSummary, label: string, kind: 'json' | 'csv'): void {
-  if (kind === 'json') downloadUsageJson(summary, label)
-  else downloadUsageCsv(summary, label)
-}
-
-function heatmapTooltip(day: HeatmapCell, models: UsageModelBucket[]): string {
-  if (day.future) return day.date
-  const top = models[0]
-  const topModel = top ? formatModelName(top.model) || top.model : ''
-  const extra = topModel ? ` · ${topModel}` : ''
-  return `${day.date}: ${day.tokens.toLocaleString()} tokens${extra}`
-}
-
-function heatmapAriaLabel(day: HeatmapCell): string {
-  if (day.future) return `${day.date}, no data`
-  return `${day.date}, ${day.tokens.toLocaleString()} tokens`
-}
-
-function dateKey(date: Date): string {
-  return startOfUtcDay(date).toISOString().slice(0, 10)
-}
-
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-}
-
-function addDays(date: Date, days: number): Date {
-  return new Date(startOfUtcDay(date).getTime() + days * DAY_MS)
 }
