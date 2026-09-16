@@ -1,13 +1,16 @@
 /**
  * remote/remoteHost — the remote P0 surface's owner in Electron main.
  *
- * The server exists only while the user has Remote enabled: off until enabled,
- * never auto-starts, stopped by the kill switch. This module owns the single
+ * The server exists only while the user has Remote enabled this session: off
+ * until enabled in Settings, never auto-starts (a relaunch starts OFF, by
+ * design — see the Settings amendment in the remote design doc), stopped by
+ * the kill switch. This module owns the single
  * start/stop instance plus its collaborators: a device store over the shared
  * SQLite handle, auth, the gate registry, the SSE hub, and the read-model
  * handlers. The desktop Settings UI toggles enable/disable; nothing else may.
  */
 
+import path from 'node:path'
 import type { SessionAuthDeps } from '../session/sessionAuth'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import { RemoteAuth } from './auth'
@@ -104,8 +107,9 @@ export class RemoteHost {
     this.auth?.cancelPending()
   }
 
-  devices(): RemoteDeviceRow[] {
-    return this.deviceStore?.list() ?? []
+  /** Device rows WITHOUT token material — this crosses the IPC boundary. */
+  devices(): Array<Omit<RemoteDeviceRow, 'tokenHash'>> {
+    return (this.deviceStore?.list() ?? []).map(({ tokenHash: _hash, ...row }) => row)
   }
 
   private requireEnabled(): RemoteAuth {
@@ -174,4 +178,15 @@ export function createRemoteHost(deps: RemoteHostFactoryDeps): RemoteHost {
     },
     shellDir: deps.shellDir,
   })
+}
+
+/** Built PWA location: resources in a packaged app, the build dir in dev. */
+export function defaultShellDir(paths: {
+  packaged: boolean
+  resourcesPath: string
+  appPath: string
+}): string {
+  return paths.packaged
+    ? path.join(paths.resourcesPath, 'pwa')
+    : path.join(paths.appPath, 'out', 'pwa')
 }

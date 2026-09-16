@@ -93,7 +93,10 @@ const App: Component = () => {
           </button>
         </div>
 
-        <GateCards state={{ pending: gates(), notice: '' }} />
+        <GateCards
+          state={{ pending: gates(), notice: '' }}
+          onUnauthenticated={() => setPaired(false)}
+        />
 
         <Show when={tab() === 'live'}>
           <LiveView />

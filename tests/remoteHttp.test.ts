@@ -122,9 +122,14 @@ describe('gate endpoints over HTTP', () => {
     })
 
     const list = await fetch(`${base}/api/gates`, { headers: authHeader() })
-    const gates = (await list.json()) as { gates: Array<{ id: string }> }
+    const gates = (await list.json()) as {
+      gates: Array<{ id: string; gateToken: string; title: string }>
+    }
     expect(gates.gates).toHaveLength(1)
     expect(gates.gates[0]?.id).toBe(opened.gate.id)
+    expect(gates.gates[0]?.title).toBe('apply patch')
+    // The served one-time token must be the working credential.
+    expect(gates.gates[0]?.gateToken).toBe(opened.gateToken)
 
     // Out-of-range indexes are dropped to an empty approval, per the desktop rule.
     const approve = await fetch(`${base}/api/gates/${opened.gate.id}/approve`, {

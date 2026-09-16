@@ -14,6 +14,11 @@ Git mutations, no settings, no keys, no extension management — remotely, ever,
 The desktop app is unaffected: the server is off until the user enables it in
 Settings → Remote, never auto-starts, and adds no desktop IPC surface.
 
+**Settings amendment (2026-09-16, slice 4):** the opt-in is strict per-session.
+After an app relaunch the server is OFF until the user enables it again in
+Settings; no persisted preference re-enables it. (The toggle is recorded in
+prefs for future UX hints, but is never auto-applied.)
+
 ## Architecture
 
 ```

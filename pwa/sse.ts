@@ -4,7 +4,10 @@
  * Native EventSource cannot set the Authorization header, so the stream is
  * read with fetch + a hand-parsed frame splitter. Frames are `event: <name>`
  * + `data: <json>` pairs separated by a blank line (the server's format).
+ * A 401 clears the stored token and emits one `unauthorized` frame instead of
+ * retrying forever with a dead credential.
  */
+import { clearToken, storedToken } from './api'
 
 export interface SseFrame {
   event: string
@@ -60,12 +63,18 @@ export function openEventStream(onFrame: (frame: SseFrame) => void): () => void 
     while (!closed) {
       controller = new AbortController()
       try {
-        const token = localStorage.getItem('openpi-remote-token')
+        const token = storedToken()
         if (!token) return
         const response = await fetch('/api/events', {
           headers: { authorization: `Bearer ${token}` },
           signal: controller.signal,
         })
+        if (response.status === 401) {
+          // Revoked or stale pairing: stop retrying and reset to pairing.
+          clearToken()
+          onFrame({ event: 'unauthorized', data: {} })
+          return
+        }
         if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
         backoffMs = 1000
         const reader = response.body.getReader()

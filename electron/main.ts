@@ -7,7 +7,7 @@ import type { GitStatusResult, OutputLine } from '../src/lib/ipc'
 import { IPC } from '../src/lib/ipc'
 import { registerMainIpcHandlers } from './ipc/register'
 import { createSidecarMessageHandler } from './pi/messages'
-import { createRemoteHost, type RemoteHost } from './remote/remoteHost'
+import { createRemoteHost, defaultShellDir, type RemoteHost } from './remote/remoteHost'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
@@ -100,15 +100,8 @@ let sessionIndex: SessionIndexStore | null = null
 // Remote P0: off until the user enables it; never auto-starts (design doc).
 let remoteHost: RemoteHost | null = null
 
-function emitSessionEventToRemote(event: { type?: string }): void {
+const emitSessionEventToRemote = (event: { type?: string }): void =>
   remoteHost?.dispatchSessionEvent(event)
-}
-
-function remoteShellDir(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'pwa')
-    : path.join(app.getAppPath(), 'out', 'pwa')
-}
 
 // ── Output ring buffer ─────────────────────────────────────────────────
 // Lines emitted before the Output pane opens are held here so they are
@@ -229,20 +222,12 @@ app.whenReady().then(() => {
     getAgentDir,
     getSessionState,
     activeWorkspacePath,
-    shellDir: remoteShellDir(),
+    shellDir: defaultShellDir({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+    }),
   })
-
-  // Restore the user's explicit choice from a previous session; the server
-  // never starts for any reason other than this preference or the toggle.
-  if (sessionIndex.getPref('remote.enabled') === 'true') {
-    remoteHost.enable().catch((error: unknown) => {
-      emitOutputLine({
-        level: 'warn',
-        text: `[remote] could not re-enable: ${error instanceof Error ? error.message : String(error)}`,
-        ts: Date.now(),
-      })
-    })
-  }
 
   // Wire sessionHost callbacks
   setOnSidecarMessage(handleSidecarMessage)

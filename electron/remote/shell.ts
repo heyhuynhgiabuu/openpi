@@ -30,6 +30,13 @@ export function serveShellFile(
   response: ServerResponse
 ): void {
   const spec = SHELL_FILES[route]
+  // Slash variants ('//', '/app.js/') can reach the shell handler even though
+  // they are not real routes; answer 501 instead of crashing to 500.
+  if (!spec) {
+    response.writeHead(501, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ error: 'not_in_allowlist' }))
+    return
+  }
   const fullPath = path.join(shellDir, spec.file)
   let body: Buffer
   try {

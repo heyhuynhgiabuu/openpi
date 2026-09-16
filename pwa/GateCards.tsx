@@ -6,14 +6,14 @@
  * gate is gone.
  */
 import { For, Show, createSignal } from 'solid-js'
-import { api, type RemoteGate } from './api'
+import { api, ApiError, type RemoteGate } from './api'
 
 interface GateState {
   pending: RemoteGate[]
   notice: string
 }
 
-export function GateCards(props: { state: GateState }) {
+export function GateCards(props: { state: GateState; onUnauthenticated: () => void }) {
   const [busyId, setBusyId] = createSignal('')
   const [error, setError] = createSignal('')
 
@@ -22,10 +22,17 @@ export function GateCards(props: { state: GateState }) {
     setError('')
     try {
       await api.decideGate(gate.id, approve, gate.gateToken)
-    } catch {
-      // 409/410 mean the gate resolved elsewhere or expired — the next
-      // gate_update snapshot drops the card. Surface anything else.
-      setError('The gate was answered elsewhere or has expired.')
+    } catch (err) {
+      // 409/410: answered elsewhere or expired — the next gate_update drops
+      // the card. 401: pairing is dead; reset to the pair screen.
+      if (err instanceof ApiError && (err.status === 409 || err.status === 410)) {
+        setError('')
+      } else if (err instanceof ApiError && err.status === 401) {
+        props.onUnauthenticated()
+        return
+      } else {
+        setError('Decision failed. Check your connection and try again.')
+      }
     } finally {
       setBusyId('')
     }

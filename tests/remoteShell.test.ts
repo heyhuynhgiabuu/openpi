@@ -79,7 +79,15 @@ describe('pwa shell serving', () => {
   })
 
   it('never serves a path outside the three fixed routes', async () => {
-    for (const attempt of ['/index.html', '/..%2f..%2fetc%2fpasswd', '/app.js.map', '/api']) {
+    for (const attempt of [
+      '/index.html',
+      '/..%2f..%2fetc%2fpasswd',
+      '/app.js.map',
+      '/api',
+      '//',
+      '/app.js/',
+      '//app.js',
+    ]) {
       const response = await fetch(`${base}${attempt}`)
       expect(response.status).toBe(501)
     }

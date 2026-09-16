@@ -4,7 +4,7 @@
  * code display, and the paired-device list with immediate revocation.
  * Render-only: every action is an IPC call; decisions live in main.
  */
-import { For, Show, createResource, createSignal } from 'solid-js'
+import { For, Show, createResource, createSignal, onCleanup, onMount } from 'solid-js'
 import type { RemoteStatus } from '../../lib/ipc'
 
 interface PairingCode {
@@ -17,6 +17,11 @@ export function RemoteSection(props: { onError: (message: string) => void }) {
   const [pairing, setPairing] = createSignal<PairingCode | null>(null)
   const [busy, setBusy] = createSignal(false)
   const [copied, setCopied] = createSignal(false)
+  const [now, setNow] = createSignal(Date.now())
+  onMount(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
+  })
 
   const run = async (action: () => Promise<void>): Promise<void> => {
     setBusy(true)
@@ -66,7 +71,9 @@ export function RemoteSection(props: { onError: (message: string) => void }) {
   }
 
   const expiresIn = (): string => {
+    void now() // tick: recompute while the countdown is visible
     const seconds = Math.max(0, Math.round(((pairing()?.expiresAt ?? 0) - Date.now()) / 1000))
+    if (seconds === 0) return 'expired'
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
   }
 
