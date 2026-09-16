@@ -1,71 +1,38 @@
 /**
  * useOpenPiSession — SolidJS reactive session hook.
  *
- * Migration from React:
- *   useState      → createSignal (accessed via getters so callers use session.ready, not session.ready())
- *   useEffect     → onMount + createEffect(on(...)) + onCleanup
- *   useCallback   → plain functions (no deps array needed — SolidJS components execute once)
- *   useMemo       → createMemo
- *   useRef        → let variable (assigned via ref= callback)
- *   startTransition → removed (batch() used where needed)
- *
- * Getter pattern: each signal is exposed as a JS getter so consumers can write
- * `session.ready` (same as before) while still getting fine-grained reactivity
- * tracking when accessed from JSX or createEffect.
+ * Signals are exposed as getters (consumers write `session.ready`, not
+ * `session.ready()`) so JSX/createEffect reads stay reactively tracked.
+ * Behavior blocks live in ./session/: sessionEventPipe, sessionActions,
+ * sessionIpcWiring, useTaskHistoryPolling.
  */
-import { batch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from 'solid-js'
-import type {
-  BashExecutionResult,
-  ModelInfo,
-  SessionEvent,
-  SessionReady,
-  SessionStats,
-  WorkspaceSummaryInfo,
-} from '../lib/ipc'
-import { asUiPromptEvent, applySessionEvent } from '../lib/sessionEvents'
-import { buildSessionPromptPayload, buildSessionPromptText } from '../lib/sessionPrompt'
+import { createMemo, createSignal } from 'solid-js'
+import type { ModelInfo, SessionReady, SessionStats, WorkspaceSummaryInfo } from '../lib/ipc'
+import { buildSessionPromptText } from '../lib/sessionPrompt'
 import { isSubSessionPath } from '../lib/subSessionNavigation'
-import {
-  findTaskIdForToolCall,
-  resolveTaskStatusFromHistory,
-  type TaskHistoryEntry,
-} from '../lib/taskHistory'
-import { isValidPiTaskId, taskCancelCommand } from '../lib/taskToolHelpers'
-import type { Message, ToolCard } from '../types/session'
+import type { TaskHistoryEntry } from '../lib/taskHistory'
+import type { Message } from '../types/session'
 import { createSessionNavigation, type ParentStackEntry } from './sessionNavigation'
+import { createSessionActions } from './session/sessionActions'
+import { createSessionEventHandle, type SessionPipeRefs } from './session/sessionEventPipe'
+import { registerRefreshEffects, registerSessionIpc } from './session/sessionIpcWiring'
+import { createTaskCardResolvers } from './session/taskCardResolvers'
+import { applyGetters } from './session/getters'
+import { useTaskHistoryPolling } from './session/useTaskHistoryPolling'
 import { useAgentRunMetrics } from './useAgentRunMetrics'
 import { useExtensionTrackers } from './useExtensionTrackers'
 
-function taskHistorySignature(entries: TaskHistoryEntry[]): string {
-  return entries
-    .map((entry) => `${entry.id}:${entry.status ?? ''}:${entry.startedAt ?? ''}`)
-    .join('|')
-}
-
 export { isSubSessionPath }
+
+import type { AwaitingPrompt, QueueMode } from './session/sessionEventPipe'
+export type { AwaitingPrompt, QueueMode } from './session/sessionEventPipe'
 
 import { useRemoteSessionSync } from './useRemoteSessionSync'
 import { useSessionHistory } from './useSessionHistory'
 import { useSessionIndex } from './useSessionIndex'
 import { useSubagentFileTracker } from './useSubagentFileTracker'
 
-export type QueueMode = 'prompt' | 'steer' | 'followup'
-
-/** Agent is blocked on a ctx.ui prompt (Pi 0.85 ui_prompt_start/end events). */
-export interface AwaitingPrompt {
-  title: string | null
-}
-
 export { buildSessionPromptText }
-
-/** Session events that append an entry to the JSONL, so the tree can change. */
-const APPEND_EVENTS = new Set([
-  'message_start',
-  'tool_execution_end',
-  'compaction_end',
-  'session_info_changed',
-  'agent_end',
-])
 
 export function useOpenPiSession() {
   // ── Core session state ────────────────────────────────────────────────────
@@ -73,9 +40,8 @@ export function useOpenPiSession() {
   const [messages, setMessages] = createSignal<Message[]>([])
   const [isStreaming, setIsStreaming] = createSignal(false)
   const [isShellRunning, setIsShellRunning] = createSignal(false)
-  // Set by Pi 0.85 ui_prompt_start / ui_prompt_end extension events: the agent
-  // is blocked on a ctx.ui prompt instead of streaming. Lets the UI distinguish
-  // "working" from "waiting for your response".
+  // Set by Pi 0.85 ui_prompt_start/end events: the agent is blocked on a
+  // ctx.ui prompt instead of streaming ("working" vs "awaiting response").
   const [awaitingPrompt, setAwaitingPrompt] = createSignal<AwaitingPrompt | null>(null)
   const [input, setInput] = createSignal('')
   const [models, setModels] = createSignal<ModelInfo[]>([])
@@ -84,11 +50,6 @@ export function useOpenPiSession() {
   const [parentStack, setParentStack] = createSignal<Array<ParentStackEntry>>([])
   const [taskHistory, setTaskHistory] = createSignal<TaskHistoryEntry[]>([])
   const isSubSession = createMemo<boolean>(() => isSubSessionPath(ready()?.sessionFile))
-  // Tracks whether the user just sent a fresh prompt (not a steer/followup).
-  // Used to limit auto-steer activation to explicit user-initiated prompts only,
-  // so intermediate agent_start events (e.g. after steer delivery) don't override
-  // a mode the user intentionally set mid-stream.
-  let _justSentPrompt = false
   const [currentModel, setCurrentModel] = createSignal<ModelInfo | null>(null)
   const [thinkingLevel, setThinkingLevelState] = createSignal<string>('medium')
   const sessionIndex = useSessionIndex(() => ready()?.cwd ?? null)
@@ -109,13 +70,11 @@ export function useOpenPiSession() {
   const trackers = useExtensionTrackers()
   const subagentFiles = useSubagentFileTracker()
   const agentRunMetrics = useAgentRunMetrics()
-  // Pi's branch switch moves the leaf pointer without writing an entry, so the
-  // file's last entry is the wrong leaf until the next append. This remembers
-  // the leaf the switch landed on.
+  // Pi's branch switch moves the leaf without writing an entry; remember where
+  // it landed (the file's last line is stale until the next append).
   const [branchLeafId, setBranchLeafId] = createSignal<string | null>(null)
-  // Bumped when Pi writes an entry, so views built from the session file (the
-  // session map) can refresh while they are open. Not per token: only events
-  // that add an entry to the JSONL.
+  // Bumped on entry-appending events, so file-backed views (session map) can
+  // refresh while open. Not per token.
   const [treeVersion, setTreeVersion] = createSignal(0)
   const sessionHistory = useSessionHistory({
     setMessages,
@@ -128,13 +87,17 @@ export function useOpenPiSession() {
     setError,
   })
 
-  // ── Refs — plain variables assigned via SolidJS ref= callback ────────────
-  let _bottomEl: HTMLDivElement | undefined
-  let textareaEl: HTMLTextAreaElement | undefined
-  let currentModelName: string | null = null
-  let currentTurnStartMs: number | null = null
-  // ── Derived ───────────────────────────────────────────────────────────────
-  // (contextPercent is already a signal — no memo wrapper needed)
+  // ── Refs — plain variables assigned via ref= callbacks ──────────────────
+  const refs: SessionPipeRefs & {
+    textareaEl: HTMLTextAreaElement | undefined
+    bottomEl: HTMLDivElement | undefined
+  } = {
+    justSentPrompt: false,
+    currentModelName: null,
+    currentTurnStartMs: null,
+    textareaEl: undefined,
+    bottomEl: undefined,
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const refreshContextUsage = async () => {
@@ -147,252 +110,85 @@ export function useOpenPiSession() {
     }
   }
 
-  const handleEvent = (event: SessionEvent) => {
-    if (event.type === 'agent_start') {
-      setIsStreaming(true)
-      remoteSync.markLocalActivity()
-      agentRunMetrics.start()
-      // Auto-activate steer mode ONLY when the user explicitly sent a fresh
-      // prompt — not on every agent_start (e.g. intermediate restarts after
-      // a steer delivery). This prevents overriding a mode the user set
-      // intentionally while the agent was already running.
-      if (_justSentPrompt) {
-        setQueueMode('steer')
-        _justSentPrompt = false
-      }
-    }
-    if (event.type === 'turn_start') {
-      const e = event as { timestamp?: number }
-      currentTurnStartMs = e.timestamp ?? Date.now()
-    }
-    if (event.type === 'turn_end') {
-      // Live run totals: `turn_end` carries the assistant message with usage,
-      // so tokens/cost update per turn instead of only at `agent_end`.
-      agentRunMetrics.addTurn(event)
-      void refreshContextUsage()
-    }
-    if (event.type === 'agent_end') {
-      setIsStreaming(false)
-      setAwaitingPrompt(null)
-      setQueueMode('prompt')
-      currentTurnStartMs = null
-      void refreshContextUsage()
-      // Clear finished subagents on session end; keep task tray across agent turns
-      trackers.clearFinished()
+  const handleEvent = createSessionEventHandle({
+    refs,
+    refreshContextUsage,
+    remoteSync,
+    agentRunMetrics,
+    trackers,
+    setIsStreaming,
+    setAwaitingPrompt,
+    setQueueMode,
+    setSteeringQueue,
+    setFollowUpQueue,
+    setSessionNameState,
+    setMessages,
+    setBranchLeafId,
+    setTreeVersion,
+  })
 
-      agentRunMetrics.finish()
-    }
+  const actions = createSessionActions({
+    refs,
+    input,
+    setInput,
+    ready,
+    queueMode,
+    isShellRunning,
+    setIsShellRunning,
+    setCurrentModel,
+    setModels,
+    setError,
+    setMessages,
+    setThinkingLevelState,
+    setSessionNameState,
+    setBranchLeafId,
+    refreshContextUsage,
+    remoteSync,
+    sessionHistory,
+  })
 
-    // ── Extension tracker dispatch ───────────────────────────────────────────
-    if (event.type === 'tool_execution_start' || event.type === 'tool_execution_end') {
-      trackers.dispatchEvent(event as Record<string, unknown>, event.type)
-    }
+  // ── Effects ────────────────────────────────────────────────────────────────
+  const resolvers = createTaskCardResolvers({
+    trackers,
+    taskHistory,
+  })
 
-    // Any appended entry becomes the file's last line again, so the file order
-    // is authoritative from here on and the branch override would go stale.
-    if (event.type === 'message_start') setBranchLeafId(null)
-    if (APPEND_EVENTS.has(event.type)) setTreeVersion((version) => version + 1)
+  useTaskHistoryPolling(ready, setTaskHistory)
 
-    if (event.type === 'queue_update') {
-      const e = event as { steering?: readonly string[]; followUp?: readonly string[] }
-      batch(() => {
-        setSteeringQueue([...(e.steering ?? [])])
-        setFollowUpQueue([...(e.followUp ?? [])])
-      })
-      return
-    }
-    if (event.type === 'session_info_changed') {
-      const e = event as { name?: string }
-      setSessionNameState(e.name ?? null)
-      return
-    }
-
-    const prompt = asUiPromptEvent(event)
-    if (prompt) {
-      setAwaitingPrompt(prompt.type === 'ui_prompt_start' ? { title: prompt.title } : null)
-      return
-    }
-
-    setMessages((previous) =>
-      applySessionEvent(previous, event, currentModelName, currentTurnStartMs)
-    )
-  }
-
-  // ── Scroll-to-bottom on message changes ──────────────────────────────────
-  // Scroll is owned by ConversationPane which has scroll container + user-intent tracking.
-  // bottomEl is still stored via setBottomRef for potential future use.
-
-  // ── Re-fetch models when session becomes ready ────────────────────────────
-  createEffect(
-    on(ready, (r) => {
-      if (!r) return
-      if (r.model) {
-        window.openpi
-          .getModels()
-          .then((availableModels) => {
-            setModels(availableModels)
-            if (!currentModel() && availableModels.length) setCurrentModel(availableModels[0])
-          })
-          .catch(() => {})
-      }
-
-      // Focus composer when a session opens
-      textareaEl?.focus()
-    })
-  )
-
-  // ── Load task-session-history whenever cwd changes ───────────────────────
-  // pi-task writes `.pi/task-session-history.json` at task start; it is the
-  // most reliable source for linking a parent `task` tool card to its child
-  // sub-session (the tracker's `taskId` is populated from `tool_execution_end`
-  // details, which pi-task does not always emit). Keep polling while the cwd is
-  // active because `.pi/task-session-history.json` is outside the artifact
-  // watcher, so no live event fires when the task id lands.
-  createEffect(
-    on(ready, (r) => {
-      const cwd = r?.cwd
-      let disposed = false
-      let signature = ''
-
-      const refresh = async () => {
-        if (!cwd || disposed) return
-        try {
-          const entries = (await window.openpi.readTaskSessionHistory({
-            cwd,
-          })) as TaskHistoryEntry[]
-          if (disposed) return
-          const nextSignature = taskHistorySignature(entries)
-          if (nextSignature !== signature) {
-            signature = nextSignature
-            setTaskHistory(entries)
-          }
-        } catch {
-          if (!disposed) setTaskHistory([])
-        }
-      }
-
-      if (!cwd) {
-        setTaskHistory([])
-        return
-      }
-
-      void refresh()
-      const timer = window.setInterval(() => {
-        void refresh()
-      }, 1000)
-
-      onCleanup(() => {
-        disposed = true
-        window.clearInterval(timer)
-      })
-    })
-  )
-
-  // ── Re-fetch session index when filter options change ─────────────────────
-  createEffect(
-    on(
-      [
-        sessionIndex.sessionQuery,
-        sessionIndex.sortBy,
-        sessionIndex.groupBy,
-        sessionIndex.showRecent,
-      ] as const,
-      () => {
-        void sessionIndex.loadSessionIndex()
-      },
-      { defer: true }
-    )
-  )
+  registerRefreshEffects({
+    ready,
+    currentModel,
+    setCurrentModel: (model) => setCurrentModel(model),
+    setModels,
+    setTextareaFocus: () => refs.textareaEl?.focus(),
+    sessionIndex,
+  })
 
   // ── IPC subscriptions (mounted once, cleaned up on unmount) ──────────────
-  onMount(() => {
-    const unsubs: Array<() => void> = []
-
-    unsubs.push(window.openpi.onSessionEvent(handleEvent))
-    unsubs.push(window.openpi.onRemoteSessionStatus(remoteSync.handleRemoteSessionStatus))
-
-    unsubs.push(window.openpi.onRemoteSessionUpdate(remoteSync.handleRemoteSessionUpdate))
-
-    unsubs.push(
-      window.openpi.onSessionReady((payload) => {
-        batch(() => {
-          setReady(payload)
-          sessionIndex.setSelectedWorkspacePath(payload.cwd)
-          setMessages([])
-          setError(null)
-          setSteeringQueue([])
-          setFollowUpQueue([])
-          setAwaitingPrompt(null)
-          setSessionNameState(payload.sessionName ?? null)
-          // Clear extension trackers on new session
-          trackers.clearAll()
-          if (payload.model) {
-            setCurrentModel(payload.model)
-            currentModelName = payload.model.name
-          }
-          if (payload.thinkingLevel) setThinkingLevelState(payload.thinkingLevel)
-          // A leaf from the previous session must not leak into this one.
-          setBranchLeafId(null)
-          sessionHistory.reset(payload.sessionFile ?? null)
-          setContextPercent(null)
-          setWorkspaceSummary(null)
-        })
-
-        const summaryCwd = payload.cwd
-        window.openpi
-          .getWorkspaceSummary(summaryCwd)
-          .then((info) => {
-            if (ready()?.cwd !== summaryCwd) return
-            setWorkspaceSummary(info)
-            setGitBranch(info.branch)
-          })
-          .catch(() => {
-            if (ready()?.cwd !== summaryCwd) return
-            setWorkspaceSummary(null)
-            setGitBranch(null)
-          })
-
-        if (payload.sessionFile) {
-          sessionHistory.loadInitialMessages(payload.sessionFile)
-        }
-
-        void sessionIndex.loadSessionIndex(payload.cwd)
-        void refreshContextUsage()
-      })
-    )
-
-    unsubs.push(
-      window.openpi.onSessionError((err) => {
-        batch(() => {
-          setError(err.message)
-          setIsStreaming(false)
-        })
-      })
-    )
-
-    unsubs.push(
-      window.openpi.onSessionIndexUpdated(() => {
-        void sessionIndex.loadSessionIndex()
-      })
-    )
-
-    unsubs.push(
-      window.openpi.git.onStatusChanged((s) => {
-        setGitStats({
-          added: s.totalAdded,
-          removed: s.totalRemoved,
-          untracked: s.files.filter((f) => f.status === '?').length,
-          changed: s.files.length,
-        })
-      })
-    )
-
-    // Initial load
-    void sessionIndex.loadSessionIndex()
-
-    onCleanup(() => {
-      for (const u of unsubs) u()
-    })
+  registerSessionIpc({
+    refs,
+    handleEvent,
+    refreshContextUsage,
+    remoteSync,
+    sessionHistory,
+    sessionIndex,
+    trackers,
+    getReady: ready,
+    setReady,
+    setMessages,
+    setError,
+    setSteeringQueue,
+    setFollowUpQueue,
+    setAwaitingPrompt: setAwaitingPrompt as (value: null) => void,
+    setSessionNameState,
+    setCurrentModel,
+    setThinkingLevelState,
+    setIsStreaming,
+    setBranchLeafId,
+    setContextPercent,
+    setWorkspaceSummary,
+    setGitBranch,
+    setGitStats,
   })
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -407,408 +203,94 @@ export function useOpenPiSession() {
       sessionIndex,
     })
 
-  const send = async (contextPrefix?: string) => {
-    const promptPayload = buildSessionPromptPayload(input(), contextPrefix)
-    const r = ready()
-    if (!promptPayload.text || !r) return
+  // ── Return (getter-based: callers write session.ready, not session.ready()) ──
+  // Getters are DEFINED on the returned object (never spread a getter-bearing
+  // object — spread snapshots getter values and freezes them).
+  return applyGetters(
+    {
+      dismissTaskNotification: () => trackers.dismissTaskNotification(),
 
-    setInput('')
-    if (textareaEl) textareaEl.style.height = 'auto'
-    remoteSync.markLocalActivity()
-    try {
-      if (queueMode() === 'steer')
-        await window.openpi.steer(promptPayload.text, promptPayload.contextPrefix)
-      else if (queueMode() === 'followup')
-        await window.openpi.followUp(promptPayload.text, promptPayload.contextPrefix)
-      else {
-        _justSentPrompt = true
-        await window.openpi.prompt(promptPayload.text, promptPayload.contextPrefix)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
+      resolveTaskIdForCard: resolvers.resolveTaskIdForCard,
+      resolveTaskStatusForTaskId: resolvers.resolveTaskStatusForTaskId,
+      clearArtifacts: () => subagentFiles.clear(),
 
-  const updateShellMessage = (id: string, result: BashExecutionResult | null, error?: string) => {
-    setMessages((previous) =>
-      previous.map((message) => {
-        if (message.id !== id || message.role === 'system' || message.role === 'extension')
-          return message
-        const card = message.toolCards[0]
-        if (!card) return message
-        return {
-          ...message,
-          toolCards: [
-            {
-              ...card,
-              output: error ?? result?.output ?? '',
-              isError: !!error || (result?.exitCode ?? 0) !== 0,
-              streaming: false,
-            },
-          ],
-        }
-      })
-    )
-  }
-
-  const sendShell = async () => {
-    const command = input().trim()
-    const r = ready()
-    if (!command || !r || isShellRunning()) return
-
-    const id = `bash-${Date.now()}`
-    setInput('')
-    if (textareaEl) textareaEl.style.height = 'auto'
-    setIsShellRunning(true)
-    setMessages((previous) => [
-      ...previous,
-      {
-        id,
-        role: 'assistant',
-        text: '',
-        toolCards: [
-          {
-            toolCallId: id,
-            toolName: 'bash',
-            args: { command },
-            output: '',
-            isError: false,
-            streaming: true,
-          },
-        ],
+      // Ref setters — pass as `ref={session.setBottomRef}` in JSX:
+      setBottomRef: (el: HTMLDivElement) => {
+        refs.bottomEl = el
       },
-    ])
+      // Raw signal accessors — consumers call them (session.branchLeafId()).
+      branchLeafId,
+      treeVersion,
+      setTextareaRef: (el: HTMLTextAreaElement) => {
+        refs.textareaEl = el
+      },
 
-    try {
-      const result = await window.openpi.bash(command)
-      updateShellMessage(id, result)
-      void refreshContextUsage()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      updateShellMessage(id, null, message)
-    } finally {
-      setIsShellRunning(false)
+      // Setters
+      setInput,
+      setError,
+      setQueueMode,
+      setSessionQuery: sessionIndex.setSessionQuery,
+      setSortBy: sessionIndex.setSortBy,
+      setGroupBy: sessionIndex.setGroupBy,
+      setShowRecent: sessionIndex.setShowRecent,
+
+      // Navigation + actions
+      openWorkspace,
+      openExistingSession,
+      openSubSession,
+      popToParent,
+      createNewSession,
+      selectWorkspace: sessionIndex.selectWorkspace,
+      loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
+      loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
+      ...actions,
+      clearTasks: () => {
+        trackers.clearAll()
+      },
+
+      // Sub-session navigation (raw accessors — consumers call them)
+      parentStack,
+      isSubSession,
+    },
+    {
+      ready,
+      messages,
+      isStreaming,
+      awaitingPrompt,
+      agentTps: agentRunMetrics.tps,
+      runUsage: agentRunMetrics.usage,
+      isShellRunning,
+      input,
+      models,
+      error,
+      queueMode,
+      currentModel,
+      workspaces: sessionIndex.workspaces,
+      sessions: sessionIndex.sessions,
+      selectedWorkspacePath: sessionIndex.selectedWorkspacePath,
+      sessionQuery: sessionIndex.sessionQuery,
+      sortBy: sessionIndex.sortBy,
+      groupBy: sessionIndex.groupBy,
+      showRecent: sessionIndex.showRecent,
+      gitBranch,
+      workspaceSummary,
+      gitStats,
+      steeringQueue,
+      followUpQueue,
+      remoteSessionStatus: remoteSync.remoteSessionStatus,
+      remoteSessionMessages: remoteSync.remoteSessionMessages,
+      remoteSessionUpdatedAt: remoteSync.remoteSessionUpdatedAt,
+      localActivityAt: remoteSync.localActivityAt,
+      sessionName,
+      contextPercent,
+      sessionStats,
+      thinkingLevel,
+      hasMoreHistoryBefore: sessionHistory.hasMoreHistoryBefore,
+      isLoadingOlderHistory: sessionHistory.isLoadingOlderHistory,
+      tasks: trackers.tasks,
+      taskNotification: trackers.taskNotification,
+      artifacts: subagentFiles.artifacts,
+      todoFiles: subagentFiles.todoFiles,
     }
-  }
-
-  const selectModel = async (model: ModelInfo) => {
-    setCurrentModel(model)
-    currentModelName = model.name
-    await window.openpi.setModel({ provider: model.provider, modelId: model.id })
-  }
-
-  const refreshModels = () => {
-    window.openpi
-      .getModels()
-      .then((availableModels) => {
-        setModels(availableModels)
-      })
-      .catch(() => {})
-  }
-
-  const selectThinkingLevel = async (level: string) => {
-    setThinkingLevelState(level)
-    await window.openpi.setThinking(level)
-  }
-
-  const setSessionName = async (name: string) => {
-    try {
-      await window.openpi.setSessionName(name)
-      setSessionNameState(name)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const forkFromMessage = async (messageId: string) => {
-    try {
-      await window.openpi.forkSession(messageId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  /**
-   * Continue the session from an earlier entry (Pi's tree navigation). Stays in
-   * the same session file, unlike forkFromMessage which starts a new one.
-   * Throws so the caller can surface the reason where the action was taken.
-   */
-  const navigateTree = async (entryId: string) => {
-    const sessionFile = ready()?.sessionFile
-    if (!sessionFile) throw new Error('No open session to navigate.')
-    const result = await window.openpi.navigateSessionTree({ path: sessionFile, entryId })
-    if (result.cancelled) return
-    batch(() => {
-      setBranchLeafId(result.leafId)
-      // Pi hands back the target user message so it can be edited and resent.
-      if (result.editorText !== undefined) setInput(result.editorText)
-    })
-    sessionHistory.loadInitialMessages(sessionFile)
-  }
-
-  /**
-   * Cancels one pi-task subagent. Control lives in pi-task's `/task cancel`
-   * command, and it only closes a live tmux/HerdR pane — SDK-backed runs answer
-   * that cancellation is unsupported. The command is only sent when Pi reports
-   * it, because an unknown slash text would go to the model as a prompt.
-   */
-  const cancelTask = async (taskId: string) => {
-    const commands = await window.openpi.listSlashCommands()
-    const text = taskCancelCommand(taskId, commands)
-    if (!text) {
-      throw new Error('The pi-task extension is not installed, so this task cannot be cancelled.')
-    }
-    await window.openpi.prompt(text)
-  }
-
-  const compactSession = async (customInstructions?: string) => {
-    try {
-      await window.openpi.compactSession(customInstructions ? { customInstructions } : {})
-      // Pi SDK emits compaction_start/end events; renderer already shows them.
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const reloadSession = async () => {
-    try {
-      await window.openpi.reloadSession()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  const copyLastAssistantText = async (): Promise<string | null> => {
-    try {
-      return await window.openpi.copyLastAssistantText()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      return null
-    }
-  }
-
-  const getSessionInfo = async (): Promise<unknown | null> => {
-    try {
-      return await window.openpi.getSessionInfo()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      return null
-    }
-  }
-
-  // ── Return — getter-based object so callers use session.ready (not session.ready()) ──
-  return {
-    // Signals exposed as getters (transparent to callers, reactive in JSX/createEffect)
-    get ready() {
-      return ready()
-    },
-    get messages() {
-      return messages()
-    },
-    get isStreaming() {
-      return isStreaming()
-    },
-    get awaitingPrompt() {
-      return awaitingPrompt()
-    },
-    get agentTps() {
-      return agentRunMetrics.tps()
-    },
-    get runUsage() {
-      return agentRunMetrics.usage()
-    },
-    get isShellRunning() {
-      return isShellRunning()
-    },
-    get input() {
-      return input()
-    },
-    get models() {
-      return models()
-    },
-    get error() {
-      return error()
-    },
-    get queueMode() {
-      return queueMode()
-    },
-    get currentModel() {
-      return currentModel()
-    },
-    get workspaces() {
-      return sessionIndex.workspaces()
-    },
-    get sessions() {
-      return sessionIndex.sessions()
-    },
-    get selectedWorkspacePath() {
-      return sessionIndex.selectedWorkspacePath()
-    },
-    get sessionQuery() {
-      return sessionIndex.sessionQuery()
-    },
-    get sortBy() {
-      return sessionIndex.sortBy()
-    },
-    get groupBy() {
-      return sessionIndex.groupBy()
-    },
-    get showRecent() {
-      return sessionIndex.showRecent()
-    },
-    get gitBranch() {
-      return gitBranch()
-    },
-    get workspaceSummary() {
-      return workspaceSummary()
-    },
-    get gitStats() {
-      return gitStats()
-    },
-    get steeringQueue() {
-      return steeringQueue()
-    },
-    get followUpQueue() {
-      return followUpQueue()
-    },
-    get remoteSessionStatus() {
-      return remoteSync.remoteSessionStatus()
-    },
-    get remoteSessionMessages() {
-      return remoteSync.remoteSessionMessages()
-    },
-    get remoteSessionUpdatedAt() {
-      return remoteSync.remoteSessionUpdatedAt()
-    },
-
-    get localActivityAt() {
-      return remoteSync.localActivityAt()
-    },
-    get sessionName() {
-      return sessionName()
-    },
-    get contextPercent() {
-      return contextPercent()
-    },
-    get sessionStats() {
-      return sessionStats()
-    },
-    get thinkingLevel() {
-      return thinkingLevel()
-    },
-    get hasMoreHistoryBefore() {
-      return sessionHistory.hasMoreHistoryBefore()
-    },
-    get isLoadingOlderHistory() {
-      return sessionHistory.isLoadingOlderHistory()
-    },
-
-    // ── Extension tracker state ─────────────────────────────────────
-    get tasks() {
-      return trackers.tasks()
-    },
-    get taskNotification() {
-      return trackers.taskNotification()
-    },
-    dismissTaskNotification: () => trackers.dismissTaskNotification(),
-
-    /**
-     * Resolve the pi-task short id for a `task` tool card.
-     *
-     * Lookup chain (first hit wins):
-     *  1. `TaskTracker.tasks[]` keyed by `card.toolCallId` — the tracker
-     *     is populated from the tool's *result* `details.task_id` when
-     *     the call ends.
-     *  2. `card.details.task_id` (the structured result field) — this is
-     *     a defensive backup; pi-task does not always emit it in the
-     *     `tool_execution_end` event.
-     *  3. `task-session-history.json` — pi-task writes this at task
-     *     start with `{id, agentType, description, startedAt}`. We match
-     *     by `agentType` + `description` + closest `startedAt`. This
-     *     works for both running (history is written on start) and
-     *     completed tasks.
-     *
-     * Returns `null` when no source has a resolvable id. Caller is
-     * expected to render a non-interactive status line in that case.
-     */
-    resolveTaskIdForCard: (card: ToolCard): string | null => {
-      // 1. Tracker
-      const fromTracker = trackers.tasks().find((t) => t.tempId === card.toolCallId)?.taskId
-      if (typeof fromTracker === 'string' && isValidPiTaskId(fromTracker)) {
-        return fromTracker
-      }
-      // 2. card.details.task_id
-      const fromDetails =
-        card.details && typeof card.details === 'object'
-          ? (card.details as Record<string, unknown>).task_id
-          : undefined
-      if (typeof fromDetails === 'string' && isValidPiTaskId(fromDetails)) {
-        return fromDetails
-      }
-      // 3. History lookup
-      const args = (card.args ?? {}) as Record<string, unknown>
-      const agentType = typeof args.agent_type === 'string' ? args.agent_type : null
-      const description = typeof args.description === 'string' ? args.description : null
-      return findTaskIdForToolCall(taskHistory(), agentType, description, card.startedAt)
-    },
-    resolveTaskStatusForTaskId: (taskId: string | null): 'running' | 'done' | 'error' | null =>
-      resolveTaskStatusFromHistory(taskHistory(), taskId),
-    get artifacts() {
-      return subagentFiles.artifacts()
-    },
-    get todoFiles() {
-      return subagentFiles.todoFiles()
-    },
-    clearArtifacts: () => subagentFiles.clear(),
-
-    // Ref setters — pass as `ref={session.setBottomRef}` in JSX
-    setBottomRef: (el: HTMLDivElement) => {
-      _bottomEl = el
-    },
-    branchLeafId,
-    treeVersion,
-    setTextareaRef: (el: HTMLTextAreaElement) => {
-      textareaEl = el
-    },
-
-    // Setters
-    setInput,
-    setError,
-    setQueueMode,
-    setSessionQuery: sessionIndex.setSessionQuery,
-    setSortBy: sessionIndex.setSortBy,
-    setGroupBy: sessionIndex.setGroupBy,
-    setShowRecent: sessionIndex.setShowRecent,
-
-    // Actions
-    openWorkspace,
-    openExistingSession,
-    openSubSession,
-    popToParent,
-    createNewSession,
-    selectWorkspace: sessionIndex.selectWorkspace,
-    loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
-    loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
-    navigateTree,
-    cancelTask,
-    send,
-    sendShell,
-    selectModel,
-    refreshModels,
-    selectThinkingLevel,
-    setSessionName,
-    forkFromMessage,
-    compactSession,
-    reloadSession,
-    copyLastAssistantText,
-    getSessionInfo,
-    clearTasks: () => {
-      trackers.clearAll()
-    },
-
-    // Sub-session navigation
-    parentStack,
-    isSubSession,
-  }
+  )
 }
