@@ -58,6 +58,32 @@ describe('GateRegistry', () => {
     )
   })
 
+  it('gives a wrong token on a settled gate no oracle — unknown, like any other id', () => {
+    const opened = openConfirm()
+    registry.settleLocally(opened.gate.id, { approved: true, via: 'desktop' })
+
+    expect(registry.resolveRemotely(opened.gate.id, 'not-the-token', { approved: true })).toEqual({
+      ok: false,
+      reason: 'unknown_gate',
+    })
+  })
+
+  it('evicts tombstones oldest-first past the cap', () => {
+    const first = openConfirm()
+    registry.settleLocally(first.gate.id, { approved: true, via: 'desktop' })
+
+    for (let round = 0; round < 128; round++) {
+      const opened = openConfirm()
+      registry.settleLocally(opened.gate.id, { approved: false, via: 'desktop' })
+    }
+
+    // The first tombstone has been evicted: its id is unknown again.
+    expect(registry.resolveRemotely(first.gate.id, first.gateToken, { approved: true })).toEqual({
+      ok: false,
+      reason: 'unknown_gate',
+    })
+  })
+
   it('resolves expired gates and answers expired to a late remote call', async () => {
     const opened = openConfirm(60_000)
     vi.advanceTimersByTime(61_000)

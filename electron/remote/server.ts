@@ -66,7 +66,10 @@ export function startRemoteServer(options: RemoteServerOptions): Promise<Running
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
+    // The kill switch must not wait on open connections: a stalled request or
+    // a live SSE stream would hold close() until Node's 300s requestTimeout.
     server.close((error) => (error ? reject(error) : resolve()))
+    server.closeAllConnections()
   })
 }
 
@@ -110,6 +113,10 @@ async function handleRequest(
 
     const device = authenticate(options, request)
     if (!device) {
+      // Operationally visible, never in the response body: no token material.
+      console.warn(
+        `[openpi:remote] 401 ${request.method} ${pathname} from ${request.socket.remoteAddress ?? 'unknown'}`
+      )
       respond(response, 401, { error: 'unauthorized' })
       return
     }
@@ -125,6 +132,9 @@ async function handleRequest(
     respond(response, 200, result ?? { ok: true })
   } catch {
     // Any unhandled failure answers a bare 500; no internals leak.
+    console.warn(
+      `[openpi:remote] 500 ${request.method} ${(request.url ?? '/').split('?')[0]} from ${request.socket.remoteAddress ?? 'unknown'}`
+    )
     respond(response, 500, { error: 'internal' })
   }
 }
@@ -206,6 +216,7 @@ function readJsonBody(request: IncomingMessage): Promise<BodyParse> {
     const declared = Number(request.headers['content-length'] ?? '0')
     if (!Number.isFinite(declared) || declared < 0 || declared > MAX_BODY_BYTES) {
       resolve({ ok: false, status: 413, error: 'body_too_large' })
+      request.resume()
       return
     }
     const chunks: Buffer[] = []
@@ -214,18 +225,25 @@ function readJsonBody(request: IncomingMessage): Promise<BodyParse> {
     const finish = (result: BodyParse) => {
       if (done) return
       done = true
+      request.off('data', onData)
+      request.off('end', onEnd)
+      request.off('error', onError)
       resolve(result)
     }
-    request.on('data', (chunk: Buffer) => {
+    const onData = (chunk: Buffer): void => {
+      if (done) return
       received += chunk.length
       if (received > MAX_BODY_BYTES) {
-        request.destroy()
+        // Answer first, then drain the rest: destroying the socket before the
+        // response would leave the client with no status at all. Node closes
+        // the connection itself when a response ends mid-body.
+        request.resume()
         finish({ ok: false, status: 413, error: 'body_too_large' })
         return
       }
       chunks.push(chunk)
-    })
-    request.on('end', () => {
+    }
+    const onEnd = (): void => {
       if (done) return
       if (received === 0) {
         finish({ ok: true, body: undefined })
@@ -236,8 +254,12 @@ function readJsonBody(request: IncomingMessage): Promise<BodyParse> {
       } catch {
         finish({ ok: false, status: 400, error: 'invalid_json' })
       }
-    })
-    request.on('error', () => finish({ ok: false, status: 400, error: 'invalid_json' }))
+    }
+    const onError = (): void => finish({ ok: false, status: 400, error: 'invalid_json' })
+
+    request.on('data', onData)
+    request.on('end', onEnd)
+    request.on('error', onError)
   })
 }
 

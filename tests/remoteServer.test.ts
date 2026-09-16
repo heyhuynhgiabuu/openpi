@@ -179,7 +179,8 @@ describe('allowlist enforcement', () => {
     expect(await response.json()).toEqual({ error: 'not_in_allowlist' })
   })
 
-  it('caps request bodies', async () => {
+  it('caps request bodies and still answers 413', async () => {
+    handlers['gate-approve'] = async () => ({ ok: true })
     const token = await pairDevice()
     const response = await fetch(`${base}/api/gates/g-1/approve`, {
       method: 'POST',
@@ -191,5 +192,24 @@ describe('allowlist enforcement', () => {
       body: JSON.stringify({ gateToken: 'x'.repeat(24), blob: 'y'.repeat(80 * 1024) }),
     })
     expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({ error: 'body_too_large' })
+  })
+
+  it('answers 429 when the pairing rate limit trips over HTTP', async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await fetch(`${base}/api/pair`, {
+        method: 'POST',
+        headers: pairHeader(),
+        body: JSON.stringify({ code: '000001', name: 'phone' }),
+      })
+    }
+    const { code } = auth.beginPairing()
+    const response = await fetch(`${base}/api/pair`, {
+      method: 'POST',
+      headers: pairHeader(),
+      body: JSON.stringify({ code, name: 'phone' }),
+    })
+    expect(response.status).toBe(429)
+    expect(await response.json()).toEqual({ error: 'rate_limited' })
   })
 })

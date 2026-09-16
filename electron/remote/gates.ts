@@ -35,6 +35,12 @@ export interface GateOutcome {
   via: 'desktop' | 'remote'
 }
 
+export interface OpenedGate {
+  gate: GateSnapshot
+  gateToken: string
+  wait: () => Promise<GateOutcome | { expired: true }>
+}
+
 export type GateSettleResult =
   | { ok: true }
   | { ok: false; reason: 'unknown_gate' | 'already_resolved' | 'bad_token' | 'expired' }
@@ -78,10 +84,10 @@ export class GateRegistry {
       kind: input.kind,
       title: input.title,
       summary: input.summary,
-      ...(input.payload !== undefined ? { payload: input.payload } : {}),
       createdAt: now,
       expiresAt: now + input.ttlMs,
     }
+    if (input.payload !== undefined) gate.payload = input.payload
     const gateToken = randomBytes(24).toString('base64url')
 
     const promise = new Promise<GateOutcome | { expired: true }>((resolve) => {
@@ -134,13 +140,8 @@ export class GateRegistry {
     // Tombstone first: a second resolution attempt — desktop or remote — sees
     // already_resolved instead of double-resolving the promise.
     this.tombstone(id, entry.gateToken)
-    const outcome: GateOutcome = {
-      approved: decision.approved,
-      via: 'remote',
-      ...(decision.approvedIndexes !== undefined
-        ? { approvedIndexes: decision.approvedIndexes }
-        : {}),
-    }
+    const outcome: GateOutcome = { approved: decision.approved, via: 'remote' }
+    if (decision.approvedIndexes !== undefined) outcome.approvedIndexes = decision.approvedIndexes
     entry.settle(outcome)
     this.notify()
     return { ok: true, outcome }
@@ -148,18 +149,22 @@ export class GateRegistry {
 
   listPending(now = Date.now()): GateSnapshot[] {
     const pending: GateSnapshot[] = []
+    let swept = false
     for (const [id, entry] of this.entries) {
       if (now > entry.snapshot.expiresAt) {
-        this.entries.delete(id)
+        this.tombstone(id, entry.gateToken)
         entry.settle({ expired: true })
+        swept = true
       } else {
         pending.push(entry.snapshot)
       }
     }
+    // Notify once after the loop: settle() must not re-enter this Map.
+    if (swept) this.notify()
     return pending
   }
 
-  /** Change signal for the event stream; fires on open, settle, and expiry. */
+  /** Change signal for the event stream; fires on open, settle, and expiry sweeps. */
   onChange(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
