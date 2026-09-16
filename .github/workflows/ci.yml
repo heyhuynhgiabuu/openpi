@@ -83,3 +83,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Launch smoke on one platform: the built app must boot headless and stay
+      # alive through the script's liveness window. xvfb is preinstalled on
+      # Ubuntu runners; ELECTRON_DISABLE_SANDBOX covers the SUID sandbox gap.
+      - name: Electron launch smoke (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum node scripts/smoke-electron.mjs
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'

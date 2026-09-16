@@ -104,6 +104,7 @@
     "electron": "^41.6.0",
     "electron-builder": "^26.8.1",
     "electron-vite": "^3.1.0",
+    "esbuild": "^0.25.12",
     "jsdom": "^26.1.0",
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0",

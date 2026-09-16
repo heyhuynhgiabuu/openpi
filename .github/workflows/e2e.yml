@@ -1,0 +1,39 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: Playwright E2E (manual)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+      # Electron has no display on the runner; xvfb-run supplies one and
+      # ELECTRON_DISABLE_SANDBOX covers the SUID sandbox gap.
+      - name: Run Playwright E2E
+        run: xvfb-run --auto-servernum npx playwright test
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
