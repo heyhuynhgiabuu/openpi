@@ -119,7 +119,10 @@ describe('readCurrentText', () => {
     const realFstatSync = fs.fstatSync.bind(fs)
     const fstatSpy = vi.spyOn(fs, 'fstatSync').mockImplementation((descriptor) => {
       const stat = realFstatSync(descriptor)
-      Object.defineProperty(stat, 'ino', { value: stat.ino + 1 })
+      // Windows file ids are 64-bit and lose precision as JS Numbers, so real+1
+      // can round back to the same value; force one that cannot compare equal.
+      const bumped = stat.ino === 12345 ? 12346 : 12345
+      Object.defineProperty(stat, 'ino', { value: bumped })
       return stat
     })
 
