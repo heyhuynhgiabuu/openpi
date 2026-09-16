@@ -201,8 +201,8 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     if (newName.includes('/') || newName.includes('\\') || newName === '.' || newName === '..') {
       throw new Error(`Invalid name: ${newName}`)
     }
-    const full = resolveWorkspacePath(cwd, relPath, 'rename')
-    const target = resolveWorkspacePath(
+    let full = resolveWorkspacePath(cwd, relPath, 'rename')
+    let target = resolveWorkspacePath(
       cwd,
       path.relative(cwd, path.join(path.dirname(full), newName)),
       'rename'
@@ -214,6 +214,38 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     const violation = checkProtectedPath(target, cwd)
     if (violation && violation.level !== 'soft') {
       throw new Error(`Refusing to rename to protected path: ${violation.reason}`)
+    }
+    // Renaming away from a soft-protected source mutates its identity too.
+    const sourceViolation = checkProtectedPath(full, cwd)
+    if (sourceViolation && sourceViolation.level !== 'soft') {
+      throw new Error(`Refusing to rename protected path: ${sourceViolation.reason}`)
+    }
+    const sourceStat = fs.lstatSync(full)
+    if (violation?.level === 'soft' || sourceViolation?.level === 'soft') {
+      const approved = await deps.confirmHighRiskMutation({
+        title: 'Confirm protected rename',
+        message: `Rename ${path.basename(full)}?`,
+        detail: `${(violation ?? sourceViolation)?.reason ?? ''}\n\nFrom: ${full}\nTo: ${target}`,
+      })
+      if (!approved) return path.relative(cwd, full)
+      // Re-resolve and re-verify: protection or the filesystem may have changed
+      // during the dialog (same TOCTOU discipline as write/delete).
+      full = resolveWorkspacePath(cwd, relPath, 'rename')
+      target = resolveWorkspacePath(
+        cwd,
+        path.relative(cwd, path.join(path.dirname(full), newName)),
+        'rename'
+      )
+      if (fs.existsSync(target)) throw new Error(`Target already exists: ${newName}`)
+      const reTarget = checkProtectedPath(target, cwd)
+      const reSource = checkProtectedPath(full, cwd)
+      if (reTarget?.level === 'hard' || reSource?.level === 'hard') {
+        throw new Error('File protection changed while rename confirmation was open')
+      }
+      const confirmedStat = fs.lstatSync(full)
+      if (sourceStat.dev !== confirmedStat.dev || sourceStat.ino !== confirmedStat.ino) {
+        throw new Error('File changed while rename confirmation was open')
+      }
     }
     moveWorkspaceEntryNoReplace(full, target)
     deps.getMainWindow()?.webContents.send(IPC.FILE_TREE_CHANGED)
@@ -246,6 +278,26 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     if (fs.existsSync(dest)) {
       throw new Error(`Target already exists: ${path.relative(cwd, dest)}`)
     }
+    // Copying TO a protected name creates content under a protected identity.
+    const destViolation = checkProtectedPath(dest, cwd)
+    if (destViolation?.level === 'hard') {
+      throw new Error(`Refusing to copy to protected path: ${destViolation.reason}`)
+    }
+    if (destViolation) {
+      const approved = await deps.confirmHighRiskMutation({
+        title: 'Confirm protected copy',
+        message: `Copy to ${path.basename(dest)}?`,
+        detail: `${destViolation.reason}\n\nPath: ${dest}`,
+      })
+      if (!approved) return path.relative(cwd, dest)
+      const reViolation = checkProtectedPath(
+        resolveWorkspacePath(cwd, path.relative(cwd, dest), 'copy'),
+        cwd
+      )
+      if (reViolation?.level === 'hard') {
+        throw new Error('File protection changed while copy confirmation was open')
+      }
+    }
     const stat = fs.statSync(src)
     if (stat.isDirectory()) {
       fs.cpSync(src, dest, {
@@ -270,6 +322,24 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     }
     const { path: relPath } = parsed
     const full = resolveWorkspacePath(cwd, relPath, 'format')
+    const formatViolation = checkProtectedPath(full, cwd)
+    if (formatViolation?.level === 'hard') {
+      throw new Error(`Refusing to format protected path: ${formatViolation.reason}`)
+    }
+    if (formatViolation) {
+      const approved = await deps.confirmHighRiskMutation({
+        title: 'Confirm protected file format',
+        message: `Format ${path.basename(full)}?`,
+        detail: `${formatViolation.reason}\n\nPath: ${full}`,
+      })
+      // Declined: return the source untouched so the editor buffer keeps its
+      // content instead of being blanked.
+      if (!approved) return readWorkspaceFile(full, cwd)
+      const reViolation = checkProtectedPath(resolveWorkspacePath(cwd, relPath, 'format'), cwd)
+      if (reViolation?.level === 'hard') {
+        throw new Error('File protection changed while format confirmation was open')
+      }
+    }
     try {
       const source = readWorkspaceFile(full, cwd)
       const formatted = execFileSync('npx', ['oxfmt', '--stdin-filepath', full], {
