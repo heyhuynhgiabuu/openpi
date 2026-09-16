@@ -7,7 +7,7 @@
  * stays open across tabs so gate snapshots stay current.
  */
 import type { Component } from 'solid-js'
-import { createSignal, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
 import { render } from 'solid-js/web'
 import { api, clearToken, storedToken, type RemoteGate } from './api'
 import { GateCards } from './GateCards'
@@ -36,10 +36,17 @@ const App: Component = () => {
     }
   }
 
-  onMount(() => {
+  // Stream lifecycle follows pairing: revoked (401) closes the stream and
+  // drops back to the pair screen; a fresh pair opens a fresh stream.
+  createEffect(() => {
     if (!paired()) return
     void refreshGates()
     const close = openEventStream((frame) => {
+      if (frame.event === 'unauthorized') {
+        setUnpairNotice('This device was revoked on the desktop.')
+        setPaired(false)
+        return
+      }
       if (frame.event === 'gate_update')
         setGates((frame.data as { gates?: RemoteGate[] }).gates ?? [])
     })

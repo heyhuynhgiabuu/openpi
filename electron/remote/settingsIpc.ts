@@ -3,7 +3,8 @@
  *
  * The renderer is render-only: it toggles, pairs, and revokes through these
  * handlers; every decision stays in RemoteHost/main. The enabled preference
- * persists so the user's explicit choice is restored on the next launch.
+ * is recorded for future UX hints only — it is never auto-applied; a relaunch
+ * starts with the server OFF (see the design doc's Settings amendment).
  */
 
 import type { IpcMain } from 'electron'
@@ -44,7 +45,7 @@ export function registerRemoteIpc(deps: RemoteIpcDeps): void {
         await host.disable()
         host.cancelPairing()
       }
-      // Persist the explicit user choice; restored on the next launch.
+      // Recorded for UX hints only; never auto-applied at launch.
       deps.setPref(REMOTE_ENABLED_PREF, enabled ? 'true' : 'false')
       return { ...host.status(), devices: host.devices() }
     }
