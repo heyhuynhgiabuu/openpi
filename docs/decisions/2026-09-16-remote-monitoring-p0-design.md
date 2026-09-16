@@ -20,15 +20,13 @@ Settings → Remote, never auto-starts, and adds no desktop IPC surface.
 Phone (PWA, untrusted)          Electron main (authority)            Desktop renderer
   │  Bearer token + Origin         │                                    │
   ├─ HTTP GET  reads ───────────▶  │  same read models the desktop uses │
-  ├─ WS /api/events ◀───────────── │  AgentSessionEvent fan-out tap     │
+  ├─ SSE /api/events ◀──────────── │  AgentSessionEvent fan-out tap     │
   ├─ POST /api/gates/:id/… ──────▶ │  PendingGateRegistry ── resolves ─▶ the same
   │                                │  (one policy path, both clients)   pending promise
 ```
 
-- One HTTP + WebSocket server on `node:http` in Electron main. **Zero new runtime
-  dependencies**; the WS layer is a minimal RFC 6455 handshake + frame loop in a
-  dedicated module (we already accept raw framing discipline for the sidecar).
-  If that proves larger than ~150 LOC, `ws` becomes the first approved dependency.
+- One HTTP server on `node:http` in Electron main (SSE for the event stream).
+  **Zero new runtime dependencies.**
 - Binds `0.0.0.0:8787` when enabled. Encryption and network reachability are the
   tailnet's job (Tailscale/WireGuard per the decision); the bearer token is still
   required on every request, so a misconfigured tailnet degrades to "token-only",
@@ -59,8 +57,7 @@ Phone (PWA, untrusted)          Electron main (authority)            Desktop ren
 
 1. Method + path matched against the P0 allowlist; anything else → `501
    {"error":"not_in_allowlist"}` — never a silent `{ok:true}`.
-2. `Origin` (or `Sec-Fetch-Site: same-origin`) required and matched on **POST and
-   the WS upgrade**; GET responses carry no CORS headers, so cross-origin JS can
+2. `Origin` (or `Sec-Fetch-Site: same-origin`) required and matched on **every POST**; GET responses carry no CORS headers, so cross-origin JS can
    neither read them nor send our custom auth header without a preflight we
    never approve.
 3. Bearer auth as above.
@@ -77,9 +74,15 @@ Phone (PWA, untrusted)          Electron main (authority)            Desktop ren
 | `GET /api/turn-changes` | read-only last-turn diff summary | reuse the review snapshot reader; no Keep/Revert remotely |
 | `GET /api/gates` | pending gates snapshot | registry below |
 | `POST /api/gates/:id/approve` `…/deny` | resolve a pending gate | one-time gate token; see below |
-| `WS /api/events` | live `AgentSessionEvent` subset | token + Origin on upgrade; read-only fan-out tap |
+| `GET /api/events` | live `AgentSessionEvent` subset (SSE) | token required; see below |
 
-WS event subset: `agent_start/end`, `message_start/update/end`,
+**Transport amendment (2026-09-16):** `/api/events` is **Server-Sent Events**, not WebSocket.
+The P0 stream is strictly one-way (server → phone), so SSE removes the hand-rolled
+RFC 6455 handshake/frame parser entirely — an attack surface with no corresponding
+need — while keeping the token in the `Authorization` header (no query-string
+secrets) and giving the PWA trivial reconnect. Same auth model as the other GETs.
+
+Event subset: `agent_start/end`, `message_start/update/end`,
 `tool_execution_start/update/end`, `queue_update`, `gate_open/gate_closed`
 (new synthetic events from the registry). Payloads are the same envelopes the
 desktop renderer already receives — one producer, two consumers.
