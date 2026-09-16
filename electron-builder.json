@@ -24,6 +24,10 @@
     {
       "from": "CHANGELOG.md",
       "to": "CHANGELOG.md"
+    },
+    {
+      "from": "out/pwa",
+      "to": "pwa"
     }
   ],
   "mac": {

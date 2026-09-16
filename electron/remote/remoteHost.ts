@@ -11,6 +11,7 @@
 import type { SessionAuthDeps } from '../session/sessionAuth'
 import type { SessionIndexStore } from '../session/sessionIndex'
 import { RemoteAuth } from './auth'
+import type { RemoteDeviceRow } from './devices'
 import { RemoteDeviceStore } from './devices'
 import { GateRegistry, type GateSnapshot } from './gates'
 import { createRemoteHandlers } from './handlers'
@@ -23,10 +24,17 @@ export interface RemoteHostDeps {
   sessionIndex: () => SessionIndexStore | null
   sessionAuth: SessionAuthDeps
   port?: number
+  /** Directory of the built PWA shell; shell routes 404 when absent. */
+  shellDir?: string
 }
 
 export interface RemoteToggleResult {
   port: number
+}
+
+export interface RemoteStatus {
+  enabled: boolean
+  port: number | null
 }
 
 export class RemoteHost {
@@ -34,6 +42,7 @@ export class RemoteHost {
   private hub: SseHub | null = null
   private registry: GateRegistry | null = null
   private auth: RemoteAuth | null = null
+  private deviceStore: RemoteDeviceStore | null = null
   private starting: Promise<RemoteToggleResult> | null = null
 
   constructor(private readonly deps: RemoteHostDeps) {}
@@ -63,6 +72,7 @@ export class RemoteHost {
     this.hub = null
     this.registry = null
     this.auth = null
+    this.deviceStore = null
     hub?.stop()
     await server?.stop()
   }
@@ -77,6 +87,30 @@ export class RemoteHost {
     const revoked = this.auth?.revokeDevice(deviceId) ?? false
     this.hub?.dropDevice(deviceId)
     return revoked
+  }
+
+  // ── Settings UI surface ─────────────────────────────────────────────
+
+  status(): RemoteStatus {
+    return { enabled: this.server !== null, port: this.server?.port ?? null }
+  }
+
+  /** Shows the one 6-digit code; any previous pending pairing is replaced. */
+  beginPairing(): { code: string; expiresAt: number } {
+    return this.requireEnabled().beginPairing()
+  }
+
+  cancelPairing(): void {
+    this.auth?.cancelPending()
+  }
+
+  devices(): RemoteDeviceRow[] {
+    return this.deviceStore?.list() ?? []
+  }
+
+  private requireEnabled(): RemoteAuth {
+    if (!this.auth || !this.server) throw new Error('Remote is not enabled')
+    return this.auth
   }
 
   pendingGates(): GateSnapshot[] {
@@ -99,12 +133,14 @@ export class RemoteHost {
         handlers,
         port: this.deps.port ?? REMOTE_PORT,
         hub,
+        shellDir: this.deps.shellDir,
       })
       // Commit only once the socket is live: a failed enable leaves no state.
       this.auth = auth
       this.registry = registry
       this.hub = hub
       this.server = server
+      this.deviceStore = store
       hub.start()
       return { port: server.port }
     } catch (error) {
@@ -124,6 +160,7 @@ export interface RemoteHostFactoryDeps {
   getAgentDir: () => string
   getSessionState: () => SessionAuthDeps['getSessionState'] extends () => infer T ? T : never
   activeWorkspacePath: () => string | null
+  shellDir?: string
 }
 
 export function createRemoteHost(deps: RemoteHostFactoryDeps): RemoteHost {
@@ -135,5 +172,6 @@ export function createRemoteHost(deps: RemoteHostFactoryDeps): RemoteHost {
       getSessionIndex: deps.sessionIndex,
       activeWorkspacePath: deps.activeWorkspacePath,
     },
+    shellDir: deps.shellDir,
   })
 }

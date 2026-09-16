@@ -25,6 +25,8 @@ import {
   updateTerminalOutput,
   updateVisibleFile,
 } from '../services/workbenchContext'
+import { registerRemoteIpc } from '../remote/settingsIpc'
+import type { RemoteHost } from '../remote/remoteHost'
 import { registerSessionArchiveIpc } from '../session/archiveIpc'
 import { registerSessionsIpc } from '../session/ipc'
 import {
@@ -68,6 +70,7 @@ interface RegisterMainIpcHandlersDeps {
   getMainWindow: () => BrowserWindow | null
   outputBuffer: OutputLine[]
   getSessionIndex: () => SessionIndexStore | null
+  getRemoteHost: () => RemoteHost | null
   getCustomizationsHost: () => Promise<typeof CustomizationsHost>
   getFffHost: () => Promise<typeof FffHost>
   ensureFffInitialized: (cwd: string) => Promise<typeof FffHost | null>
@@ -131,6 +134,12 @@ export function registerMainIpcHandlers(rawDeps: RegisterMainIpcHandlersDeps): v
   })
   registerPreferencesIpc({
     ipcMain: deps.ipcMain,
+    getPref: (key) => deps.getSessionIndex()?.getPref(key) ?? null,
+    setPref: (key, value) => deps.getSessionIndex()?.setPref(key, value),
+  })
+  registerRemoteIpc({
+    ipcMain: deps.ipcMain,
+    getHost: deps.getRemoteHost,
     getPref: (key) => deps.getSessionIndex()?.getPref(key) ?? null,
     setPref: (key, value) => deps.getSessionIndex()?.setPref(key, value),
   })

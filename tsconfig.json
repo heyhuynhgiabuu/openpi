@@ -23,6 +23,6 @@
       "@icons/*": ["icons/*"]
     }
   },
-  "include": ["src", "electron", "tests", "scripts"],
+  "include": ["src", "electron", "tests", "scripts", "pwa", "vite.pwa.config.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

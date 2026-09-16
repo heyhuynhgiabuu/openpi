@@ -7,6 +7,7 @@ import { AppearanceSection } from './AppearanceSection'
 import { BooleanPreferenceSection } from './BooleanPreferenceSection'
 import { DiagnosticsSection } from './DiagnosticsSection'
 import type { GeneralPaneProps } from './generalPaneTypes'
+import { RemoteSection } from './RemoteSection'
 import { SoundSection } from './SoundSection'
 import { UpdateSection } from './UpdateSection'
 import { useGeneralPaneState } from './useGeneralPaneState'
@@ -111,6 +112,7 @@ export function GeneralPane(props: GeneralPaneProps) {
             savedKey={savedKey()}
             onCopy={copyDiagnostics}
           />
+          <RemoteSection onError={props.onError} />
 
           <UpdateSection
             updatePrefs={updatePrefs()}

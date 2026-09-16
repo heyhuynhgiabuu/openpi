@@ -55,6 +55,11 @@ export const IPC = {
   // Preferences
   GET_PREF: 'openpi:get-pref',
   SET_PREF: 'openpi:set-pref',
+  REMOTE_STATUS: 'openpi:remote-status',
+  REMOTE_SET_ENABLED: 'openpi:remote-set-enabled',
+  REMOTE_BEGIN_PAIRING: 'openpi:remote-begin-pairing',
+  REMOTE_CANCEL_PAIRING: 'openpi:remote-cancel-pairing',
+  REMOTE_REVOKE_DEVICE: 'openpi:remote-revoke-device',
   PLAY_SOUND_EFFECT: 'openpi:play-sound-effect',
   CHECK_PI_UPDATE: 'openpi:check-pi-update',
   INSTALL_PI_UPDATE: 'openpi:install-pi-update',

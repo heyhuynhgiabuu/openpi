@@ -924,6 +924,36 @@ export const setPrefSchema = z.object({
   key: z.string().min(1).max(100),
   value: z.string().max(10_000),
 })
+
+// ─── Remote surface (Settings → Remote; the PWA is the phone-side client) ───
+
+export const remoteDeviceSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  createdAt: z.string(),
+  lastSeenAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+})
+export type RemoteDevice = z.infer<typeof remoteDeviceSchema>
+
+export const remoteStatusSchema = z.object({
+  enabled: z.boolean(),
+  port: z.number().nullable(),
+  devices: z.array(remoteDeviceSchema),
+})
+export type RemoteStatus = z.infer<typeof remoteStatusSchema>
+
+export const remoteSetEnabledRequestSchema = z.object({ enabled: z.boolean() }).strict()
+export type RemoteSetEnabledRequest = z.infer<typeof remoteSetEnabledRequestSchema>
+
+export const remotePairStartSchema = z.object({
+  code: z.string().regex(/^\d{6}$/),
+  expiresAt: z.number(),
+})
+export type RemotePairStart = z.infer<typeof remotePairStartSchema>
+
+export const remoteRevokeRequestSchema = z.object({ id: z.number().int().positive() }).strict()
+export type RemoteRevokeRequest = z.infer<typeof remoteRevokeRequestSchema>
 export type SetPref = z.infer<typeof setPrefSchema>
 
 export const playSoundEffectSchema = z.object({

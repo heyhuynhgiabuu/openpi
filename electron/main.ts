@@ -104,6 +104,12 @@ function emitSessionEventToRemote(event: { type?: string }): void {
   remoteHost?.dispatchSessionEvent(event)
 }
 
+function remoteShellDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'pwa')
+    : path.join(app.getAppPath(), 'out', 'pwa')
+}
+
 // ── Output ring buffer ─────────────────────────────────────────────────
 // Lines emitted before the Output pane opens are held here so they are
 // replayed when the renderer calls GET_OUTPUT_BUFFER on mount.
@@ -174,6 +180,7 @@ function registerHandlers(): void {
     hasPtyHost,
     getPtyHost,
     confirmHighRiskMutation,
+    getRemoteHost: () => remoteHost,
     emitOutputLine,
     createRequestId,
     requestSidecar: <T extends SidecarMessage>(message: SidecarCommand & { requestId: string }) =>
@@ -222,7 +229,20 @@ app.whenReady().then(() => {
     getAgentDir,
     getSessionState,
     activeWorkspacePath,
+    shellDir: remoteShellDir(),
   })
+
+  // Restore the user's explicit choice from a previous session; the server
+  // never starts for any reason other than this preference or the toggle.
+  if (sessionIndex.getPref('remote.enabled') === 'true') {
+    remoteHost.enable().catch((error: unknown) => {
+      emitOutputLine({
+        level: 'warn',
+        text: `[remote] could not re-enable: ${error instanceof Error ? error.message : String(error)}`,
+        ts: Date.now(),
+      })
+    })
+  }
 
   // Wire sessionHost callbacks
   setOnSidecarMessage(handleSidecarMessage)

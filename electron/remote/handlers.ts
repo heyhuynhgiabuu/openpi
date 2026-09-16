@@ -31,7 +31,7 @@ export function createRemoteHandlers(deps: RemoteHandlersDeps): RemoteHandlers {
     'session-list': async () => remoteSessionList(readDeps),
     session: async (context) => remoteSessionView(readDeps, context.params.id ?? ''),
     'turn-changes': async () => remoteTurnChanges(),
-    gates: async () => ({ gates: deps.registry.listPending() }),
+    gates: async () => ({ gates: deps.registry.pendingWithTokens() }),
     'gate-approve': async (context) => decideGate(deps.registry, context, true),
     'gate-deny': async (context) => decideGate(deps.registry, context, false),
   }

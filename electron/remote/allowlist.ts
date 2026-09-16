@@ -20,16 +20,28 @@ export type RemoteHandlerId =
   | 'gate-approve'
   | 'gate-deny'
   | 'events'
+  | 'shell'
 
 export interface RemoteRoute {
   method: 'GET' | 'POST'
   pattern: string
   handler: RemoteHandlerId
-  auth: 'pairing' | 'bearer'
+  /**
+   * 'pairing' = one-time pairing code, 'bearer' = paired device token,
+   * 'none' = public static shell (no secrets in the files, all data routes
+   * stay bearer-gated).
+   */
+  auth: 'pairing' | 'bearer' | 'none'
 }
 
 export const REMOTE_ROUTES: readonly RemoteRoute[] = [
   { method: 'POST', pattern: '/api/pair', handler: 'pair', auth: 'pairing' },
+  // The PWA shell: three fixed files, fixed names, served without a token —
+  // every route that carries data stays bearer-gated. Never a request-derived
+  // filesystem path (see remote/shell.ts).
+  { method: 'GET', pattern: '/', handler: 'shell', auth: 'none' },
+  { method: 'GET', pattern: '/app.js', handler: 'shell', auth: 'none' },
+  { method: 'GET', pattern: '/app.css', handler: 'shell', auth: 'none' },
   { method: 'GET', pattern: '/api/session-list', handler: 'session-list', auth: 'bearer' },
   { method: 'GET', pattern: '/api/session/:id', handler: 'session', auth: 'bearer' },
   { method: 'GET', pattern: '/api/turn-changes', handler: 'turn-changes', auth: 'bearer' },

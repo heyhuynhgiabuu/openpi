@@ -17,6 +17,7 @@ import { createServer } from 'node:http'
 import { matchRemoteRoute, type RemoteHandlerId } from './allowlist'
 import type { RemoteAuth } from './auth'
 import type { SseHub } from './sse'
+import { serveShellFile, type ShellRoute } from './shell'
 import { pairRequestSchema } from './protocol'
 import { readJsonBody, respond, type BodyParse } from './serverHttp'
 import { MAX_BODY_BYTES } from './serverHttp'
@@ -46,6 +47,8 @@ export interface RemoteServerOptions {
   host?: string
   /** SSE hub for the /api/events stream; authenticated before attach. */
   hub?: SseHub
+  /** Directory holding the built PWA shell (index.html, app.js, app.css). */
+  shellDir?: string
 }
 
 export interface RunningRemoteServer {
@@ -90,6 +93,18 @@ async function handleRequest(
     const match = matchRemoteRoute(request.method ?? 'GET', pathname)
     if (!match) {
       respond(response, 501, { error: 'not_in_allowlist' })
+      return
+    }
+
+    // The static shell is public and fixed-name; no Origin, auth, or body.
+    // The pattern match is literal (no ':params'), so the pathname is exactly
+    // one of the three shell routes.
+    if (match.route.handler === 'shell') {
+      if (!options.shellDir) {
+        respond(response, 404, { error: 'shell_not_built' })
+        return
+      }
+      serveShellFile(options.shellDir, pathname as ShellRoute, response)
       return
     }
 

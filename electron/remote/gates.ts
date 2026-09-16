@@ -167,6 +167,20 @@ export class GateRegistry {
     return pending
   }
 
+  /**
+   * Pending gates with their one-time tokens, for bearer-gated remote
+   * surfaces only (GET /api/gates and the SSE stream): a paired device needs
+   * the token to answer the gate. Settled gates never appear here.
+   */
+  pendingWithTokens(now = Date.now()): Array<GateSnapshot & { gateToken: string }> {
+    return this.listPending(now).map((gate) => {
+      const entry = this.entries.get(gate.id)
+      // listPending just swept expired entries, so an entry must exist here.
+      if (!entry) return { ...gate, gateToken: '' }
+      return { ...gate, gateToken: entry.gateToken }
+    })
+  }
+
   /** Change signal for the event stream; fires on open, settle, and expiry sweeps. */
   onChange(listener: () => void): () => void {
     this.listeners.add(listener)

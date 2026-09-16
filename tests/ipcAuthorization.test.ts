@@ -49,6 +49,7 @@ describe('main IPC sender authorization', () => {
 
     registerMainIpcHandlers({
       ipcMain: ipcMain as unknown as Parameters<typeof registerMainIpcHandlers>[0]['ipcMain'],
+      getRemoteHost: () => null,
       getMainWindow: () =>
         ({ webContents }) as unknown as NonNullable<
           ReturnType<Parameters<typeof registerMainIpcHandlers>[0]['getMainWindow']>

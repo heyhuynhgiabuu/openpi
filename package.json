@@ -9,7 +9,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && vite build --config vite.pwa.config.ts",
     "preview": "electron-vite preview",
     "package": "npm run build && electron-builder --config electron-builder.json",
     "prepare": "git config core.hooksPath .githooks",

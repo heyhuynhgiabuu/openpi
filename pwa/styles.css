@@ -1,0 +1,155 @@
+/* pwa/styles — small, self-contained, no framework CSS. */
+:root {
+  color-scheme: dark;
+  --bg: #101014;
+  --panel: #191921;
+  --line: #2a2a35;
+  --text: #e8e8ee;
+  --muted: #8f8fa3;
+  --accent: #7aa2f7;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --danger: #f7768e;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px/1.45 system-ui,
+    -apple-system,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 14px 96px;
+}
+h1 {
+  font-size: 18px;
+  margin: 8px 0 12px;
+}
+h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 20px 0 8px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin: 8px 0;
+}
+.card.gate {
+  border-color: var(--warn);
+}
+.card button {
+  margin-right: 8px;
+}
+button {
+  background: var(--accent);
+  border: 0;
+  color: #10131c;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+button.secondary {
+  background: var(--line);
+  color: var(--text);
+}
+button.danger {
+  background: var(--danger);
+}
+button:disabled {
+  opacity: 0.5;
+}
+input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 18px;
+  width: 100%;
+}
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.code {
+  font-size: 34px;
+  letter-spacing: 0.35em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin: 10px 0;
+}
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.badge.live {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+.tabs button {
+  flex: 1;
+}
+.tabs button.active {
+  outline: 2px solid var(--accent);
+}
+.event {
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.event .type {
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.toolargs {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff {
+  color: var(--muted);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+.diff .add {
+  color: var(--ok);
+}
+.diff .del {
+  color: var(--danger);
+}
