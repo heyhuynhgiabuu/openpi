@@ -4,6 +4,7 @@ import type {
   BashExecutionResult,
   CustomizationsInventory,
   DiagnosticsBundle,
+  ExportSessionBundleResult,
   ModelInfo,
   NavigateSessionTreeRequest,
   NavigateSessionTreeResult,
@@ -20,6 +21,7 @@ import type {
   SessionListOptions,
   SessionStats,
   SessionTreeResponse,
+  SessionTrajectoryResponse,
   SetModel,
   UsageSummary,
   UsageSummaryRequest,
@@ -63,6 +65,8 @@ export const sessionApi = {
     ipcRenderer.invoke(IPC.NAVIGATE_SESSION_TREE, payload),
   getSessionTree: (path: string, leafId?: string): Promise<SessionTreeResponse> =>
     ipcRenderer.invoke(IPC.GET_SESSION_TREE, { path, leafId }),
+  getSessionTrajectory: (path: string, leafId?: string): Promise<SessionTrajectoryResponse> =>
+    ipcRenderer.invoke(IPC.GET_SESSION_TRAJECTORY, { path, leafId }),
   openSession: (payload: OpenSession): Promise<void> =>
     ipcRenderer.invoke(IPC.OPEN_SESSION, payload),
   resolveSubSessionPath: (payload: ResolveSubSessionPathPayload): Promise<string | null> =>
@@ -97,6 +101,9 @@ export const sessionApi = {
     ipcRenderer.invoke(IPC.CHECK_PATH_PROTECTION, { path: targetPath, workspacePath }),
   getDiagnosticsBundle: (): Promise<DiagnosticsBundle> =>
     ipcRenderer.invoke(IPC.GET_DIAGNOSTICS_BUNDLE),
+
+  exportSessionBundle: (): Promise<ExportSessionBundleResult> =>
+    ipcRenderer.invoke(IPC.EXPORT_SESSION_BUNDLE),
 
   getCustomizations: (): Promise<CustomizationsInventory> =>
     ipcRenderer.invoke(IPC.GET_CUSTOMIZATIONS),

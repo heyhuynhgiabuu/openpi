@@ -15623,6 +15623,119 @@ body.panel-dragging {
   cursor: pointer;
 }
 
+.session-map-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-map-view-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline-strong, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.session-map-view-btn:hover {
+  background: var(--bg-hover, #23232f);
+}
+
+.session-map-view-btn.is-active {
+  background: var(--bg-hover, #23232f);
+  border-color: var(--accent, #7aa2f7);
+}
+
+.trajectory-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.trajectory-ledger-header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ash, #9aa0b4);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trajectory-rows {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.trajectory-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.trajectory-row.is-navigable {
+  cursor: pointer;
+}
+
+.trajectory-row.is-navigable:hover {
+  background: var(--bg-hover, #23232f);
+}
+
+.trajectory-row.is-meta {
+  opacity: 0.7;
+}
+
+.trajectory-row.is-leaf {
+  outline: 1px solid var(--accent, #7aa2f7);
+}
+
+.trajectory-time {
+  color: var(--ash, #9aa0b4);
+  white-space: nowrap;
+}
+
+.trajectory-kind {
+  flex: 0 0 110px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trajectory-model {
+  color: var(--accent, #7aa2f7);
+  white-space: nowrap;
+}
+
+.trajectory-preview {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trajectory-metrics {
+  display: inline-flex;
+  gap: 10px;
+  color: var(--ash, #9aa0b4);
+  white-space: nowrap;
+}
+
+.trajectory-freed {
+  color: var(--warn, #e0af68);
+}
+
 .session-map-close:hover {
   background: var(--bg-hover, #23232f);
 }

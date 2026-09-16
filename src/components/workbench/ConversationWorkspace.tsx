@@ -1,5 +1,5 @@
 import { ArrowLeft, GitBranch, X } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
 import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
 import { useFileContentCache } from '../../hooks/useFileContentCache'
 import { useGitHistoryState } from '../../hooks/useGitHistoryState'
@@ -9,6 +9,7 @@ import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
 import type { GitChangedFile, GitFileDiff, ModelInfo, SkillItem } from '../../lib/ipc'
 import { isDiffPreviewTab } from '../../lib/previewTabs'
+import type { AgentMentionOption } from '../composer/useComposerPickers'
 import { Composer } from '../Composer'
 import { ConversationPane } from '../conversation/ConversationPane'
 import { FilePreviewPane } from '../FilePreviewPane'
@@ -87,6 +88,28 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const [historyActive, setHistoryActive] = createSignal(false)
   const [reviewSource, setReviewSource] = createSignal<'git' | 'last-turn'>('git')
   const [sessionMapOpen, setSessionMapOpen] = createSignal(false)
+
+  // Effective pi-task delegate catalog for @mention suggestions. pi-task owns
+  // definitions, precedence and tool policy; the composer only displays what
+  // the task tool could actually run. Empty when pi-task is not installed.
+  // Keyed on cwd so a workspace switch refetches; main owns the discovery root.
+  const [taskAgents, setTaskAgents] = createSignal<AgentMentionOption[]>([])
+  createEffect(() => {
+    void props.cwd
+    let cancelled = false
+    void window.openpi
+      .getTaskAgents()
+      .then((agents) => {
+        if (!cancelled) setTaskAgents(agents)
+      })
+      .catch(() => {
+        if (!cancelled) setTaskAgents([])
+      })
+    onCleanup(() => {
+      cancelled = true
+    })
+  })
+
   let lastReviewChangeCount = 0
 
   createEffect(() => {
@@ -182,6 +205,31 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           lines.push(`Context: ${pct}%${tokens}`)
         }
         window.alert(lines.join('\n'))
+      },
+      onExportSession: () => {
+        return window.openpi
+          .exportSessionBundle()
+          .then((result) => {
+            if (result.status === 'cancelled') return
+            if (result.status === 'error') {
+              window.alert(result.message)
+              return
+            }
+            const lines = [
+              `Session exported to:`,
+              result.outDir,
+              '',
+              `${result.files.length} file(s) copied (SHA-256 recorded in manifest.json).`,
+            ]
+            if (result.subSessionTaskIds.length > 0) {
+              lines.push(`Sub-sessions: ${result.subSessionTaskIds.length}`)
+            }
+            for (const warning of result.warnings) lines.push(`⚠ ${warning}`)
+            window.alert(lines.join('\n'))
+          })
+          .catch((err: unknown) => {
+            window.alert(err instanceof Error ? err.message : String(err))
+          })
       },
       onShowError: (msg) => {
         window.alert(msg)
@@ -355,13 +403,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             sessionStats={props.session.sessionStats}
             agentTps={props.session.agentTps ?? null}
             runUsage={props.session.runUsage}
-            availableAgentTypes={[
-              { name: 'worker', description: 'Surgical implementer' },
-              { name: 'explorer', description: 'Read-only codebase cartographer' },
-              { name: 'scout', description: 'External research specialist' },
-              { name: 'planner', description: 'Architecture and implementation plans' },
-              { name: 'reviewer', description: 'Code review and debugging' },
-            ]}
+            availableAgentTypes={taskAgents()}
             coreCommands={() => coreCommands()}
           />
         </div>

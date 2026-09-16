@@ -28,6 +28,7 @@ import {
   nodeLabel,
   type VisibleBranch,
 } from './BranchCard'
+import { TrajectoryLedger } from './TrajectoryLedger'
 
 export interface SessionMapProps {
   sessionPath: string
@@ -51,6 +52,14 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
     () => props.sessionPath,
     (sessionPath) => window.openpi.getSessionTree(sessionPath, props.leafId ?? undefined)
   )
+  const [trajectory, { refetch: refetchTrajectory }] = createResource(
+    () => props.sessionPath,
+    (sessionPath) => window.openpi.getSessionTrajectory(sessionPath, props.leafId ?? undefined)
+  )
+  // Reading an errored resource re-throws — guard like the tree above so a
+  // trajectory failure cannot break the overlay render.
+  const trajectoryRows = () => (trajectory.error ? [] : (trajectory()?.rows ?? []))
+  const [view, setView] = createSignal<'tree' | 'trajectory'>('tree')
   // Reading the resource accessor re-throws its error, so the error state is
   // read first and the rest of the component only ever sees loaded data.
   const data = () => (tree.error ? null : (tree() ?? null))
@@ -94,7 +103,10 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
   createEffect(
     on(
       () => props.treeVersion,
-      () => void refetchTree(),
+      () => {
+        void refetchTree()
+        void refetchTrajectory()
+      },
       { defer: true }
     )
   )
@@ -184,6 +196,9 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
         else props.onClose()
         return
       }
+      // Arrow/Home/End/Enter drive the tree cursor; they are inert in the
+      // trajectory view, which is click-driven.
+      if (view() !== 'tree') return
       const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
       if (step !== 0) {
         event.preventDefault()
@@ -248,14 +263,32 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
               <p class="session-map-notice">{notice()}</p>
             </Show>
           </div>
-          <button
-            type="button"
-            class="session-map-close"
-            aria-label="Close session map"
-            onClick={() => props.onClose()}
-          >
-            <X size={14} />
-          </button>
+          <div class="session-map-views">
+            <button
+              type="button"
+              class={`session-map-view-btn${view() === 'tree' ? ' is-active' : ''}`}
+              aria-pressed={view() === 'tree'}
+              onClick={() => setView('tree')}
+            >
+              Tree
+            </button>
+            <button
+              type="button"
+              class={`session-map-view-btn${view() === 'trajectory' ? ' is-active' : ''}`}
+              aria-pressed={view() === 'trajectory'}
+              onClick={() => setView('trajectory')}
+            >
+              Trajectory
+            </button>
+            <button
+              type="button"
+              class="session-map-close"
+              aria-label="Close session map"
+              onClick={() => props.onClose()}
+            >
+              <X size={14} />
+            </button>
+          </div>
         </header>
 
         <Show when={tree.loading}>
@@ -310,23 +343,41 @@ export const SessionMap: Component<SessionMapProps> = (props) => {
                 )}
               </Show>
               <Show
-                when={nodes().length > 0}
-                fallback={<div class="session-map-empty">No entries match “{query().trim()}”.</div>}
+                when={view() === 'tree'}
+                fallback={
+                  <TrajectoryLedger
+                    rows={trajectoryRows()}
+                    query={query()}
+                    isEntryLoaded={props.isEntryLoaded}
+                    onNavigate={(entryId) => {
+                      props.onNavigate(entryId)
+                      props.onClose()
+                    }}
+                    onNotice={setNotice}
+                  />
+                }
               >
-                <div class="session-map-branches" ref={listRef}>
-                  <For each={branches()}>
-                    {(branch) => (
-                      <BranchCard
-                        branch={branch}
-                        activeLeafId={payload().activeLeafId}
-                        cursor={cursor()}
-                        onFocusNode={moveCursor}
-                        onActivateNode={activate}
-                        onStartBranch={startBranch}
-                      />
-                    )}
-                  </For>
-                </div>
+                <Show
+                  when={nodes().length > 0}
+                  fallback={
+                    <div class="session-map-empty">No entries match “{query().trim()}”.</div>
+                  }
+                >
+                  <div class="session-map-branches" ref={listRef}>
+                    <For each={branches()}>
+                      {(branch) => (
+                        <BranchCard
+                          branch={branch}
+                          activeLeafId={payload().activeLeafId}
+                          cursor={cursor()}
+                          onFocusNode={moveCursor}
+                          onActivateNode={activate}
+                          onStartBranch={startBranch}
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
               </Show>
             </Show>
           )}

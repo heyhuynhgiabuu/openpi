@@ -6,6 +6,7 @@ import type {
   SessionListItem,
   SessionListOptions,
   SessionTreeResponse,
+  SessionTrajectoryResponse,
   UsageSummary,
   UsageSummaryRequest,
   WorkspaceInfo,
@@ -40,6 +41,7 @@ import {
 } from './sessionQueries'
 import { countBranches } from './sessionTree'
 import { buildSessionTree } from './sessionTreeBuilder'
+import { buildSessionTrajectory } from './sessionTrajectory'
 import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './sessionUsage'
 
 // Bump when the usage computation changes, so stored rows are recomputed.
@@ -178,6 +180,10 @@ export class SessionIndexStore {
   // ── Session tree ────────────────────────────────────────────────────────────
   getSessionTree(sessionPath: string, leafId?: string): SessionTreeResponse {
     return buildSessionTree(sessionPath, leafId)
+  }
+
+  getSessionTrajectory(sessionPath: string, leafId?: string): SessionTrajectoryResponse {
+    return buildSessionTrajectory(sessionPath, leafId)
   }
 
   // ── Preferences (delegated to sessionQueries) ───────────────────────────────

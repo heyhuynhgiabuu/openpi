@@ -28,6 +28,8 @@ export interface CoreCommandContext {
   onShowSessionInfo: () => Promise<void> | void
   /** Open the read-only session tree map overlay. */
   onOpenSessionMap: () => void
+  /** Export the active session bundle (JSONL + sub-sessions + manifest). */
+  onExportSession: () => Promise<void> | void
   onShowError: (message: string) => void
   /** Replace the current composer input with the given text (e.g. `/name `). */
   onPrefillInput: (text: string) => void
@@ -113,6 +115,22 @@ export function buildCoreSlashCommands(ctx: CoreCommandContext): CoreSlashComman
           return true
         }
         ctx.onOpenSessionMap()
+        return true
+      },
+    },
+    {
+      id: 'session.export',
+      slash: 'export-session',
+      name: '/export-session',
+      description:
+        'Export this session (JSONL, sub-sessions, checksummed manifest) to a folder. Raw content may include secrets.',
+      category: 'session',
+      onSelect: () => {
+        if (!ctx.sessionReady) {
+          ctx.onShowError('No active session.')
+          return true
+        }
+        void ctx.onExportSession()
         return true
       },
     },

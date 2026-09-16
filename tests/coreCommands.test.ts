@@ -18,6 +18,7 @@ function baseCtx() {
     onSetSessionName: () => {},
     onShowSessionInfo: () => {},
     onOpenSessionMap: () => {},
+    onExportSession: () => {},
     onShowError: () => {},
     onPrefillInput: () => {},
   }
@@ -32,6 +33,7 @@ describe('core slash commands', () => {
       [
         'compact',
         'copy',
+        'export-session',
         'login',
         'logout',
         'map',
