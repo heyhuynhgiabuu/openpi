@@ -179,7 +179,10 @@ export function buildSessionExportBundle(args: BuildSessionExportArgs): SessionE
         )
         continue
       }
-      const copy = writeFile(path.join('sub-sessions', `${taskId}.jsonl`), authorized)
+      // Forward slashes in the bundle name: manifest entries are a portable
+      // artifact (checksummed, read on any OS); writeFile joins against the
+      // native outDir for the actual filesystem target.
+      const copy = writeFile(`sub-sessions/${taskId}.jsonl`, authorized)
       subSessions.push({ ...copy, taskId })
     }
   }

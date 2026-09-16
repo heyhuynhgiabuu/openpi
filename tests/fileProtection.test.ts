@@ -111,7 +111,7 @@ describe('file mutation protected-path guards', () => {
         newName: 'b.txt',
       }
     )
-    expect(result).toBe('protected-soft-dir/a.txt')
+    expect(result).toBe(path.join('protected-soft-dir', 'a.txt'))
     expect(fs.existsSync(path.join(ws, 'protected-soft-dir', 'b.txt'))).toBe(false)
   })
 
