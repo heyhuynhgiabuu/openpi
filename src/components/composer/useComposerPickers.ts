@@ -12,6 +12,19 @@ import type { FffFileResult, SkillItem, SlashCommandItem } from '../../lib/ipc'
 import { formatSlashCommandInput } from './helpers'
 import type { SlashCommand } from './types'
 
+/** One delegate offered by the @mention picker. Display-only: authority stays
+ * with pi-task's own enforcement, never these labels. */
+export interface AgentMentionOption {
+  name: string
+  description: string
+  /** pi-task provenance: bundled agent, user-global, or project-local. */
+  source?: 'bundled' | 'user' | 'project'
+  readonly?: boolean
+  proactive?: boolean
+  /** Explicit `tools:` allowlist; absent/empty = the default toolset. */
+  tools?: string[]
+}
+
 export interface ComposerPickers {
   /** Slash command picker */
   slashOpen: () => boolean
@@ -39,8 +52,8 @@ export interface ComposerPickers {
   fileMentionResults: () => FffFileResult[]
   fileMentionActiveIdx: () => number
   setFileMentionActiveIdx: (idx: number | ((prev: number) => number)) => void
-  filteredAgents: () => { name: string; description: string }[]
-  agentMentions: () => { name: string; description: string }[]
+  filteredAgents: () => AgentMentionOption[]
+  agentMentions: () => AgentMentionOption[]
 
   updateFileMentionPicker: (value: string, cursor: number) => FileMentionTrigger | null
   closeFileMentionPicker: () => void
@@ -58,7 +71,7 @@ interface UseComposerPickersConfig {
   attachedPaths: () => Set<string>
   onAddFile: (relPath: string) => void
   onAddSkill: (skill: SkillItem) => void
-  availableAgentTypes?: { name: string; description: string }[]
+  availableAgentTypes?: AgentMentionOption[]
   textareaEl?: () => HTMLTextAreaElement | undefined
   /** OpenPi core slash commands. Intercepted before session command dispatch. */
   coreCommands?: () => CoreSlashCommand[]
@@ -260,9 +273,7 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
   let fileMentionDebounceRef: ReturnType<typeof setTimeout> | null = null
 
   // Agent mention chips (local state — encodes @mentions visible in the input text)
-  const [agentMentions, setAgentMentions] = createSignal<{ name: string; description: string }[]>(
-    []
-  )
+  const [agentMentions, setAgentMentions] = createSignal<AgentMentionOption[]>([])
 
   // Filtered agent types for @mention autocomplete
   const filteredAgents = createMemo(() => {
@@ -348,7 +359,15 @@ export function useComposerPickers(config: UseComposerPickersConfig): ComposerPi
     const description = agentType?.description ?? `${name} subagent`
     setAgentMentions((prev) => {
       if (prev.some((a) => a.name === name)) return prev
-      return [...prev, { name, description }]
+      return [
+        ...prev,
+        {
+          name,
+          description,
+          source: agentType?.source,
+          readonly: agentType?.readonly,
+        },
+      ]
     })
 
     const next = removeFileMentionToken(config.input(), trigger)

@@ -7,6 +7,7 @@ import type {
   PromptTemplate,
   SkillItem,
   SlashCommandItem,
+  TaskAgentInfo,
 } from '../../src/lib/ipc'
 import {
   IPC,
@@ -16,6 +17,7 @@ import {
   skillItemSchema,
   slashCommandItemSchema,
 } from '../../src/lib/ipc'
+import { getDefaultPiAgentDir, listTaskAgents } from '../services/taskAgents'
 import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
 
 interface ResourcesIpcDeps {
@@ -71,6 +73,14 @@ export function registerResourcesIpc(deps: ResourcesIpcDeps): void {
       .array(skillItemSchema)
       .parse(response.skills)
       .sort((a, b) => a.name.localeCompare(b.name))
+  })
+
+  deps.ipcMain.handle(IPC.GET_TASK_AGENTS, async (): Promise<TaskAgentInfo[]> => {
+    // Main-owned cwd, matching sibling handlers — the renderer never picks the
+    // filesystem root discovery walks from.
+    const cwd = deps.activeWorkspacePath()
+    if (!cwd) return []
+    return listTaskAgents({ agentDir: getDefaultPiAgentDir(), cwd })
   })
 
   deps.ipcMain.handle(IPC.READ_SKILL_FILE, async (_event, raw: unknown): Promise<string | null> => {

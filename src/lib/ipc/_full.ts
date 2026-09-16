@@ -829,6 +829,41 @@ export const sessionTreeResponseSchema = z.object({
 })
 export type SessionTreeResponse = z.infer<typeof sessionTreeResponseSchema>
 
+// ─── Trajectory ledger ──────────────────────────────────────────────────────
+
+/** One row of the trajectory ledger: the branch the session is on, in
+ * conversation order, with the indexer's per-entry metrics. `entryId` links
+ * back to the conversation and the session map. */
+export const trajectoryRowSchema = z.object({
+  entryId: z.string(),
+  parentId: z.string().nullable(),
+  type: z.enum(TREE_ENTRY_TYPES),
+  role: z.enum(['user', 'assistant']).nullable(),
+  timestamp: z.string(),
+  preview: z.string(),
+  /** Compaction only: tokens freed from context. */
+  freedTokens: z.number().int().nullable(),
+  /** Messages can jump to the conversation; metadata rows cannot. */
+  navigable: z.boolean(),
+  model: z.string().nullable(),
+  provider: z.string().nullable(),
+  inputTokens: z.number().int(),
+  outputTokens: z.number().int(),
+  cacheReadTokens: z.number().int(),
+  cacheWriteTokens: z.number().int(),
+  totalTokens: z.number().int(),
+  durationMs: z.number(),
+  cost: z.number(),
+})
+export type TrajectoryRow = z.infer<typeof trajectoryRowSchema>
+
+export const sessionTrajectoryResponseSchema = z.object({
+  sessionPath: z.string(),
+  activeLeafId: z.string().nullable(),
+  rows: z.array(trajectoryRowSchema),
+})
+export type SessionTrajectoryResponse = z.infer<typeof sessionTrajectoryResponseSchema>
+
 // ─── PTY schemas ────────────────────────────────────────────────────────────
 
 export const ptyCreateSchema = z.object({
@@ -1483,3 +1518,48 @@ export const appUpdateStatusSchema = z.object({
   error: z.string().nullable(),
 })
 export type AppUpdateStatus = z.infer<typeof appUpdateStatusSchema>
+
+// ─── Pi-task agent catalog ─────────────────────────────────────────────────
+
+/** One effective `task` delegate as pi-task's own discovery resolves it
+ * (bundled < user < project precedence, hidden agents excluded). */
+export const taskAgentInfoSchema = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  source: z.enum(['bundled', 'user', 'project']),
+  readonly: z.boolean(),
+  proactive: z.boolean(),
+  model: z.string().nullable(),
+  thinking: z.string().nullable(),
+  maxTurns: z.number().int().nullable(),
+  runtime: z.string().nullable(),
+  /** Explicit allowlist from `tools:` frontmatter; empty = default toolset. */
+  tools: z.array(z.string()),
+  disallowedTools: z.array(z.string()),
+  skills: z.array(z.string()),
+  path: z.string(),
+})
+export type TaskAgentInfo = z.infer<typeof taskAgentInfoSchema>
+
+// ─── Session export bundle ───────────────────────────────────────────────────
+
+export const exportedFileSchema = z.object({
+  name: z.string(),
+  bytes: z.number().int().nonnegative(),
+  sha256: z.string(),
+})
+export type ExportedFile = z.infer<typeof exportedFileSchema>
+
+export const exportSessionBundleResultSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('cancelled') }),
+  z.object({
+    status: z.literal('exported'),
+    outDir: z.string(),
+    sessionId: z.string(),
+    files: z.array(exportedFileSchema),
+    subSessionTaskIds: z.array(z.string()),
+    warnings: z.array(z.string()),
+  }),
+  z.object({ status: z.literal('error'), message: z.string() }),
+])
+export type ExportSessionBundleResult = z.infer<typeof exportSessionBundleResultSchema>

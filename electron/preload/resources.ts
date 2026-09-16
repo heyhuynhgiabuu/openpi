@@ -13,6 +13,7 @@ import type {
   SettingsResult,
   SkillItem,
   SlashCommandItem,
+  TaskAgentInfo,
   ThemeColors,
   ThemeTokens,
 } from '../../src/lib/ipc'
@@ -45,6 +46,7 @@ export const resourcesApi = {
     ipcRenderer.invoke(IPC.DELETE_SESSION, { path: filePath }),
 
   listSkills: (): Promise<SkillItem[]> => ipcRenderer.invoke(IPC.LIST_SKILLS),
+  getTaskAgents: (): Promise<TaskAgentInfo[]> => ipcRenderer.invoke(IPC.GET_TASK_AGENTS),
   readSkillFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.READ_SKILL_FILE, { path: filePath }),
   listDirectory: (relPath: string): Promise<ListDirectoryResult> =>

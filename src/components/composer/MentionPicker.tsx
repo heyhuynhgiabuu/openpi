@@ -1,13 +1,20 @@
-import { Bot } from 'lucide-solid'
+import { Bot, Shield } from 'lucide-solid'
 import type { Component } from 'solid-js'
 import { createEffect, For, Show } from 'solid-js'
 import { FileIcon } from '../../lib/fileIcons'
 import type { FffFileResult } from '../../lib/ipc'
+import type { AgentMentionOption } from './useComposerPickers'
+
+const SCOPE_LABEL: Record<NonNullable<AgentMentionOption['source']>, string> = {
+  bundled: 'bundled',
+  user: 'global',
+  project: 'project',
+}
 
 interface MentionPickerProps {
   query: string
   fileResults: FffFileResult[]
-  agentResults: { name: string; description: string }[]
+  agentResults: AgentMentionOption[]
   activeIdx: number
   attachedPaths: Set<string>
   onSelectFile: (file: FffFileResult) => void
@@ -67,7 +74,25 @@ export const MentionPicker: Component<MentionPickerProps> = (props) => {
                       <span class="file-mention-name">
                         {agent.name.charAt(0).toUpperCase() + agent.name.slice(1)}
                       </span>
-                      <span class="file-mention-dir">{agent.description}</span>
+                      <Show when={agent.source}>
+                        <span class="file-mention-badge">
+                          {SCOPE_LABEL[agent.source ?? 'user']}
+                        </span>
+                      </Show>
+                      <Show when={agent.proactive}>
+                        <span class="file-mention-badge">proactive</span>
+                      </Show>
+                      <Show when={agent.readonly}>
+                        <span
+                          class="file-mention-badge"
+                          title="Read-only: mutating tools denied by pi-task"
+                        >
+                          <Shield size={9} strokeWidth={2.5} /> read-only
+                        </span>
+                      </Show>
+                      <span class="file-mention-dir">
+                        {agent.description.replace(/^PROACTIVE\s+—\s*/, '')}
+                      </span>
                     </span>
                   </button>
                 )

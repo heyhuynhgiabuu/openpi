@@ -1,5 +1,6 @@
 import { BookOpen, Bot, MessageSquare } from 'lucide-solid'
 import type { Component } from 'solid-js'
+import { Show } from 'solid-js'
 import { FileIcon } from '../../lib/fileIcons'
 import type { FileLineComment } from '../../lib/fileLineComments'
 import { formatCompactLineRange } from '../../lib/fileLineComments'
@@ -61,15 +62,31 @@ export const LineCommentChip: Component<LineCommentChipProps> = (props) => {
   )
 }
 
-type AgentChipProps = { name: string; description: string; onRemove: () => void }
+type AgentChipProps = {
+  name: string
+  description: string
+  source?: 'bundled' | 'user' | 'project'
+  readonly?: boolean
+  onRemove: () => void
+}
 
 export const AgentChip: Component<AgentChipProps> = (props) => {
+  const scope = () => (props.source === 'user' ? 'global' : props.source)
+  const title = () => {
+    const parts = [props.description.replace(/^PROACTIVE\s+—\s*/, '')]
+    if (scope()) parts.push(`source: ${scope()}`)
+    if (props.readonly) parts.push('read-only (mutating tools denied by pi-task)')
+    return parts.join(' · ')
+  }
   return (
-    <span class="ctx-chip ctx-chip--agent" title={props.description}>
+    <span class="ctx-chip ctx-chip--agent" title={title()}>
       <span class="ctx-chip-icon ctx-chip-icon--agent">
         <Bot size={10} strokeWidth={2.5} />
       </span>
       <span class="ctx-chip-name">{props.name.charAt(0).toUpperCase() + props.name.slice(1)}</span>
+      <Show when={props.readonly}>
+        <span class="ctx-chip-scope">read-only</span>
+      </Show>
       <button
         type="button"
         class="ctx-chip-remove"

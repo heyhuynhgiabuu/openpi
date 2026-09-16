@@ -40,6 +40,7 @@ export const IPC = {
   FORK_SESSION: 'openpi:fork-session',
   NAVIGATE_SESSION_TREE: 'openpi:navigate-session-tree',
   GET_SESSION_TREE: 'openpi:get-session-tree',
+  GET_SESSION_TRAJECTORY: 'openpi:get-session-trajectory',
   COMPACT_SESSION: 'openpi:compact-session',
   RELOAD_SESSION: 'openpi:reload-session',
   GET_SESSION_INFO: 'openpi:get-session-info',
@@ -133,6 +134,8 @@ export const IPC = {
   DELETE_SESSIONS: 'openpi:delete-sessions',
   DELETE_SESSION: 'openpi:delete-session',
   LIST_SKILLS: 'openpi:list-skills',
+  GET_TASK_AGENTS: 'openpi:get-task-agents',
+  EXPORT_SESSION_BUNDLE: 'openpi:export-session-bundle',
   READ_SKILL_FILE: 'openpi:read-skill-file',
   LIST_DIRECTORY: 'openpi:list-directory',
 

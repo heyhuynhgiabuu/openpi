@@ -299,6 +299,8 @@ export const Composer: Component<ComposerProps> = (props) => {
                   <AgentChip
                     name={agent.name}
                     description={agent.description}
+                    source={agent.source}
+                    readonly={agent.readonly}
                     onRemove={() => removeAgentMention(agent.name)}
                   />
                 )}
