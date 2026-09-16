@@ -11,6 +11,7 @@ import { createRemoteHost, type RemoteHost } from './remote/remoteHost'
 import type { SidecarCommand, SidecarMessage } from './pi/sidecar'
 import { checkPiUpdate } from './pi/updater'
 import { startArtifactWatcher } from './services/artifactWatcher'
+import { installProcessCrashHooks } from './services/processCrashHooks'
 import { handleLocalFileProtocol, registerLocalFileScheme } from './services/localFileProtocol'
 import {
   ensureFffInitialized,
@@ -115,24 +116,7 @@ function emitOutputLine(line: OutputLine): void {
   mainWindow?.webContents.send(IPC.OUTPUT_APPEND, line)
 }
 
-// Capture main-process crashes and forward them to the Output pane,
-// then exit so Electron doesn't run in a corrupted state.
-process.on('uncaughtException', (err: Error) => {
-  const text = `[crash] ${err.message}${err.stack ? `\n${err.stack}` : ''}`
-  process.stderr.write(`[main] uncaughtException: ${err.stack ?? err.message}\n`)
-  emitOutputLine({ level: 'error', text, ts: Date.now() })
-  // Give the IPC channel one tick to flush before hard-exit.
-  setImmediate(() => app.exit(1))
-})
-process.on('unhandledRejection', (reason: unknown) => {
-  const text =
-    reason instanceof Error
-      ? `[rejection] ${reason.message}${reason.stack ? `\n${reason.stack}` : ''}`
-      : `[rejection] ${String(reason)}`
-  process.stderr.write(`[main] unhandledRejection: ${text}\n`)
-  emitOutputLine({ level: 'warn', text, ts: Date.now() })
-  // Unhandled rejections are non-fatal — log and continue.
-})
+installProcessCrashHooks(emitOutputLine)
 
 async function restartGitMonitoring(cwd: string): Promise<void> {
   const git = await getGitHost()
