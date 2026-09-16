@@ -9,6 +9,13 @@ import type { UsageTotals } from '../../src/lib/ipc'
 export const SQL_TOTAL_FROM_PARTS =
   'coalesce(sum(e.input_tokens + e.output_tokens + e.cache_read_tokens + e.cache_write_tokens), 0)'
 
+/**
+ * `Turns` counts assistant messages only. Summarization calls and a toolResult's
+ * nested usage are stored as their own rows (so their tokens land in the right
+ * model bucket) under their own `type`, and are not turns.
+ */
+export const SQL_TURN_COUNT = "sum(case when e.type = 'message' then 1 else 0 end) as turnCount"
+
 export type UsageAggregateRow = {
   inputTokens: number | null
   outputTokens: number | null
@@ -36,7 +43,7 @@ export function usageAggregateSql(workspacePath: string | null): string {
       ${SQL_TOTAL_FROM_PARTS} as totalTokens,
       coalesce(sum(e.duration_ms), 0) as durationMs,
       coalesce(sum(e.cost), 0) as cost,
-      count(*) as turnCount,
+      ${SQL_TURN_COUNT},
       count(distinct s.path) as sessionCount,
       max(e.duration_ms) as longestTaskMs
     from session_entries e
@@ -56,7 +63,7 @@ export function usageDailySql(workspacePath: string | null): string {
       ${SQL_TOTAL_FROM_PARTS} as totalTokens,
       coalesce(sum(e.duration_ms), 0) as durationMs,
       coalesce(sum(e.cost), 0) as cost,
-      count(*) as turnCount,
+      ${SQL_TURN_COUNT},
       count(distinct s.path) as sessionCount,
       max(e.duration_ms) as longestTaskMs
     from session_entries e

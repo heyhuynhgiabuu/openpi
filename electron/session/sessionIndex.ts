@@ -46,7 +46,9 @@ import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './se
 
 // Bump when the usage computation changes, so stored rows are recomputed.
 // 4: summarization usage (compaction, branch_summary) counts in the totals.
-const USAGE_INDEX_VERSION = 4
+// 5: a summarization call is its own row under the model that generated it.
+// 6: a toolResult's nested usage is its own row and counts in the totals.
+const USAGE_INDEX_VERSION = 6
 
 export class SessionIndexStore {
   private readonly db: Database.Database
@@ -344,7 +346,9 @@ export class SessionIndexStore {
           sessionPath: info.path,
           entryId: entry.id,
           parentId: entry.parentId ?? null,
-          type: entry.type,
+          // A usage row can override the entry type (a toolResult's nested usage
+          // row is `tool_result`), which keeps it out of the turn count.
+          type: usage?.rowType ?? entry.type,
           timestamp: entry.timestamp ?? new Date().toISOString(),
           inputTokens: usage?.inputTokens ?? 0,
           outputTokens: usage?.outputTokens ?? 0,

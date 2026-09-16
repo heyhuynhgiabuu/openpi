@@ -44,6 +44,11 @@ export type UsageEntryMetrics = {
   cost: number
   model: string
   provider: string
+  /**
+   * Set when the row is not a turn: today only a toolResult's nested LLM work.
+   * The store writes it as the row `type`, which keeps it out of the turn count.
+   */
+  rowType?: 'tool_result'
 }
 
 export function emptyUsageSummary(request: UsageSummaryRequest = {}): UsageSummary {
@@ -109,7 +114,6 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
   let lastUserTimestampMs: number | null = null
   let currentModel = ''
   let currentProvider = ''
-  let lastMetrics: UsageEntryMetrics | null = null
 
   for (const entry of entries) {
     if (entry.type === 'model_change') {
@@ -119,21 +123,9 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
       continue
     }
 
-    if (entry.type === 'compaction' || entry.type === 'branch_summary') {
-      // Pi records the summarization call's usage on the entry itself. Attribute it
-      // to the turn whose context it summarized: per-turn rows then add up to the
-      // session total, and `Turns` stays a count of assistant turns.
-      if (lastMetrics && isRecord(entry.usage)) {
-        const parts = readUsageParts(entry.usage)
-        lastMetrics.inputTokens += parts.inputTokens
-        lastMetrics.outputTokens += parts.outputTokens
-        lastMetrics.cacheReadTokens += parts.cacheReadTokens
-        lastMetrics.cacheWriteTokens += parts.cacheWriteTokens
-        lastMetrics.totalTokens += parts.totalTokens
-        lastMetrics.cost += parts.cost
-      }
-      continue
-    }
+    // A summarization call is its own row (second pass below), so its tokens land
+    // in the model bucket that actually generated the summary.
+    if (entry.type === 'compaction' || entry.type === 'branch_summary') continue
 
     if (entry.type !== 'message') continue
     const message = entry.message as unknown
@@ -145,6 +137,7 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
       continue
     }
 
+    // A toolResult's nested usage is its own row (second pass below).
     if (role !== 'assistant') continue
     const usage = isRecord(message.usage) ? message.usage : {}
     const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, totalTokens, cost } =
@@ -172,8 +165,111 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
       provider: messageProvider,
     }
     metricsById.set(entry.id, metrics)
-    lastMetrics = metrics
   }
 
+  appendAttachedUsageRows(entries, metricsById)
+
   return metricsById
+}
+
+/**
+ * Usage Pi attaches to a non-assistant entry: a summarization call on the
+ * `compaction`/`branch_summary` entry itself, or the nested LLM work a tool
+ * reports back on its `toolResult` message. Each gets its own row under the
+ * model active on its chain, found by replaying the entry's parent chain: that
+ * stays on the entry's branch and sees any `model_change` between the summarized
+ * turn and the summary, so the tokens land on the right model. A toolResult's
+ * parent is the assistant turn that called the tool, so its own model wins there.
+ */
+function appendAttachedUsageRows(
+  entries: SessionEntry[],
+  metricsById: Map<string, UsageEntryMetrics>
+): void {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  for (const entry of entries) {
+    const attached = attachedUsage(entry)
+    if (!attached) continue
+    const parts = readUsageParts(attached.usage)
+    if (parts.totalTokens <= 0 && parts.cost <= 0) continue
+    const { model, provider } = resolveChainModel(entry, byId)
+    const metrics: UsageEntryMetrics = {
+      inputTokens: parts.inputTokens,
+      outputTokens: parts.outputTokens,
+      cacheReadTokens: parts.cacheReadTokens,
+      cacheWriteTokens: parts.cacheWriteTokens,
+      totalTokens: parts.totalTokens,
+      durationMs: 0,
+      cost: parts.cost,
+      model,
+      provider,
+    }
+    if (attached.rowType) metrics.rowType = attached.rowType
+    metricsById.set(entry.id, metrics)
+  }
+}
+
+interface AttachedUsage {
+  usage: Record<string, unknown>
+  rowType?: 'tool_result'
+}
+
+function attachedUsage(entry: SessionEntry): AttachedUsage | null {
+  if (entry.type === 'compaction' || entry.type === 'branch_summary') {
+    return isRecord(entry.usage) ? { usage: entry.usage } : null
+  }
+  if (entry.type !== 'message') return null
+  const message = entry.message as unknown
+  if (!isRecord(message) || message.role !== 'toolResult') return null
+  return isRecord(message.usage) ? { usage: message.usage, rowType: 'tool_result' } : null
+}
+
+/**
+ * Resolve the model active on an entry's chain. `model_change` is sticky session
+ * state and wins over a per-turn `message.model`; when no change is on the chain
+ * the nearest assistant turn's model is the best available evidence.
+ */
+function resolveChainModel(
+  entry: SessionEntry,
+  byId: Map<string, SessionEntry>
+): {
+  model: string
+  provider: string
+} {
+  const chain: SessionEntry[] = []
+  const seen = new Set<string>()
+  let cursor = entry.parentId
+  while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+    seen.add(cursor)
+    const parent = byId.get(cursor)
+    if (!parent) break
+    chain.push(parent)
+    cursor = parent.parentId
+  }
+  chain.reverse()
+
+  let changedModel = ''
+  let changedProvider = ''
+  let turnModel = ''
+  let turnProvider = ''
+  for (const ancestor of chain) {
+    if (ancestor.type === 'model_change') {
+      const e = ancestor as unknown as { modelId?: string; provider?: string }
+      if (typeof e.modelId === 'string' && e.modelId) changedModel = e.modelId
+      if (typeof e.provider === 'string' && e.provider) changedProvider = e.provider
+      continue
+    }
+    if (ancestor.type !== 'message') continue
+    const message = ancestor.message as unknown
+    if (!isRecord(message) || message.role !== 'assistant') continue
+    if (typeof message.model === 'string' && message.model.trim()) {
+      turnModel = message.model.trim()
+    }
+    if (typeof message.provider === 'string' && message.provider.trim()) {
+      turnProvider = message.provider.trim()
+    }
+  }
+
+  const model = changedModel || turnModel || ''
+  const provider = changedModel ? changedProvider || turnProvider : turnProvider || changedProvider
+  return { model, provider: provider || '' }
 }
