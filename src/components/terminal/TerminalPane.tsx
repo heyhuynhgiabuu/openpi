@@ -10,6 +10,7 @@ import {
   loadAppearancePreferences,
 } from '../../lib/appearancePreferences'
 import { parseTerminalIntegrationData } from './shellIntegration'
+import { publishTerminalSnippet, snippetFromLines } from '../../lib/terminalSnippet'
 import 'nerdfonts-web/nf.css'
 
 interface Props {
@@ -42,6 +43,38 @@ export function TerminalPane(props: Props) {
   let fitAddon: FitAddon | null = null
   let ptyId: string | null = null
   const [terminalReady, setTerminalReady] = createSignal(false)
+
+  // Workbench context bridge: while this pane is the visible one, periodically
+  // publish its last lines as the terminal snippet for steering context. The
+  // interval only runs while visible, and a publish is skipped when the text
+  // has not changed, so a quiet terminal costs nothing.
+  let lastPublished: string | null = null
+  const publishSnapshot = (): void => {
+    if (!term) return
+    const buffer = term.buffer.active
+    const lines: string[] = []
+    for (let row = 0; row < buffer.length; row++) {
+      lines.push(buffer.getLine(row)?.translateToString(true) ?? '')
+    }
+    const snippet = snippetFromLines(lines)
+    if (snippet !== lastPublished) {
+      lastPublished = snippet
+      publishTerminalSnippet(snippet)
+    }
+  }
+  createEffect(() => {
+    if (!props.isVisible || !terminalReady()) return
+    publishSnapshot()
+    const sampler = setInterval(publishSnapshot, 2_000)
+    onCleanup(() => {
+      clearInterval(sampler)
+      // Hand the snippet over: a hidden tab must not speak for the workbench.
+      if (lastPublished !== null) {
+        lastPublished = null
+        publishTerminalSnippet(null)
+      }
+    })
+  })
 
   onMount(() => {
     let disposed = false
