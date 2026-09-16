@@ -8,19 +8,15 @@
  *   - Early return pattern → <Show when={session.ready}> control flow
  *   - className  → class in SolidJS JSX
  */
-import { createEffect, createMemo, createSignal, lazy, onMount, Show, Suspense } from 'solid-js'
+import { createMemo, createSignal, Show } from 'solid-js'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { ExtensionUiOverlay } from './components/ExtensionUiOverlay'
 import { RefsPickerPanel } from './components/git/RefsPickerPanel'
-import { ResizeHandle } from './components/ResizeHandle'
 import { ToolShimmerPane } from './components/ToolShimmerPane'
 import { TopBar } from './components/TopBar'
-import { TerminalPanel } from './components/terminal/TerminalPanel'
 import { Welcome } from './components/Welcome'
 import { AppOverlays } from './components/workbench/AppOverlays'
-import { ConversationWorkspace } from './components/workbench/ConversationWorkspace'
-import { GitSidePanel } from './components/workbench/GitSidePanel'
-import { RightPanel } from './components/workbench/RightPanel'
+import { WorkbenchLayout } from './components/workbench/WorkbenchLayout'
 import { useAgentReviewChanges } from './hooks/useAgentReviewChanges'
 import { useAppArchive } from './hooks/useAppArchive'
 import { useAppFileManager } from './hooks/useAppFileManager'
@@ -28,13 +24,13 @@ import { useAppKeybindings } from './hooks/useAppKeybindings'
 import { useAppPrefs } from './hooks/useAppPrefs'
 import { useOpenPiSession } from './hooks/useOpenPiSession'
 import { useWorkbenchLayout } from './hooks/useWorkbenchLayout'
+import { registerAppGlobalListeners } from './app/appGlobalListeners'
+import { createAppSessionMemos } from './app/appSessionMemos'
+import { useHomescreenDelete } from './app/useHomescreenDelete'
+import { useWorkbenchContextBridge } from './app/useWorkbenchContextBridge'
 import { DEFAULT_DISPLAY_PREFERENCES, type DisplayPreferences } from './lib/displayPreferences'
 import type { AppInfo, GitSyncAction, SessionListItem } from './lib/ipc'
 import type { KeybindingOverrides } from './lib/keybindings'
-
-const Homescreen = lazy(() =>
-  import('./components/Homescreen').then((module) => ({ default: module.Homescreen }))
-)
 
 export default function App() {
   const session = useOpenPiSession()
@@ -53,83 +49,16 @@ export default function App() {
   const navigateToMessage = (entryId: string) => setScrollToMessageId(`${entryId}:${Date.now()}`)
   const [homescreenOpen, setHomescreenOpen] = createSignal(false)
 
-  const {
-    gitPanelSide,
-    isDraggingGit,
-    dropSide,
-    gitPanelWidth,
-    previewWidth,
-    setWorkbenchRef,
-    startGitDrag,
-    resizeGitPanel,
-    resizeRightPanel,
-    resizePreview,
-  } = useWorkbenchLayout()
-  const {
-    attachedFiles,
-    lineComments,
-    loadedSkills,
-    hiddenModels,
-    activeDiff,
-    openFiles,
-    activeFileIdx,
-    diffFiles,
-    diffIndex,
-    fileSearchOpen,
-    fileFindOpen,
-    setFileSearchOpen,
-    setFileFindOpen,
-    setHiddenModels,
-    setActiveFileIdx,
-    setCommitDiffHash,
-    setActiveDiff,
-    handleDiffOpen,
-    openFile,
-    openReviewTab,
-    closeFile,
-
-    closeDeletedFilePreviews,
-    renameFileInPreviews,
-    addAttachedFile,
-    removeAttachedFile,
-    addLineComment,
-    removeLineComment,
-    addLoadedSkill,
-    removeLoadedSkill,
-    handleSend,
-    toggleHiddenModel,
-    openCommitDiff,
-    navigateDiff,
-  } = useAppFileManager({
+  const layout = useWorkbenchLayout()
+  const fileManager = useAppFileManager({
     cwd: () => session.selectedWorkspacePath ?? '',
     input: () => session.input,
     send: (prefix) => void session.send(prefix),
   })
   const [gitPanelTab, setGitPanelTab] = createSignal<'changes'>('changes')
 
-  // ── Homescreen delete ──────────────────────────────────────────────────────
-  // Two-step: clicking delete opens a confirm modal with the session title.
-  // Confirming moves the session file to the OS trash via the IPC handler.
-  // For active .jsonl files the IPC archives first, then trashes.
-  const [pendingDelete, setPendingDelete] = createSignal<{ path: string; title: string } | null>(
-    null
-  )
-  const requestDeleteSession = (sessionPath: string) => {
-    const target = session.sessions.find((s) => s.path === sessionPath)
-    setPendingDelete({
-      path: sessionPath,
-      title: target?.title || 'Untitled session',
-    })
-  }
-  const confirmDeleteSession = async () => {
-    const target = pendingDelete()
-    if (!target) return
-    setPendingDelete(null)
-    const result = await window.openpi.deleteSession(target.path)
-    if (result.failed > 0) {
-      console.warn(`[delete-session] failed to delete ${target.path}`)
-    }
-  }
+  const { pendingDelete, setPendingDelete, requestDeleteSession, confirmDeleteSession } =
+    useHomescreenDelete(session)
   // ── Git panel → TopBar bridge ──────────────────────────────────────────────
   // The active GitPanel surfaces its branch/upstream labels here so TopBar can
   // display them as clickable chips, and provides a toggleRefs callback so
@@ -154,12 +83,12 @@ export default function App() {
     setTerminalOpen,
     setNewTerminalRequest,
     setRightPanelOpen,
-    setFileSearchOpen,
-    setFileFindOpen,
+    setFileSearchOpen: fileManager.setFileSearchOpen,
+    setFileFindOpen: fileManager.setFileFindOpen,
     setCustomizationsOpen,
-    openFiles,
-    activeFileIdx,
-    closeFile,
+    openFiles: fileManager.openFiles,
+    activeFileIdx: fileManager.activeFileIdx,
+    closeFile: fileManager.closeFile,
     triggerRename,
     isStreaming: () => session.isStreaming,
     createNewSession: () => session.createNewSession(),
@@ -174,77 +103,17 @@ export default function App() {
     return `v${info.version}${info.releaseChannel ? ` · ${info.releaseChannel}` : ''}`
   })
 
-  // ── Workbench context bridge — report visible file to main ──────────
-  createEffect(() => {
-    const files = openFiles()
-    const idx = activeFileIdx()
-    const relPath = files[idx]
-    const cwd = session.selectedWorkspacePath
-    if (relPath && relPath.length > 0 && cwd) {
-      const absPath = `${cwd}/${relPath}`
-      window.openpi.workbenchContext.update({
-        visibleFile: relPath,
-        visibleFileAbs: absPath,
-        terminalOutput: null,
-      })
-    } else {
-      window.openpi.workbenchContext.update({
-        visibleFile: null,
-        visibleFileAbs: null,
-        terminalOutput: null,
-      })
-    }
-  })
-
-  onMount(() => {
-    // Load persisted prefs
-    archive.loadPersistedPrefs()
-    window.openpi
-      .getPref('hidden_models')
-      .then((v) => {
-        if (v) {
-          try {
-            setHiddenModels(new Set(JSON.parse(v) as string[]))
-          } catch {
-            /* ignore */
-          }
-        }
-      })
-      .catch(() => {})
-
-    const removePrefs = appPrefs.setupOnMount()
-    const removeKeydown = keybindings.setupKeydownHandler()
-    const removeFileFindShortcut = window.openpi.onFileFindShortcut(() => {
-      setFileFindOpen(false)
-      queueMicrotask(() => setFileFindOpen(true))
-    })
-
-    // Allow slash commands (e.g. /resume) to open the homescreen
-    // overlay without threading a new prop through the entire tree.
-    const openHomescreenViaEvent = () => setHomescreenOpen(true)
-    document.addEventListener('openpi:open-homescreen', openHomescreenViaEvent)
-
-    // Allow slash commands (e.g. /settings) to open the customizations
-    // modal directly to a specific tab. The event detail carries the
-    // tab key (e.g. "settings", "extensions", "themes").
-    const openCustomizationsViaEvent = (event: Event) => {
-      const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab
-      if (tab === 'settings' || tab === 'general' || tab === 'keybindings') {
-        setCustomizationsInitialTab(tab)
-      } else {
-        setCustomizationsInitialTab(undefined)
-      }
-      setCustomizationsOpen(true)
-    }
-    document.addEventListener('openpi:open-customizations', openCustomizationsViaEvent)
-
-    return () => {
-      removePrefs()
-      removeKeydown()
-      removeFileFindShortcut?.()
-      document.removeEventListener('openpi:open-homescreen', openHomescreenViaEvent)
-      document.removeEventListener('openpi:open-customizations', openCustomizationsViaEvent)
-    }
+  useWorkbenchContextBridge(fileManager, session)
+  registerAppGlobalListeners({
+    session,
+    archive,
+    appPrefs,
+    keybindings,
+    setHiddenModels: fileManager.setHiddenModels,
+    setFileFindOpen: fileManager.setFileFindOpen,
+    setHomescreenOpen,
+    setCustomizationsOpen,
+    setCustomizationsInitialTab,
   })
 
   // ── Archive / pin helpers ─────────────────────────────────────────────────
@@ -264,60 +133,17 @@ export default function App() {
       }
     >
       {(getReady) => {
-        // getReady() is called once — NOT reactive on its own. Wrap every derived
-        // value in createMemo so they recompute when session.ready changes (e.g.
-        // after picking a new workspace or resuming a different session).
-        const cwd = createMemo(() => getReady().cwd)
-        const workspaceName = createMemo(() => cwd().split('/').pop() ?? cwd())
-        const activeSessionPath = createMemo(() => getReady().sessionFile)
-        const displayName = createMemo(
-          () =>
-            session.sessionName ??
-            (activeSessionPath()
-              ? (activeSessionPath()!.split('/').pop()?.replace('.jsonl', '') ?? 'session')
-              : 'new session')
-        )
-        const promptHistory = createMemo(() =>
-          session.messages
-            .filter((message) => message.role === 'user' && message.text.trim().length > 0)
-            .map((message) => message.text)
-            .reverse()
-        )
-        const remotePreemptedByLocal = createMemo(
-          () =>
-            session.localActivityAt > 0 && session.remoteSessionUpdatedAt <= session.localActivityAt
-        )
-        const showingRemoteSession = createMemo(() =>
-          Boolean(
-            !session.isStreaming &&
-            !remotePreemptedByLocal() &&
-            session.remoteSessionStatus?.sessionFile &&
-            session.remoteSessionMessages.length > 0
-          )
-        )
-        const conversationMessages = createMemo(() =>
-          showingRemoteSession() ? session.remoteSessionMessages : session.messages
-        )
-        const conversationStreaming = createMemo(
-          () =>
-            session.isStreaming ||
-            (!remotePreemptedByLocal() && session.remoteSessionStatus?.status === 'running')
-        )
-        const showRemoteSessionBar = createMemo(() =>
-          Boolean(
-            !remotePreemptedByLocal() &&
-            (session.remoteSessionStatus?.status === 'running' || showingRemoteSession())
-          )
-        )
+        const memos = createAppSessionMemos(session, getReady)
+        const cwd = memos.cwd
+        const activeSessionPath = memos.activeSessionPath
 
         const [showGitHistory, setShowGitHistory] = createSignal(false)
-        const openGitHistory = () => setShowGitHistory(true)
 
         const visibleModels = () =>
-          session.models.filter((m) => !hiddenModels().has(`${m.provider}/${m.id}`))
+          session.models.filter((m) => !fileManager.hiddenModels().has(`${m.provider}/${m.id}`))
 
         return (
-          <div class={`app-shell${conversationStreaming() ? ' agent-streaming' : ''}`}>
+          <div class={`app-shell${memos.conversationStreaming() ? ' agent-streaming' : ''}`}>
             {/* RefsPickerPanel: always mounted so TopBar branch click works
                 even when the git panel is closed */}
             <RefsPickerPanel
@@ -327,7 +153,7 @@ export default function App() {
               }}
             />
             <TopBar
-              workspaceName={workspaceName()}
+              workspaceName={memos.workspaceName()}
               gitBranch={session.gitBranch}
               gitStats={session.gitStats}
               gitUpstream={gitSyncLabel() || null}
@@ -337,8 +163,8 @@ export default function App() {
                   : null
               }
               onBranchClick={() => toggleRefsRef?.()}
-              sessionName={displayName()}
-              isStreaming={conversationStreaming()}
+              sessionName={memos.displayName()}
+              isStreaming={memos.conversationStreaming()}
               awaitingPrompt={session.awaitingPrompt}
               onRenameSession={session.setSessionName}
               onOpenWorkspace={session.openWorkspace}
@@ -359,156 +185,42 @@ export default function App() {
               onToggleHomescreen={() => setHomescreenOpen((v) => !v)}
             />
 
-            <div class="workbench" ref={setWorkbenchRef}>
-              {/* ── Homescreen (full-width overlay) ── */}
-              <Show when={homescreenOpen()}>
-                <Suspense fallback={<div class="homescreen-loading">Loading sessions…</div>}>
-                  <Homescreen
-                    sessions={session.sessions}
-                    workspaces={session.workspaces}
-                    selectedWorkspacePath={session.selectedWorkspacePath}
-                    activeSessionPath={activeSessionPath()}
-                    onSelectSession={(path: string) =>
-                      void session.openExistingSession({ path } as SessionListItem)
-                    }
-                    onNewSession={() => void session.createNewSession()}
-                    onSelectWorkspace={(path: string) => void session.selectWorkspace(path)}
-                    onOpenWorkspace={() => void session.openWorkspace()}
-                    onDeleteSession={requestDeleteSession}
-                    onClose={() => setHomescreenOpen(false)}
-                  />
-                </Suspense>
-              </Show>
-
-              {/* ── Normal workspace (hidden when homescreen is open) ── */}
-              <Show when={!homescreenOpen()}>
-                {/* Drop zones — shown while git panel is being dragged */}
-                <Show when={isDraggingGit()}>
-                  <div
-                    class={`panel-drop-zone panel-drop-zone--left${dropSide() === 'left' ? ' is-over' : ''}`}
-                  >
-                    <span class="panel-drop-zone-hint">← Left of main</span>
-                  </div>
-                  <div
-                    class={`panel-drop-zone panel-drop-zone--right${dropSide() === 'right' ? ' is-over' : ''}`}
-                  >
-                    <span class="panel-drop-zone-hint">Right of main →</span>
-                  </div>
-                </Show>
-
-                <div class="workbench-main">
-                  <GitSidePanel
-                    visible={gitPanelOpen() && gitPanelSide() === 'left'}
-                    side="left"
-                    cwd={cwd()}
-                    width={gitPanelWidth()}
-                    activeTab={gitPanelTab()}
-                    onActiveTabChange={setGitPanelTab}
-                    onDragStart={startGitDrag}
-                    onResize={resizeGitPanel}
-                    onRequestFileSearch={() => setFileSearchOpen(true)}
-                    onDiffOpen={handleDiffOpen}
-                    onCommitFileClick={openCommitDiff}
-                    onFileClick={openFile}
-                    onSyncLabelChange={setGitSyncLabel}
-                    onSyncActionChange={setGitSyncAction}
-                    onSyncMessageChange={setGitSyncMessage}
-                    onOpenHistory={openGitHistory}
-                  />
-
-                  <ConversationWorkspace
-                    session={session}
-                    agentReview={agentReview}
-                    cwd={cwd()}
-                    workspaceName={workspaceName()}
-                    activeSessionPath={activeSessionPath()}
-                    messages={conversationMessages()}
-                    isStreaming={conversationStreaming()}
-                    displayPreferences={displayPreferences()}
-                    scrollToMessageId={scrollToMessageId()}
-                    onNavigateToMessage={navigateToMessage}
-                    onCancelTask={session.cancelTask}
-                    branchLeafId={session.branchLeafId()}
-                    treeVersion={session.treeVersion()}
-                    onBranchFrom={session.navigateTree}
-                    showRemoteSessionBar={showRemoteSessionBar()}
-                    promptHistory={promptHistory()}
-                    attachedFiles={attachedFiles()}
-                    lineComments={lineComments()}
-                    loadedSkills={loadedSkills()}
-                    visibleModels={visibleModels()}
-                    openFiles={openFiles()}
-                    activeFileIdx={activeFileIdx()}
-                    previewWidth={previewWidth()}
-                    activeDiff={activeDiff()}
-                    diffFiles={diffFiles()}
-                    diffIndex={diffIndex()}
-                    fileSearchOpen={fileSearchOpen()}
-                    fileFindOpen={fileFindOpen()}
-                    showGitHistory={showGitHistory()}
-                    onShowGitHistoryChange={setShowGitHistory}
-                    onOpenFile={openFile}
-                    onOpenReviewTab={openReviewTab}
-                    onAddAttachedFile={addAttachedFile}
-                    onRemoveAttachedFile={removeAttachedFile}
-                    onAddLineComment={addLineComment}
-                    onRemoveLineComment={removeLineComment}
-                    onAddSkill={addLoadedSkill}
-                    onRemoveSkill={removeLoadedSkill}
-                    onConnectProvider={() => setConnectProviderOpen(true)}
-                    onManageModels={() => setManageModelsOpen(true)}
-                    onSend={() => void handleSend()}
-                    onResizePreview={resizePreview}
-                    onSelectFile={setActiveFileIdx}
-                    onCloseFile={closeFile}
-                    onNavigateDiff={(index) => void navigateDiff(index)}
-                    onCloseDiff={() => {
-                      setActiveDiff(null)
-                      setCommitDiffHash(null)
-                    }}
-                    onRequestFileSearch={() => setFileSearchOpen(true)}
-                    onFindOpened={() => setFileFindOpen(false)}
-                  />
-
-                  <Show when={rightPanelOpen()}>
-                    <ResizeHandle direction="horizontal" onResize={resizeRightPanel} />
-                    <RightPanel
-                      visible
-                      cwd={cwd()}
-                      width={gitPanelWidth()}
-                      onResize={resizeRightPanel}
-                      changeCount={
-                        session.gitStats
-                          ? (session.gitStats.changed ?? 0) + (session.gitStats.untracked ?? 0) ||
-                            null
-                          : null
-                      }
-                      onDiffOpen={handleDiffOpen}
-                      onCommitFileClick={openCommitDiff}
-                      onFileClick={openFile}
-                      onFileDeleted={closeDeletedFilePreviews}
-                      onFileRenamed={renameFileInPreviews}
-                      onSyncLabelChange={setGitSyncLabel}
-                      onSyncActionChange={setGitSyncAction}
-                      onSyncMessageChange={setGitSyncMessage}
-                      onOpenHistory={openGitHistory}
-                    />
-                  </Show>
-                </div>
-
-                <TerminalPanel
-                  cwd={cwd()}
-                  isOpen={terminalOpen()}
-                  newTerminalRequest={newTerminalRequest()}
-                  onClose={() => setTerminalOpen(false)}
-                />
-              </Show>
-            </div>
-
+            <WorkbenchLayout
+              session={session}
+              fm={fileManager}
+              agentReview={agentReview}
+              layout={layout}
+              memos={memos}
+              displayPreferences={displayPreferences()}
+              scrollToMessageId={scrollToMessageId()}
+              navigateToMessage={navigateToMessage}
+              visibleModels={visibleModels}
+              homescreenOpen={homescreenOpen()}
+              setHomescreenOpen={setHomescreenOpen}
+              rightPanelOpen={rightPanelOpen()}
+              terminalOpen={terminalOpen()}
+              newTerminalRequest={newTerminalRequest()}
+              setTerminalOpen={setTerminalOpen}
+              gitPanelOpen={gitPanelOpen()}
+              gitPanelSide={layout.gitPanelSide()}
+              gitPanelWidth={layout.gitPanelWidth()}
+              gitPanelTab={gitPanelTab()}
+              setGitPanelTab={setGitPanelTab}
+              setFileSearchOpen={fileManager.setFileSearchOpen}
+              setFileFindOpen={fileManager.setFileFindOpen}
+              showGitHistory={showGitHistory()}
+              setShowGitHistory={setShowGitHistory}
+              setGitSyncLabel={setGitSyncLabel}
+              setGitSyncAction={setGitSyncAction}
+              setGitSyncMessage={setGitSyncMessage}
+              requestDeleteSession={requestDeleteSession}
+              onConnectProvider={() => setConnectProviderOpen(true)}
+              onManageModels={() => setManageModelsOpen(true)}
+            />
             <ToolShimmerPane />
             <AppOverlays
               cwd={cwd()}
-              fileSearchOpen={fileSearchOpen()}
+              fileSearchOpen={fileManager.fileSearchOpen()}
               commandPaletteOpen={commandPaletteOpen()}
               customizationsOpen={customizationsOpen()}
               customizationsInitialTab={customizationsInitialTab()}
@@ -521,9 +233,9 @@ export default function App() {
               appVersionLabel={appVersionLabel()}
               models={session.models}
               currentModel={session.currentModel}
-              hiddenModels={hiddenModels()}
-              onCloseFileSearch={() => setFileSearchOpen(false)}
-              onOpenFile={openFile}
+              hiddenModels={fileManager.hiddenModels()}
+              onCloseFileSearch={() => fileManager.setFileSearchOpen(false)}
+              onOpenFile={fileManager.openFile}
               onCloseCommandPalette={() => setCommandPaletteOpen(false)}
               onOpenSession={session.openExistingSession}
               onCloseCustomizations={() => setCustomizationsOpen(false)}
@@ -533,7 +245,7 @@ export default function App() {
               onProviderConnected={() => session.refreshModels()}
               onArchiveConfirm={(skipNext) => void archive.handleArchiveConfirm(skipNext)}
               onArchiveCancel={() => archive.setArchivePending(null)}
-              onToggleHiddenModel={toggleHiddenModel}
+              onToggleHiddenModel={fileManager.toggleHiddenModel}
               onCloseManageModels={() => setManageModelsOpen(false)}
               onConnectProviderFromModels={() => {
                 setManageModelsOpen(false)

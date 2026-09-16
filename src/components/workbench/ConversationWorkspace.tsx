@@ -3,11 +3,11 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-j
 import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
 import { useFileContentCache } from '../../hooks/useFileContentCache'
 import { useGitHistoryState } from '../../hooks/useGitHistoryState'
+import type { useAppFileManager } from '../../hooks/useAppFileManager'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
 import { buildCoreSlashCommands, type CoreSlashCommand } from '../../lib/coreCommands'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
-import type { FileLineComment, NewFileLineComment } from '../../lib/fileLineComments'
-import type { GitChangedFile, GitFileDiff, ModelInfo, SkillItem } from '../../lib/ipc'
+import type { ModelInfo, SkillItem } from '../../lib/ipc'
 import { isDiffPreviewTab } from '../../lib/previewTabs'
 import type { AgentMentionOption } from '../composer/useComposerPickers'
 import { Composer } from '../Composer'
@@ -47,43 +47,21 @@ interface ConversationWorkspaceProps {
   onBranchFrom: (entryId: string) => Promise<void>
   showRemoteSessionBar: boolean
   promptHistory: string[]
-  attachedFiles: string[]
-  lineComments: FileLineComment[]
-  loadedSkills: SkillItem[]
   visibleModels: ModelInfo[]
-  openFiles: string[]
-  activeFileIdx: number
   previewWidth: number
-  activeDiff: GitFileDiff | null
-  diffFiles: GitChangedFile[]
-  diffIndex: number
-  fileSearchOpen: boolean
-  fileFindOpen: boolean
   showGitHistory: boolean
   onShowGitHistoryChange: (show: boolean) => void
-  onOpenFile: (path: string) => void
-
-  onAddAttachedFile: (path: string) => void
-  onRemoveAttachedFile: (path: string) => void
-  onAddLineComment: (comment: NewFileLineComment) => void
-  onRemoveLineComment: (id: string) => void
-  onAddSkill: (skill: SkillItem) => void
-  onRemoveSkill: (name: string) => void
   onConnectProvider: () => void
   onManageModels: () => void
-  onSend: () => void
   onResizePreview: (delta: number) => void
-  onSelectFile: (index: number) => void
-  onCloseFile: (index: number) => void
-  onNavigateDiff: (index: number) => void
-  onCloseDiff: () => void
   onRequestFileSearch: () => void
   onFindOpened: () => void
-  onOpenReviewTab: () => void
+  /** File-preview state and actions (useAppFileManager), passed whole. */
+  fm: ReturnType<typeof useAppFileManager>
 }
 
 export function ConversationWorkspace(props: ConversationWorkspaceProps) {
-  const activePreviewTab = createMemo(() => props.openFiles[props.activeFileIdx] ?? '')
+  const activePreviewTab = createMemo(() => props.fm.openFiles()[props.fm.activeFileIdx()] ?? '')
   const reviewChangeCount = createMemo(() => props.agentReview.changes.length)
   const [historyActive, setHistoryActive] = createSignal(false)
   const [reviewSource, setReviewSource] = createSignal<'git' | 'last-turn'>('git')
@@ -122,7 +100,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
     if (count > lastReviewChangeCount) {
       setReviewSource('last-turn')
       setHistoryActive(false)
-      props.onOpenReviewTab()
+      props.fm.openReviewTab()
     } else if (count === 0 && reviewSource() === 'last-turn') {
       setReviewSource('git')
     }
@@ -130,7 +108,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   })
 
   createEffect(() => {
-    if (props.activeDiff?.path) setReviewSource('git')
+    if (props.fm.activeDiff()?.path) setReviewSource('git')
   })
 
   const fileCache = useFileContentCache()
@@ -247,7 +225,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   return (
     <div class="center-col">
       <main
-        class={`main-panel${props.openFiles.length > 0 || props.showGitHistory || reviewChangeCount() > 0 ? ' main-panel--split' : ''}`}
+        class={`main-panel${props.fm.openFiles().length > 0 || props.showGitHistory || reviewChangeCount() > 0 ? ' main-panel--split' : ''}`}
       >
         <div class="main-panel-conversation">
           <Show when={props.session.isSubSession()}>
@@ -289,7 +267,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             activeSessionPath={props.activeSessionPath}
             setBottomRef={props.session.setBottomRef}
             onFork={props.session.forkFromMessage}
-            onFileClick={props.onOpenFile}
+            onFileClick={props.fm.openFile}
             onCancelTask={props.onCancelTask}
             onOpenSubSession={props.session.openSubSession}
             resolveTaskId={(card) => props.session.resolveTaskIdForCard(card)}
@@ -379,14 +357,14 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             followUpQueue={props.session.followUpQueue}
             setTextareaRef={props.session.setTextareaRef}
             cwd={props.cwd}
-            attachedFiles={props.attachedFiles}
-            onAddFile={props.onAddAttachedFile}
-            onRemoveFile={props.onRemoveAttachedFile}
-            lineComments={props.lineComments}
-            onRemoveLineComment={props.onRemoveLineComment}
-            loadedSkills={props.loadedSkills}
-            onAddSkill={props.onAddSkill}
-            onRemoveSkill={props.onRemoveSkill}
+            attachedFiles={props.fm.attachedFiles()}
+            onAddFile={props.fm.addAttachedFile}
+            onRemoveFile={props.fm.removeAttachedFile}
+            lineComments={props.fm.lineComments()}
+            onRemoveLineComment={props.fm.removeLineComment}
+            loadedSkills={props.fm.loadedSkills()}
+            onAddSkill={props.fm.addLoadedSkill}
+            onRemoveSkill={props.fm.removeLoadedSkill}
             models={props.visibleModels}
             currentModel={props.session.currentModel}
             onSelectModel={props.session.selectModel}
@@ -396,7 +374,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
             onManageModels={props.onManageModels}
             onInput={props.session.setInput}
             onQueueMode={props.session.setQueueMode}
-            onSend={props.onSend}
+            onSend={props.fm.handleSend}
             onShellSend={() => void props.session.sendShell()}
             onAbort={() => void window.openpi.abort()}
             contextPercent={props.session.contextPercent}
@@ -408,7 +386,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
           />
         </div>
 
-        <Show when={props.openFiles.length > 0 || props.showGitHistory}>
+        <Show when={props.fm.openFiles().length > 0 || props.showGitHistory}>
           <ResizeHandle direction="horizontal" onResize={props.onResizePreview} />
           <div class="main-panel-preview" style={{ width: `${props.previewWidth}px` }}>
             <div class="main-panel-preview-header">
@@ -443,15 +421,15 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
                   </button>
                 </div>
               </Show>
-              <Show when={props.openFiles.length > 0}>
+              <Show when={props.fm.openFiles().length > 0}>
                 <FileTabBar
-                  files={props.openFiles}
-                  activeIndex={historyActive() ? -1 : props.activeFileIdx}
+                  files={props.fm.openFiles()}
+                  activeIndex={historyActive() ? -1 : props.fm.activeFileIdx()}
                   onSelect={(index) => {
                     setHistoryActive(false)
-                    props.onSelectFile(index)
+                    props.fm.setActiveFileIdx(index)
                   }}
-                  onClose={props.onCloseFile}
+                  onClose={props.fm.closeFile}
                   onRequestFileSearch={props.onRequestFileSearch}
                 />
               </Show>
@@ -466,11 +444,11 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
                       relativePath={activePreviewTab()}
                       cwd={props.cwd}
                       workspaceName={props.workspaceName}
-                      background={props.fileSearchOpen}
-                      findOpen={props.fileFindOpen}
+                      background={props.fm.fileSearchOpen()}
+                      findOpen={props.fm.fileFindOpen()}
                       onFindOpened={props.onFindOpened}
-                      onAddLineComment={props.onAddLineComment}
-                      onClose={() => props.onCloseFile(props.activeFileIdx)}
+                      onAddLineComment={props.fm.addLineComment}
+                      onClose={() => props.fm.closeFile(props.fm.activeFileIdx())}
                     />
                   }
                 >
@@ -479,10 +457,10 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
                     source={reviewSource()}
                     onSourceChange={setReviewSource}
                     agentReview={props.agentReview}
-                    requestedGitPath={props.activeDiff?.path ?? null}
-                    comments={props.lineComments}
-                    onAddComment={props.onAddLineComment}
-                    onRemoveComment={props.onRemoveLineComment}
+                    requestedGitPath={props.fm.activeDiff()?.path ?? null}
+                    comments={props.fm.lineComments()}
+                    onAddComment={props.fm.addLineComment}
+                    onRemoveComment={props.fm.removeLineComment}
                     fileContentFor={fileCache.fileContentFor}
                     ensureFileContent={fileCache.ensureFileContent}
                   />
