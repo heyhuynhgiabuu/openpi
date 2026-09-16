@@ -9,9 +9,13 @@
  *
  * Inside OpenPi an `edit` opens a hunk review: the approved entries stay in
  * `event.input.edits` and the rest are dropped, so Pi's own tool performs the
- * write and its result diff tells the model what was skipped. `write` keeps a
- * text allow/deny, because a rewrite has no hunk to drop. Outside OpenPi (a TUI
- * session) both tools fall back to that text confirm.
+ * write and its result diff tells the model what was skipped. A `write` goes
+ * through the same modal as a single hunk; a whole-file rewrite has no
+ * meaningful middle, so approval is all-or-nothing there. A `write` falls back
+ * to the text confirm when no meaningful hunk exists (unchanged file,
+ * unreadable current content, unusable input, empty create); an `edit` whose
+ * input cannot be read stays out of the way. Outside OpenPi (a TUI session)
+ * both tools always use the text confirm.
  *
  * The review waits much longer than Pi's two-minute dialog default, because
  * reviewing a diff is not a yes/no glance; if it does expire, the gate says so
@@ -31,6 +35,7 @@ import {
   hunksSummary,
   previewForToolCall,
   str,
+  writeReviewParts,
 } from './preview'
 
 /**
@@ -181,6 +186,43 @@ async function reviewEdit(
 }
 
 /**
+ * Hunk review for `write`: one contiguous change, so one hunk and all-or-nothing
+ * approval (see writeReviewParts). Falls back to the text confirm when the
+ * change cannot be shown as a hunk.
+ */
+async function reviewWrite(
+  event: PreApplyToolCall,
+  ctx: PreApplyContext
+): Promise<'fallback' | BlockedToolCall | undefined> {
+  const parts = writeReviewParts(asRecord(event.input), ctx.cwd)
+  if (!parts) return 'fallback'
+
+  const answer = await ctx.ui.input(
+    `Review before applying: ${parts.shownPath}`,
+    REVIEW_MARKER +
+      JSON.stringify({ path: parts.shownPath, summary: parts.summary, hunks: parts.hunks }),
+    { signal: ctx.signal, timeout: REVIEW_TIMEOUT_MS }
+  )
+
+  const parsed = parseReviewAnswer(answer, parts.hunks.length)
+  if (!parsed) {
+    // No answer covers cancel and expiry alike. Saying so matters: otherwise the
+    // write just never lands and the user has no idea the review timed out.
+    ctx.ui.notify(
+      `Pre-apply review of ${parts.shownPath} was not answered; the write was not applied.`,
+      'warning'
+    )
+    return deny(parts.shownPath, 'did not answer')
+  }
+
+  if (parsed.approved.length === 0) return deny(parts.shownPath, 'denied this write')
+  // Skipping review means letting the rest of the turn through, so it only
+  // follows an approval; denying everything clearly does not ask for that.
+  if (parsed.remember) skipReviewThisTurn = true
+  return undefined
+}
+
+/**
  * Returns a block result when the user denies the change, and nothing when the
  * call should proceed. Pi reports the reason back to the model as the tool
  * result, so the model knows the change was refused rather than failed.
@@ -195,6 +237,11 @@ export async function handleToolCall(
 
   if (event.toolName === 'edit' && isOpenPiHost(process.env)) {
     return reviewEdit(event, ctx)
+  }
+
+  if (event.toolName === 'write' && isOpenPiHost(process.env)) {
+    const routed = await reviewWrite(event, ctx)
+    if (routed !== 'fallback') return routed
   }
 
   const preview = previewForToolCall(event.toolName, event.input, ctx.cwd)

@@ -10,6 +10,8 @@ import {
   isPreApplyReviewEnabled,
   parseReviewAnswer,
 } from '../.pi/extensions/openpi-preapply-review/index'
+
+const REVIEW_MARKER = 'openpi-preapply-review:'
 import {
   confirmMessage,
   diffRegion,
@@ -277,49 +279,41 @@ describe('hunk review inside OpenPi', () => {
 
   it('asks about a write that truncates the file to nothing', async () => {
     writeFile('a.txt', 'content\n')
-    const { confirm, ctx } = context({ confirmed: false })
-    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: '' }
+    const { input, ctx } = context({ reviewAnswer: '{"approved":[0]}' })
+    const inputPayload: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: '' }
 
-    const blocked = await handleToolCall({ toolName: 'write', input }, ctx)
+    const result = await handleToolCall({ toolName: 'write', input: inputPayload }, ctx)
 
-    expect(confirm).toHaveBeenCalledTimes(1)
-    expect(blocked?.block).toBe(true)
+    expect(result).toBeUndefined()
+    const payload = JSON.parse(String(input.mock.calls[0]?.[1]).slice(REVIEW_MARKER.length)) as {
+      summary: string
+      hunks: Array<{ diff: string; removed: number; added: number }>
+    }
+    expect(payload.summary).toContain('write · 1 line → 0 lines')
+    expect(payload.hunks[0].diff).toBe('-content')
   })
 
   it('waits as long for a write as for a hunk review', async () => {
     writeFile('a.txt', 'content\n')
-    const { confirm, ctx } = context({ confirmed: true })
-    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
+    const { input, ctx } = context({ reviewAnswer: '{"approved":[0]}' })
+    const inputPayload: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
 
-    await handleToolCall({ toolName: 'write', input }, ctx)
+    await handleToolCall({ toolName: 'write', input: inputPayload }, ctx)
 
-    expect(confirm).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+    expect(input).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
       timeout: 600_000,
     })
   })
 
   it('does not call an unanswered write a denial', async () => {
     writeFile('a.txt', 'content\n')
-    const { ctx } = context({ confirmed: false })
-    const input: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
+    const { ctx, notify } = context({ reviewAnswer: undefined })
+    const inputPayload: WriteToolInput = { path: path.join(cwd, 'a.txt'), content: 'next\n' }
 
-    const blocked = await handleToolCall({ toolName: 'write', input }, ctx)
+    const blocked = await handleToolCall({ toolName: 'write', input: inputPayload }, ctx)
 
-    expect(blocked?.reason).toContain('did not approve')
-  })
-
-  it('still uses the text dialog for write', async () => {
-    const { ctx, confirm, input } = context({ confirmed: true })
-    writeFile('docs/new.md', 'old\n')
-
-    const result = await handleToolCall(
-      { toolName: 'write', input: { path: 'docs/new.md', content: 'new\n' } },
-      ctx
-    )
-
-    expect(result).toBeUndefined()
-    expect(input).not.toHaveBeenCalled()
-    expect(confirm.mock.calls[0]?.[0]).toBe('Review before applying: docs/new.md')
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('was not answered'), 'warning')
+    expect(blocked?.reason).toContain('did not answer')
   })
 })
 
@@ -432,5 +426,151 @@ describe('previews', () => {
 
     expect(message).toContain('-y\n+x')
     expect(message).toContain('Deny blocks the write')
+  })
+
+  describe('write hunk review inside OpenPi', () => {
+    beforeEach(() => {
+      process.env.OPENPI_BRIDGE_APP = 'openpi'
+    })
+
+    it('routes a create through the review modal with one all-added hunk', async () => {
+      const { ctx, input, confirm } = context({ reviewAnswer: '{"approved":[0]}' })
+
+      const result = await handleToolCall(
+        { toolName: 'write', input: { path: 'new.txt', content: 'hello\n' } },
+        ctx
+      )
+
+      expect(result).toBeUndefined()
+      expect(confirm).not.toHaveBeenCalled()
+      expect(input).toHaveBeenCalledWith(
+        'Review before applying: new.txt',
+        expect.stringContaining(REVIEW_MARKER.slice(0, -1)),
+        expect.objectContaining({ timeout: 600_000 })
+      )
+      const payload = JSON.parse(String(input.mock.calls[0][1]).slice(REVIEW_MARKER.length)) as {
+        summary: string
+        hunks: Array<{ diff: string; removed: number; added: number }>
+      }
+      expect(payload.summary).toContain('create · 1 line')
+      expect(payload.hunks).toHaveLength(1)
+      expect(payload.hunks[0].diff).toBe('+hello')
+      expect(payload.hunks[0].added).toBe(1)
+    })
+
+    it('shows an overwrite as the changed region and proceeds on approval', async () => {
+      writeFile('notes.md', 'a\nb\nc\n')
+      const { ctx, input } = context({ reviewAnswer: '{"approved":[0]}' })
+
+      const result = await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'a\nX\nc\n' } },
+        ctx
+      )
+
+      expect(result).toBeUndefined()
+      const payload = JSON.parse(String(input.mock.calls[0][1]).slice(REVIEW_MARKER.length)) as {
+        summary: string
+        hunks: Array<{ diff: string; removed: number; added: number }>
+      }
+      expect(payload.summary).toContain('write · 3 lines → 3 lines')
+      expect(payload.hunks[0].diff).toBe('-b\n+X')
+      expect(payload.hunks[0].removed).toBe(1)
+      expect(payload.hunks[0].added).toBe(1)
+    })
+
+    it('blocks a denied write without letting remember skip the turn', async () => {
+      writeFile('notes.md', 'old\n')
+      const denied = context({ reviewAnswer: '{"approved":[],"remember":true}' })
+      await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'new\n' } },
+        denied.ctx
+      )
+
+      const next = context({ reviewAnswer: undefined })
+      await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'new\n' } },
+        next.ctx
+      )
+      expect(next.input).toHaveBeenCalled()
+    })
+
+    it('skips the rest of the turn after an approved write asks it to', async () => {
+      writeFile('notes.md', 'old\n')
+      const first = context({ reviewAnswer: '{"approved":[0],"remember":true}' })
+      await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'new\n' } },
+        first.ctx
+      )
+
+      const second = context({ reviewAnswer: undefined })
+      const skipped = await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'newer\n' } },
+        second.ctx
+      )
+      expect(skipped).toBeUndefined()
+      expect(second.input).not.toHaveBeenCalled()
+    })
+
+    it('falls back to the text confirm for an unchanged file', async () => {
+      writeFile('same.txt', 'same\n')
+      const { ctx, input, confirm } = context({ confirmed: true })
+
+      const result = await handleToolCall(
+        { toolName: 'write', input: { path: 'same.txt', content: 'same\n' } },
+        ctx
+      )
+
+      expect(result).toBeUndefined()
+      expect(input).not.toHaveBeenCalled()
+      expect(confirm).toHaveBeenCalled()
+    })
+
+    it('falls back to the text confirm when the current file is not previewable', async () => {
+      writeFile('blob.bin', 'text\x00binary')
+      const { ctx, input, confirm } = context({ confirmed: false })
+
+      const denied = await handleToolCall(
+        { toolName: 'write', input: { path: 'blob.bin', content: 'replacement\n' } },
+        ctx
+      )
+
+      expect(denied?.block).toBe(true)
+      expect(input).not.toHaveBeenCalled()
+      // The fallback keeps the review-length timeout: a boolean answer still
+      // cannot distinguish a denial from an expiry, so the gate waits as long.
+      expect(confirm).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ timeout: 600_000 })
+      )
+    })
+
+    it('falls back to the text confirm for an empty create', async () => {
+      const { ctx, input, confirm } = context({ confirmed: true })
+
+      const result = await handleToolCall(
+        { toolName: 'write', input: { path: 'fresh.txt', content: '' } },
+        ctx
+      )
+
+      expect(result).toBeUndefined()
+      expect(input).not.toHaveBeenCalled()
+      expect(confirm).toHaveBeenCalled()
+    })
+
+    it('falls back to the text confirm outside OpenPi even for a clean write', async () => {
+      delete process.env.OPENPI_BRIDGE_APP
+      writeFile('notes.md', 'old\n')
+      const { ctx, input, confirm } = context({ confirmed: false })
+
+      const denied = await handleToolCall(
+        { toolName: 'write', input: { path: 'notes.md', content: 'new\n' } },
+        ctx
+      )
+
+      expect(denied?.block).toBe(true)
+      expect(input).not.toHaveBeenCalled()
+      expect(confirm).toHaveBeenCalled()
+    })
   })
 })

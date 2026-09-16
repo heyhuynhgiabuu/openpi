@@ -64,11 +64,11 @@ function readTextFile(path: string): string | null {
 }
 
 /**
- * Renders the changed region of two texts: the common leading and trailing
- * lines are dropped, and what is left is shown as `-`/`+` lines. Exact enough
- * for a confirmation, and it never needs a line-diff algorithm.
+ * The changed region of two texts as removed/added line arrays: the common
+ * leading and trailing lines are dropped. Exact enough for a confirmation, and
+ * it never needs a line-diff algorithm.
  */
-export function diffRegion(before: string, after: string): string {
+export function diffParts(before: string, after: string): { removed: string[]; added: string[] } {
   const beforeLines = before.split('\n')
   const afterLines = after.split('\n')
 
@@ -86,8 +86,18 @@ export function diffRegion(before: string, after: string): string {
     tail++
   }
 
-  const removed = beforeLines.slice(head, beforeLines.length - tail)
-  const added = afterLines.slice(head, afterLines.length - tail)
+  return {
+    removed: beforeLines.slice(head, beforeLines.length - tail),
+    added: afterLines.slice(head, afterLines.length - tail),
+  }
+}
+
+/**
+ * Renders the changed region of two texts as `-`/`+` lines, cut off past the
+ * preview cap (counts elsewhere stay true to the real sizes).
+ */
+export function diffRegion(before: string, after: string): string {
+  const { removed, added } = diffParts(before, after)
   const lines = [...removed.map((line) => `-${line}`), ...added.map((line) => `+${line}`)]
   if (lines.length > MAX_PREVIEW_LINES) {
     lines.length = MAX_PREVIEW_LINES
@@ -221,6 +231,60 @@ export function previewForToolCall(
   if (toolName === 'edit') return previewForEdit(record, cwd)
   if (toolName === 'write') return previewForWrite(record, cwd)
   return null
+}
+
+/** Everything the hunk-review modal needs for a `write` call. */
+export interface WriteReviewParts {
+  shownPath: string
+  summary: string
+  hunks: ReviewHunk[]
+}
+
+/**
+ * Hunk review for a `write` call: the change is one contiguous region (this
+ * preview never line-diffs), so it becomes a single hunk and approval is
+ * all-or-nothing — a whole-file write has no meaningful middle. Returns null
+ * when no meaningful hunk exists and the gate should fall back to the text
+ * confirm: unusable input, an unchanged file, an empty create, or current
+ * content that cannot be previewed (binary, too large — an overwrite the user
+ * would approve blind).
+ */
+export function writeReviewParts(
+  input: Record<string, unknown>,
+  cwd: string
+): WriteReviewParts | null {
+  const path = str(input.path)
+  const content = text(input.content)
+  if (!path || content === null) return null
+
+  const shownPath = displayPath(cwd, path)
+  const absolute = isAbsolute(path) ? path : resolve(cwd, path)
+  const current = readTextFile(absolute)
+
+  if (current === null) {
+    if (existsSync(absolute)) return null
+    if (countLines(content) === 0) return null
+    return {
+      shownPath,
+      summary: `create · ${lineLabel(countLines(content))}`,
+      hunks: [{ diff: diffRegion('', content), removed: 0, added: countLines(content) }],
+    }
+  }
+
+  if (current === content) return null
+
+  const { removed, added } = diffParts(current, content)
+  return {
+    shownPath,
+    summary: `write · ${lineLabel(countLines(current))} → ${lineLabel(countLines(content))}`,
+    hunks: [
+      {
+        diff: diffRegion(current, content),
+        removed: countLines(removed.join('\n')),
+        added: countLines(added.join('\n')),
+      },
+    ],
+  }
 }
 
 export function confirmMessage(preview: PreApplyPreview): string {
