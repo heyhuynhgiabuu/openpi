@@ -5,6 +5,10 @@
  * `ctx.ui.input` calls carrying the preapply review marker (the app already
  * detects that marker in extensionUiTypes.ts — same coupling, not new).
  * Other methods (plain inputs, selects, editor) pass through untouched.
+ * Note: the sidecar's RPC context converts marked inputs to structured
+ * `preapply_review` requests before they reach main, so the marked-input
+ * branch is protocol-level defense — the sidecar contract permits the raw
+ * shape, but the shipped extension never sends it.
  *
  * One pending promise, two resolvers, first settle wins: if the desktop
  * renderer answers first, its response is relayed verbatim and the gate is

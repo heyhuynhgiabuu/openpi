@@ -123,6 +123,19 @@ describe('settlement races', () => {
     })
   })
 
+  it('relays cancelled:true when the gate expires unanswered', async () => {
+    vi.useFakeTimers()
+    try {
+      const { relays, intercept } = harness(true)
+      intercept({ id: 'r9', method: 'confirm', title: 't', timeout: 1000 })
+      await vi.advanceTimersByTimeAsync(1000 + 10)
+      expect(relays).toEqual([{ id: 'r9', cancelled: true }])
+      expect(pendingIds()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('remote first: relay carries the remote decision; stale renderer answer drops', async () => {
     const { registry, opened, relays, intercept } = harness(true)
     intercept(confirmRequest)
