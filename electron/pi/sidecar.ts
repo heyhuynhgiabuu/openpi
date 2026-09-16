@@ -5,478 +5,153 @@
  * Pi SDK (sessions, models, resource loading) lives here and can grow freely.
  *
  * Communication: typed JSON messages over process.parentPort.
- * All heavy imports (Pi SDK, resource loader) happen inside this file only.
+ * All heavy imports (Pi SDK, resource loader) happen inside this directory
+ * only. This entry keeps the protocol wiring (port, validation, queue) and
+ * the exhaustive command dispatch; handlers live in the sibling modules:
+ *
+ *   sidecarContext.ts        shared state: port, session, model runtime, loader
+ *   slashPrompt.ts           slash-command recognition + prompt expansion
+ *   eventBridge.ts           session event stream → parent forwarding
+ *   sessionLifecycle.ts      start/stop session transitions
+ *   conversationCommands.ts  prompt/steer/abort/bash/model/thinking
+ *   sessionInfoCommands.ts   info/stats/compact/copy/name
+ *   sessionFlowCommands.ts   start/reload/fork/navigate/stop
+ *   providerCommands.ts      models/settings/trust/providers/login
  */
 
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent'
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from '@earendil-works/pi-coding-agent'
-import { expandPromptTemplateText } from '../../src/lib/sessionPrompt'
-import { createOpenPiExtensionUIContext } from './extensionUiContext'
-import { fulfillExtensionUiPending, rejectAllExtensionUiPending } from './extensionUiPending'
-import { answerApiKeyPrompt, ProviderAuthBridge, providerLoginFailureEvent } from './providerAuth'
-import { handleResourceCommand, isResourceCommand } from './resourceCommands'
-import { enforceIgnoreScriptsEnv } from './safePackageManager'
-import { teardownSession } from './sessionTeardown'
 import { createSidecarCommandQueue } from './sidecarCommandQueue'
 import { sidecarCommandSchema } from './sidecarContracts'
-import { isStaleExtensionCtxEvent, isStaleExtensionCtxMessage } from './staleCtx'
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
+import { handleResourceCommand, isResourceCommand } from './resourceCommands'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
+import { getResourceLoader, getState, onParentMessage, send } from './sidecarContext'
+import { handleAbortCommand } from './conversationCommands'
+import {
+  handleCompactCommand,
+  handleCopyLastAssistantTextCommand,
+  handleGetSessionInfoCommand,
+  handleGetStatsCommand,
+  handleSetSessionNameCommand,
+} from './sessionInfoCommands'
+import {
+  handleForkSessionCommand,
+  handleNavigateTreeCommand,
+  handleReloadSessionCommand,
+  handleStartSessionCommand,
+  handleStopCommand,
+} from './sessionFlowCommands'
+import {
+  handleExtensionUiResponseCommand,
+  handleGetDefaultProjectTrustCommand,
+  handleGetModelsCommand,
+  handleGetProvidersCommand,
+  handleGetSettingsCommand,
+  handleInvalidateModelsCommand,
+  handleLoginProviderCommand,
+  handleLogoutProviderCommand,
+  handleRemoveProviderKeyCommand,
+  handleResolveProviderPromptCommand,
+  handleSaveSettingsCommand,
+  handleSetDefaultProjectTrustCommand,
+  handleSetProviderKeyCommand,
+} from './providerCommands'
+import {
+  handleExecuteBashCommand,
+  handleFollowUpCommand,
+  handlePromptCommand,
+  handleSetModelCommand,
+  handleSetThinkingCommand,
+  handleSteerCommand,
+} from './conversationCommands'
 
 export type { SessionReadyPayload, SidecarCommand, SidecarMessage }
 
-// ─── State ─────────────────────────────────────────────────────────────────────
+// Supply-chain hardening runs via the sidecarEnv import inside sidecarContext
+// (evaluated before every other sidecar module side effect).
 
-type SessionState = {
-  session: Awaited<ReturnType<typeof createAgentSession>>['session']
-  cwd: string
-  workspaceTrusted: boolean
-  unsubscribe: () => void
-}
-
-let state: SessionState | null = null
-let _modelRuntimePromise: Promise<ModelRuntime> | null = null
-let _cachedResourceLoader: {
-  cwd: string
-  workspaceTrusted: boolean
-  loader: InstanceType<typeof DefaultResourceLoader>
-} | null = null
-
-// ─── Port ─────────────────────────────────────────────────────────────────────
-
-// Align with Pi 0.75.4 supply-chain hardening: skip lifecycle scripts on every
-// npm/pnpm/yarn invocation the SDK performs. Safe to call at module load.
-enforceIgnoreScriptsEnv()
-
-type ParentPort = {
-  postMessage(msg: unknown): void
-  on(event: 'message', listener: (message: unknown) => void): void
-}
-
-function createParentPort(): ParentPort | null {
-  const electronParentPort = (process as unknown as { parentPort?: ParentPort }).parentPort
-  if (electronParentPort) return electronParentPort
-
-  if (typeof process.send !== 'function') return null
-  return {
-    postMessage(msg: unknown): void {
-      process.send?.(msg)
-    },
-    on(_event: 'message', listener: (message: unknown) => void): void {
-      process.on('message', listener)
-    },
-  }
-}
-
-const maybeParentPort = createParentPort()
-if (!maybeParentPort) {
-  process.stderr.write('[piSidecar] No parent port — must run as utilityProcess or Node fork\n')
-  process.exit(1)
-}
-const parentPort: ParentPort = maybeParentPort
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function send(msg: SidecarMessage): void {
-  parentPort.postMessage(msg)
-}
-
-function getAgentDir(): string {
-  return path.join(os.homedir(), '.pi', 'agent')
-}
-
-function getModelRuntime(): Promise<ModelRuntime> {
-  const agentDir = getAgentDir()
-  _modelRuntimePromise ??= ModelRuntime.create({
-    authPath: path.join(agentDir, 'auth.json'),
-    modelsPath: path.join(agentDir, 'models.json'),
-  })
-  return _modelRuntimePromise
-}
-
-async function invalidateModelRuntime(): Promise<void> {
-  if (!_modelRuntimePromise) return
-  const modelRuntime = await _modelRuntimePromise
-  // Refresh the existing runtime so extension-registered providers are preserved.
-  await modelRuntime.refresh({ allowNetwork: false })
-}
-
-const providerAuthBridge = new ProviderAuthBridge((requestId, event) => {
-  send({ type: 'provider_login_event', requestId, event })
-})
-
-function outputLine(level: 'info' | 'warn' | 'error', text: string): void {
-  send({ type: 'output_append', line: { level, text, ts: Date.now() } })
-}
-
-function stripFrontmatter(content: string): string {
-  const trimmed = content.trimStart()
-  if (!trimmed.startsWith('---')) return trimmed
-  const afterOpen = trimmed.slice(3)
-  const closeIdx = afterOpen.indexOf('\n---')
-  if (closeIdx === -1) return trimmed
-  return afterOpen.slice(closeIdx + 4).trimStart()
-}
-
-function expandSkillCommandForContext(
-  text: string,
-  session: Awaited<ReturnType<typeof createAgentSession>>['session']
-): { text: string; expanded: boolean } {
-  if (!text.startsWith('/skill:')) return { text, expanded: false }
-  const spaceIndex = text.indexOf(' ')
-  const skillName = spaceIndex === -1 ? text.slice(7) : text.slice(7, spaceIndex)
-  const args = spaceIndex === -1 ? '' : text.slice(spaceIndex + 1).trim()
-  const skill = session.resourceLoader
-    .getSkills()
-    .skills.find((candidate) => candidate.name === skillName)
-  if (!skill) return { text, expanded: false }
-  const body = stripFrontmatter(fs.readFileSync(skill.filePath, 'utf-8')).trim()
-  const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`
-  return { text: args ? `${skillBlock}\n\n${args}` : skillBlock, expanded: true }
-}
-
-function slashInvocationName(text: string): string | null {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith('/')) return null
-  const name = trimmed.slice(1).split(/\s+/, 1)[0]?.trim()
-  return name || null
-}
-
-function isKnownSessionSlashCommand(
-  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
-  invocationName: string
-): boolean {
-  if (invocationName.startsWith('skill:')) {
-    const skillName = invocationName.slice('skill:'.length)
-    return session.resourceLoader.getSkills().skills.some((skill) => skill.name === skillName)
-  }
-  return (
-    session.extensionRunner
-      .getRegisteredCommands()
-      .some((command) => command.invocationName === invocationName) ||
-    session.promptTemplates.some((template) => template.name === invocationName)
-  )
-}
-
-function sendUnsupportedSlashCommand(invocationName: string): void {
-  send({
-    type: 'session_event',
-    event: {
-      type: 'message_start',
-      message: {
-        role: 'custom',
-        content: `/${invocationName} is not available in OpenPi. Extension commands and prompt templates are supported; TUI-only commands are hidden from the picker until they have desktop handlers.`,
-        details: { level: 'warn' },
-        timestamp: Date.now(),
-      },
-    },
-  })
-}
-
-/**
- * Build the final prompt text sent to Pi SDK.
- * Always runs expansion (skill commands, then prompt templates) regardless of contextPrefix.
- */
-function buildSidecarPromptText(
-  text: string,
-  contextPrefix: string | undefined,
-  session: Awaited<ReturnType<typeof createAgentSession>>['session']
-): string {
-  const trimmed = text.trim()
-  const prefix = contextPrefix?.trim()
-
-  // 1. Try skill command expansion
-  const skillExpanded = expandSkillCommandForContext(trimmed, session)
-  if (skillExpanded.expanded) {
-    return prefix ? `${prefix}\n\n${skillExpanded.text}` : skillExpanded.text
-  }
-
-  // 3. Try prompt template expansion (user-installed .md templates)
-  const templateExpanded = expandPromptTemplateText(trimmed, session.promptTemplates)
-  if (templateExpanded.expanded) {
-    return prefix ? `${prefix}\n\n${templateExpanded.text}` : templateExpanded.text
-  }
-
-  // 4. Fall through: wrap raw text with context prefix if present
-  return prefix ? `${prefix}\n\n${trimmed}` : trimmed
-}
-
-async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
-  const agentDir = getAgentDir()
-  if (
-    _cachedResourceLoader &&
-    _cachedResourceLoader.cwd === cwd &&
-    _cachedResourceLoader.workspaceTrusted === workspaceTrusted
-  ) {
-    return _cachedResourceLoader.loader
-  }
-
-  const fileSettingsManager = SettingsManager.create(cwd, agentDir)
-  const settingsManager = workspaceTrusted
-    ? fileSettingsManager
-    : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
-  // When the workspace is not yet trusted, project-local extensions (.pi/extensions)
-  // are blocked by noExtensions=true — they're unknown third-party code.
-  // Global extensions (~/.pi/agent/extensions) are the user's own trusted code and
-  // MUST always load regardless of workspace trust (e.g. copilot-provider.ts registers
-  // the github-copilot provider; blocking it causes "No API key found" errors).
-  //
-  // We pass agentDir (not agentDir/extensions) as the additional path. The SDK's
-  // collectPackageResources treats the path as a "package root" and scans for an
-  // extensions/ subdirectory inside it — exactly what we need. If we passed
-  // agentDir/extensions directly it would look for extensions/extensions/ (wrong),
-  // fall back to adding the directory itself, and loadExtension would fail trying
-  // to jiti.import() a directory.
-  const noExtensions = !workspaceTrusted
-  const loader = new DefaultResourceLoader({
-    cwd,
-    agentDir,
-    settingsManager,
-    noExtensions,
-    additionalExtensionPaths: noExtensions ? [agentDir] : [],
-  })
-  try {
-    await loader.reload()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    outputLine(
-      'warn',
-      `[packages] One or more Pi packages failed to install and were skipped: ${msg}`
-    )
-  }
-  _cachedResourceLoader = { cwd, workspaceTrusted, loader }
-  return loader
-}
-
-// ─── Session management ────────────────────────────────────────────────────────
-
-/**
- * Emit session_shutdown to extensions before disposing a session.
- * This lets extensions (e.g. pi-sub-bar) clean up timers and release
- * captured ctx references. Without this, timers fire with stale ctx
- * and crash the sidecar.
- */
-async function emitSessionShutdown(
-  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
-  reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
-): Promise<void> {
-  try {
-    // `session.extensionRunner` is a public typed getter in the Pi SDK.
-    // `emit` iterates registered handlers; no-op when none are subscribed.
-    await session.extensionRunner.emit({ type: 'session_shutdown', reason })
-  } catch {
-    // Never let extension errors block session disposal
-  }
-}
-
-async function stopSession(
-  session: Awaited<ReturnType<typeof createAgentSession>>['session'],
-  reason: 'quit' | 'reload' | 'new' | 'resume' | 'fork'
-): Promise<void> {
-  // Settle any blocking extension UI prompt first so its dialogPromise
-  // .finally emits ui_prompt_end before the session event stream shuts down.
-  rejectAllExtensionUiPending(`session ${reason}`)
-  await teardownSession(session, () => emitSessionShutdown(session, reason))
-}
-
-async function startSession(
-  cwd: string,
-  opts: {
-    sessionFile?: string
-    forkEntryId?: string
-    requestId?: string
-    workspaceTrusted?: boolean
-  } = {}
-): Promise<void> {
-  // Validate fork identity before disposing the active session so malformed or
-  // stale renderer entry IDs cannot leave the sidecar without a session.
-  let preparedForkFile: string | undefined
-  if (opts.sessionFile && opts.forkEntryId) {
-    const preflightManager = SessionManager.open(opts.sessionFile, undefined, cwd)
-    preparedForkFile = preflightManager.createBranchedSession(opts.forkEntryId) ?? undefined
-    if (!preparedForkFile) throw new Error(`Cannot fork: entry not found (${opts.forkEntryId})`)
-  }
-
-  // Dispose previous session — emit session_shutdown first so extensions
-  // (e.g. pi-task polling) clear timers and drop captured `pi` before ctx invalidates.
-  if (state) {
-    const previous = state
-    state = null
-    previous.unsubscribe()
-    const shutdownReason: 'new' | 'resume' | 'fork' = opts.forkEntryId
-      ? 'fork'
-      : opts.sessionFile
-        ? 'resume'
-        : 'new'
-    await stopSession(previous.session, shutdownReason)
-  }
-
-  const agentDir = getAgentDir()
-  const modelRuntime = await getModelRuntime()
-  const fileSettingsManager = SettingsManager.create(cwd, agentDir)
-  const workspaceTrusted = opts.workspaceTrusted ?? false
-  const settingsManager = workspaceTrusted
-    ? fileSettingsManager
-    : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
-  const sessionManager = preparedForkFile
-    ? SessionManager.open(preparedForkFile, undefined, cwd)
-    : opts.sessionFile
-      ? SessionManager.open(opts.sessionFile, undefined, cwd)
-      : SessionManager.create(cwd)
-
-  const resourceLoader = await getResourceLoader(cwd, workspaceTrusted)
-
-  const { session } = await createAgentSession({
-    cwd,
-    agentDir,
-    sessionManager,
-    modelRuntime,
-    settingsManager,
-    resourceLoader,
-  })
-
-  const extensionUiSinks = {
-    sessionEvent: (event: Record<string, unknown>) => {
-      send({ type: 'session_event', event })
-    },
-    postExtensionUiRequest: (
-      request: import('../../src/lib/extensionUiTypes').ExtensionUiRequest
-    ) => {
-      send({ type: 'extension_ui_request', request })
-    },
-  }
-
-  try {
-    await session.bindExtensions({
-      uiContext: createOpenPiExtensionUIContext(extensionUiSinks),
-      mode: 'rpc',
-      commandContextActions: {
-        waitForIdle: () => session.agent.waitForIdle(),
-        newSession: async () => ({ cancelled: true }),
-        fork: async () => ({ cancelled: true }),
-        navigateTree: async () => ({ cancelled: true }),
-        switchSession: async () => ({ cancelled: true }),
-        reload: async () => {
-          await session.reload()
-        },
-      },
-      onError: (err) => {
-        // Suppress the benign "stale extension ctx" errors from pi-task.
-        // pi-task's background polling captures `pi` (ExtensionAPI); when
-        // our reload path does a full session replacement, in-flight async
-        // work briefly calls `pi.sendMessage` on the now-stale ctx. The
-        // SDK throws messages starting with "This extension ctx is stale
-        // after session replacement or reload..." which surface as noisy
-        // extension_error events. They are harmless — the new session is
-        // already running. Filter them so the user only sees real errors.
-        const msg = err.error
-        if (isStaleExtensionCtxMessage(msg)) return
-        outputLine('error', `[extension] ${err.extensionPath} (${err.event}): ${msg}`)
-      },
+async function handleCommand(cmd: SidecarCommand): Promise<void> {
+  if (isResourceCommand(cmd)) {
+    await handleResourceCommand(cmd, {
+      getCwd: () => getState()?.cwd ?? null,
+      getSession: () => getState()?.session ?? null,
+      getResourceLoader,
+      send,
     })
-  } catch (err) {
-    outputLine(
-      'error',
-      `[openpi] bindExtensions failed: ${err instanceof Error ? err.message : String(err)}`
-    )
+    return
   }
 
-  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-    if (isStaleExtensionCtxEvent(event)) return
-
-    send({ type: 'session_event', event: event as Record<string, unknown> })
-
-    const ev = event as {
-      type: string
-      success?: boolean
-      finalError?: string
-      errorMessage?: string
-      message?: string
+  switch (cmd.type) {
+    case 'start_session':
+      return handleStartSessionCommand(cmd)
+    case 'prompt':
+      return handlePromptCommand(cmd)
+    case 'steer':
+      return handleSteerCommand(cmd)
+    case 'follow_up':
+      return handleFollowUpCommand(cmd)
+    case 'abort':
+      return handleAbortCommand(cmd)
+    case 'execute_bash':
+      return handleExecuteBashCommand(cmd)
+    case 'set_model':
+      return handleSetModelCommand(cmd)
+    case 'set_thinking':
+      return handleSetThinkingCommand(cmd)
+    case 'set_session_name':
+      return handleSetSessionNameCommand(cmd)
+    case 'get_session_info':
+      return handleGetSessionInfoCommand(cmd)
+    case 'compact':
+      return handleCompactCommand(cmd)
+    case 'reload_session':
+      return handleReloadSessionCommand(cmd)
+    case 'copy_last_assistant_text':
+      return handleCopyLastAssistantTextCommand(cmd)
+    case 'fork_session':
+      return handleForkSessionCommand(cmd)
+    case 'navigate_tree':
+      return handleNavigateTreeCommand(cmd)
+    case 'get_stats':
+      return handleGetStatsCommand(cmd)
+    case 'get_models':
+      return handleGetModelsCommand(cmd)
+    case 'get_settings':
+      return handleGetSettingsCommand(cmd)
+    case 'save_settings':
+      return handleSaveSettingsCommand(cmd)
+    case 'get_default_project_trust':
+      return handleGetDefaultProjectTrustCommand(cmd)
+    case 'set_default_project_trust':
+      return handleSetDefaultProjectTrustCommand(cmd)
+    case 'get_providers':
+      return handleGetProvidersCommand(cmd)
+    case 'set_provider_key':
+      return handleSetProviderKeyCommand(cmd)
+    case 'remove_provider_key':
+      return handleRemoveProviderKeyCommand(cmd)
+    case 'invalidate_models':
+      return handleInvalidateModelsCommand(cmd)
+    case 'login_provider':
+      return handleLoginProviderCommand(cmd)
+    case 'logout_provider':
+      return handleLogoutProviderCommand(cmd)
+    case 'resolve_provider_prompt':
+      return handleResolveProviderPromptCommand(cmd)
+    case 'extension_ui_response':
+      return handleExtensionUiResponseCommand(cmd)
+    case 'stop':
+      return handleStopCommand(cmd)
+    default: {
+      // Compile-time exhaustiveness: every SidecarCommand variant must be
+      // dispatched above; a new variant fails to compile here.
+      const _exhaustive: never = cmd
+      return _exhaustive
     }
-
-    if (ev.type === 'agent_end') {
-      send({ type: 'session_index_updated' })
-    }
-
-    if (ev.type === 'extension_error') {
-      const extErr = ev as { extensionPath?: string; event?: string; error?: string }
-      outputLine(
-        'error',
-        `[extension] ${extErr.extensionPath ?? 'unknown'} (${extErr.event ?? 'error'}): ${extErr.error ?? 'extension error'}`
-      )
-    }
-
-    if (ev.type === 'auto_retry_end' && ev.success === false) {
-      outputLine('warn', `[retry] ${ev.finalError ?? 'Auto-retry failed'}`)
-    }
-
-    if (ev.type === 'compaction_end' && ev.errorMessage) {
-      outputLine('error', `[compaction] ${ev.errorMessage}`)
-    }
-  })
-
-  state = { session, cwd, workspaceTrusted, unsubscribe }
-
-  const model = session.model as
-    | { id: string; name: string; provider: string; reasoning?: boolean; contextWindow?: number }
-    | undefined
-
-  const payload: SessionReadyPayload = {
-    cwd,
-    sessionFile: session.sessionFile ?? null,
-    sessionId: session.sessionId ?? null,
-    sessionName: opts.sessionFile ? null : null, // main process resolves display name from SQLite
-    model: model
-      ? {
-          id: model.id,
-          name: model.name,
-          provider: model.provider,
-          reasoning: model.reasoning ?? false,
-          contextWindow: model.contextWindow ?? 0,
-        }
-      : null,
-    thinkingLevel: (session.thinkingLevel as string | undefined) ?? null,
-  }
-
-  send({ type: 'session_ready', requestId: opts.requestId, payload })
-
-  // The SDK does not emit events for extension load failures — it collects
-  // them on the resource loader (pi's CLI prints them itself). Without this,
-  // a broken extension (throwing factory, wrong export) or a resource
-  // conflict (same tool/command name from two extensions) silently vanishes:
-  // the session starts and nothing explains the missing tools, commands, or
-  // providers. Sent AFTER session_ready: the renderer resets conversation
-  // state on ready, so anything sent earlier would be discarded.
-  for (const loadError of resourceLoader.getExtensions().errors) {
-    outputLine('error', `[extension] ${loadError.path} (load): ${loadError.error}`)
-    send({
-      type: 'session_event',
-      event: {
-        type: 'extension_error',
-        extensionPath: loadError.path,
-        event: 'load',
-        error: loadError.error,
-      },
-    })
   }
 }
-
-// ─── Command handler ────────────────────────────────────────────────────────────
 
 const queueCommand = createSidecarCommandQueue(handleCommand)
 
-parentPort.on('message', (message) => {
+onParentMessage((message) => {
   const rawCommand =
     message && typeof message === 'object' && 'data' in message ? message.data : message
   const parsedCommand = sidecarCommandSchema.safeParse(rawCommand)
@@ -500,556 +175,6 @@ parentPort.on('message', (message) => {
     })
   })
 })
-
-async function handleCommand(cmd: SidecarCommand): Promise<void> {
-  if (isResourceCommand(cmd)) {
-    await handleResourceCommand(cmd, {
-      getCwd: () => state?.cwd ?? null,
-      getSession: () => state?.session ?? null,
-      getResourceLoader,
-      send,
-    })
-    return
-  }
-
-  switch (cmd.type) {
-    case 'start_session': {
-      try {
-        await startSession(cmd.cwd, {
-          sessionFile: cmd.sessionFile,
-          forkEntryId: cmd.forkEntryId,
-          requestId: cmd.requestId,
-          workspaceTrusted: cmd.workspaceTrusted,
-        })
-      } catch (err) {
-        send({
-          type: 'session_error',
-          requestId: cmd.requestId,
-          message: err instanceof Error ? err.message : String(err),
-        })
-      }
-      break
-    }
-
-    case 'prompt': {
-      if (!state) return
-      const trimmed = cmd.text.trim()
-      const invocationName = slashInvocationName(trimmed)
-      if (invocationName) {
-        if (!isKnownSessionSlashCommand(state.session, invocationName)) {
-          sendUnsupportedSlashCommand(invocationName)
-          break
-        }
-        await state.session.prompt(trimmed)
-      } else {
-        const promptText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
-        await state.session.prompt(promptText)
-      }
-      break
-    }
-
-    case 'steer': {
-      if (!state) return
-      const steerText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
-      await state.session.steer(steerText)
-      break
-    }
-
-    case 'follow_up': {
-      if (!state) return
-      const followUpText = buildSidecarPromptText(cmd.text, cmd.contextPrefix, state.session)
-      await state.session.followUp(followUpText)
-      break
-    }
-
-    case 'abort': {
-      if (!state) return
-      await state.session.abort()
-      break
-    }
-
-    case 'execute_bash': {
-      if (!state) {
-        send({ type: 'bash_result', requestId: cmd.requestId, result: null })
-        return
-      }
-      const result = await state.session.executeBash(cmd.command, undefined, {
-        excludeFromContext: cmd.excludeFromContext,
-      })
-      send({ type: 'bash_result', requestId: cmd.requestId, result })
-      break
-    }
-
-    case 'set_model': {
-      if (!state) return
-      const model = (await getModelRuntime()).getModel(cmd.provider, cmd.modelId)
-      if (!model) return
-      // Pi 0.85.0 changed setModel/setThinkingLevel to be session-scoped by
-      // default (persist only with an explicit option). OpenPi's model selector
-      // has always saved the global default, so pass persist: true to keep that
-      // behavior instead of silently regressing the user's saved model.
-      await state.session.setModel(model, { persist: true })
-      break
-    }
-
-    case 'set_thinking': {
-      if (!state) return
-      state.session.setThinkingLevel(
-        cmd.level as Parameters<typeof state.session.setThinkingLevel>[0],
-        { persist: true }
-      )
-      break
-    }
-
-    case 'set_session_name': {
-      if (!state) return
-      state.session.setSessionName(cmd.name)
-      break
-    }
-
-    case 'get_session_info': {
-      if (!state) {
-        send({
-          type: 'session_info_result',
-          requestId: cmd.requestId,
-          info: {
-            sessionFile: null,
-            sessionId: null,
-            sessionName: null,
-            model: null,
-            thinkingLevel: null,
-            messageCount: 0,
-            contextUsagePercent: null,
-            contextTokens: null,
-            contextWindow: null,
-          },
-        })
-        break
-      }
-      const session = state.session
-      const stats = session.getSessionStats()
-      const ctx = stats.contextUsage ?? session.getContextUsage()
-      const model = session.model as
-        | {
-            id: string
-            name: string
-            provider: string
-            reasoning?: boolean
-            contextWindow?: number
-          }
-        | undefined
-      const messages = (session.agent as { state?: { messages?: unknown[] } }).state?.messages ?? []
-      send({
-        type: 'session_info_result',
-        requestId: cmd.requestId,
-        info: {
-          sessionFile: stats.sessionFile ?? session.sessionFile ?? null,
-          sessionId: stats.sessionId ?? session.sessionId ?? null,
-          sessionName: session.sessionName ?? null,
-          model: model
-            ? {
-                id: model.id,
-                name: model.name,
-                provider: model.provider,
-                reasoning: model.reasoning ?? false,
-                contextWindow: model.contextWindow ?? 0,
-              }
-            : null,
-          thinkingLevel: (session.thinkingLevel as string | undefined) ?? null,
-          messageCount: messages.length,
-          contextUsagePercent: ctx?.percent ?? null,
-          contextTokens: ctx?.tokens ?? null,
-          contextWindow: ctx?.contextWindow ?? null,
-        },
-      })
-      break
-    }
-
-    case 'compact': {
-      if (!state) {
-        send({
-          type: 'error',
-          requestId: cmd.requestId,
-          message: 'No active session',
-        })
-        break
-      }
-      // Pi SDK's session.compact() emits `compaction_start` and
-      // `compaction_end` events. The session event bridge already
-      // forwards them to the renderer, so the UI updates naturally.
-      try {
-        await state.session.compact(cmd.customInstructions)
-        send({ type: 'compact_result', requestId: cmd.requestId })
-      } catch (err) {
-        send({
-          type: 'error',
-          requestId: cmd.requestId,
-          message: err instanceof Error ? err.message : String(err),
-        })
-      }
-      break
-    }
-
-    case 'reload_session': {
-      if (!state) {
-        send({
-          type: 'error',
-          requestId: cmd.requestId,
-          message: 'No active session',
-        })
-        break
-      }
-      // /reload triggers an SDK session.reload() which invalidates all
-      // extension ctxs. pi-task captures `pi` (ExtensionAPI) in its background
-      // polling closure, so in-flight async work calls `pi.sendMessage` on
-      // a stale ctx and throws "this extension ctx is stale...".
-      //
-      // The safe path is a full session replacement: dispose the current
-      // session (atomically destroying its extension runner + timers) and
-      // create a new one with the same session file. All old extension state
-      // goes away cleanly; new state is re-initialized.
-      try {
-        const previous = state
-        state = null
-        previous.unsubscribe()
-        await stopSession(previous.session, 'reload')
-        await startSession(previous.cwd, {
-          sessionFile: previous.session.sessionFile ?? undefined,
-          requestId: cmd.requestId,
-          workspaceTrusted: previous.workspaceTrusted,
-        })
-      } catch (err) {
-        send({
-          type: 'error',
-          requestId: cmd.requestId,
-          message: err instanceof Error ? err.message : String(err),
-        })
-      }
-      break
-    }
-
-    case 'copy_last_assistant_text': {
-      if (!state) {
-        send({
-          type: 'error',
-          requestId: cmd.requestId,
-          message: 'No active session',
-        })
-        break
-      }
-      const text = state.session.getLastAssistantText() ?? null
-      send({
-        type: 'last_assistant_text_result',
-        requestId: cmd.requestId,
-        text,
-      })
-      break
-    }
-
-    case 'fork_session': {
-      if (!state) {
-        send({ type: 'error', requestId: cmd.requestId, message: 'No active session' })
-        return
-      }
-
-      // Resolve the fork entry ID.
-      //
-      // During live streaming, sessionEvents.ts assigns synthetic display IDs
-      // ("u-{timestampMs}" for user messages, "a-{timestampMs}" for assistant)
-      // because the Pi SDK's message_start event does not include the real
-      // session entry ID. These synthetic IDs are NOT valid Pi session entry IDs
-      // and cause "Entry not found" errors inside createBranchedSession().
-      //
-      // Resolution strategy: extract the encoded Unix timestamp from the synthetic
-      // ID and find the matching session entry via sessionManager.getEntries().
-      // By the time the user can click Fork, message_end has fired and
-      // sessionManager.appendMessage() has persisted the entry — so getEntries()
-      // will contain the real entry with the correct timestamp.
-      let forkEntryId = cmd.entryId
-      const syntheticMatch = /^[ua]-(-?\d+)$/.exec(cmd.entryId)
-      if (syntheticMatch) {
-        const timestampMs = Number(syntheticMatch[1])
-        const entries = state.session.sessionManager.getEntries()
-        const match = entries.find((e) => {
-          if (e.type !== 'message') return false
-          const msg = e.message as { timestamp?: number }
-          return typeof msg.timestamp === 'number' && msg.timestamp === timestampMs
-        })
-        if (!match) {
-          throw new Error(
-            `Cannot fork: no session entry found with timestamp ${timestampMs} (id: ${cmd.entryId}). The message may still be streaming.`
-          )
-        }
-        forkEntryId = match.id
-      }
-
-      await startSession(state.cwd, {
-        sessionFile: state.session.sessionFile ?? undefined,
-        forkEntryId,
-        requestId: cmd.requestId,
-        workspaceTrusted: cmd.workspaceTrusted,
-      })
-      break
-    }
-
-    case 'navigate_tree': {
-      if (!state) {
-        send({ type: 'error', requestId: cmd.requestId, message: 'No active session' })
-        return
-      }
-      // Pi's own tree navigation: moves the leaf pointer in this file (no fork),
-      // rebuilds the agent context from the new leaf, and reports the target
-      // user message text so the composer can offer it for editing.
-      const result = await state.session.navigateTree(cmd.entryId)
-      send({
-        type: 'navigate_tree_result',
-        requestId: cmd.requestId,
-        result: {
-          cancelled: result.cancelled,
-          leafId: state.session.sessionManager.getLeafId(),
-          editorText: result.editorText,
-        },
-      })
-      break
-    }
-
-    case 'get_stats': {
-      if (!state) {
-        send({
-          type: 'stats_result',
-          requestId: cmd.requestId,
-          stats: {
-            inputTokens: 0,
-            outputTokens: 0,
-            cacheReadTokens: 0,
-            cacheWriteTokens: 0,
-            cost: 0,
-            contextUsagePercent: null,
-            contextTokens: null,
-            contextWindow: null,
-            sessionFile: null,
-            sessionId: null,
-            isStreaming: false,
-          },
-        })
-        return
-      }
-      // Use the Pi SDK's authoritative pre-computed stats —
-      // do NOT manually sum from agent.state.messages (wrong data source).
-      const sdkStats = state.session.getSessionStats()
-      // contextUsage gives current context window fill (what Pi TUI shows),
-      // NOT the cumulative session totals from getSessionStats().tokens.
-      const ctxUsage = sdkStats.contextUsage ?? state.session.getContextUsage()
-      send({
-        type: 'stats_result',
-        requestId: cmd.requestId,
-        stats: {
-          inputTokens: sdkStats.tokens.input,
-          outputTokens: sdkStats.tokens.output,
-          cacheReadTokens: sdkStats.tokens.cacheRead,
-          cacheWriteTokens: sdkStats.tokens.cacheWrite,
-          cost: sdkStats.cost,
-          contextUsagePercent: ctxUsage?.percent ?? null,
-          contextTokens: ctxUsage?.tokens ?? null,
-          contextWindow: ctxUsage?.contextWindow ?? null,
-          sessionFile: sdkStats.sessionFile ?? state.session.sessionFile ?? null,
-          sessionId: sdkStats.sessionId ?? state.session.sessionId ?? null,
-          isStreaming:
-            (state.session.agent as unknown as { state?: { isStreaming?: boolean } }).state
-              ?.isStreaming ?? false,
-        },
-      })
-      break
-    }
-
-    case 'get_models': {
-      const models = await (await getModelRuntime()).getAvailable()
-      const mapped = models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        provider: model.provider,
-        reasoning: model.reasoning ?? false,
-        contextWindow: model.contextWindow ?? 0,
-      }))
-      send({ type: 'models_result', requestId: cmd.requestId, models: mapped })
-      break
-    }
-
-    case 'get_settings': {
-      const agentDir = getAgentDir()
-      const settingsManager = state
-        ? SettingsManager.create(state.cwd, agentDir)
-        : SettingsManager.create(agentDir, agentDir)
-      const global = settingsManager.getGlobalSettings()
-      const project = state ? settingsManager.getProjectSettings() : {}
-      const effective = { ...global, ...project }
-      send({
-        type: 'settings_result',
-        requestId: cmd.requestId,
-        result: { global, project, effective },
-      })
-      break
-    }
-
-    case 'save_settings': {
-      const agentDir = getAgentDir()
-      const settingsPath =
-        cmd.scope === 'global'
-          ? path.join(agentDir, 'settings.json')
-          : path.join(state?.cwd ?? agentDir, '.pi', 'settings.json')
-      fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
-      fs.writeFileSync(settingsPath, `${JSON.stringify(cmd.settings, null, 2)}\n`, 'utf-8')
-      // Reload resource loader cache after settings change
-      _cachedResourceLoader = null
-      break
-    }
-
-    case 'get_default_project_trust': {
-      if (!state) {
-        send({
-          type: 'default_project_trust_result',
-          requestId: cmd.requestId,
-          defaultProjectTrust: 'ask',
-        })
-        break
-      }
-      const agentDir = getAgentDir()
-      const settingsManager = SettingsManager.create(state.cwd, agentDir)
-      const value = settingsManager.getDefaultProjectTrust()
-      send({
-        type: 'default_project_trust_result',
-        requestId: cmd.requestId,
-        defaultProjectTrust: value,
-      })
-      break
-    }
-
-    case 'set_default_project_trust': {
-      if (!state) return
-      const agentDir = getAgentDir()
-      const settingsManager = SettingsManager.create(state.cwd, agentDir)
-      settingsManager.setDefaultProjectTrust(cmd.defaultProjectTrust)
-      break
-    }
-
-    case 'get_providers': {
-      const modelRuntime = await getModelRuntime()
-      await modelRuntime.getAvailable()
-      const credentialTypes = new Map(
-        (await modelRuntime.listCredentials()).map(({ providerId, type }) => [providerId, type])
-      )
-      const providerModelCounts = new Map<string, number>()
-      for (const model of modelRuntime.getModels()) {
-        providerModelCounts.set(model.provider, (providerModelCounts.get(model.provider) ?? 0) + 1)
-      }
-      const providers = modelRuntime.getProviders().map((provider) => {
-        const status = modelRuntime.getProviderAuthStatus(provider.id)
-        const storedType = credentialTypes.get(provider.id)
-        const credentialType = storedType
-          ? storedType
-          : status.source === 'environment'
-            ? 'env'
-            : status.configured
-              ? 'other'
-              : undefined
-        const authMethods: Array<'api_key' | 'oauth'> = []
-        if (provider.auth.apiKey?.login) authMethods.push('api_key')
-        if (provider.auth.oauth) authMethods.push('oauth')
-        return {
-          id: provider.id,
-          displayName: provider.name,
-          configured: status.configured,
-          modelCount: providerModelCounts.get(provider.id) ?? 0,
-          source: status.source,
-          credentialType,
-          authMethods,
-        }
-      })
-      send({ type: 'providers_result', requestId: cmd.requestId, providers })
-      break
-    }
-
-    case 'set_provider_key': {
-      const modelRuntime = await getModelRuntime()
-      const promptState = { keyUsed: false }
-      await modelRuntime.login(cmd.provider, 'api_key', {
-        prompt: async (prompt) =>
-          answerApiKeyPrompt({
-            prompt,
-            apiKey: cmd.apiKey,
-            providerName: modelRuntime.getProvider(cmd.provider)?.name ?? cmd.provider,
-            state: promptState,
-          }),
-        notify: () => {},
-      })
-      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
-      break
-    }
-
-    case 'remove_provider_key': {
-      await (await getModelRuntime()).logout(cmd.provider)
-      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
-      break
-    }
-
-    case 'invalidate_models': {
-      await invalidateModelRuntime()
-      break
-    }
-
-    case 'login_provider': {
-      try {
-        const modelRuntime = await getModelRuntime()
-        await modelRuntime.login(
-          cmd.providerId,
-          'oauth',
-          providerAuthBridge.createInteraction(cmd.requestId, cmd.providerId)
-        )
-        send({ type: 'provider_login_event', requestId: cmd.requestId, event: { type: 'success' } })
-      } catch (err) {
-        send({
-          type: 'provider_login_event',
-          requestId: cmd.requestId,
-          event: providerLoginFailureEvent(err),
-        })
-      }
-      break
-    }
-
-    case 'logout_provider': {
-      await (await getModelRuntime()).logout(cmd.providerId)
-      send({ type: 'provider_mutation_result', requestId: cmd.requestId })
-      break
-    }
-
-    case 'resolve_provider_prompt':
-      providerAuthBridge.resolve(cmd.providerId, cmd.value)
-      break
-
-    case 'extension_ui_response': {
-      fulfillExtensionUiPending({
-        id: cmd.id,
-        cancelled: cmd.cancelled,
-        confirmed: cmd.confirmed,
-        value: cmd.value,
-        approved: cmd.approved,
-        remember: cmd.remember,
-      })
-      break
-    }
-
-    case 'stop': {
-      if (state) {
-        state.unsubscribe()
-        await stopSession(state.session, 'quit')
-        state = null
-      }
-      send({ type: 'stopped' })
-      setTimeout(() => process.exit(0), 100)
-      break
-    }
-  }
-}
 
 // ─── Boot ──────────────────────────────────────────────────────────────────────
 
