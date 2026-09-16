@@ -15,6 +15,7 @@ export const SystemMsg: Component<SystemMsgProps> = (props) => {
   const [expanded, setExpanded] = createSignal(false)
 
   const isCompaction = () => props.message.kind === 'compaction'
+  const isExtensionError = () => props.message.kind === 'extension'
   const modifiedFiles = () => props.message.modifiedFiles ?? []
   const readFiles = () => props.message.readFiles ?? []
   const hasFiles = () => modifiedFiles().length > 0 || readFiles().length > 0
@@ -24,10 +25,10 @@ export const SystemMsg: Component<SystemMsgProps> = (props) => {
     <div
       class={`system-message${
         isCompaction() && props.message.done && hasFiles() ? ' system-message--expandable' : ''
-      } ${props.message.done ? 'is-done' : 'is-pending'}`}
+      } ${props.message.done ? 'is-done' : 'is-pending'} ${isExtensionError() ? 'is-error' : ''}`}
     >
       <div class="system-msg-row">
-        <span class="system-msg-icon">{isCompaction() ? '⟳' : '↺'}</span>
+        <span class="system-msg-icon">{isCompaction() ? '⟳' : isExtensionError() ? '⚠' : '↺'}</span>
         <span class="system-msg-text">{props.message.text}</span>
 
         <Show when={isCompaction() && props.message.done && hasFiles()}>

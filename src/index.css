@@ -2573,6 +2573,10 @@ body.panel-dragging {
 .system-message.is-done {
   color: var(--graphite);
 }
+.system-message.is-error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
 /* Header row — icon + text + optional toggle */
 .system-msg-row {
   display: flex;

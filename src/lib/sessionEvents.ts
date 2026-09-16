@@ -290,6 +290,23 @@ export function applySessionEvent(
       return next
     }
 
+    case 'extension_error': {
+      // Load failures AND resource conflicts (Pi keeps conflicting extensions
+      // loaded and reports them through the same diagnostics array) arrive
+      // here, synthesized by the sidecar for load-time issues; runtime
+      // failures come from Pi itself. Same shape either way: extensionPath
+      // + error. Neutral wording — a conflict is not a load failure.
+      const e = event as { extensionPath?: string; error?: string }
+      const sys: SystemMessage = {
+        id: `ext-err-${Date.now()}`,
+        role: 'system',
+        kind: 'extension',
+        text: `Extension issue: ${e.extensionPath ?? 'unknown'} — ${e.error ?? 'error'}`,
+        done: true,
+      }
+      return [...messages, sys]
+    }
+
     default:
       // Unknown event — return the original array, no copy, no reactivity.
       return messages

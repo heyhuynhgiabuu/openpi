@@ -2,10 +2,14 @@
  * Scripted model provider for the shipped-path test.
  *
  * Loaded by Pi's extension loader inside the real sidecar process via
- * project-extension discovery (<cwd>/.pi/extensions). Plain JavaScript on
- * purpose: a TypeScript variant of this file silently failed to load in the
- * bundled sidecar, while identical .js extensions (with the same pi-ai import)
- * load and register fine — kept .js until that discrepancy is understood.
+ * project-extension discovery (<cwd>/.pi/extensions). Plain JavaScript works;
+ * a TypeScript version with the same content also loads and registers fine —
+ * an earlier "TS extensions silently fail" conclusion was a misdiagnosis of
+ * an incomplete provider config: a provider registered without `apiKey` is
+ * silently unusable (the model registry rejects it at selection time with no
+ * diagnostic — still true, and a Pi-level behavior, not surfaced here). What
+ * IS surfaced now: extension load failures, as extension_error events (see
+ * sidecar.ts).
  *
  * The provider never touches the network: the first stream call emits a
  * deterministic `write` tool call, and the call after the tool result emits a

@@ -450,6 +450,26 @@ async function startSession(
   }
 
   send({ type: 'session_ready', requestId: opts.requestId, payload })
+
+  // The SDK does not emit events for extension load failures — it collects
+  // them on the resource loader (pi's CLI prints them itself). Without this,
+  // a broken extension (throwing factory, wrong export) or a resource
+  // conflict (same tool/command name from two extensions) silently vanishes:
+  // the session starts and nothing explains the missing tools, commands, or
+  // providers. Sent AFTER session_ready: the renderer resets conversation
+  // state on ready, so anything sent earlier would be discarded.
+  for (const loadError of resourceLoader.getExtensions().errors) {
+    outputLine('error', `[extension] ${loadError.path} (load): ${loadError.error}`)
+    send({
+      type: 'session_event',
+      event: {
+        type: 'extension_error',
+        extensionPath: loadError.path,
+        event: 'load',
+        error: loadError.error,
+      },
+    })
+  }
 }
 
 // ─── Command handler ────────────────────────────────────────────────────────────

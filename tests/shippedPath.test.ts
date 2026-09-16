@@ -53,6 +53,7 @@ let workspace = ''
 let untouchedBefore: Buffer | null = null
 let sessionFile = ''
 let events: SessionEvent[] = []
+let messageOrder: string[] = []
 
 function send(command: Record<string, unknown>): void {
   if (!child) throw new Error('sidecar child is not running')
@@ -87,6 +88,13 @@ function onMessage(message: SidecarMessage): void {
     const event = message.event as SessionEvent
     events.push(event)
   }
+  // Ordering evidence: the renderer resets conversation state on session_ready,
+  // so diagnostics emitted before it would be discarded (regression guard).
+  messageOrder.push(
+    message.type === 'session_event'
+      ? `event:${(message.event as SessionEvent).type}`
+      : message.type
+  )
   const index = waiters.findIndex((waiter) => waiter.predicate(message))
   if (index !== -1) {
     const [waiter] = waiters.splice(index, 1)
@@ -151,6 +159,12 @@ beforeAll(async () => {
   const projectExtensions = path.join(workspace, '.pi', 'extensions')
   fs.mkdirSync(projectExtensions, { recursive: true })
   fs.copyFileSync(FIXTURE_PATH, path.join(projectExtensions, 'scripted-provider.js'))
+  // A sibling that fails to load: the session must still start, and the
+  // failure must surface as an extension_error event (asserted below).
+  fs.copyFileSync(
+    path.join(REPO_ROOT, 'tests', 'fixtures', 'broken-extension.js'),
+    path.join(projectExtensions, 'broken.js')
+  )
 
   child = fork(BUNDLE, [], {
     execPath: process.execPath,
@@ -226,6 +240,21 @@ describe('shipped path: sidecar → Pi agent loop → workspace', () => {
       (event) => event.type === 'tool_execution_start' && event.toolName === 'write'
     )
     expect(writeStart).toBeTruthy()
+
+    // The broken sibling surfaces instead of vanishing; the scripted provider
+    // (loaded from the same directory) still works.
+    // SAFETY: the sidecar forwards extension_error events verbatim with
+    // extensionPath/error string fields (sidecar.ts synthetic emission).
+    const extError = events.find((event) => event.type === 'extension_error') as
+      | { extensionPath?: string; error?: string }
+      | undefined
+    expect(extError?.extensionPath?.endsWith('broken.js')).toBe(true)
+    expect(extError?.error).toContain('valid factory function')
+    // …and arrives AFTER session_ready: the renderer resets conversation
+    // state on ready, so a pre-ready diagnostic would never be visible.
+    expect(messageOrder.indexOf('event:extension_error')).toBeGreaterThan(
+      messageOrder.indexOf('session_ready')
+    )
 
     // ── The truth: Pi's own JSONL session tree ─────────────────────────
     expect(fs.existsSync(sessionFile)).toBe(true)

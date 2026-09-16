@@ -34,3 +34,31 @@ describe('compaction event rendering', () => {
     )
   })
 })
+
+describe('extension error rendering', () => {
+  it('surfaces an extension load failure as a done system message', () => {
+    const messages = applySessionEvent([], {
+      type: 'extension_error',
+      extensionPath: '/ws/.pi/extensions/broken.js',
+      event: 'load',
+      error: 'Extension does not export a valid factory function: broken.js',
+    })
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({
+      role: 'system',
+      kind: 'extension',
+      done: true,
+      text: 'Extension issue: /ws/.pi/extensions/broken.js — Extension does not export a valid factory function: broken.js',
+    })
+  })
+
+  it('names the extension when only the path is known', () => {
+    const messages = applySessionEvent([], { type: 'extension_error', extensionPath: '/x/y.js' })
+    expect(messages[0]).toMatchObject({
+      role: 'system',
+      kind: 'extension',
+      text: 'Extension issue: /x/y.js — error',
+    })
+  })
+})

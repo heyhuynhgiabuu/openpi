@@ -3,13 +3,13 @@ import type { SessionHistoryMessage, SessionListItem, SessionListOptions } from 
 export type ToolCard = SessionHistoryMessage['toolCards'][number]
 
 /**
- * System message: surfaced for compaction and auto-retry events.
- * Never stored in the Pi JSONL — only lives in renderer state.
+ * System message: surfaced for compaction, auto-retry, and extension-error
+ * events. Never stored in the Pi JSONL — only lives in renderer state.
  */
 export type SystemMessage = {
   id: string
   role: 'system'
-  kind: 'compaction' | 'retry'
+  kind: 'compaction' | 'retry' | 'extension'
   text: string
   done: boolean
   // Compaction-specific — populated when kind === 'compaction' && done === true

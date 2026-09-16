@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- **Broken extensions no longer vanish silently** — when an extension fails to load (throwing factory, wrong export), OpenPi now shows an error card in the conversation and logs it, instead of starting the session with tools, commands, or providers mysteriously missing. Resource conflicts between extensions (same tool or command name) are surfaced through the same card. (Investigation also cleared the sidecar's TypeScript extension support: a `.ts` extension with a complete provider config loads and registers fine.)
 - **Git panel counts both halves of a staged-then-modified file** — a file with staged changes that was edited again (`MM`) showed only the staged delta in its `+N/-N` row; the working-tree changes are now included in the same row. (`cca8e75`)
 - **Diff line counts no longer misread content as diff headers** — a content line that begins with `-- ` or `++ ` was counted as a removal or addition, and lines outside hunks leaked into counts. Counting now tracks hunk state, and main and the renderer share one counter so the Git panel and the review cannot disagree about the same patch. (`1e0f72e`, `7f1eb57`, `0c17cfa`)
 - **Review snapshots and Git IPC hardened** — review snapshot and revert reads re-check containment and refuse a path swapped for a symlink mid-review, generated commit messages are schema-validated at the IPC boundary, and aborting a run now cancels a pending pre-apply review instead of leaving it waiting. (`9b22f73`)
