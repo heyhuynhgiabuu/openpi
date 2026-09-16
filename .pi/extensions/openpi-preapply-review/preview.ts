@@ -245,9 +245,10 @@ export interface WriteReviewParts {
  * preview never line-diffs), so it becomes a single hunk and approval is
  * all-or-nothing — a whole-file write has no meaningful middle. Returns null
  * when no meaningful hunk exists and the gate should fall back to the text
- * confirm: unusable input, an unchanged file, an empty create, or current
- * content that cannot be previewed (binary, too large — an overwrite the user
- * would approve blind).
+ * confirm: an unchanged file, an empty create, or current content that cannot
+ * be previewed (binary, too large — an overwrite the user would approve blind).
+ * Input that cannot be read at all also returns null; there the gate steps
+ * aside, because Pi's own tool validation rejects such a call.
  */
 export function writeReviewParts(
   input: Record<string, unknown>,

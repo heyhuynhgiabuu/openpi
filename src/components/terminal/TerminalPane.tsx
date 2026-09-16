@@ -59,7 +59,7 @@ export function TerminalPane(props: Props) {
     const snippet = snippetFromLines(lines)
     if (snippet !== lastPublished) {
       lastPublished = snippet
-      publishTerminalSnippet(snippet)
+      publishTerminalSnippet(props.id, snippet)
     }
   }
   createEffect(() => {
@@ -71,7 +71,7 @@ export function TerminalPane(props: Props) {
       // Hand the snippet over: a hidden tab must not speak for the workbench.
       if (lastPublished !== null) {
         lastPublished = null
-        publishTerminalSnippet(null)
+        publishTerminalSnippet(props.id, null)
       }
     })
   })

@@ -2,25 +2,42 @@
  * terminalSnippet — renderer-side store for the visible terminal's recent
  * output. The terminal panes publish; the workbench context bridge forwards
  * the latest snippet to main, where it feeds the steering context prefix.
+ *
+ * Publications are ownership-aware: the store remembers which pane last
+ * published, and a pane's clear only applies when it still owns the snippet.
+ * Tab switches re-run sibling panes' effects in creation order, so without
+ * ownership a newly visible pane's publish can be clobbered by a hidden
+ * sibling's clear.
  */
 
 import { createSignal } from 'solid-js'
 
 /** Hard cap so a chatty pane cannot balloon the context payload. */
-const MAX_SNIPPET_CHARS = 2_000
+export const MAX_SNIPPET_CHARS = 2_000
 
 /** How many recent non-empty lines a snippet carries. */
 export const SNIPPET_LINE_COUNT = 5
 
 const [snippet, setSnippet] = createSignal<string | null>(null)
+let owner: string | null = null
 
 export function terminalSnippet(): string | null {
   return snippet()
 }
 
-export function publishTerminalSnippet(value: string | null): void {
-  const trimmed = value?.trim()
-  setSnippet(trimmed ? trimmed.slice(-MAX_SNIPPET_CHARS) : null)
+export function publishTerminalSnippet(paneId: string, value: string | null): void {
+  if (value !== null) {
+    const trimmed = value.trim()
+    if (trimmed) {
+      owner = paneId
+      setSnippet(trimmed.slice(-MAX_SNIPPET_CHARS))
+    }
+    return
+  }
+  if (owner === paneId) {
+    owner = null
+    setSnippet(null)
+  }
 }
 
 /**

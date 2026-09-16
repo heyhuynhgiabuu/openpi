@@ -286,7 +286,9 @@ export type CustomizationDiagnostic = z.infer<typeof customizationDiagnosticSche
 export const workbenchContextSchema = z.object({
   visibleFile: z.string().nullable(),
   visibleFileAbs: z.string().nullable(),
-  terminalOutput: z.string().nullable(),
+  // Renderer caps its snippets at this size; enforced here so the prompt prefix
+  // does not depend on renderer discipline.
+  terminalOutput: z.string().max(2_000).nullable(),
 })
 export type WorkbenchContextPayload = z.infer<typeof workbenchContextSchema>
 

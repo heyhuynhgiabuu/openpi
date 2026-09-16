@@ -13,7 +13,9 @@ type Props = {
 
 /**
  * Hunk review for a Pi `edit` call that has not been applied yet. Every hunk is
- * one `edits[]` entry, and the indexes sent back are the entries Pi keeps.
+ * one `edits[]` entry, and the indexes sent back are the entries Pi keeps. A
+ * `write` review reuses this modal with one synthetic hunk for the whole-file
+ * change, so the selection there is all-or-nothing.
  */
 export function PreapplyReview(props: Props) {
   const [selected, setSelected] = createSignal<number[]>(

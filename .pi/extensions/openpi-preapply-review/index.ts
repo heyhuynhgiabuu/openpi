@@ -12,10 +12,11 @@
  * write and its result diff tells the model what was skipped. A `write` goes
  * through the same modal as a single hunk; a whole-file rewrite has no
  * meaningful middle, so approval is all-or-nothing there. A `write` falls back
- * to the text confirm when no meaningful hunk exists (unchanged file,
- * unreadable current content, unusable input, empty create); an `edit` whose
- * input cannot be read stays out of the way. Outside OpenPi (a TUI session)
- * both tools always use the text confirm.
+ * to the text confirm when its change cannot be shown as a hunk (unchanged
+ * file, unreadable current content, empty create); input that cannot be read
+ * at all steps the gate aside for both tools — Pi's own tool validation rejects
+ * such a call. Outside OpenPi (a TUI session) both tools always use the text
+ * confirm.
  *
  * The review waits much longer than Pi's two-minute dialog default, because
  * reviewing a diff is not a yes/no glance; if it does expire, the gate says so
