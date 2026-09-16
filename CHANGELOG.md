@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Real pi-task agent catalog in the composer** — `@mention` agent suggestions are no longer a hardcoded list of five: OpenPi asks pi-task's own discovery for the effective catalog (bundled agents overridden by `~/.pi/agent/agents/*.md`, then `<workspace>/.pi/agents/*.md`), so the picker shows exactly what the `task` tool can run, with source badges (bundled/global/project) and a read-only marker for agents whose frontmatter denies mutating tools. Hidden agents stay hidden; with pi-task not installed the list is empty instead of lying.
+- **`/export-session`** — export the active session to a folder you pick: an exact byte-for-byte copy of the Pi session JSONL (every branch, compaction, and parentId preserved), any pi-task sub-sessions referenced by task results, and a `manifest.json` with SHA-256 checksums. The bundle warns that raw prompts and tool output may contain secrets; the exported folder is revealed in your file manager.
+- **Trajectory ledger in the session map** — the `/map` overlay gains a Tree/Trajectory toggle: the trajectory view lists the branch the session is on in conversation order with per-entry timing, token, and cost metrics from OpenPi's indexer, filterable by text, with totals for the shown rows. Clicking a message jumps the conversation to it (same loaded-entry guard as the map); metadata rows like compactions show freed tokens.
+
 ### Fixed
 
 - **Git panel counts both halves of a staged-then-modified file** — a file with staged changes that was edited again (`MM`) showed only the staged delta in its `+N/-N` row; the working-tree changes are now included in the same row. (`cca8e75`)

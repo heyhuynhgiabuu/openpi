@@ -24,7 +24,7 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 ---
 
-## Current Status (beta) — v0.2.7
+## Current Status (beta) — v0.2.13
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
@@ -40,7 +40,7 @@ Done so far:
 - Runtime OpenPi branding: app name/version from Electron main, shared metadata, OpenPi icon set.
 - CI/CD baseline: PR/main verification, tag-triggered beta release across macOS/Windows/Linux.
 - **Pi-task delegation UI**: task-history polling and sub-session navigation for `@heyhuynhgiabuu/pi-task` (`task-session-history.json`, `task-sessions.json`, `artifacts/tasks/sessions/`). No built-in `Agent` customTools on the sidecar — delegation is the pi-task package.
-- **Custom agent discovery**: `.pi/agents/*.md` + `~/.pi/agent/agents/*.md` files with full frontmatter support (display_name, tools, disallowed_tools, model, thinking, max_turns, prompt_mode, isolated, enabled). Project > global > builtin priority with workspace-trust gating for project agents.
+- **Custom agent discovery**: the composer's `@mention` suggestions come from the effective pi-task catalog — pi-task's own discovery over bundled agents + `~/.pi/agent/agents/*.md` + `<workspace>/.pi/agents/*.md` (precedence: bundled < user < project), with provenance and read-only badges. Authority stays in pi-task; OpenPi only displays what the `task` tool could run.
 - **Subagent widget**: live status tray with Bot icon, elapsed timer, expandable detail panel (ID/status/turns/tools/4K result preview), background completion notification banner. Status bugfixes: onToolEnd no longer overwrites background status; clearFinished preserves background agents.
 - **@mention autocomplete**: `@` in composer shows subagents + files with section headers, Bot icon in accent box, capital-case display, keyboard navigation across combined list. Agent chip replaces raw text; `@name` prepended invisibly on send.
 - **Agent prompt tuning**: tool description tells Pi to delegate on `@agent_name` patterns. All 5 agent prompts have explicit subagent identity headers. Structured termination contract (Result/Verification/Summary/Blockers) enforced via buildPrompt.
@@ -128,7 +128,7 @@ Roadmap implications:
 
 ---
 
-## Pi Integration Reality (v0.84.1)
+## Pi Integration Reality (v0.85.0)
 
 These facts must drive implementation. Do not guess or approximate.
 
@@ -245,7 +245,7 @@ Build:
   - Sort by Created (default, checkmarked) / Sort by Updated
   - Group by Workspace (default, checkmarked) / Group by Time
   - Show Recent Sessions (default) / Show All Sessions
-  - Collapse All Groups
+  - ~~Collapse All Groups~~ — deferred: the state driving it was retired as dead code; rebuild deliberately if still wanted (see `STATUS.md` follow-ups)
 - Session search/filter by name
 - Git branch detection for active workspace (read-only, no staging)
 
@@ -254,7 +254,7 @@ Acceptance criteria:
 - Session list groups by workspace (default), with toggle to group by time
 - Sort by Created and Sort by Updated both work correctly
 - "Show Recent Sessions" filters to sessions from the last N days; "Show All Sessions" shows the full list
-- "Collapse All Groups" folds all workspace sections
+- ~~"Collapse All Groups" folds all workspace sections~~ (deferred — not built)
 - Token/cost badges match Pi's own session stats
 - Duplicate/symlinked workspace paths do not create identity conflicts
 - Resuming a session restores the correct session file and continues the tree
@@ -461,19 +461,20 @@ Acceptance criteria:
 
 | P | Slice | Why |
 |---|---|---|
-| **P0** | **Automated tests** | `npm test` covers IPC, session index, PTY, permission gates; expand Vitest where gaps remain. |
+| **P0** | **Automated tests** | `npm test` covers IPC, session index, PTY, permission gates; expand Vitest where gaps remain. An Electron launch smoke runs in CI on Linux. |
 | **P0** | **Unified Review tab MVP** ✅ | Human quality gate after agent writes: Review source dropdown for Git changes vs Last turn changes, snapshot-backed file accordions, Keep/Revert/Revert all, without blocking Pi’s tool loop. |
-| **P0** | **Live token/cost per turn** | Inspectability during streaming, not only post-`agent_end`. |
-| **P1** | **Session map v2** | Pi’s tree model visible: branches, compaction, labels, navigate/fork. |
+| **P0** | **Pre-apply diff review** ✅ (v0.2.11) | Opt-in gate that stops Pi’s `edit`/`write` before the write lands; hunk review inside OpenPi. Follow-up: route `write` through the review modal. |
+| **P0** | **Live token/cost per turn** ✅ | Inspectability during streaming, not only post-`agent_end`. Shipped: composer badge + usage rows. |
+| **P1** | **Session map v2** ✅ (v0.2.10) | Pi’s tree model visible: branches, compaction, labels, navigate/fork. Shipped; subagent card polish remains. |
 | **P1** | **Subagent/task card polish** | Expand/collapse, abort — UI on existing OpenPi subagent tools; don’t add new agent runtimes. |
 | **P2** | **Workbench context bridge** | cwd / visible file / terminal snippet for steering — narrow scope. |
 | **P2** | **Auto-updater** | Release hygiene once signing (Phase 6 #10) exists. |
 
 Build notes:
 1. **Testing strategy execution** — IPC Zod roundtrips, fake `AgentSession` fixtures, SQLite upserts, PTY smoke, permission tests in Vitest.
-2. **Unified Review MVP** — shipped as a Review tab with Git changes / Last turn changes sources. Last-turn changes are snapshot-backed, coalesced per file, rendered as expandable file rows with proper diffs and Keep/Revert/Revert all. Review diffs now support OpenCode-style line comments: hover `+`, content-row click/drag selection, multi-line highlight, saved annotations, composer chips, and structured `<file_comment>` prompt context. Later work: hunk-level review and richer merge UI.
-3. **Live token/cost per turn** — conversation header during `message_update` / `turn_end`.
-4. **Session map v2** — tree UI over JSONL `parentId` / compaction entries.
+2. **Unified Review MVP** — shipped as a Review tab with Git changes / Last turn changes sources. Last-turn changes are snapshot-backed, coalesced per file, rendered as expandable file rows with proper diffs and Keep/Revert/Revert all. Review diffs now support OpenCode-style line comments: hover `+`, content-row click/drag selection, multi-line highlight, saved annotations, composer chips, and structured `<file_comment>` prompt context. Hunk-level review has since shipped (last-turn hunk Keep/Revert, and the opt-in pre-apply hunk gate in v0.2.11); richer merge UI remains open.
+3. **Live token/cost per turn** ✅ — conversation header during `message_update` / `turn_end`.
+4. **Session map v2** ✅ — tree UI over JSONL `parentId` / compaction entries.
 5. **Subagent/task cards** — richer cards for `Agent` / task tooling already in use.
 7. **Context bridge** — optional composer attachment of “what user is viewing.”
 8. **Auto-updater** — `electron-updater` wired to release channel.
