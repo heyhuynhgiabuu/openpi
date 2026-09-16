@@ -411,6 +411,8 @@ Acceptance criteria:
 
 ### Comprehensive Git Workflow Roadmap (Zed-style reference, adapted)
 
+**Status: shipped (v0.2.15-era audit).** All nine slices below have live implementations: grouped changes panel with conflict sections and stage/unstage/discard, a read model carrying upstream/ahead/behind/remotes/tags/stash-count and merge/rebase/cherry-pick state, a commit composer with amend/signoff and an AI-generated draft from the staged diff, a sync menu (fetch/pull/pull-rebase/push — force-push deliberately absent), a branch/stash picker with dirty-worktree checkout refusal, a commit graph with details pane and GitHub links, hunk-level stage/revert, conflict modals, and the agent-aware banner with changed-file pinning. Worktree support exists beyond the original list. Remaining polish lives in `STATUS.md`, not here.
+
 **Goal:** make OpenPi's Git surface mature enough for agent-assisted development: inspect history, understand branch/remote state, review agent edits, stage safely, commit cleanly, and sync deliberately without leaving the workbench. Zed is the interaction reference, but OpenPi must adapt it around agent safety, main-owned Git authority, and review-before-commit workflows.
 
 **Brutal screenshot audit — what is worth copying:**
