@@ -1,4 +1,12 @@
 /**
+ * IPC contract barrel — the Zod schemas for every main↔renderer channel,
+ * grouped by domain sections. Deliberately a single file: its one purpose is
+ * declaring the IPC contract (declarative schemas, no logic), so it is
+ * exempt from the 300-LOC cap like generated surfaces. Domain sections are
+ * labeled; grep a section header to find a schema.
+ */
+
+/**
  * IPC channel definitions and Zod schemas.
  * All payloads crossing the preload boundary are validated here.
  * Renderer imports types only — never imports electron or node builtins.

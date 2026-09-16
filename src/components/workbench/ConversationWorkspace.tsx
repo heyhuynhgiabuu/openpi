@@ -1,25 +1,19 @@
-import { ArrowLeft, GitBranch, X } from 'lucide-solid'
-import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import { ArrowLeft } from 'lucide-solid'
+import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type { useAgentReviewChanges } from '../../hooks/useAgentReviewChanges'
-import { useFileContentCache } from '../../hooks/useFileContentCache'
-import { useGitHistoryState } from '../../hooks/useGitHistoryState'
 import type { useAppFileManager } from '../../hooks/useAppFileManager'
 import type { useOpenPiSession } from '../../hooks/useOpenPiSession'
-import { buildCoreSlashCommands, type CoreSlashCommand } from '../../lib/coreCommands'
 import type { DisplayPreferences } from '../../lib/displayPreferences'
 import type { ModelInfo, SkillItem } from '../../lib/ipc'
-import { isDiffPreviewTab } from '../../lib/previewTabs'
 import type { AgentMentionOption } from '../composer/useComposerPickers'
 import { Composer } from '../Composer'
 import { ConversationPane } from '../conversation/ConversationPane'
-import { FilePreviewPane } from '../FilePreviewPane'
-import { FileTabBar } from '../FileTabBar'
-import { GitHistoryTab } from '../git/GitHistoryTab'
 import { SessionMap } from '../map/SessionMap'
-import { ResizeHandle } from '../ResizeHandle'
-import { ReviewPane } from '../review/ReviewPane'
 import { SubagentFileWidget, TodoListTray } from '../SubagentFileWidget'
 import { SubagentWidget } from '../SubagentWidget'
+import { ConversationPreviewSplit } from './ConversationPreviewSplit'
+import { useCoreSlashCommands } from './useCoreSlashCommands'
+import { useTaskAgents } from './useTaskAgents'
 
 type OpenPiSession = ReturnType<typeof useOpenPiSession>
 type AgentReview = ReturnType<typeof useAgentReviewChanges>
@@ -67,26 +61,7 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
   const [reviewSource, setReviewSource] = createSignal<'git' | 'last-turn'>('git')
   const [sessionMapOpen, setSessionMapOpen] = createSignal(false)
 
-  // Effective pi-task delegate catalog for @mention suggestions. pi-task owns
-  // definitions, precedence and tool policy; the composer only displays what
-  // the task tool could actually run. Empty when pi-task is not installed.
-  // Keyed on cwd so a workspace switch refetches; main owns the discovery root.
-  const [taskAgents, setTaskAgents] = createSignal<AgentMentionOption[]>([])
-  createEffect(() => {
-    void props.cwd
-    let cancelled = false
-    void window.openpi
-      .getTaskAgents()
-      .then((agents) => {
-        if (!cancelled) setTaskAgents(agents)
-      })
-      .catch(() => {
-        if (!cancelled) setTaskAgents([])
-      })
-    onCleanup(() => {
-      cancelled = true
-    })
-  })
+  const taskAgents = useTaskAgents(() => props.cwd)
 
   let lastReviewChangeCount = 0
 
@@ -111,115 +86,9 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
     if (props.fm.activeDiff()?.path) setReviewSource('git')
   })
 
-  const fileCache = useFileContentCache()
-
-  const coreCommands = createMemo<CoreSlashCommand[]>(() =>
-    buildCoreSlashCommands({
-      sessionReady: props.session.ready !== null,
-      onCompact: (customInstructions) => void props.session.compactSession(customInstructions),
-      onReload: () => void props.session.reloadSession(),
-      onCopyLast: () => props.session.copyLastAssistantText(),
-      onOpenModelPicker: () => {
-        document.dispatchEvent(new CustomEvent('openpi:open-model-picker'))
-      },
-      onOpenSettings: () => {
-        document.dispatchEvent(
-          new CustomEvent('openpi:open-customizations', { detail: { tab: 'settings' } })
-        )
-      },
-      onOpenLogin: () => props.onConnectProvider(),
-      onLogout: () => props.onConnectProvider(),
-      onNewSession: () => void props.session.createNewSession(),
-      onOpenResumeDialog: () => {
-        // Open the homescreen overlay, which lists all sessions and
-        // workspaces — the natural place to pick something to resume.
-        document.dispatchEvent(new CustomEvent('openpi:open-homescreen'))
-      },
-      onCycleThinking: () => {
-        const order = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
-        const cur = props.session.thinkingLevel as (typeof order)[number]
-        const idx = order.indexOf(cur)
-        const next = order[(idx + 1) % order.length]
-        if (next) void props.session.selectThinkingLevel(next)
-      },
-      onCycleModel: () => {
-        const list = props.session.models
-        const cur = props.session.currentModel
-        if (!list.length) return
-        const idx = cur ? list.findIndex((m) => m.id === cur.id && m.provider === cur.provider) : -1
-        const next = list[(idx + 1) % list.length]
-        if (next) void props.session.selectModel(next)
-      },
-      onSetSessionName: (name) => void props.session.setSessionName(name),
-      onOpenSessionMap: () => setSessionMapOpen(true),
-      onShowSessionInfo: async () => {
-        const info = (await props.session.getSessionInfo()) as {
-          sessionFile: string | null
-          sessionId: string | null
-          sessionName: string | null
-          model: { name: string; provider: string } | null
-          thinkingLevel: string | null
-          messageCount: number
-          contextUsagePercent: number | null
-          contextTokens: number | null
-          contextWindow: number | null
-        } | null
-        if (!info) {
-          return
-        }
-        const lines: string[] = []
-        if (info.sessionName) lines.push(`Name: ${info.sessionName}`)
-        if (info.sessionId) lines.push(`ID: ${info.sessionId}`)
-        if (info.sessionFile) lines.push(`File: ${info.sessionFile}`)
-        if (info.model) lines.push(`Model: ${info.model.name} (${info.model.provider})`)
-        if (info.thinkingLevel) lines.push(`Thinking: ${info.thinkingLevel}`)
-        lines.push(`Messages: ${info.messageCount}`)
-        if (info.contextUsagePercent != null) {
-          const pct = info.contextUsagePercent.toFixed(1)
-          const tokens =
-            info.contextTokens != null && info.contextWindow
-              ? ` (${info.contextTokens.toLocaleString()} / ${info.contextWindow.toLocaleString()} tokens)`
-              : ''
-          lines.push(`Context: ${pct}%${tokens}`)
-        }
-        window.alert(lines.join('\n'))
-      },
-      onExportSession: () => {
-        return window.openpi
-          .exportSessionBundle()
-          .then((result) => {
-            if (result.status === 'cancelled') return
-            if (result.status === 'error') {
-              window.alert(result.message)
-              return
-            }
-            const lines = [
-              `Session exported to:`,
-              result.outDir,
-              '',
-              `${result.files.length} file(s) copied (SHA-256 recorded in manifest.json).`,
-            ]
-            if (result.subSessionTaskIds.length > 0) {
-              lines.push(`Sub-sessions: ${result.subSessionTaskIds.length}`)
-            }
-            for (const warning of result.warnings) lines.push(`⚠ ${warning}`)
-            window.alert(lines.join('\n'))
-          })
-          .catch((err: unknown) => {
-            window.alert(err instanceof Error ? err.message : String(err))
-          })
-      },
-      onShowError: (msg) => {
-        window.alert(msg)
-      },
-      onPrefillInput: (text) => props.session.setInput(text),
-    })
-  )
-
-  const gitHistoryState = useGitHistoryState({
-    activeTab: () => (historyActive() ? ('history' as const) : ('changes' as const)),
-    cwd: () => props.cwd,
-    isMounted: () => true,
+  const coreCommands = useCoreSlashCommands(props.session, {
+    onConnectProvider: () => props.onConnectProvider(),
+    onOpenSessionMap: () => setSessionMapOpen(true),
   })
 
   return (
@@ -387,100 +256,23 @@ export function ConversationWorkspace(props: ConversationWorkspaceProps) {
         </div>
 
         <Show when={props.fm.openFiles().length > 0 || props.showGitHistory}>
-          <ResizeHandle direction="horizontal" onResize={props.onResizePreview} />
-          <div class="main-panel-preview" style={{ width: `${props.previewWidth}px` }}>
-            <div class="main-panel-preview-header">
-              <Show when={props.showGitHistory}>
-                <div
-                  role="tab"
-                  tabIndex={0}
-                  aria-selected={historyActive()}
-                  class={`gh-btn${historyActive() ? ' gh-btn--active' : ''}`}
-                  title="Git History"
-                  onClick={() => setHistoryActive(true)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setHistoryActive(true)
-                    }
-                  }}
-                >
-                  <GitBranch size={13} />
-                  <span>History</span>
-                  <button
-                    type="button"
-                    class="ftb-tab-close"
-                    title="Close Git History"
-                    aria-label="Close Git History"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      props.onShowGitHistoryChange(false)
-                    }}
-                  >
-                    <X size={11} strokeWidth={2.2} />
-                  </button>
-                </div>
-              </Show>
-              <Show when={props.fm.openFiles().length > 0}>
-                <FileTabBar
-                  files={props.fm.openFiles()}
-                  activeIndex={historyActive() ? -1 : props.fm.activeFileIdx()}
-                  onSelect={(index) => {
-                    setHistoryActive(false)
-                    props.fm.setActiveFileIdx(index)
-                  }}
-                  onClose={props.fm.closeFile}
-                  onRequestFileSearch={props.onRequestFileSearch}
-                />
-              </Show>
-            </div>
-            <Show
-              when={historyActive()}
-              fallback={
-                <Show
-                  when={isDiffPreviewTab(activePreviewTab())}
-                  fallback={
-                    <FilePreviewPane
-                      relativePath={activePreviewTab()}
-                      cwd={props.cwd}
-                      workspaceName={props.workspaceName}
-                      background={props.fm.fileSearchOpen()}
-                      findOpen={props.fm.fileFindOpen()}
-                      onFindOpened={props.onFindOpened}
-                      onAddLineComment={props.fm.addLineComment}
-                      onClose={() => props.fm.closeFile(props.fm.activeFileIdx())}
-                    />
-                  }
-                >
-                  <ReviewPane
-                    cwd={props.cwd}
-                    source={reviewSource()}
-                    onSourceChange={setReviewSource}
-                    agentReview={props.agentReview}
-                    requestedGitPath={props.fm.activeDiff()?.path ?? null}
-                    comments={props.fm.lineComments()}
-                    onAddComment={props.fm.addLineComment}
-                    onRemoveComment={props.fm.removeLineComment}
-                    fileContentFor={fileCache.fileContentFor}
-                    ensureFileContent={fileCache.ensureFileContent}
-                  />
-                </Show>
-              }
-            >
-              <GitHistoryTab
-                history={gitHistoryState.history()}
-                historyQuery={gitHistoryState.historyQuery()}
-                historyLoading={gitHistoryState.historyLoading()}
-                historyError={gitHistoryState.historyError()}
-                selectedCommit={gitHistoryState.selectedCommit()}
-                graphColumnsByHash={gitHistoryState.graphColumnsByHash()}
-                maxGraphColumns={gitHistoryState.maxGraphColumns()}
-                onHistoryQueryChange={gitHistoryState.setHistoryQuery}
-                onLoadHistory={(query) => void gitHistoryState.loadHistory(query)}
-                onSelectCommit={gitHistoryState.setSelectedCommit}
-              />
-            </Show>
-          </div>
+          <ConversationPreviewSplit
+            fm={props.fm}
+            agentReview={props.agentReview}
+            cwd={props.cwd}
+            workspaceName={props.workspaceName}
+            activePreviewTab={activePreviewTab}
+            historyActive={historyActive}
+            setHistoryActive={setHistoryActive}
+            reviewSource={reviewSource}
+            setReviewSource={setReviewSource}
+            showGitHistory={props.showGitHistory}
+            onShowGitHistoryChange={props.onShowGitHistoryChange}
+            onResizePreview={props.onResizePreview}
+            previewWidth={props.previewWidth}
+            onRequestFileSearch={props.onRequestFileSearch}
+            onFindOpened={props.onFindOpened}
+          />
         </Show>
       </main>
 
