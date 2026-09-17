@@ -132,11 +132,18 @@ resolves.
 `confirm` and structured pre-apply reviews are now bridged through the same
 registry; the renderer still receives every prompt, while remote answers use
 the existing sidecar response path. Plain `input`, `select`, and `editor`
-remain desktop-only. If the originating prompt emits `ui_prompt_end` before a
-side settles the gate, main withdraws it immediately, relays cancellation to
-the sidecar, broadcasts the cleared `gate_update` snapshot, and tombstones the
-late remote/desktop answers. The phone renders validated review hunks and
+remain desktop-only. If the originating prompt emits `ui_prompt_end` before
+either side settles the gate, main withdraws it immediately, relays cancellation
+to the sidecar, broadcasts the cleared `gate_update` snapshot, and tombstones
+the late remote/desktop answers. The phone renders validated review hunks and
 submits approve-all indexes; selective review remains a desktop operation.
+
+**Reconnect amendment (2026-09-17, slice 7):** each SSE attach, including a
+reconnect, sends a complete `gate_update` baseline with the envelope
+`{gates: [...]}`. The PWA replaces its pending-gate state from that snapshot
+rather than attempting to merge stale cards. A dropped stream reports
+`reconnecting` in the Live view; a revoked bearer reports terminal `closed`,
+clears the token, and does not retry.
 
 ## Module layout (each ≤300 LOC)
 

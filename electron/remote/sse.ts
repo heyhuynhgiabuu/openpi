@@ -54,7 +54,7 @@ export class SseHub {
   /** Wires gate registry changes into the stream; call once at server start. */
   start(): void {
     this.unsubGate = this.registry.onChange(() => {
-      this.broadcast('gate_update', this.registry.pendingWithTokens(this.now()))
+      this.broadcast('gate_update', { gates: this.registry.pendingWithTokens(this.now()) })
     })
   }
 
@@ -79,7 +79,10 @@ export class SseHub {
     response.on('close', () => {
       this.clients.delete(client)
     })
-    this.writeFrame(client, formatFrame('gate_update', this.registry.pendingWithTokens(this.now())))
+    this.writeFrame(
+      client,
+      formatFrame('gate_update', { gates: this.registry.pendingWithTokens(this.now()) })
+    )
     if (this.clients.size === 1 && !this.keepalive) {
       this.keepalive = setInterval(() => this.keepaliveTick(), KEEPALIVE_MS)
       this.keepalive.unref()

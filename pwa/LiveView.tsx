@@ -5,7 +5,7 @@
  * a one-line argument preview. The stream itself lives in sse.ts.
  */
 import { For, Show, createSignal, onCleanup, onMount } from 'solid-js'
-import { openEventStream } from './sse'
+import { openEventStream, type SseStatus } from './sse'
 
 interface LiveEvent {
   key: number
@@ -38,31 +38,41 @@ function summarize(
   return { summary: type }
 }
 
+const STATUS_LABEL: Record<SseStatus, string> = {
+  connecting: 'connecting…',
+  connected: 'streaming',
+  reconnecting: 'reconnecting…',
+  closed: 'offline',
+}
+
 export function LiveView() {
   const [events, setEvents] = createSignal<LiveEvent[]>([])
-  const [connected, setConnected] = createSignal(false)
+  const [status, setStatus] = createSignal<SseStatus>('connecting')
   let counter = 0
 
   onMount(() => {
     const close = openEventStream((frame) => {
-      setConnected(true)
       const data = (frame.data ?? {}) as Record<string, unknown>
       if (!VISIBLE.includes(frame.event)) return
       const { summary, detail } = summarize(frame.event, data)
       setEvents((previous) =>
         [{ key: ++counter, type: frame.event, summary, detail }, ...previous].slice(0, 100)
       )
-    })
+    }, setStatus)
     onCleanup(close)
   })
-  onCleanup(() => setConnected(false))
 
   return (
     <div>
       <div class="row">
         <h1>Live</h1>
-        <span class="badge" classList={{ live: connected() }}>
-          {connected() ? 'streaming' : 'connecting…'}
+        <span
+          class="badge"
+          role="status"
+          aria-live="polite"
+          classList={{ live: status() === 'connected' }}
+        >
+          {STATUS_LABEL[status()]}
         </span>
       </div>
       <Show when={events().length === 0}>

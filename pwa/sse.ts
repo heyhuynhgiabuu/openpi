@@ -14,6 +14,10 @@ export interface SseFrame {
   data: unknown
 }
 
+export type SseStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed'
+
+type SseStatusListener = (status: SseStatus) => void
+
 /** Incremental SSE parser over text chunks; tolerant of split frames. */
 export class SseParser {
   private buffer = ''
@@ -51,12 +55,23 @@ function parseBlock(block: string): SseFrame | null {
 
 /**
  * Opens the event stream and calls `onFrame` for every parsed frame.
- * Returns a closer. Reconnects with backoff while the tab stays visible;
- * the `closed` flag stops the loop after an explicit close.
+ * Returns a closer. Reconnects with capped backoff while the caller keeps it
+ * open; the `closed` flag stops the loop after an explicit close.
  */
-export function openEventStream(onFrame: (frame: SseFrame) => void): () => void {
+export function openEventStream(
+  onFrame: (frame: SseFrame) => void,
+  onStatus: SseStatusListener = () => {}
+): () => void {
   let closed = false
   let controller: AbortController | null = null
+  let status: SseStatus | null = null
+
+  const report = (next: SseStatus): void => {
+    if (status === next) return
+    status = next
+    onStatus(next)
+  }
+  report('connecting')
 
   const run = async (): Promise<void> => {
     let backoffMs = 1000
@@ -64,7 +79,10 @@ export function openEventStream(onFrame: (frame: SseFrame) => void): () => void 
       controller = new AbortController()
       try {
         const token = storedToken()
-        if (!token) return
+        if (!token) {
+          report('closed')
+          return
+        }
         const response = await fetch('/api/events', {
           headers: { authorization: `Bearer ${token}` },
           signal: controller.signal,
@@ -72,10 +90,12 @@ export function openEventStream(onFrame: (frame: SseFrame) => void): () => void 
         if (response.status === 401) {
           // Revoked or stale pairing: stop retrying and reset to pairing.
           clearToken()
+          report('closed')
           onFrame({ event: 'unauthorized', data: {} })
           return
         }
         if (!response.ok || !response.body) throw new Error(`stream ${response.status}`)
+        report('connected')
         backoffMs = 1000
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
@@ -89,6 +109,7 @@ export function openEventStream(onFrame: (frame: SseFrame) => void): () => void 
         // Aborted or dropped; fall through to the backoff.
       }
       if (closed) return
+      report('reconnecting')
       await new Promise((resolve) => setTimeout(resolve, backoffMs))
       backoffMs = Math.min(backoffMs * 2, 15_000)
     }
@@ -96,7 +117,9 @@ export function openEventStream(onFrame: (frame: SseFrame) => void): () => void 
 
   void run()
   return () => {
+    if (closed) return
     closed = true
     controller?.abort()
+    report('closed')
   }
 }

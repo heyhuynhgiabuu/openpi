@@ -11,7 +11,8 @@ afterEach(() => {
 })
 
 function fixture() {
-  const hub = new SseHub(new GateRegistry())
+  const registry = new GateRegistry()
+  const hub = new SseHub(registry)
   hubs.push(hub)
   const response = new ServerResponse(new IncomingMessage(new Socket()))
   const frames: string[] = []
@@ -28,6 +29,7 @@ function fixture() {
   hub.attach(response, 1)
   return {
     hub,
+    registry,
     response,
     frames,
     destroy,
@@ -54,6 +56,25 @@ describe('SSE flow control', () => {
     expect(frames.join('')).toContain('event: agent_end')
   })
 
+  it('sends the current gate baseline when a client reconnects', () => {
+    const { hub, registry } = fixture()
+    const opened = registry.open({ kind: 'confirm', title: 't', summary: 's', ttlMs: 60_000 })
+    const response = new ServerResponse(new IncomingMessage(new Socket()))
+    const frames: string[] = []
+    vi.spyOn(response, 'write').mockImplementation((chunk) => {
+      frames.push(String(chunk))
+      return true
+    })
+    vi.spyOn(response, 'destroy').mockReturnValue(response)
+
+    hub.attach(response, 1)
+
+    expect(frames.join('')).toContain('event: gate_update')
+    expect(frames.join('')).toContain('"gates":[')
+    expect(frames.join('')).toContain(`"id":"${opened.gate.id}"`)
+    expect(frames.join('')).toContain(`"gateToken":"${opened.gateToken}"`)
+  })
+
   it('destroys an over-budget consumer instead of losing events silently', () => {
     const { hub, destroy, block } = fixture()
     block()
@@ -66,6 +87,7 @@ describe('SSE flow control', () => {
   it('drops only the revoked device and sends an initial snapshot', () => {
     const { hub, frames, destroy } = fixture()
     expect(frames.join('')).toContain('event: gate_update')
+    expect(frames.join('')).toContain('"gates":[]')
     hub.dropDevice(2)
     expect(hub.clientCount()).toBe(1)
     hub.dropDevice(1)
