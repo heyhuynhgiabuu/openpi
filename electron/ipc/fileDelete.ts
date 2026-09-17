@@ -11,7 +11,7 @@ import { deleteFileRequestSchema, deleteFileResultSchema, IPC } from '../../src/
 import type * as GitHost from '../git/gitHost'
 import { checkProtectedPath } from '../services/protectedPaths'
 import { moveWorkspaceEntryNoReplace, resolveWorkspacePath } from '../services/workspacePath'
-import { isGitMetadataPath } from './fileGuards'
+import { identityChanged, isGitMetadataPath } from './fileGuards'
 import type { FileIpcDeps } from './files'
 
 export function registerDeleteFileIpc(deps: FileIpcDeps): void {
@@ -46,7 +46,7 @@ export function registerDeleteFileIpc(deps: FileIpcDeps): void {
 
     const authorizedFull = resolveWorkspacePath(cwd, relPath, 'delete')
     const confirmedStat = fs.lstatSync(authorizedFull)
-    if (stat.dev !== confirmedStat.dev || stat.ino !== confirmedStat.ino) {
+    if (identityChanged(stat, confirmedStat)) {
       throw new Error('File changed while deletion confirmation was open')
     }
     const stagedTrashPath = resolveWorkspacePath(

@@ -12,7 +12,7 @@ import {
   writeFileRequestSchema,
 } from '../../src/lib/ipc'
 import type * as GitHost from '../git/gitHost'
-import { isGitMetadataPath } from './fileGuards'
+import { identityChanged, isGitMetadataPath } from './fileGuards'
 import { registerDeleteFileIpc } from './fileDelete'
 import { checkProtectedPath } from '../services/protectedPaths'
 import {
@@ -109,7 +109,7 @@ export function registerFileIpc(deps: FileIpcDeps): void {
     }
     if (initialStat) {
       const confirmedStat = fs.lstatSync(authorizedFull)
-      if (initialStat.dev !== confirmedStat.dev || initialStat.ino !== confirmedStat.ino) {
+      if (identityChanged(initialStat, confirmedStat)) {
         throw new Error('File changed while write confirmation was open')
       }
     } else if (fs.existsSync(authorizedFull)) {
@@ -176,7 +176,7 @@ export function registerFileIpc(deps: FileIpcDeps): void {
         throw new Error('File protection changed while rename confirmation was open')
       }
       const confirmedStat = fs.lstatSync(full)
-      if (sourceStat.dev !== confirmedStat.dev || sourceStat.ino !== confirmedStat.ino) {
+      if (identityChanged(sourceStat, confirmedStat)) {
         throw new Error('File changed while rename confirmation was open')
       }
     }
