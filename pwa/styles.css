@@ -50,6 +50,26 @@ h2 {
 .card.gate {
   border-color: var(--warn);
 }
+.gate-review {
+  min-width: 0;
+  margin-bottom: 12px;
+}
+.review-path {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}
+.gate-review pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font:
+    12px/1.5 ui-monospace,
+    monospace;
+  white-space: pre;
+}
 .card button {
   margin-right: 8px;
 }
