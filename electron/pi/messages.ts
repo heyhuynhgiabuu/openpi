@@ -27,7 +27,7 @@ interface SidecarMessageDeps {
   emitSessionError: (message: string, code?: string) => void
   emitOutputLine: (line: OutputLine) => void
   /** Remote SSE fan-out: receives every validated session event. */
-  emitSessionEvent?: (event: { type?: string }) => void
+  emitSessionEvent?: (event: { type?: string; id?: string }) => void
   /** Remote registry hop for extension UI prompts. */
   bridgeExtensionUi?: (
     request: ExtensionUiRequest,

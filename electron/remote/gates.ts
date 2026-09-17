@@ -122,6 +122,21 @@ export class GateRegistry {
     return true
   }
 
+  /**
+   * Withdraw a gate without a decision — its originating prompt ended
+   * (answer, cancel, timeout, abort, teardown all funnel through
+   * ui_prompt_end). Settles {expired:true} so wait() continuations relay
+   * cancelled, and tombstones so a late remote answer fails closed.
+   */
+  withdraw(id: string): boolean {
+    const entry = this.entries.get(id)
+    if (!entry) return false
+    this.tombstone(id, entry)
+    entry.settle({ expired: true })
+    this.notify()
+    return true
+  }
+
   /** Remote-side settlement: requires the gate's one-time token. */
   resolveRemotely(
     id: string,

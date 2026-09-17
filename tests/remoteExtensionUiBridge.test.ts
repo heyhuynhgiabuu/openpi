@@ -83,6 +83,7 @@ function harness(enabled: boolean) {
       },
       settle: (gate, approved) =>
         registry.settleLocally(gate.gate.id, { approved, via: 'desktop' }),
+      withdraw: (gate) => registry.withdraw(gate.gate.id),
       relay: (response) => relays.push(response),
     })
   return { registry, relays, opened, intercept }

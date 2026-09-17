@@ -42,6 +42,18 @@ describe('GateRegistry', () => {
     await expect(opened.wait()).resolves.toEqual({ approved: false, via: 'desktop' })
   })
 
+  it('withdraws a prompt-ended gate and resolves its waiter as expired', async () => {
+    const opened = openConfirm()
+    expect(registry.withdraw(opened.gate.id)).toBe(true)
+    await expect(opened.wait()).resolves.toEqual({ expired: true })
+    expect(registry.listPending()).toEqual([])
+    expect(registry.resolveRemotely(opened.gate.id, opened.gateToken, { approved: true })).toEqual({
+      ok: false,
+      reason: 'already_resolved',
+    })
+    expect(registry.withdraw(opened.gate.id)).toBe(false)
+  })
+
   it('requires the gate token and rejects replay', async () => {
     const opened = openConfirm()
     expect(registry.resolveRemotely(opened.gate.id, 'not-the-token', { approved: true })).toEqual({

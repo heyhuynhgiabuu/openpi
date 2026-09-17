@@ -89,7 +89,7 @@ let sessionIndex: SessionIndexStore | null = null
 // Remote P0: off until the user enables it; never auto-starts (design doc).
 let remoteHost: RemoteHost | null = null
 
-const emitSessionEventToRemote = (event: { type?: string }): void =>
+const emitSessionEventToRemote = (event: { type?: string; id?: string }): void =>
   remoteHost?.dispatchSessionEvent(event)
 
 // ── Output ring buffer ─────────────────────────────────────────────────

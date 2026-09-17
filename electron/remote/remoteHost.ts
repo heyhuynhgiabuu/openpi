@@ -20,6 +20,7 @@ import { GateRegistry, type GateSnapshot, type OpenedGate } from './gates'
 import {
   interceptExtensionUi,
   resolveFromRenderer,
+  withdrawFromPromptEnd,
   type ExtensionUiRelay,
 } from './extensionUiBridge'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
@@ -87,7 +88,12 @@ export class RemoteHost {
   }
 
   /** Fan-out hook: main forwards every validated session event here. */
-  dispatchSessionEvent(event: { type?: string }): void {
+  dispatchSessionEvent(event: { type?: string; id?: string }): void {
+    // A bridged prompt's end withdraws its gate: the phone's card clears and a
+    // late remote answer fails closed. Answers/cancels/aborts all land here.
+    if (event.type === 'ui_prompt_end' && typeof event.id === 'string') {
+      withdrawFromPromptEnd(event.id)
+    }
     this.hub?.onSessionEvent(event)
   }
 
@@ -154,12 +160,21 @@ export class RemoteHost {
    * Returns true when bridged; the renderer gets the dialog either way.
    */
   bridgeExtensionUi(request: ExtensionUiRequest, relay: ExtensionUiRelay): boolean {
-    if (!this.server || !this.registry) return false
+    const registry = this.registry
+    if (!this.server || !registry) return false
     return interceptExtensionUi({
       request,
-      openGate: (gate) => this.openBridgeGate(gate),
+      openGate: (gate) =>
+        registry.open({
+          kind: 'confirm',
+          title: gate.title,
+          summary: gate.summary,
+          payload: gate.payload,
+          ttlMs: gate.ttlMs,
+        }),
       settle: (gate, approved) =>
-        this.registry?.settleLocally(gate.gate.id, { approved, via: 'desktop' }) ?? false,
+        registry.settleLocally(gate.gate.id, { approved, via: 'desktop' }),
+      withdraw: (gate) => registry.withdraw(gate.gate.id),
       relay,
     })
   }

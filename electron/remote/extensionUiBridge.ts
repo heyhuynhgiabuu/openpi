@@ -29,6 +29,7 @@ interface PendingBridge {
   gate: OpenedGate
   relay: ExtensionUiRelay
   settle: (approved: boolean) => boolean
+  withdraw: (gate: OpenedGate) => boolean
   settledBy: 'renderer' | 'remote' | null
 }
 
@@ -92,6 +93,8 @@ export function interceptExtensionUi(input: {
   }) => OpenedGate | null
   /** Desktop-side settlement via the registry; false when remote won first. */
   settle: (gate: OpenedGate, approved: boolean) => boolean
+  /** Withdraw the gate when the originating prompt ends without a decision. */
+  withdraw: (gate: OpenedGate) => boolean
   relay: ExtensionUiRelay
 }): boolean {
   const { request, relay } = input
@@ -124,6 +127,7 @@ export function interceptExtensionUi(input: {
     gate,
     relay,
     settle: (approved) => input.settle(gate, approved),
+    withdraw: input.withdraw,
     settledBy: null,
   }
   pending.set(request.id, entry)
@@ -169,6 +173,27 @@ export function pendingIds(): string[] {
 export function clearPending(): void {
   pending.clear()
   settledIds.clear()
+}
+
+/**
+ * The prompt behind a bridged gate ended (ui_prompt_end carries the request
+ * id). Withdraw its gate — if nobody answered, wait() resolves cancelled and
+ * the sidecar learns promptly instead of hanging to the full TTL.
+ */
+export function withdrawFromPromptEnd(promptId: string): boolean {
+  const entry = pending.get(promptId)
+  if (!entry || entry.settledBy !== null) return false
+
+  // Claim before invoking the registry. This makes the invariant local even if
+  // a registry listener re-enters the renderer resolver synchronously.
+  entry.settledBy = 'remote'
+  if (!entry.withdraw(entry.gate)) {
+    entry.settledBy = null
+    return false
+  }
+  forget(promptId, 'remote')
+  entry.relay(remoteResponseFor(entry.request, { expired: true }))
+  return true
 }
 
 /** Removes a live entry and remembers its winner, bounded like tombstones. */

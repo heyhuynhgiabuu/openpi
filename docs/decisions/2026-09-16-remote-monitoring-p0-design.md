@@ -120,13 +120,23 @@ pre-apply review, extension `ctx.ui` confirms). These calls gain a registry hop:
 **Bridge amendment (2026-09-16, slice 5):** bridged today — high-risk shell
 commands, workspace trust/delete, extension re-enable, and file/folder
 deletion (all `confirmHighRiskMutation` call sites plus `DELETE_FILE`).
-Deferred to a follow-up slice: extension `ctx.ui` confirms and the pre-apply
-review modal — they ride the sidecar↔renderer `extension_ui_request` path, a
-different choke point. Known constraint: when remote expiry settles a gate,
+The extension `ctx.ui` confirms and pre-apply review modal were deferred at
+this point because they ride the sidecar↔renderer `extension_ui_request` path,
+a different choke point. Known constraint: when remote expiry settles a gate,
 the still-open desktop dialog cannot be dismissed programmatically; its late
 click is inert (fail-safe: the mutation is denied). Bridged gates carry a
 10-minute TTL and the registry self-sweeps at expiry so `wait()` always
 resolves.
+
+**Extension UI bridge amendment (2026-09-17, slice 6):** extension `ctx.ui`
+`confirm` and structured pre-apply reviews are now bridged through the same
+registry; the renderer still receives every prompt, while remote answers use
+the existing sidecar response path. Plain `input`, `select`, and `editor`
+remain desktop-only. If the originating prompt emits `ui_prompt_end` before a
+side settles the gate, main withdraws it immediately, relays cancellation to
+the sidecar, broadcasts the cleared `gate_update` snapshot, and tombstones the
+late remote/desktop answers. The phone renders validated review hunks and
+submits approve-all indexes; selective review remains a desktop operation.
 
 ## Module layout (each ≤300 LOC)
 
