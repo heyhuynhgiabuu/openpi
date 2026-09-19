@@ -69,8 +69,8 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
     const git = simpleGit({ baseDir: cwd })
     const [status, unstagedSummary, stagedSummary, operation, stashList] = await Promise.all([
       git.status(),
-      git.diffSummary().catch(() => null),
-      git.diffSummary(['--staged']).catch(() => null),
+      git.diffSummary(['--no-color']).catch(() => null),
+      git.diffSummary(['--staged', '--no-color']).catch(() => null),
       detectGitOperation(cwd),
       git.stashList().catch(() => ({ total: 0 })),
     ])

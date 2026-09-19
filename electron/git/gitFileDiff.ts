@@ -21,7 +21,14 @@ export async function getGitFileDiff(
       // ─── Branch scope: working tree vs base branch ──────────────────────
       if (scope === 'branch') {
         const base = options.baseBranch ?? 'main'
-        const raw = await git.raw(['diff', `${base}...HEAD`, '--unified=3', '--', filePath])
+        const raw = await git.raw([
+          'diff',
+          '--no-color',
+          `${base}...HEAD`,
+          '--unified=3',
+          '--',
+          filePath,
+        ])
         if (!raw.trim()) {
           return {
             path: filePath,
@@ -47,7 +54,7 @@ export async function getGitFileDiff(
 
       // ─── Staged scope: index vs HEAD ─────────────────────────────────────
       if (scope === 'staged') {
-        const raw = await git.raw(['diff', '--staged', '--unified=3', '--', filePath])
+        const raw = await git.raw(['diff', '--no-color', '--staged', '--unified=3', '--', filePath])
         if (!raw.trim()) {
           return {
             path: filePath,
@@ -72,7 +79,7 @@ export async function getGitFileDiff(
 
       // ─── Unstaged scope: working tree vs index ───────────────────────────
       if (scope === 'unstaged') {
-        const raw = await git.raw(['diff', '--unified=3', '--', filePath])
+        const raw = await git.raw(['diff', '--no-color', '--unified=3', '--', filePath])
         if (!raw.trim()) {
           const status = await git.status().catch(() => null)
           const isUntracked =
@@ -115,9 +122,16 @@ export async function getGitFileDiff(
       }
 
       // ─── Auto scope: fallback chain (unstaged → staged → untracked) ──────
-      const raw = await git.raw(['diff', '--unified=3', '--', filePath])
+      const raw = await git.raw(['diff', '--no-color', '--unified=3', '--', filePath])
       if (!raw.trim()) {
-        const stagedRaw = await git.raw(['diff', '--staged', '--unified=3', '--', filePath])
+        const stagedRaw = await git.raw([
+          'diff',
+          '--no-color',
+          '--staged',
+          '--unified=3',
+          '--',
+          filePath,
+        ])
         if (!stagedRaw.trim()) {
           const status = await git.status().catch(() => null)
           const isUntracked =

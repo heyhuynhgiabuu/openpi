@@ -22,7 +22,7 @@ export async function getGitStagedDiff(cwd: string): Promise<Record<string, GitF
 
       const result: Record<string, GitFileDiff> = {}
       for (const f of stagedFiles) {
-        const raw = await git.raw(['diff', '--staged', '--unified=3', '--', f])
+        const raw = await git.raw(['diff', '--no-color', '--staged', '--unified=3', '--', f])
         const { added, removed } = countDiffLines(raw)
         result[f] = {
           path: f,
@@ -52,7 +52,7 @@ export async function getGitBranchDiff(
     const effectiveBase = baseBranch ?? 'main'
     const git = simpleGit({ baseDir: cwd })
     try {
-      const summary = await git.diffSummary([`${effectiveBase}...HEAD`])
+      const summary = await git.diffSummary(['--no-color', `${effectiveBase}...HEAD`])
       if (!summary.files.length) return null
 
       const result: Record<string, GitFileDiff> = {}
@@ -60,6 +60,7 @@ export async function getGitBranchDiff(
         const filePath = f.file
         const raw = await git.raw([
           'diff',
+          '--no-color',
           `${effectiveBase}...HEAD`,
           '--unified=3',
           '--',
