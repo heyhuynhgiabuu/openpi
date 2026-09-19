@@ -75,19 +75,31 @@ describe('usageTotals', () => {
     })
   })
 
-  it('ignores anything that is not an assistant message', () => {
+  it('ignores messages that are neither assistant nor toolResult', () => {
     const totals = usageTotals([
       // A user message carrying usage is unusual, but the role check is what keeps
       // it out of the totals, so the fixture has to have one.
       entry('u', 'message', { message: { role: 'user', content: 'hi', usage: { input: 99 } } }),
-      // toolResult carries usage in other providers' shapes; only 'assistant' counts.
-      entry('r', 'message', { message: { role: 'toolResult', usage: { input: 99 } } }),
       entry('t', 'thinking_level_change', { thinkingLevel: 'high' }),
       entry('c', 'compaction', { result: { tokensBefore: 100 } }),
     ])
 
     expect(totals.inputTokens).toBe(0)
     expect(totals.cost).toBe(0)
+  })
+
+  it("counts a toolResult's nested usage the way Pi's getSessionStats does", () => {
+    const totals = usageTotals([
+      entry('u', 'message', { message: { role: 'user', content: 'hi' } }),
+      assistant({ input: 10, output: 1, cost: 0.1 }),
+      entry('r', 'message', {
+        message: { role: 'toolResult', usage: { input: 99, cost: { total: 0.4 } } },
+      }),
+    ])
+
+    expect(totals.inputTokens).toBe(109)
+    expect(totals.outputTokens).toBe(1)
+    expect(totals.cost).toBeCloseTo(0.5)
   })
 
   it('counts only the field names Pi writes', () => {

@@ -10,6 +10,7 @@ import {
   bindWorkspace,
   bindWorkspaceWithDate,
   SQL_TOTAL_FROM_PARTS,
+  SQL_TURN_COUNT,
   usageAggregateSql,
   usageDailySql,
   usageDateSql,
@@ -45,7 +46,7 @@ export function readModelUsage(
         ${SQL_TOTAL_FROM_PARTS} as totalTokens,
         coalesce(sum(e.duration_ms), 0) as durationMs,
         coalesce(sum(e.cost), 0) as cost,
-        count(*) as turnCount,
+        ${SQL_TURN_COUNT},
         count(distinct s.path) as sessionCount
       from session_entries e
       join sessions s on s.path = e.session_path
@@ -88,7 +89,7 @@ export function readModelUsageBetween(
       coalesce(sum(e.cache_write_tokens), 0) as cacheWriteTokens,
       coalesce(sum(e.duration_ms), 0) as durationMs,
       coalesce(sum(e.cost), 0) as cost,
-      count(*) as turnCount,
+      ${SQL_TURN_COUNT},
       count(distinct s.path) as sessionCount
     from session_entries e
     join sessions s on s.path = e.session_path
@@ -127,7 +128,7 @@ export function readDailyModelUsage(
             ${SQL_TOTAL_FROM_PARTS} as totalTokens,
             coalesce(sum(e.duration_ms), 0) as durationMs,
             coalesce(sum(e.cost), 0) as cost,
-            count(*) as turnCount,
+            ${SQL_TURN_COUNT},
             count(distinct s.path) as sessionCount
           from session_entries e
           join sessions s on s.path = e.session_path

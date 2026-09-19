@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEntry } from '../electron/session/sessionEntries'
+import { usageTotals } from '../electron/session/sessionEntries'
 import {
   calculateCurrentStreak,
   calculateLongestStreak,
@@ -100,77 +101,87 @@ describe('session usage capture', () => {
     expect(usageMetricsByEntryId(entries).get('assistant-1')).toBeUndefined()
   })
 
-  it('attributes a compaction to the turn it summarized', () => {
+  it('keeps the per-row sum equal to the session usage totals', () => {
     const entries: SessionEntry[] = [
       {
-        id: 'assistant-1',
+        id: 'user-1',
         parentId: null,
         type: 'message',
-        timestamp: '2026-01-01T00:00:03.000Z',
-        message: { role: 'assistant', content: 'hi', usage: { input: 10, output: 5 } },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        message: { role: 'user', content: 'go' },
       },
-      {
-        id: 'compaction-1',
-        parentId: 'assistant-1',
-        type: 'compaction',
-        timestamp: '2026-01-01T00:00:04.000Z',
-        usage: { input: 100, output: 20, cost: { total: 1.5 } },
-      },
-    ]
-
-    const metrics = usageMetricsByEntryId(entries)
-
-    // One row, not two: the summary call is part of that turn's cost, and `Turns`
-    // counts assistant turns.
-    expect(metrics.size).toBe(1)
-    const turn = metrics.get('assistant-1')
-    expect(turn?.inputTokens).toBe(110)
-    expect(turn?.outputTokens).toBe(25)
-    expect(turn?.totalTokens).toBe(135)
-    expect(turn?.cost).toBeCloseTo(1.5)
-  })
-
-  it('attributes a summary to the last turn, not the first', () => {
-    const entries: SessionEntry[] = [
       {
         id: 'assistant-1',
-        parentId: null,
+        parentId: 'user-1',
         type: 'message',
-        timestamp: '2026-01-01T00:00:03.000Z',
-        message: { role: 'assistant', content: 'first', usage: { input: 10 } },
+        timestamp: '2026-01-01T00:00:01.000Z',
+        message: {
+          role: 'assistant',
+          content: 'a',
+          usage: { input: 10, output: 5, cacheRead: 1, cacheWrite: 2, cost: { total: 0.5 } },
+        },
       },
       {
         id: 'assistant-2',
         parentId: 'assistant-1',
         type: 'message',
-        timestamp: '2026-01-01T00:01:03.000Z',
-        message: { role: 'assistant', content: 'second', usage: { input: 20 } },
+        timestamp: '2026-01-01T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: 'b',
+          usage: { input: 3, output: 4, cost: { total: 0.1 } },
+        },
       },
       {
-        id: 'branch-1',
+        id: 'tool-1',
         parentId: 'assistant-2',
-        type: 'branch_summary',
-        timestamp: '2026-01-01T00:01:04.000Z',
-        usage: { input: 5 },
+        type: 'message',
+        timestamp: '2026-01-01T00:00:02.500Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call_1',
+          toolName: 'task',
+          content: 'done',
+          usage: { input: 4, output: 6, cost: { total: 0.25 } },
+        },
       },
       {
         id: 'compaction-1',
-        parentId: 'branch-1',
+        parentId: 'assistant-2',
         type: 'compaction',
-        timestamp: '2026-01-01T00:01:05.000Z',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        usage: { input: 100, output: 20, cost: { total: 1.5 } },
+      },
+      {
+        id: 'branch-1',
+        parentId: 'compaction-1',
+        type: 'branch_summary',
+        timestamp: '2026-01-01T00:00:04.000Z',
         usage: { input: 7 },
       },
     ]
 
     const metrics = usageMetricsByEntryId(entries)
+    const totals = usageTotals(entries)
+    const sum = [...metrics.values()].reduce(
+      (acc, row) => ({
+        inputTokens: acc.inputTokens + row.inputTokens,
+        outputTokens: acc.outputTokens + row.outputTokens,
+        cacheReadTokens: acc.cacheReadTokens + row.cacheReadTokens,
+        cacheWriteTokens: acc.cacheWriteTokens + row.cacheWriteTokens,
+        cost: acc.cost + row.cost,
+      }),
+      { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, cost: 0 }
+    )
 
-    // Both summaries land on the newest turn, and neither becomes a row.
-    expect(metrics.size).toBe(2)
-    expect(metrics.get('assistant-1')?.inputTokens).toBe(10)
-    expect(metrics.get('assistant-2')?.inputTokens).toBe(32)
+    expect(sum.inputTokens).toBe(totals.inputTokens)
+    expect(sum.outputTokens).toBe(totals.outputTokens)
+    expect(sum.cacheReadTokens).toBe(totals.cacheReadTokens)
+    expect(sum.cacheWriteTokens).toBe(totals.cacheWriteTokens)
+    expect(sum.cost).toBeCloseTo(totals.cost)
   })
 
-  it('ignores a summarization entry that has no turn to attribute it to', () => {
+  it('still counts a summary with no model on its chain, under an unknown model', () => {
     const entries: SessionEntry[] = [
       {
         id: 'compaction-1',
@@ -181,7 +192,11 @@ describe('session usage capture', () => {
       },
     ]
 
-    expect(usageMetricsByEntryId(entries).size).toBe(0)
+    const metrics = usageMetricsByEntryId(entries)
+
+    expect(metrics.size).toBe(1)
+    expect(metrics.get('compaction-1')?.inputTokens).toBe(100)
+    expect(metrics.get('compaction-1')?.model).toBe('')
   })
 
   it('uses component sum for totalTokens when usage.totalTokens is inflated', () => {

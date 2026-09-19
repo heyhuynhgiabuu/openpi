@@ -320,7 +320,10 @@ export function usageTotals(entries: SessionEntry[]): UsageTotals {
     }
     if (entry.type !== 'message') continue
     const message = entry.message
-    if (!isRecord(message) || message.role !== 'assistant') continue
+    if (!isRecord(message)) continue
+    // Pi's getSessionStats adds a toolResult's nested usage (LLM work a tool
+    // performed) to the session totals too, so mirror it here.
+    if (message.role !== 'assistant' && message.role !== 'toolResult') continue
     if (isRecord(message.usage)) add(message.usage)
   }
 
