@@ -229,10 +229,6 @@ export function useOpenPiSession() {
       setInput,
       setError,
       setQueueMode,
-      setSessionQuery: sessionIndex.setSessionQuery,
-      setSortBy: sessionIndex.setSortBy,
-      setGroupBy: sessionIndex.setGroupBy,
-      setShowRecent: sessionIndex.setShowRecent,
 
       // Navigation + actions
       openWorkspace,
@@ -241,7 +237,6 @@ export function useOpenPiSession() {
       popToParent,
       createNewSession,
       selectWorkspace: sessionIndex.selectWorkspace,
-      loadWorkspacePreview: sessionIndex.loadWorkspacePreview,
       loadOlderSessionMessages: sessionHistory.loadOlderSessionMessages,
       ...actions,
       clearTasks: () => {
@@ -268,10 +263,6 @@ export function useOpenPiSession() {
       workspaces: sessionIndex.workspaces,
       sessions: sessionIndex.sessions,
       selectedWorkspacePath: sessionIndex.selectedWorkspacePath,
-      sessionQuery: sessionIndex.sessionQuery,
-      sortBy: sessionIndex.sortBy,
-      groupBy: sessionIndex.groupBy,
-      showRecent: sessionIndex.showRecent,
       gitBranch,
       workspaceSummary,
       gitStats,
