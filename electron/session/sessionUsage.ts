@@ -176,10 +176,10 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
  * Usage Pi attaches to a non-assistant entry: a summarization call on the
  * `compaction`/`branch_summary` entry itself, or the nested LLM work a tool
  * reports back on its `toolResult` message. Each gets its own row under the
- * model active on its chain, found by replaying the entry's parent chain: that
- * stays on the entry's branch and sees any `model_change` between the summarized
- * turn and the summary, so the tokens land on the right model. A toolResult's
- * parent is the assistant turn that called the tool, so its own model wins there.
+ * model that generated the attached usage. Compactions and tool results resolve
+ * from their parent chain; branch summaries resolve from `fromId`, the branch
+ * that was live while Pi generated the summary. A toolResult's parent is the
+ * assistant turn that called the tool, so its own model wins there.
  */
 function appendAttachedUsageRows(
   entries: SessionEntry[],
@@ -191,7 +191,11 @@ function appendAttachedUsageRows(
     if (!attached) continue
     const parts = readUsageParts(attached.usage)
     if (parts.totalTokens <= 0 && parts.cost <= 0) continue
-    const { model, provider } = resolveChainModel(entry, byId)
+    const startId =
+      entry.type === 'branch_summary' && typeof entry.fromId === 'string' && byId.has(entry.fromId)
+        ? entry.fromId
+        : entry.parentId
+    const { model, provider } = resolveChainModel(startId, byId)
     const metrics: UsageEntryMetrics = {
       inputTokens: parts.inputTokens,
       outputTokens: parts.outputTokens,
@@ -229,7 +233,7 @@ function attachedUsage(entry: SessionEntry): AttachedUsage | null {
  * the nearest assistant turn's model is the best available evidence.
  */
 function resolveChainModel(
-  entry: SessionEntry,
+  startId: string | null,
   byId: Map<string, SessionEntry>
 ): {
   model: string
@@ -237,8 +241,8 @@ function resolveChainModel(
 } {
   const chain: SessionEntry[] = []
   const seen = new Set<string>()
-  let cursor = entry.parentId
-  while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+  let cursor = startId
+  while (cursor && !seen.has(cursor)) {
     seen.add(cursor)
     const parent = byId.get(cursor)
     if (!parent) break

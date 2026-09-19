@@ -163,31 +163,91 @@ describe('session usage summaries', () => {
     expect(metrics.get('compaction-1')?.model).toBe('branch-a-model')
   })
 
-  it('gives a branch_summary its own row and ignores fromId for the model', () => {
+  it('attributes a branch_summary to the model on its fromId chain', () => {
     const entries: SessionEntry[] = [
       {
-        id: 'assistant-1',
+        id: 'source-assistant',
         parentId: null,
         type: 'message',
         timestamp: '2026-01-01T00:00:01.000Z',
-        message: { role: 'assistant', content: 'a', model: 'chain-model', usage: { input: 1 } },
+        message: {
+          role: 'assistant',
+          content: 'source branch',
+          model: 'source-model',
+          provider: 'source-provider',
+          usage: { input: 1 },
+        },
+      },
+      {
+        id: 'destination-assistant',
+        parentId: null,
+        type: 'message',
+        timestamp: '2026-01-01T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: 'destination branch',
+          model: 'destination-model',
+          provider: 'destination-provider',
+          usage: { input: 1 },
+        },
       },
       {
         id: 'branch-1',
-        parentId: 'assistant-1',
+        parentId: 'destination-assistant',
         type: 'branch_summary',
-        timestamp: '2026-01-01T00:00:02.000Z',
-        fromId: 'somewhere-else',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        fromId: 'source-assistant',
         usage: { input: 5, cost: { total: 0.2 } },
       },
     ]
 
     const metrics = usageMetricsByEntryId(entries)
+    const summary = metrics.get('branch-1')
 
-    expect(metrics.size).toBe(2)
-    expect(metrics.get('branch-1')?.model).toBe('chain-model')
-    expect(metrics.get('branch-1')?.inputTokens).toBe(5)
-    expect(metrics.get('branch-1')?.cost).toBeCloseTo(0.2)
+    expect(metrics.size).toBe(3)
+    expect(summary?.model).toBe('source-model')
+    expect(summary?.provider).toBe('source-provider')
+    expect(summary?.inputTokens).toBe(5)
+    expect(summary?.cost).toBeCloseTo(0.2)
+  })
+
+  it('falls back to the parent chain when a branch_summary has no source entry', () => {
+    const entries: SessionEntry[] = [
+      {
+        id: 'destination-model',
+        parentId: null,
+        type: 'model_change',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        modelId: 'destination-model',
+        provider: 'destination-provider',
+      },
+      {
+        id: 'destination-assistant',
+        parentId: 'destination-model',
+        type: 'message',
+        timestamp: '2026-01-01T00:00:01.000Z',
+        message: {
+          role: 'assistant',
+          content: 'destination branch',
+          model: 'destination-model',
+          provider: 'destination-provider',
+          usage: { input: 1 },
+        },
+      },
+      {
+        id: 'branch-1',
+        parentId: 'destination-assistant',
+        type: 'branch_summary',
+        timestamp: '2026-01-01T00:00:02.000Z',
+        fromId: 'root',
+        usage: { input: 5 },
+      },
+    ]
+
+    const summary = usageMetricsByEntryId(entries).get('branch-1')
+
+    expect(summary?.model).toBe('destination-model')
+    expect(summary?.provider).toBe('destination-provider')
   })
 
   it("gives a toolResult's nested usage its own non-turn row under the calling turn's model", () => {

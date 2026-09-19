@@ -48,7 +48,8 @@ import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './se
 // 4: summarization usage (compaction, branch_summary) counts in the totals.
 // 5: a summarization call is its own row under the model that generated it.
 // 6: a toolResult's nested usage is its own row and counts in the totals.
-const USAGE_INDEX_VERSION = 6
+// 7: branch_summary usage resolves from its fromId source chain.
+const USAGE_INDEX_VERSION = 7
 
 export class SessionIndexStore {
   private readonly db: Database.Database
