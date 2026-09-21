@@ -9,7 +9,12 @@
  */
 import type { SessionTrajectoryResponse, TrajectoryRow } from '../../src/lib/ipc'
 import { parseSessionFile } from './sessionEntries'
-import { buildTreeNodes, traceToRoot } from './sessionTree'
+import {
+  buildTreeNodes,
+  displayHiddenEntryIds,
+  nearestVisibleAncestor,
+  traceToRoot,
+} from './sessionTree'
 import { usageMetricsByEntryId } from './sessionUsage'
 
 export function buildSessionTrajectory(
@@ -22,11 +27,18 @@ export function buildSessionTrajectory(
 
     const entryById = new Map(entries.map((entry) => [entry.id, entry]))
     const lastEntryId = entries[entries.length - 1]?.id ?? null
-    const activeLeafId = leafId && entryById.has(leafId) ? leafId : lastEntryId
+    // 0.86 usage/system metadata never appears as a ledger row; chains pass
+    // through it so the visible branch stays contiguous (see sessionTree).
+    const hiddenIds = displayHiddenEntryIds(entries)
+    const activeLeafId = nearestVisibleAncestor(
+      leafId && entryById.has(leafId) ? leafId : lastEntryId,
+      entryById,
+      hiddenIds
+    )
     if (!activeLeafId) return { sessionPath, activeLeafId: null, rows: [] }
 
     // Root → leaf along the branch the session is currently on.
-    const pathIds = traceToRoot(activeLeafId, entryById)
+    const pathIds = traceToRoot(activeLeafId, entryById, hiddenIds)
     const nodes = buildTreeNodes(pathIds, entryById)
     const usageByEntryId = usageMetricsByEntryId(entries)
 

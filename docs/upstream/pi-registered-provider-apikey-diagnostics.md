@@ -13,7 +13,7 @@ from its picker), there is no signal anywhere that the provider was dropped or w
 
 ## Environment
 
-- `@earendil-works/pi-coding-agent` 0.85.0 (SDK, host-embedded child process), Node 22
+- `@earendil-works/pi-coding-agent` 0.86.1 (SDK, host-embedded child process), Node 22.23
 - Provider registered from a project extension through the extension loader (jiti)
 - Provider `streamSimple` implementation — no HTTP request is ever made, so the
   missing credential is not the functional blocker; the registry gates selection on it
@@ -31,6 +31,10 @@ One extension, identical except for the `registerProvider` config:
 
 The only discriminator is the presence of `apiKey`. Nothing is logged, no
 `extension_error` is emitted, and the provider appears registered to the host.
+
+## Status after 0.86.1
+
+OpenPi re-ran this provider through the shipped sidecar after upgrading to 0.86.1. The fixture now consumes the normalized `TranscriptContext` with `getCurrentSystemPrompt()` and `getCurrentTools()`, and the no-network provider completes the real Pi agent loop. The upstream silent credential gate remains a diagnostic concern for extensions that intentionally provide their own stream implementation.
 
 ## Expected
 

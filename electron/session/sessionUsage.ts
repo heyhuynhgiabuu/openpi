@@ -127,6 +127,26 @@ export function usageMetricsByEntryId(entries: SessionEntry[]): Map<string, Usag
     // in the model bucket that actually generated the summary.
     if (entry.type === 'compaction' || entry.type === 'branch_summary') continue
 
+    // A Pi 0.86 standalone usage entry (cache warming) is its own row under the
+    // model the entry names — no chain resolution, no turn timing. Its usage
+    // exists only on this entry, so the row adds no double counting.
+    if (entry.type === 'usage') {
+      const parts = readUsageParts(isRecord(entry.usage) ? entry.usage : {})
+      if (parts.totalTokens <= 0 && parts.cost <= 0) continue
+      metricsById.set(entry.id, {
+        inputTokens: parts.inputTokens,
+        outputTokens: parts.outputTokens,
+        cacheReadTokens: parts.cacheReadTokens,
+        cacheWriteTokens: parts.cacheWriteTokens,
+        totalTokens: parts.totalTokens,
+        durationMs: 0,
+        cost: parts.cost,
+        model: typeof entry.model === 'string' ? entry.model : '',
+        provider: typeof entry.provider === 'string' ? entry.provider : '',
+      })
+      continue
+    }
+
     if (entry.type !== 'message') continue
     const message = entry.message as unknown
     if (!isRecord(message)) continue

@@ -13,6 +13,7 @@ import type {
   WorkspaceTrustResult,
 } from '../../src/lib/ipc'
 import {
+  conversationMessageCount,
   emptyHistoryPage,
   firstUserMessage,
   historyPageCacheKey,
@@ -25,6 +26,7 @@ import {
   type SessionHistoryPageOptions,
   type SessionInfo,
   usageTotals,
+  usageIndexEntryType,
 } from './sessionEntries'
 import { canonicalizePath, displayNameForPath, toIso, truncate } from './sessionEntryUtils'
 import { runMigrations } from './sessionMigration'
@@ -49,7 +51,11 @@ import { getUsageSummary as _getUsageSummary, usageMetricsByEntryId } from './se
 // 5: a summarization call is its own row under the model that generated it.
 // 6: a toolResult's nested usage is its own row and counts in the totals.
 // 7: branch_summary usage resolves from its fromId source chain.
-const USAGE_INDEX_VERSION = 7
+// 8: Pi 0.86 standalone usage entries (cache warm) count in totals and get
+//    their own non-turn rows.
+// 9: system message metadata is indexed as a non-turn row.
+// 10: all non-assistant message roles are indexed as non-turn rows.
+export const USAGE_INDEX_VERSION = 10
 
 export class SessionIndexStore {
   private readonly db: Database.Database
@@ -297,8 +303,7 @@ export class SessionIndexStore {
         title,
         createdAt: toIso(info.created),
         updatedAt: toIso(info.modified),
-        messageCount:
-          info.messageCount || entries.filter((entry) => entry.type === 'message').length,
+        messageCount: info.messageCount || conversationMessageCount(entries),
         firstMessage,
         allMessagesText: '',
         parentSessionPath:
@@ -347,9 +352,10 @@ export class SessionIndexStore {
           sessionPath: info.path,
           entryId: entry.id,
           parentId: entry.parentId ?? null,
-          // A usage row can override the entry type (a toolResult's nested usage
-          // row is `tool_result`), which keeps it out of the turn count.
-          type: usage?.rowType ?? entry.type,
+          // Attached usage can override the base role classification (a
+          // toolResult's nested usage row is `tool_result`); all non-assistant
+          // message roles stay out of the turn count.
+          type: usage?.rowType ?? usageIndexEntryType(entry),
           timestamp: entry.timestamp ?? new Date().toISOString(),
           inputTokens: usage?.inputTokens ?? 0,
           outputTokens: usage?.outputTokens ?? 0,

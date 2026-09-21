@@ -5,12 +5,16 @@
 
 import type { TreeEntryNode, TreeEntryType } from '../../src/lib/ipc'
 import type { SessionEntry } from './sessionEntries'
-import { contentToText, truncate } from './sessionEntryUtils'
+import { contentToText, isRecord, truncate } from './sessionEntryUtils'
 
 export function countBranches(entries: SessionEntry[]): number {
+  const hiddenIds = displayHiddenEntryIds(entries)
+  const entryById = new Map(entries.map((entry) => [entry.id, entry]))
   const childCounts = new Map<string | null, number>()
   for (const entry of entries) {
-    childCounts.set(entry.parentId, (childCounts.get(entry.parentId) ?? 0) + 1)
+    if (hiddenIds.has(entry.id)) continue
+    const parentId = nearestVisibleAncestor(entry.parentId, entryById, hiddenIds)
+    childCounts.set(parentId, (childCounts.get(parentId) ?? 0) + 1)
   }
   return Array.from(childCounts.values()).reduce(
     (count, children) => count + Math.max(0, children - 1),
@@ -52,17 +56,66 @@ export function collectLeaves(
 
 /**
  * Trace from a leaf entry back to the root, returning entry IDs ordered root → leaf.
+ * IDs in `skip` (0.86 usage/system metadata) are walked through but omitted from
+ * the path, so callers can splice metadata out without breaking the chain.
  */
-export function traceToRoot(leafId: string, entryById: Map<string, SessionEntry>): string[] {
+export function traceToRoot(
+  leafId: string,
+  entryById: Map<string, SessionEntry>,
+  skip?: ReadonlySet<string>
+): string[] {
   const path: string[] = [leafId]
+  const seen = new Set([leafId])
   let current = entryById.get(leafId)?.parentId ?? null
 
-  while (current !== null && entryById.has(current)) {
+  while (current !== null && entryById.has(current) && !seen.has(current)) {
+    seen.add(current)
     path.unshift(current)
-    current = entryById.get(current)!.parentId
+    current = entryById.get(current)?.parentId ?? null
   }
 
-  return path
+  return skip ? path.filter((id) => !skip.has(id)) : path
+}
+
+/**
+ * Walk up from `entryId` to the nearest entry not in `hiddenIds` (0.86 usage /
+ * system metadata). Returns null when only hidden entries remain.
+ */
+export function nearestVisibleAncestor(
+  entryId: string | null,
+  entryById: Map<string, SessionEntry>,
+  hiddenIds: ReadonlySet<string>
+): string | null {
+  let cursor = entryId
+  const seen = new Set<string>()
+  while (cursor !== null && hiddenIds.has(cursor)) {
+    if (seen.has(cursor)) return null
+    seen.add(cursor)
+    cursor = entryById.get(cursor)?.parentId ?? null
+  }
+  return cursor
+}
+
+/**
+ * Pi 0.86 appends standalone `usage` entries (cache warming) and mid-conversation
+ * system messages to the session tree. Neither is a conversation turn — Pi docs
+ * keep usage out of LLM context, and the tree contract's message roles are only
+ * user|assistant — so the read model splices them out of displayed branches and
+ * ledger rows while chains pass through to the nearest visible ancestor. Their
+ * usage still counts via usageTotals and the SQLite index.
+ */
+export function displayHiddenEntryIds(entries: SessionEntry[]): Set<string> {
+  const hidden = new Set<string>()
+  for (const entry of entries) {
+    if (entry.type === 'usage') {
+      hidden.add(entry.id)
+      continue
+    }
+    if (entry.type !== 'message') continue
+    const message = entry.message
+    if (isRecord(message) && message.role === 'system') hidden.add(entry.id)
+  }
+  return hidden
 }
 
 /**
@@ -102,7 +155,9 @@ export function entryToTreeNode(entry: SessionEntry): TreeEntryNode {
   switch (entry.type) {
     case 'message': {
       const msg = (raw.message ?? {}) as Record<string, unknown>
-      base.role = (msg.role as 'user' | 'assistant') ?? undefined
+      // Only user/assistant fit the tree contract; a 0.86 system message is
+      // metadata (displayHiddenEntryIds), never mislabeled as an assistant.
+      base.role = msg.role === 'user' || msg.role === 'assistant' ? msg.role : undefined
       base.contentPreview = truncate(contentToText(msg.content), 80)
       break
     }

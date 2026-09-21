@@ -291,6 +291,38 @@ export function firstUserMessage(entries: SessionEntry[]): string {
   return ''
 }
 
+/**
+ * Return the type stored for usage-index rows. Pi persists user, assistant,
+ * tool-result, and system records under JSONL type `message`, but only an
+ * assistant message is a usage turn.
+ */
+export function usageIndexEntryType(entry: SessionEntry): string {
+  if (entry.type !== 'message') return entry.type
+  const role =
+    isRecord(entry.message) && typeof entry.message.role === 'string' ? entry.message.role : null
+  switch (role) {
+    case 'assistant':
+      return 'message'
+    case 'system':
+      return 'system'
+    case 'user':
+      return 'user'
+    case 'toolResult':
+      return 'tool_result'
+    default:
+      return 'message_metadata'
+  }
+}
+
+/** Count persisted messages that belong to the visible conversation, not Pi's system metadata. */
+export function conversationMessageCount(entries: SessionEntry[]): number {
+  return entries.filter((entry) => {
+    if (entry.type !== 'message') return false
+    const message = entry.message
+    return !isRecord(message) || message.role !== 'system'
+  }).length
+}
+
 export function usageTotals(entries: SessionEntry[]): UsageTotals {
   const totals: UsageTotals = {
     inputTokens: 0,
@@ -315,6 +347,13 @@ export function usageTotals(entries: SessionEntry[]): UsageTotals {
     // `retainedTail` holds copies of entries counted separately, so only the
     // entry-level usage is added here.
     if (entry.type === 'compaction' || entry.type === 'branch_summary') {
+      if (isRecord(entry.usage)) add(entry.usage)
+      continue
+    }
+    // Pi 0.86 appends model-attributed usage outside any assistant message
+    // (cache warming). Mirrors Pi's getSessionStats: the entry's usage exists
+    // only here, so counting it adds no double counting.
+    if (entry.type === 'usage') {
       if (isRecord(entry.usage)) add(entry.usage)
       continue
     }

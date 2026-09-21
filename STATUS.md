@@ -13,7 +13,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
 - Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
 - Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
-- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.85.0 `ModelRuntime` authentication with API-key and supported account-login flows.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.86.1 `ModelRuntime` authentication with API-key and supported account-login flows.
 - Command palette (`⇧⌘P`): commands, `fff` files, sessions.
 - Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
 - Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.
@@ -38,7 +38,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 
 ## Open review follow-ups
 
-- Per-turn usage attributes a summarization call to the last assistant turn in file order. A `model_change` between that turn and the compaction (15 of 160 locally) credits the summary's tokens to the earlier model in per-model buckets, and a branch switch could point at a turn on another branch; walking the compaction's parent chain would be the precise fix.
+- Per-turn usage attributes a summarization call to the last assistant turn in file order. A `model_change` between that turn and the compaction (15 of 160 locally) credits the summary's tokens to the earlier model in per-model buckets, and a branch switch could point at a turn on another branch; walking the compaction's parent chain would be the precise fix. Standalone Pi 0.86 usage entries are accounted for in session totals but remain metadata rows.
 - Session totals count assistant messages plus the summarization calls on `compaction`/`branch_summary` entries. Pi's own `getSessionStats` also counts `toolResult` message usage; OpenPi does not, and no entry in the local corpus carries it, so it is a gap rather than a live discrepancy.
 - The loader test runs the loaded `tool_call` handler through Pi's extension loader (the deny path), but `session_start` and `turn_end` are still only counted there, not executed; their behavior is covered by the direct unit tests.
 - The search fallback treats `mode: 'fuzzy'` as a literal search (it cannot rank fuzzy hits), returns one entry per occurrence where the native index returns one per line, and skips `dist`/`out`/`release` where the native index walks them. `timeBudgetMs: 0` means "stop now" rather than the native's "no limit", which the IPC schema cannot produce because it requires a positive value.
@@ -68,8 +68,8 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 ## Known constraints
 
 - macOS primary; other platforms less tested.
-- Pi SDK pinned at 0.85.0. Upstream packaging bug: `pi-coding-agent` 0.85.0 statically imports `@earendil-works/pi-server` from `main.js` without declaring it, so OpenPi hosts it as a direct dependency until upstream declares it (drop the pin after upgrading past the fix).
-- Packaging via `electron-builder`; in-app updates are wired, but signed/notarized release artifacts remain required before broad rollout.
+- Pi SDK pinned at 0.86.1. Pi 0.86 system-message patches and standalone usage entries are hidden from ordinary conversation rows while their prompt state and token/cost totals remain inspectable. The 0.85 `@earendil-works/pi-server` workaround is no longer required.
+- Packaging via `electron-builder`; Pi package updates are limited to writable development installs because packaged `app.asar` bundles are read-only, while signed/notarized release artifacts remain required before broad rollout. npm's Pi 0.86.1 dependency shrinkwrap still installs its nested `ws@8.21.0` despite the root override; pnpm resolves `ws@8.21.1`, so the npm path needs an upstream Pi republish or shrinkwrap fix before the nested copy can be aligned.
 - Single-user, local-only, no cloud sync.
 - Pi defaults to **YOLO**; OpenPi adds **optional** desktop policy rails — users can still install Pi [example extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) for TUI-style gates.
 

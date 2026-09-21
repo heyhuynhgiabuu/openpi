@@ -16,7 +16,11 @@
  * fixed final text. Constants are exported so the test and this extension
  * cannot drift apart.
  */
-import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
+import {
+  createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  getCurrentTools,
+} from '@earendil-works/pi-ai'
 
 export const SCRIPTED_FILE_PATH = 'hello.txt'
 export const SCRIPTED_FILE_CONTENT = 'scripted hello\n'
@@ -25,6 +29,12 @@ export const SCRIPTED_PROMPT = 'Create hello.txt with the scripted content.'
 
 function scriptedStream(model, context) {
   const stream = createAssistantMessageEventStream()
+  // Pi 0.86 passes a normalized TranscriptContext to custom providers. Read
+  // the prompt and tool patch stream through the public helpers rather than
+  // relying on the removed Context.systemPrompt/tools fields.
+  const systemPrompt = getCurrentSystemPrompt(context.messages)
+  const tools = getCurrentTools(context.messages)
+  const hasWriteTool = tools.some((tool) => tool.name === 'write')
   const output = {
     role: 'assistant',
     content: [],
@@ -43,9 +53,16 @@ function scriptedStream(model, context) {
     timestamp: Date.now(),
   }
 
-  const afterToolResult = (context.messages ?? []).some((message) => message.role === 'toolResult')
+  const afterToolResult = context.messages.some((message) => message.role === 'toolResult')
   stream.push({ type: 'start', partial: output })
-  if (!afterToolResult) {
+  if (!systemPrompt.trim() || !hasWriteTool) {
+    const diagnostic = 'scripted provider received an incomplete normalized transcript'
+    output.content.push({ type: 'text', text: diagnostic })
+    stream.push({ type: 'text_start', contentIndex: 0, partial: output })
+    stream.push({ type: 'text_delta', contentIndex: 0, delta: diagnostic, partial: output })
+    stream.push({ type: 'text_end', contentIndex: 0, content: diagnostic, partial: output })
+    output.stopReason = 'stop'
+  } else if (!afterToolResult) {
     const toolCall = {
       type: 'toolCall',
       id: 'scripted-call-1',

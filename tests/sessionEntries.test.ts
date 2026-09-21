@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { SessionEntry } from '../electron/session/sessionEntries'
 import {
+  conversationMessageCount,
   DEFAULT_HISTORY_PAGE_LIMIT,
   MAX_HISTORY_PAGE_LIMIT,
   historyPageCacheKey,
@@ -68,6 +70,36 @@ describe('normalizeSessionEntry field passthrough', () => {
     })
     expect(modelChange?.modelId).toBe('claude-sonnet-5')
     expect(modelChange?.provider).toBe('anthropic')
+  })
+})
+
+describe('conversationMessageCount', () => {
+  it('excludes persisted system metadata but preserves other message entries', () => {
+    const entries: SessionEntry[] = [
+      {
+        type: 'message',
+        id: 'system',
+        parentId: null,
+        timestamp: '',
+        message: { role: 'system' },
+      },
+      {
+        type: 'message',
+        id: 'user',
+        parentId: 'system',
+        timestamp: '',
+        message: { role: 'user' },
+      },
+      {
+        type: 'message',
+        id: 'tool',
+        parentId: 'user',
+        timestamp: '',
+        message: { role: 'toolResult' },
+      },
+      { type: 'usage', id: 'warm', parentId: 'tool', timestamp: '' },
+    ]
+    expect(conversationMessageCount(entries)).toBe(2)
   })
 })
 

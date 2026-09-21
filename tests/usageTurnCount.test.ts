@@ -17,6 +17,7 @@ vi.mock('better-sqlite3', async () => {
 })
 
 import Database from 'better-sqlite3'
+import { usageIndexEntryType } from '../electron/session/sessionEntries'
 
 let db: Database.Database
 
@@ -73,6 +74,44 @@ function insertEntry(
 }
 
 describe('usage aggregates', () => {
+  it('counts standalone usage but excludes system metadata from turns', () => {
+    const systemType = usageIndexEntryType({
+      id: 'system',
+      parentId: null,
+      timestamp: '',
+      type: 'message',
+      message: { role: 'system' },
+    })
+    expect(systemType).toBe('system')
+    expect(
+      usageIndexEntryType({
+        id: 'user',
+        parentId: null,
+        timestamp: '',
+        type: 'message',
+        message: { role: 'user' },
+      })
+    ).toBe('user')
+    expect(
+      usageIndexEntryType({
+        id: 'tool',
+        parentId: null,
+        timestamp: '',
+        type: 'message',
+        message: { role: 'toolResult' },
+      })
+    ).toBe('tool_result')
+    insertEntry('system', systemType, 20, 0, 20, 0.1)
+    insertEntry('user', 'user', 15, 0, 15, 0.1)
+    insertEntry('tool', 'tool_result', 10, 0, 10, 0.1)
+    insertEntry('assistant', 'message', 10, 5, 15, 0.1)
+    insertEntry('warm', 'usage', 30, 0, 30, 0.2)
+    const row = db.prepare(usageAggregateSql(null)).get() as UsageAggregateRow | undefined
+    expect(row?.turnCount).toBe(1)
+    expect(row?.totalTokens).toBe(90)
+    expect(row?.cost).toBeCloseTo(0.6)
+  })
+
   it('adds a toolResult usage row to the tokens without counting it as a turn', () => {
     insertEntry('assistant-1', 'message', 10, 5, 15, 0.1)
     insertEntry('tool-1', 'tool_result', 30, 2, 37, 0.2)

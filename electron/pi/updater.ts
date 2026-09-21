@@ -1,28 +1,82 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
-import { createRequire } from 'node:module'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { app } from 'electron'
 import type { PiUpdateCheckResult, PiUpdateInstallResult } from '../../src/lib/ipc'
 import { piUpdateCheckResultSchema, piUpdateInstallResultSchema } from '../../src/lib/ipc'
+import {
+  buildInstallArgs,
+  detectPackageManager,
+  hasOnPath,
+  pathLookupCommand,
+  type PackageManager,
+} from './packageManager'
 
-const require = createRequire(import.meta.url)
 const execFileAsync = promisify(execFile)
+
+const PACKAGED_UPDATE_MESSAGE =
+  'Pi updates are bundled with OpenPi releases. Update OpenPi itself to get a newer Pi.'
+
+/** The Pi family version validated by this OpenPi host. */
+export const SUPPORTED_PI_VERSION = '0.86.1'
 
 /**
  * Read the bundled Pi SDK version from its package.json.
  */
 function getBundledPiVersion(): string {
+  const appRoots = new Set<string>()
   try {
-    const entryPath = require.resolve('@earendil-works/pi-coding-agent')
-    const packageJsonPath = path.resolve(path.dirname(entryPath), '..', 'package.json')
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as {
-      version?: unknown
-    }
-    return typeof packageJson.version === 'string' ? packageJson.version : '0.0.0'
+    // Prefer the host's app path: process.cwd() can be a user workspace with
+    // a different Pi dependency in its own node_modules.
+    appRoots.add(app.getAppPath())
   } catch {
-    return '0.0.0'
+    // The app path is unavailable in isolated unit tests before Electron starts.
+  }
+  appRoots.add(process.cwd())
+
+  for (const appRoot of appRoots) {
+    const bundledManifest = path.join(
+      appRoot,
+      'node_modules',
+      '@earendil-works',
+      'pi-coding-agent',
+      'package.json'
+    )
+    const bundledVersion = readPackageVersion(bundledManifest)
+    if (bundledVersion != null) return bundledVersion
+
+    const appManifest = readJsonObject(path.join(appRoot, 'package.json'))
+    const declaredVersion = appManifest?.dependencies?.['@earendil-works/pi-coding-agent']
+    if (typeof declaredVersion === 'string') return declaredVersion
+  }
+
+  return '0.0.0'
+}
+
+function readPackageVersion(packageJsonPath: string): string | null {
+  const packageJson = readJsonObject(packageJsonPath)
+  return typeof packageJson?.version === 'string' ? packageJson.version : null
+}
+
+function readJsonObject(filePath: string): {
+  version?: unknown
+  dependencies?: Record<string, unknown>
+} | null {
+  try {
+    const value: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+    const record = value as Record<string, unknown>
+    const dependencies = record.dependencies
+    return {
+      version: record.version,
+      dependencies:
+        typeof dependencies === 'object' && dependencies !== null && !Array.isArray(dependencies)
+          ? (dependencies as Record<string, unknown>)
+          : undefined,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -42,6 +96,14 @@ export function compareSemver(a: string, b: string): number {
     if (diff !== 0) return diff
   }
   return 0
+}
+
+export function isSupportedPiVersion(version: string): boolean {
+  return version === SUPPORTED_PI_VERSION
+}
+
+function unsupportedPiVersionMessage(version: string): string {
+  return `Pi ${version} is available, but this OpenPi build is validated only with Pi ${SUPPORTED_PI_VERSION}. Update OpenPi before installing it.`
 }
 
 /**
@@ -65,14 +127,24 @@ export async function checkPiUpdate(): Promise<PiUpdateCheckResult> {
     const latestVersion = typeof data.version === 'string' ? data.version : null
     const packageName =
       typeof data.packageName === 'string' ? data.packageName : '@earendil-works/pi-coding-agent'
+    const newerVersion = latestVersion != null && compareSemver(latestVersion, currentVersion) > 0
+    const supportedUpdate = latestVersion != null && isSupportedPiVersion(latestVersion)
+    const compatibleVersion = newerVersion && supportedUpdate && !app.isPackaged
 
     return piUpdateCheckResultSchema.parse({
       currentVersion,
       latestVersion,
       packageName,
-      updateAvailable: latestVersion != null && compareSemver(latestVersion, currentVersion) > 0,
+      updateAvailable: compatibleVersion,
       checkedAt,
-      error: latestVersion ? null : 'Latest version response did not include a version.',
+      error:
+        latestVersion == null
+          ? 'Latest version response did not include a version.'
+          : newerVersion && supportedUpdate && app.isPackaged
+            ? PACKAGED_UPDATE_MESSAGE
+            : newerVersion && !compatibleVersion
+              ? unsupportedPiVersionMessage(latestVersion)
+              : null,
     })
   } catch (err) {
     return piUpdateCheckResultSchema.parse({
@@ -87,9 +159,9 @@ export async function checkPiUpdate(): Promise<PiUpdateCheckResult> {
 }
 
 /**
- * Update the bundled Pi SDK by installing matching `pi-coding-agent` and `pi-ai`
- * versions in one package-manager transaction. A full app restart is required to pick
- * up the new SDK code.
+ * Update the bundled Pi SDK by installing matching `pi-coding-agent`, `pi-ai`, and
+ * `pi-tui` versions in one package-manager transaction. A full app restart is required
+ * to pick up the new SDK code.
  *
  * OpenPi does not depend on a global `pi` CLI (it imports the SDK directly),
  * so `pi update --self` does not apply to the bundled install — running it
@@ -99,6 +171,28 @@ export async function checkPiUpdate(): Promise<PiUpdateCheckResult> {
  * OpenPi itself was installed with.
  */
 export async function installPiUpdate(latestVersion: string): Promise<PiUpdateInstallResult> {
+  if (!isSupportedPiVersion(latestVersion)) {
+    return piUpdateInstallResultSchema.parse({
+      ok: false,
+      requiresRestart: false,
+      output: '',
+      message: unsupportedPiVersionMessage(latestVersion),
+    })
+  }
+
+  // A packaged app runs from a read-only app.asar and does not contain the
+  // workspace lockfiles needed to mutate its embedded node_modules. Ship Pi
+  // changes with the next OpenPi release instead of invoking a package manager
+  // against the immutable bundle.
+  if (app.isPackaged) {
+    return piUpdateInstallResultSchema.parse({
+      ok: false,
+      requiresRestart: false,
+      output: '',
+      message: PACKAGED_UPDATE_MESSAGE,
+    })
+  }
+
   const appPath = app.getAppPath()
   const pkgManager = detectPackageManager(appPath)
   if (!pkgManager) {
@@ -113,43 +207,14 @@ export async function installPiUpdate(latestVersion: string): Promise<PiUpdateIn
   return installBundledPi(pkgManager, latestVersion, appPath)
 }
 
-function detectPackageManager(
-  appPath: string,
-  hasOnPathFn: (bin: string) => boolean = hasOnPath
-): 'npm' | 'pnpm' | 'yarn' | 'bun' | null {
-  if (fs.existsSync(path.join(appPath, 'pnpm-lock.yaml'))) return 'pnpm'
-  if (fs.existsSync(path.join(appPath, 'yarn.lock'))) return 'yarn'
-  if (fs.existsSync(path.join(appPath, 'bun.lockb'))) return 'bun'
-  if (fs.existsSync(path.join(appPath, 'package-lock.json'))) return 'npm'
-  // No lockfile — fall back to the first package manager on PATH.
-  for (const candidate of ['npm', 'pnpm', 'yarn', 'bun'] as const) {
-    if (hasOnPathFn(candidate)) return candidate
-  }
-  return null
+export const __test = {
+  buildInstallArgs,
+  detectPackageManager,
+  hasOnPath,
+  isSupportedPiVersion,
+  getBundledPiVersion,
+  pathLookupCommand,
 }
-
-function hasOnPath(bin: string): boolean {
-  try {
-    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
-    execFileSync('which', [bin], { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
-
-type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
-
-function buildInstallArgs(pkgManager: PackageManager, version: string): string[] {
-  const specs = [`@earendil-works/pi-coding-agent@${version}`, `@earendil-works/pi-ai@${version}`]
-  if (pkgManager === 'npm') {
-    return ['install', '--ignore-scripts', '--no-audit', '--no-fund', ...specs]
-  }
-  if (pkgManager === 'pnpm' || pkgManager === 'yarn') return ['add', '--ignore-scripts', ...specs]
-  return ['add', ...specs]
-}
-
-export const __test = { buildInstallArgs, detectPackageManager, hasOnPath }
 
 async function installBundledPi(
   pkgManager: PackageManager,

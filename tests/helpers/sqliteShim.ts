@@ -10,10 +10,9 @@ import { DatabaseSync } from 'node:sqlite'
  * `pragma` and `close`.
  *
  * Differences to keep in mind if this is ever used to drive the real store:
- * it always opens `:memory:` and ignores the path argument, it has no
- * `transaction()`, and node:sqlite is stricter about named parameters — it
- * throws for a key the statement does not use, where better-sqlite3 ignores it.
- * Tests here bind positionally.
+ * it always opens `:memory:` and ignores the path argument. Its transaction
+ * wrapper is intentionally small and only covers the callback form used by
+ * OpenPi's stores.
  *
  * Foreign keys are enforced by default here, which matches production: the store
  * turns them on explicitly (`sessionIndex.ts:61`).
@@ -29,36 +28,90 @@ interface SqliteShim {
 interface SqliteShimDatabase {
   exec: (sql: string) => void
   prepare: (sql: string) => {
-    all: (...params: SqlParam[]) => Row[]
-    get: (...params: SqlParam[]) => Row | undefined
-    run: (...params: SqlParam[]) => void
+    all: (...params: Array<SqlParam | Record<string, SqlParam>>) => Row[]
+    get: (...params: Array<SqlParam | Record<string, SqlParam>>) => Row | undefined
+    run: (...params: Array<SqlParam | Record<string, SqlParam>>) => void
   }
   pragma: (source: string) => void
+  transaction: <T>(fn: (...args: never[]) => T) => (...args: never[]) => T
   close: () => void
+}
+
+const namedParameterPattern = /[@:$]([A-Za-z_][A-Za-z0-9_]*)/g
+
+type NamedParameters = Record<string, SqlParam>
+
+function isNamedParameters(value: SqlParam | NamedParameters): value is NamedParameters {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function namedParameterNames(sql: string): string[] {
+  return Array.from(sql.matchAll(namedParameterPattern), (match) => match[1])
+}
+
+function positionalSql(sql: string): string {
+  return sql.replace(namedParameterPattern, '?')
+}
+
+function bindParameters(names: string[], params: Array<SqlParam | NamedParameters>): SqlParam[] {
+  const first = params[0]
+  if (params.length === 1 && first !== undefined && isNamedParameters(first)) {
+    return names.map((name) => first[name] ?? null)
+  }
+
+  const values: SqlParam[] = []
+  for (const param of params) {
+    if (isNamedParameters(param)) throw new Error('Named parameters must be the only binding')
+    values.push(param)
+  }
+  return values
 }
 
 export function createSqliteShim(): SqliteShim {
   class Database {
     private readonly engine = new DatabaseSync(':memory:')
+    private transactionDepth = 0
 
     exec(sql: string): void {
       this.engine.exec(sql)
     }
 
     prepare(sql: string) {
-      const statement = this.engine.prepare(sql)
+      const names = namedParameterNames(sql)
+      const statement = this.engine.prepare(positionalSql(sql))
       return {
-        // SAFETY: callers bind only strings, numbers and null, and node:sqlite
-        // returns one object per row keyed by column name.
-        all: (...params: SqlParam[]) => statement.all(...params) as Row[],
+        // SAFETY: callers bind SQLite-compatible scalar or named parameters, and
+        // node:sqlite returns one object per row keyed by column name.
+        all: (...params: Array<SqlParam | NamedParameters>) =>
+          statement.all(...bindParameters(names, params)) as Row[],
         // SAFETY: same binding contract; a missing row is `undefined`.
-        get: (...params: SqlParam[]) => statement.get(...params) as Row | undefined,
-        run: (...params: SqlParam[]) => statement.run(...params),
+        get: (...params: Array<SqlParam | NamedParameters>) =>
+          statement.get(...bindParameters(names, params)) as Row | undefined,
+        run: (...params: Array<SqlParam | NamedParameters>) =>
+          statement.run(...bindParameters(names, params)),
       }
     }
 
     pragma(source: string): void {
       this.engine.exec(`pragma ${source}`)
+    }
+
+    transaction<T>(fn: (...args: never[]) => T): (...args: never[]) => T {
+      return (...args: never[]) => {
+        const outermost = this.transactionDepth === 0
+        if (outermost) this.engine.exec('begin')
+        this.transactionDepth += 1
+        try {
+          const result = fn(...args)
+          this.transactionDepth -= 1
+          if (outermost) this.engine.exec('commit')
+          return result
+        } catch (error) {
+          this.transactionDepth -= 1
+          if (outermost) this.engine.exec('rollback')
+          throw error
+        }
+      }
     }
 
     close(): void {

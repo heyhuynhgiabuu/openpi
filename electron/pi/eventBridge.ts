@@ -10,7 +10,11 @@ import { outputLine, send } from './sidecarContext'
 
 type Session = Awaited<ReturnType<typeof createAgentSession>>['session']
 
-export function forwardSessionEvents(session: Session, onAgentEnd: () => void): () => void {
+export function isSessionIndexUpdateEvent(type: string): boolean {
+  return type === 'agent_end' || type === 'entry_appended'
+}
+
+export function forwardSessionEvents(session: Session, onIndexUpdate: () => void): () => void {
   return session.subscribe((event: AgentSessionEvent) => {
     if (isStaleExtensionCtxEvent(event)) return
 
@@ -24,8 +28,8 @@ export function forwardSessionEvents(session: Session, onAgentEnd: () => void): 
       message?: string
     }
 
-    if (ev.type === 'agent_end') {
-      onAgentEnd()
+    if (isSessionIndexUpdateEvent(ev.type)) {
+      onIndexUpdate()
     }
 
     if (ev.type === 'extension_error') {

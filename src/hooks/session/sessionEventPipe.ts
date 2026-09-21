@@ -46,6 +46,7 @@ export interface SessionEventPipeDeps {
 
 /** Session events that append an entry to the JSONL, so the tree can change. */
 const APPEND_EVENTS = new Set([
+  'entry_appended',
   'message_start',
   'tool_execution_end',
   'compaction_end',
@@ -98,7 +99,10 @@ export function createSessionEventHandle(deps: SessionEventPipeDeps) {
 
     // Any appended entry becomes the file's last line again, so the file order
     // is authoritative from here on and the branch override would go stale.
-    if (event.type === 'message_start') deps.setBranchLeafId(null)
+    // entry_appended covers entries Pi appends with no message event — extension
+    // state and, since 0.86, post-turn cache-warm usage entries.
+    if (event.type === 'message_start' || event.type === 'entry_appended')
+      deps.setBranchLeafId(null)
     if (APPEND_EVENTS.has(event.type)) deps.setTreeVersion((version) => version + 1)
 
     if (event.type === 'queue_update') {

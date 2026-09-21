@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Pi SDK 0.86.1** — upgraded `pi-ai`, `pi-coding-agent`, `pi-tui`, and TypeBox together at exact pins; the obsolete `pi-server` packaging workaround is gone, and the shipped sidecar/provider path now follows Pi's normalized `TranscriptContext` contract.
+- **Pi session inspection** — system-message patches and standalone usage entries from JSONL v3 are preserved for prompt/tool replay and token accounting without turning Pi's internal metadata into ordinary conversation rows; usage index rows now retain honest entry roles, with assistant messages representing turns.
+- **Pi updater compatibility** — development installs update the complete supported Pi family in one exact-version transaction and select only an available manager matching the lockfile; packaged read-only bundles now direct users to update OpenPi, and future Pi versions this build has not validated get a clear message.
+- **Dependency hardening** — the regenerated npm and pnpm locks carry patched `js-yaml` 4.3.2 and protobufjs 7.6.6 resolutions alongside the Pi family upgrade.
+
 ## [0.2.14] - 2026-09-16
 
 - Session export, a trajectory ledger, and the real pi-task agent catalog in the composer; broken extensions now surface errors, and protected paths cover rename, copy, and format.

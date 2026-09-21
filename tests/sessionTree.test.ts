@@ -5,6 +5,7 @@ import {
   collectLeaves,
   countBranches,
   entryToTreeNode,
+  nearestVisibleAncestor,
   traceToRoot,
 } from '../electron/session/sessionTree'
 
@@ -64,6 +65,22 @@ describe('countBranches', () => {
     // it), so a second null-parent entry here means a genuinely separate root.
     expect(countBranches([entry('root', null), entry('other', null), entry('a', 'root')])).toBe(1)
   })
+
+  it('does not count hidden system or usage metadata as fork children', () => {
+    const entries: SessionEntry[] = [
+      entry('system', null, { message: { role: 'system', content: 'prompt' } }),
+      entry('user', 'system', { message: { role: 'user', content: 'hello' } }),
+      {
+        type: 'usage',
+        id: 'warm',
+        parentId: 'user',
+        timestamp: '2026-09-14T10:00:00.000Z',
+        usage: { totalTokens: 10, cost: { total: 0.01 } },
+      },
+      entry('alternate', 'user'),
+    ]
+    expect(countBranches(entries)).toBe(0)
+  })
 })
 
 describe('collectLeaves', () => {
@@ -89,6 +106,12 @@ describe('collectLeaves', () => {
 })
 
 describe('traceToRoot', () => {
+  it('terminates on cyclic ancestry, including hidden metadata', () => {
+    const entries = byId([entry('a', 'b'), entry('b', 'a')])
+    expect(traceToRoot('a', entries)).toEqual(['b', 'a'])
+    expect(nearestVisibleAncestor('a', entries, new Set(['a', 'b']))).toBeNull()
+  })
+
   it('returns the path ordered root to leaf', () => {
     expect(traceToRoot('b', byId(forked))).toEqual(['root', 'a', 'b'])
   })

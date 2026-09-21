@@ -132,7 +132,7 @@ Roadmap implications:
 
 ---
 
-## Pi Integration Reality (v0.85.0)
+## Pi Integration Reality (v0.86.1)
 
 These facts must drive implementation. Do not guess or approximate.
 
@@ -148,7 +148,8 @@ await session.prompt("...");
 ### Session format (JSONL v3 tree)
 - Stored at `~/.pi/agent/sessions/<path-slug>_<name>.jsonl`
 - Each line: `SessionEntry` with `type`, `id` (8-char hex), `parentId`, `timestamp`
-- Entry types: `session` (header), `message`, `model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `custom`, `custom_message`, `label`, `session_info`
+- Entry types: `session` (header), `message`, `model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `usage`, `custom`, `custom_message`, `label`, `session_info`
+- Pi 0.86 system messages carry prompt sections and tool patches; standalone `usage` entries contribute to totals but are not conversation nodes. Unknown usage kinds are normal and must not invalidate a session.
 - Tree structure: `parentId: null` = root; branching = new children from earlier entry
 - `SessionManager.list(cwd)` — sessions for a directory
 - `SessionManager.listAll()` — all sessions across all projects
