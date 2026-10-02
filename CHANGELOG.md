@@ -1,13 +1,29 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] - 2026-10-02
+
+- Review agent gates from a phone with the read-only remote PWA, and ride Pi 1.0.0 with built-in MCP, codemode, and tool-search under the hood.
+
+### Added
+
+- **Remote gate review (P0)** — an opt-in, read-only remote surface: an authenticated HTTP server with a pending-gate registry (`ea6c0b3`, `cb07106`), read models plus an SSE stream (`7bb0b11`), and an installable PWA with its own Settings surface (`8dc2c77`). Desktop confirmations and pre-apply reviews are bridged into the gate registry (`a5c1b9e`, `40f0e06`), so you can approve or reject a waiting agent from another device, with the reviewed diff shown right on the gate card (`878122b`, `b638cf4`). Gates withdraw when the prompt ends (`b6e97f8`), reconnects are stateful (`3df992a`), and a 401 resets the client cleanly (`1c2c12e`).
+- **Pre-apply review covers `write`** — file writes route through the same hunk-by-hunk review the edit gate uses, instead of applying unseen (`3fcb5d7`).
+- **Terminal context in steering** — the visible terminal's recent lines can feed steering context, with snippets that follow terminal ownership across tab switches (`3cb1c88`, `1122f85`).
+
+### Fixed
+
+- **Git reads survive `color.ui=always`** — patch/numstat reads (`#12`, `4c722bf`) and branch/history reads (`#14`, `83020cc`) pass `--no-color`, so the current branch, ref lists, and the history graph parse correctly when color is forced on.
+- **Summarization and toolResult usage get their own rows** — per-model usage no longer lumps them into assistant rows (`#11`, `8b90fa8`).
+- **Confirm windows verify identity against Linux inode reuse** — a recycled inode could make a stale window pass as the privileged one (`9b36cc8`).
+- **The live task tray's elapsed timer keeps running** (`7ba55bf`).
 
 ### Changed
 
-- **Pi SDK 0.86.1** — upgraded `pi-ai`, `pi-coding-agent`, `pi-tui`, and TypeBox together at exact pins; the obsolete `pi-server` packaging workaround is gone, and the shipped sidecar/provider path now follows Pi's normalized `TranscriptContext` contract.
+- **Pi SDK 0.86.1 → 1.0.0** — `pi-ai`, `pi-coding-agent`, and `pi-tui` move to exact 1.0.0 pins (TypeBox stays aligned). The obsolete `pi-server` packaging workaround is gone, the sidecar/provider path follows Pi's normalized `TranscriptContext`, and Pi's built-in extensions — MCP, codemode, tool-search — are available through the embedded SDK (OpenPi has no dedicated surface for them yet). The TS7-native shipped declarations are consumed fine by the current toolchain.
 - **Pi session inspection** — system-message patches and standalone usage entries from JSONL v3 are preserved for prompt/tool replay and token accounting without turning Pi's internal metadata into ordinary conversation rows; usage index rows now retain honest entry roles, with assistant messages representing turns.
-- **Pi updater compatibility** — development installs update the complete supported Pi family in one exact-version transaction and select only an available manager matching the lockfile; packaged read-only bundles now direct users to update OpenPi, and future Pi versions this build has not validated get a clear message.
-- **Dependency hardening** — the regenerated npm and pnpm locks carry patched `js-yaml` 4.3.2 and protobufjs 7.6.6 resolutions alongside the Pi family upgrade.
+- **Pi updater compatibility** — development installs update the complete supported Pi family in one exact-version transaction and select only an available manager matching the lockfile; packaged read-only bundles direct users to update OpenPi, and unvalidated Pi versions get a clear message.
+- **Dependency hardening** — regenerated npm and pnpm locks carry patched `js-yaml` 4.3.2 and protobufjs 7.6.6 resolutions; the npm path is authoritative for CI and was repaired from a corrupted mixed package-manager tree.
+- **Maintainer/CI** — the release workflow can be dispatched on a tag ref (`098ccb2`), and the renderer consumes `@pierre/diffs` 1.4.3 per the npm lockfile (`046e8ba`).
 
 ## [0.2.14] - 2026-09-16
 
