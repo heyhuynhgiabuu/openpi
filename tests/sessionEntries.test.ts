@@ -7,6 +7,8 @@ import {
   historyPageCacheKey,
   normalizeHistoryLimit,
   normalizeSessionEntry,
+  parseSessionEntries,
+  usageTotals,
 } from '../electron/session/sessionEntries'
 
 describe('normalizeSessionEntry', () => {
@@ -141,5 +143,66 @@ describe('historyPageCacheKey', () => {
     expect(historyPageCacheKey('/tmp/a.jsonl', 20, 'entry-1', 'leaf-1')).toBe(
       historyPageCacheKey('/tmp/a.jsonl', 20, 'entry-1', 'leaf-1')
     )
+  })
+})
+
+describe('unknown entry types from newer Pi versions', () => {
+  // Pi 0.87 added `context_edit` to the SessionEntry union. OpenPi's parser is
+  // duck-typed on purpose: entry kinds it does not model yet must parse without
+  // crashing, stay out of the visible conversation, and contribute no usage.
+  const content = [
+    JSON.stringify({ type: 'session', id: 'uuid-1', cwd: '/w', version: 3 }),
+    JSON.stringify({
+      type: 'message',
+      id: 'aaa00000',
+      parentId: null,
+      timestamp: '2026-01-01T00:00:00.000Z',
+      message: { role: 'user', content: 'hi' },
+    }),
+    JSON.stringify({
+      type: 'context_edit',
+      id: 'bbb00000',
+      parentId: 'aaa00000',
+      timestamp: '2026-01-01T00:00:01.000Z',
+      targetId: 'aaa00000',
+      replacement: null,
+    }),
+    JSON.stringify({
+      type: 'message',
+      id: 'ccc00000',
+      parentId: 'bbb00000',
+      timestamp: '2026-01-01T00:00:02.000Z',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'hello' }] },
+    }),
+  ].join('\n')
+
+  it('parses a context_edit entry without dropping or crashing', () => {
+    const entries = parseSessionEntries(content)
+    expect(entries.map((entry) => entry.type)).toEqual([
+      'session',
+      'message',
+      'context_edit',
+      'message',
+    ])
+    const contextEdit = entries[2]
+    if (!contextEdit) throw new Error('Expected context_edit entry')
+    expect(normalizeSessionEntry(contextEdit)).toMatchObject({
+      type: 'context_edit',
+      parentId: 'aaa00000',
+    })
+  })
+
+  it('keeps unknown entries out of the conversation count and usage totals', () => {
+    const entries = parseSessionEntries(content)
+      .map((entry) => normalizeSessionEntry(entry))
+      .filter((entry) => entry !== null)
+    expect(conversationMessageCount(entries)).toBe(2)
+    expect(usageTotals(entries)).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      cost: 0,
+    })
   })
 })
