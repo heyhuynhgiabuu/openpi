@@ -38,22 +38,22 @@ describe('packaged Pi updater', () => {
     getAppPath.mockReturnValue(appRoot)
     fs.writeFileSync(
       path.join(appRoot, 'package.json'),
-      JSON.stringify({ dependencies: { '@earendil-works/pi-coding-agent': '0.86.0' } })
+      JSON.stringify({ dependencies: { '@earendil-works/pi-coding-agent': '0.99.2' } })
     )
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ version: '0.86.1' }),
+        json: async () => ({ version: '1.0.0' }),
       }))
     )
 
     const result = await updater.checkPiUpdate()
 
     expect(result).toMatchObject({
-      currentVersion: '0.86.0',
-      latestVersion: '0.86.1',
+      currentVersion: '0.99.2',
+      latestVersion: '1.0.0',
       updateAvailable: true,
       error: null,
     })
@@ -65,29 +65,29 @@ describe('packaged Pi updater', () => {
     getAppPath.mockReturnValue(appRoot)
     fs.writeFileSync(
       path.join(appRoot, 'package.json'),
-      JSON.stringify({ dependencies: { '@earendil-works/pi-coding-agent': '0.86.0' } })
+      JSON.stringify({ dependencies: { '@earendil-works/pi-coding-agent': '0.99.2' } })
     )
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ version: '0.86.1' }),
+        json: async () => ({ version: '1.0.0' }),
       }))
     )
 
     const result = await updater.checkPiUpdate()
 
     expect(result).toMatchObject({
-      currentVersion: '0.86.0',
-      latestVersion: '0.86.1',
+      currentVersion: '0.99.2',
+      latestVersion: '1.0.0',
       updateAvailable: false,
       error: 'Pi updates are bundled with OpenPi releases. Update OpenPi itself to get a newer Pi.',
     })
   })
 
   it('refuses to mutate the read-only app bundle', async () => {
-    const result = await updater.installPiUpdate('0.86.1')
+    const result = await updater.installPiUpdate('1.0.0')
 
     expect(result).toMatchObject({
       ok: false,

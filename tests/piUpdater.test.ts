@@ -49,7 +49,7 @@ describe('Pi package update transaction', () => {
 describe('Pi version compatibility', () => {
   it('keeps the host gate aligned with the direct Pi package pins', () => {
     const piVersion = packageManifest.dependencies['@earendil-works/pi-coding-agent']
-    expect(piVersion).toBe('0.86.1')
+    expect(piVersion).toBe('1.0.0')
     expect(packageManifest.dependencies['@earendil-works/pi-ai']).toBe(piVersion)
     expect(packageManifest.dependencies['@earendil-works/pi-tui']).toBe(piVersion)
     expect(updaterTest.isSupportedPiVersion(piVersion)).toBe(true)
@@ -57,16 +57,16 @@ describe('Pi version compatibility', () => {
   })
 
   it('supports only the Pi version validated by this OpenPi host', () => {
-    expect(updaterTest.isSupportedPiVersion('0.86.1')).toBe(true)
-    expect(updaterTest.isSupportedPiVersion('0.86.0')).toBe(false)
-    expect(updaterTest.isSupportedPiVersion('0.86.2')).toBe(false)
-    expect(updaterTest.isSupportedPiVersion('0.86.1-beta.1')).toBe(false)
+    expect(updaterTest.isSupportedPiVersion('1.0.0')).toBe(true)
+    expect(updaterTest.isSupportedPiVersion('0.99.2')).toBe(false)
+    expect(updaterTest.isSupportedPiVersion('1.0.1')).toBe(false)
+    expect(updaterTest.isSupportedPiVersion('1.0.0-beta.1')).toBe(false)
   })
 
   it('refuses an unsupported future version before package-manager detection', async () => {
-    const result = await updater.installPiUpdate('0.86.2')
+    const result = await updater.installPiUpdate('1.0.1')
     expect(result).toMatchObject({ ok: false, requiresRestart: false })
-    expect(result.message).toContain('validated only with Pi 0.86.1')
+    expect(result.message).toContain('validated only with Pi 1.0.0')
   })
 })
 

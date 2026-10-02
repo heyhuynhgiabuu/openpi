@@ -19,7 +19,7 @@ const PACKAGED_UPDATE_MESSAGE =
   'Pi updates are bundled with OpenPi releases. Update OpenPi itself to get a newer Pi.'
 
 /** The Pi family version validated by this OpenPi host. */
-export const SUPPORTED_PI_VERSION = '0.86.1'
+export const SUPPORTED_PI_VERSION = '1.0.0'
 
 /**
  * Read the bundled Pi SDK version from its package.json.
