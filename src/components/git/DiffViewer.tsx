@@ -27,7 +27,7 @@ function readDiffStyle(): DiffStyle {
   return window.localStorage.getItem(DIFF_STYLE_STORAGE_KEY) === 'unified' ? 'unified' : 'split'
 }
 
-function diffOptions(diffStyle: DiffStyle): FileDiffOptions<undefined> {
+function diffOptions(diffStyle: DiffStyle): FileDiffOptions<undefined, undefined> {
   return {
     diffStyle,
     theme: 'pierre-dark',

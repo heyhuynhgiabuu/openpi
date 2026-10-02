@@ -27,7 +27,7 @@ export interface DiffRenderHandlers {
 export function diffOptions(
   diffStyle: DiffStyle,
   handlers: DiffRenderHandlers = {}
-): FileDiffOptions<undefined> {
+): FileDiffOptions<undefined, undefined> {
   return {
     diffStyle,
     theme: 'pierre-dark',
