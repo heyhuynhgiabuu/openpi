@@ -12,7 +12,7 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 
 | Principle | Pi / Earendil | OpenPi |
 |---|---|---|
-| **Minimal agent** | ~4 tools, small system prompt, **YOLO by default**; no built-in plan mode, todos, MCP, or sub-agents | **Do not reimplement** those in the SDK layer; use Pi extensions + user `AGENTS.md` |
+| **Minimal agent** | ~4 tools, small system prompt, **YOLO by default**; no built-in plan mode, todos, permission gates, or sub-agents (MCP/codemode/tool-search are built-in extensions since 0.99) | **Do not reimplement** any of it in the SDK layer; use Pi extensions + user `AGENTS.md` |
 | **Inspectability** | Clean JSONL session tree; see context and tool I/O | Session sidebar, tool cards, token/cost, diagnostics export |
 | **Human agency** | Steer, follow-up, abort; user owns review | Diff review before apply (Phase 7), Git as human gate, optional desktop policy rails |
 | **Extensions** | Behavior ships as user/project extensions and packages | Customizations UI + trust; never silent install |
@@ -132,7 +132,7 @@ Roadmap implications:
 
 ---
 
-## Pi Integration Reality (v0.86.1)
+## Pi Integration Reality (v1.0.0)
 
 These facts must drive implementation. Do not guess or approximate.
 
@@ -148,7 +148,7 @@ await session.prompt("...");
 ### Session format (JSONL v3 tree)
 - Stored at `~/.pi/agent/sessions/<path-slug>_<name>.jsonl`
 - Each line: `SessionEntry` with `type`, `id` (8-char hex), `parentId`, `timestamp`
-- Entry types: `session` (header), `message`, `model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `usage`, `custom`, `custom_message`, `label`, `session_info`
+- Entry types: `session` (header), `message`, `model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `usage`, `custom`, `custom_message`, `label`, `session_info`, `context_edit` (0.87+). New kinds arrive across Pi versions; unknown kinds must parse as opaque entries, never invalidate a session.
 - Pi 0.86 system messages carry prompt sections and tool patches; standalone `usage` entries contribute to totals but are not conversation nodes. Unknown usage kinds are normal and must not invalidate a session.
 - Tree structure: `parentId: null` = root; branching = new children from earlier entry
 - `SessionManager.list(cwd)` — sessions for a directory
@@ -164,7 +164,7 @@ await session.prompt("...");
 - `queue_update` event streams pending steering/followUp arrays
 
 ### What Pi does NOT have built-in
-Pi intentionally has no: sub-agents, MCP, permission gates, plan mode, background bash. All are buildable via extensions. OpenPi must not assume these exist and must not fake them in the Pi layer.
+Pi has no built-in: sub-agents, permission gates, plan mode, background bash — all buildable via extensions. MCP, codemode, and tool-search are built-in extensions as of Pi 0.99+; surface them through the SDK rather than reimplementing. OpenPi must not fake any of this in the Pi layer.
 
 ### Customizations (Pi's real names)
 | OpenPi UI label | Pi concept | Discovery path |

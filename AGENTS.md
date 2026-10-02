@@ -16,7 +16,7 @@ OpenPi is a **local-first desktop workbench** for [Pi](https://pi.dev) (`@earend
 
 OpenPi is **desktop-first**. A **read-only remote surface** (session monitoring and approval of pending gates) may ship later as an explicit, opt-in extension of the review workflow. A remote client is an **untrusted renderer**: it goes through the same main-process authorization and policy as the desktop renderer, never around it. Remote mutation surfaces (prompt, PTY, file writes, Git) require a separate approved design — see `docs/decisions/2026-09-13-remote-access-deferred.md`.
 
-**For agents implementing features:** Pi is intentionally **minimal** (small prompt, four core tools, **YOLO by default**). Pi ships **without** built-in plan mode, todos, MCP, permission gates, or sub-agents — those belong in **user extensions** or documented Pi [examples](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions). OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate** — prefer review surfaces and Phase 7 P0 work (diff review before apply, test evidence) over velocity features (auto-commit stacks, agent armies, new builtins); remote surfaces come after Phase 7 P0. **Do not** propose Kun runtimes, SDD wizards, senpi-style permission/todo forks in main, or influencer “extension stack” installers unless the user explicitly asks.
+**For agents implementing features:** Pi is intentionally **minimal** (small prompt, four core tools, **YOLO by default**). Plan mode, todos, permission gates, and sub-agents stay **out of core** — they belong in **user extensions** or documented Pi [examples](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions); MCP, codemode, and tool-search are **built-in extensions** as of Pi 0.99+ (surface them through the SDK — do not reimplement or wrap them). OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate** — prefer review surfaces and Phase 7 P0 work (diff review before apply, test evidence) over velocity features (auto-commit stacks, agent armies, new builtins); remote surfaces come after Phase 7 P0. **Do not** propose Kun runtimes, SDD wizards, senpi-style permission/todo forks in main, or influencer “extension stack” installers unless the user explicitly asks.
 
 **Delegation:** use the **`@heyhuynhgiabuu/pi-task`** Pi package (`task` tool, task-history JSON, and sub-session JSONL). OpenPi does not register built-in `Agent` customTools. Main-process policy remains OpenPi-owned.
 
@@ -223,7 +223,7 @@ Core events to drive the UI:
 
 ### What Pi does NOT have built-in
 
-Pi intentionally ships without: MCP, permission gates, plan mode, background bash, **built-in sub-agents**. Do not assume these exist in the SDK or inject fake equivalents into Pi’s agent loop. Optional **desktop** policy (protected paths, high-risk shell/Git confirms) lives in **Electron main IPC** — not as Pi `registerTool` shims unless the user installs a Pi extension.
+Pi has no built-in: permission gates, plan mode, background bash, **sub-agents**. As of Pi 0.99+, MCP, codemode, and tool-search are built-in extensions (`builtin:mcp`, `builtin:codemode`, `builtin:tool-search`) — real, but OpenPi must surface them through the SDK, not fake or reimplement them in its agent path. Do not inject equivalents into Pi’s agent loop. Optional **desktop** policy (protected paths, high-risk shell/Git confirms) lives in **Electron main IPC** — not as Pi `registerTool` shims unless the user installs a Pi extension.
 
 **OpenPi exception:** built-in subagent `customTools` on the sidecar (see § OpenPi Subagent System) — a deliberate product layer; do not grow it into a senpi-style builtin catalog.
 
@@ -410,7 +410,7 @@ Before tagging, pushing, or claiming any version release:
 - Do not flatten Pi session trees into plain chat history.
 - Do not let renderer code be the patch, secret, or Git authority.
 - Do not import `@earendil-works/pi-coding-agent` in the renderer.
-- Do not implement Pi-core features (plan mode, todos, MCP, permission gates, sub-agents) **inside the SDK path** — use extensions or OpenPi’s documented exceptions (main policy, sidecar subagents).
+- Do not implement Pi-core features (plan mode, todos, permission gates, sub-agents) **inside the SDK path**, and do not rebuild Pi's built-in MCP/codemode/tool-search with custom equivalents — use extensions or OpenPi’s documented exceptions (main policy, sidecar subagents).
 - Do not add a **second agent runtime** (Kun-style HTTP server) or fork `pi-coding-agent` like senpi.
 - Do not build **Codex/Kun/DODO “extension stack”** wizards, SDD/requirement-first wizards, Write mode, or phone/IM agents unless explicitly requested.
 - Do not silently install or enable third-party Pi packages.

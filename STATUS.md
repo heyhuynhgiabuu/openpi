@@ -13,7 +13,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
 - Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
 - Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
-- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 0.86.1 `ModelRuntime` authentication with API-key and supported account-login flows.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 1.0.0 `ModelRuntime` authentication with API-key and supported account-login flows.
 - Command palette (`⇧⌘P`): commands, `fff` files, sessions.
 - Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
 - Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.
@@ -68,8 +68,8 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 ## Known constraints
 
 - macOS primary; other platforms less tested.
-- Pi SDK pinned at 0.86.1. Pi 0.86 system-message patches and standalone usage entries are hidden from ordinary conversation rows while their prompt state and token/cost totals remain inspectable. The 0.85 `@earendil-works/pi-server` workaround is no longer required.
-- Packaging via `electron-builder`; Pi package updates are limited to writable development installs because packaged `app.asar` bundles are read-only, while signed/notarized release artifacts remain required before broad rollout. npm's Pi 0.86.1 dependency shrinkwrap still installs its nested `ws@8.21.0` despite the root override; pnpm resolves `ws@8.21.1`, so the npm path needs an upstream Pi republish or shrinkwrap fix before the nested copy can be aligned.
+- Pi SDK pinned at 1.0.0. Pi 0.86 system-message patches and standalone usage entries are hidden from ordinary conversation rows while their prompt state and token/cost totals remain inspectable. The 0.85 `@earendil-works/pi-server` workaround is no longer required. Pi 0.99+ built-in extensions (MCP, codemode, tool-search) load through the SDK; OpenPi has no dedicated surface for them yet.
+- Packaging via `electron-builder`; Pi package updates are limited to writable development installs because packaged `app.asar` bundles are read-only, while signed/notarized release artifacts remain required before broad rollout. npm's Pi 1.0.0 dependency shrinkwrap still installs its nested `ws@8.21.0` despite the root override; pnpm resolves `ws@8.21.1`, so the npm path needs an upstream Pi republish or shrinkwrap fix before the nested copy can be aligned.
 - Single-user, local-only, no cloud sync.
 - Pi defaults to **YOLO**; OpenPi adds **optional** desktop policy rails — users can still install Pi [example extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) for TUI-style gates.
 
