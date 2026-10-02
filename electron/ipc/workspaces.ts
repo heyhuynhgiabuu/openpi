@@ -51,7 +51,7 @@ export function registerWorkspacesIpc(deps: WorkspacesIpcDeps): void {
     const cwd = authorizeWorkspace(deps, parsed.cwd)
     try {
       const { default: simpleGit } = await import('simple-git')
-      const branch = await simpleGit({ baseDir: cwd }).branch()
+      const branch = await simpleGit({ baseDir: cwd }).branch(['--no-color'])
       return { branch: branch.current || null }
     } catch {
       return { branch: null }

@@ -39,7 +39,7 @@ function statMtimeMs(fullPath: string): number | null {
 export async function getWorkspaceSummary(cwd: string): Promise<WorkspaceSummaryInfo> {
   const git = simpleGit({ baseDir: cwd })
   const [branchResult, logResult, statusResult] = await Promise.all([
-    git.branch().catch(() => null),
+    git.branch(['--no-color']).catch(() => null),
     git.log({ maxCount: 1 }).catch(() => null),
     git.status().catch(() => null),
   ])

@@ -142,7 +142,7 @@ export async function createBranch(
     const git = simpleGit({ baseDir: cwd })
     try {
       // Check if branch already exists
-      const existing = await git.branch(['--list', name])
+      const existing = await git.branch(['--list', name, '--no-color'])
       if (existing.all.length > 0) {
         return { ok: false, name, output: `Branch "${name}" already exists.` }
       }

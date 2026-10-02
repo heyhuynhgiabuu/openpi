@@ -41,6 +41,7 @@ export async function getGitHistory(
   // avoiding the "|" ambiguity with graph characters like `|`.
   const logOutput = await git.raw([
     'log',
+    '--no-color',
     `--max-count=${Math.min(Math.max(limit, 1), 200)}`,
     '--graph',
     '--pretty=format:%x01%H%x01%P%x01%an%x01%ae%x01%ai%x01%s%x01%D',
@@ -134,7 +135,10 @@ export async function getGitHistory(
 
 export async function getGitRefs(cwd: string): Promise<GitRefsResult> {
   const git = simpleGit({ baseDir: cwd })
-  const [branches, stashSummary] = await Promise.all([git.branch(['--all']), git.stashList()])
+  const [branches, stashSummary] = await Promise.all([
+    git.branch(['--all', '--no-color']),
+    git.stashList(),
+  ])
 
   const branchRefs: GitBranchRef[] = branches.all.map((name) => ({
     name,
