@@ -402,6 +402,7 @@ Before tagging, pushing, or claiming any version release:
 5. Define one owner per concept — renderer/main/Pi SDK ownership lines are the primary constraint.
 6. Run verification before claiming completion.
 7. Do not duplicate Pi SDK functionality in OpenPi. Check the SDK first.
+8. **Issue-first PRs.** Work from an approved issue → branch from `origin/main` → tests → PR. No direct commits to `main`, no auto-merge, and no AI approval in place of a human. Triage every review comment with evidence. See `docs/development/prWorkflow.md` and `.github/pull_request_template.md`.
 
 ---
 
