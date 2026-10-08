@@ -1,6 +1,7 @@
 import {
   FileDiff,
   type FileDiffOptions,
+  type OnDiffLineClickProps,
   parseDiffFromFile,
   parsePatchFiles,
   type SelectedLineRange,
@@ -9,10 +10,7 @@ import { createEffect, onCleanup } from 'solid-js'
 import type { AgentReviewChange, GitFileDiff } from '../../lib/ipc'
 import { installReviewContentLineSelection } from './reviewContentLineSelection'
 import { applyReviewDiffTheme } from './reviewDiffTheme'
-import {
-  createReviewHoverCommentUtility,
-  type ReviewHoveredLine,
-} from './reviewHoverCommentUtility'
+import { createReviewHoverCommentUtility } from './reviewHoverCommentUtility'
 
 export type DiffStyle = 'unified' | 'split'
 
@@ -27,7 +25,7 @@ export interface DiffRenderHandlers {
 export function diffOptions(
   diffStyle: DiffStyle,
   handlers: DiffRenderHandlers = {}
-): FileDiffOptions<undefined, undefined> {
+): FileDiffOptions<undefined> {
   return {
     diffStyle,
     theme: 'pierre-dark',
@@ -50,21 +48,18 @@ export function diffOptions(
     renderGutterUtility: (getHoveredLine) =>
       createReviewHoverCommentUtility({
         label: 'Add comment',
-        getHoveredLine: () => getHoveredLine() as ReviewHoveredLine | undefined,
+        getHoveredLine,
         onSelect: (range) => handlers.onHoverCommentSelect?.(range),
       }),
     onLineSelected: (range) => handlers.onLineSelected?.(range),
     onLineSelectionEnd: (range) => handlers.onLineSelectionEnd?.(range),
-    onLineNumberClick: (props) => {
-      const data = props as
-        | { lineNumber?: number; annotationSide?: 'additions' | 'deletions' }
-        | undefined
+    onLineNumberClick: (props: OnDiffLineClickProps | undefined) => {
       handlers.onLineNumberClick?.(
-        data?.lineNumber
+        props?.lineNumber
           ? {
-              start: data.lineNumber,
-              end: data.lineNumber,
-              side: data.annotationSide ?? 'additions',
+              start: props.lineNumber,
+              end: props.lineNumber,
+              side: props.annotationSide ?? 'additions',
             }
           : null
       )

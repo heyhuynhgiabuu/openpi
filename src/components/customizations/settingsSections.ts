@@ -190,9 +190,27 @@ export const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: 'quietStartup',
-        type: 'boolean',
+        type: 'choice',
         label: 'Quiet Startup',
-        description: 'Hide the Pi startup header when a session opens',
+        description:
+          "Startup output in Pi's terminal UI. The --verbose CLI flag overrides this for one launch.",
+        options: [
+          {
+            value: false,
+            label: 'Full startup',
+            help: 'Show the Pi header (logo, version, key hints), model scope, and loaded resources. Pi default.',
+          },
+          {
+            value: 'header',
+            label: 'Header only',
+            help: 'Keep the Pi header; hide the model scope line and loaded resources.',
+          },
+          {
+            value: true,
+            label: 'Quiet',
+            help: 'Hide the Pi header, model scope line, and loaded resources.',
+          },
+        ],
         default: false,
       },
       {

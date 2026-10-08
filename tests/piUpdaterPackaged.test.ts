@@ -45,7 +45,7 @@ describe('packaged Pi updater', () => {
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ version: '1.0.0' }),
+        json: async () => ({ version: '1.0.1' }),
       }))
     )
 
@@ -53,7 +53,7 @@ describe('packaged Pi updater', () => {
 
     expect(result).toMatchObject({
       currentVersion: '0.99.2',
-      latestVersion: '1.0.0',
+      latestVersion: '1.0.1',
       updateAvailable: true,
       error: null,
     })
@@ -72,7 +72,7 @@ describe('packaged Pi updater', () => {
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        json: async () => ({ version: '1.0.0' }),
+        json: async () => ({ version: '1.0.1' }),
       }))
     )
 
@@ -80,14 +80,14 @@ describe('packaged Pi updater', () => {
 
     expect(result).toMatchObject({
       currentVersion: '0.99.2',
-      latestVersion: '1.0.0',
+      latestVersion: '1.0.1',
       updateAvailable: false,
       error: 'Pi updates are bundled with OpenPi releases. Update OpenPi itself to get a newer Pi.',
     })
   })
 
   it('refuses to mutate the read-only app bundle', async () => {
-    const result = await updater.installPiUpdate('1.0.0')
+    const result = await updater.installPiUpdate('1.0.1')
 
     expect(result).toMatchObject({
       ok: false,

@@ -1,5 +1,5 @@
 overrides:
-  'brace-expansion@>=5.0.0 <5.0.9': 5.0.9
+  'brace-expansion@>=5.0.0 <5.0.12': 5.0.12
   'protobufjs@>=7.5.0 <7.6.6': 7.6.6
   'ws@>=8.0.0 <8.21.1': 8.21.1
   'js-yaml@>=4.0.0 <4.3.2': 4.3.2
@@ -26,3 +26,11 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-mcp@1.0.0'
   - '@earendil-works/pi-telemetry@1.0.0'
   - '@earendil-works/pi-tui@1.0.0'
+  - '@earendil-works/chord@1.0.1'
+  - '@earendil-works/pi-agent-core@1.0.1'
+  - '@earendil-works/pi-ai@1.0.1'
+  - '@earendil-works/pi-codemode@1.0.1'
+  - '@earendil-works/pi-coding-agent@1.0.1'
+  - '@earendil-works/pi-mcp@1.0.1'
+  - '@earendil-works/pi-telemetry@1.0.1'
+  - '@earendil-works/pi-tui@1.0.1'
