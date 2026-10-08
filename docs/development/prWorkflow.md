@@ -7,7 +7,7 @@ Scope: how a change reaches `main` in OpenPi. Pairs with `.github/pull_request_t
 
 1. **Issue.** Start from an approved issue. The issue sets the scope; do not expand it in the PR.
 2. **Branch.** Branch from current `origin/main`. Name it `<type>/<issue>-<slug>`, e.g. `chore/15-pr-review-setup`.
-3. **Tests.** Make one focused change and add tests for behavior changes. Run the gate: `npm run lint`, `npm run typecheck`, `npm test`. Add `npm run build` for build, IPC, or packaging changes (see `CONTRIBUTING.md`).
+3. **Tests.** Make one focused change and add tests for behavior changes. Follow the full local verification gate in `CONTRIBUTING.md` (the source of truth), including dependency installation, lint, typecheck, tests, and build. For Electron main/preload, IPC, packaging, or release configuration changes, also run the packaging smoke check documented there.
 4. **PR.** Push the branch and open a PR from the template. Link the issue with `Closes #N`. Fill in test evidence and limits, security boundaries, and review disposition.
 5. **Review.** Three gates, all required before merge:
    - CI (`.github/workflows/ci.yml`) passes.
