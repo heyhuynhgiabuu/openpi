@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs'
 import { z } from 'zod'
+import { SCRIPTED_TOOLS_ANSWER_PREFIX } from '../fixtures/scripted-provider-extension.js'
 import type { SessionEvent } from './shippedReplies'
 
 export interface ToolEvent extends SessionEvent {
@@ -80,8 +81,8 @@ export function contentToText(content: unknown): string {
     .join('')
 }
 
-/** Concatenated text of every message_end event, as the provider answered them. */
-export function answeredText(events: SessionEvent[]): string {
+/** Text of every message_end event, in arrival order; throws on a malformed event. */
+function messageEndTexts(events: SessionEvent[]): string[] {
   return events
     .filter((event) => event.type === 'message_end')
     .map((event) => {
@@ -89,7 +90,26 @@ export function answeredText(events: SessionEvent[]): string {
       if (!parsed.success) throw new Error(`malformed message_end event: ${parsed.error.message}`)
       return contentToText(parsed.data.message?.content)
     })
-    .join(' | ')
+}
+
+/** Concatenated text of every message_end event, as the provider answered them. */
+export function answeredText(events: SessionEvent[]): string {
+  return messageEndTexts(events).join(' | ')
+}
+
+/**
+ * Tool names the scripted provider reported as offered, one list per answer to
+ * the tools probe prompt, in arrival order (see SCRIPTED_TOOLS_PROMPT).
+ */
+export function offeredTools(events: SessionEvent[]): string[][] {
+  return messageEndTexts(events)
+    .filter((text) => text.startsWith(SCRIPTED_TOOLS_ANSWER_PREFIX))
+    .map((text) =>
+      text
+        .slice(SCRIPTED_TOOLS_ANSWER_PREFIX.length)
+        .split(', ')
+        .filter((name) => name !== '')
+    )
 }
 
 /**

@@ -34,6 +34,11 @@ export const sessionInfoReply = z.object({
   }),
 })
 
+export const navigateTreeReply = z.object({
+  type: z.literal('navigate_tree_result'),
+  result: z.object({ cancelled: z.boolean(), leafId: z.string().nullable() }),
+})
+
 /** Validates one sidecar message against `schema`; throws with the payload on mismatch. */
 export function parseReply<T>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
