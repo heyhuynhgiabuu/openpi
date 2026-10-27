@@ -5,6 +5,7 @@ import { removeWorktree } from '../git/worktree'
 import type { SidecarMessage } from '../pi/sidecar'
 import { PiSidecarHost } from '../pi/sidecarHost'
 import { sidecarPolicyEnv } from '../pi/sidecarPolicyEnv'
+import { RUNTIME_PREF_KEY } from '../pi/runtimePreference'
 import { emitSessionError } from '../services/notificationHost'
 import type { SessionIndexStore } from './sessionIndex'
 import { threadCwdRegistry } from './threadCwd'
@@ -206,6 +207,9 @@ export async function startSession(cwd: string, options: StartSessionOptions = {
       requestId,
       cwd: workspacePath,
       workspaceTrusted: _sessionIndex?.isWorkspaceTrusted(workspacePath) ?? false,
+      // Resolved in main: the sidecar has no preferences store, and the cutover gate needs the
+      // stored `agent.runtime` value to decide (default stays the Pi SDK path).
+      runtimePreference: _sessionIndex?.getPref(RUNTIME_PREF_KEY) ?? undefined,
       sessionFile: options.sessionFile,
       forkEntryId: options.forkEntryId,
     })
