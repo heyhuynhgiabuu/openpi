@@ -85,68 +85,15 @@ export const extensionCompatSchema = z.object({
 export type ExtensionCompat = z.infer<typeof extensionCompatSchema>
 
 /**
- * Parameter names bound to *the* extension factory: the module's default export.
+ * Detect the APIs used anywhere in the module, without trying to model JavaScript scoping.
  *
- * Accepts `export default function (pi) {}`, `export default (pi) => {}`, and — the case a naive
- * scan misses — an identifier default export (`function extension(pi) {…}; export default extension`).
- * Other exported helpers are not factories, so their parameters are not receivers.
+ * This is a compatibility *gate*, so it must fail safe: a false "unsupported" costs a conversation
+ * (the owner reviews it), while a false "compatible" silently loses behaviour after a runtime flip.
+ * Emulating bindings and shadowing by hand produced a stream of false negatives (a block-scoped
+ * `const` shadowing the factory, a named default declaration, a nested same-name helper), so the
+ * whole module is scanned instead: any `x.registerCommand(...)` or `x.on('<event>')` counts,
+ * whatever `x` is bound to.
  */
-function factoryParameters(sourceFile: ts.SourceFile): Set<string> {
-  const names = new Set<string>()
-
-  const addFromNode = (node: ts.Node): boolean => {
-    if (
-      (ts.isFunctionDeclaration(node) ||
-        ts.isArrowFunction(node) ||
-        ts.isFunctionExpression(node)) &&
-      node.parameters.length > 0
-    ) {
-      const first = node.parameters[0]
-      if (!ts.isIdentifier(first.name)) return false
-      names.add(first.name.text)
-      return true
-    }
-    return false
-  }
-
-  // Declaration lookup for an identifier default export.
-  const declarationsByName = new Map<string, ts.Node[]>()
-  const deferredExports: string[] = []
-
-  const visit = (node: ts.Node): void => {
-    if (ts.isExportAssignment(node) && !node.isExportEquals) {
-      const expression = node.expression
-      // Recorded, then resolved after the walk: the factory may be declared further down.
-      if (ts.isIdentifier(expression)) deferredExports.push(expression.text)
-      else addFromNode(expression)
-    }
-    if (ts.isFunctionDeclaration(node) && !node.name) {
-      // `export default function (pi) {}`: an anonymous declaration carrying the default export.
-      const modifiers = ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : []
-      if (modifiers.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)) addFromNode(node)
-    }
-    if (ts.isFunctionDeclaration(node) && node.name) {
-      const list = declarationsByName.get(node.name.text) ?? []
-      list.push(node)
-      declarationsByName.set(node.name.text, list)
-      // `export function (pi) {}` is not a factory: extensions use a default export.
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const list = declarationsByName.get(node.name.text) ?? []
-      list.push(node.initializer)
-      declarationsByName.set(node.name.text, list)
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(sourceFile)
-
-  // Resolve identifier default exports now that every declaration has been recorded.
-  for (const name of deferredExports) {
-    for (const declaration of declarationsByName.get(name) ?? []) addFromNode(declaration)
-  }
-  return names
-}
-
 /** Analyse a source string, returning the detected APIs and unknown hook names. */
 export function analyseSource(source: string): { apis: ExtensionApi[]; unknownEvents: string[] } {
   const sourceFile = ts.createSourceFile(
@@ -156,19 +103,14 @@ export function analyseSource(source: string): { apis: ExtensionApi[]; unknownEv
     true,
     ts.ScriptKind.TS
   )
-  const receivers = factoryParameters(sourceFile)
-
   const found = new Set<ExtensionApi>()
   const unknownEvents = new Set<string>()
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text
-      const receiver = ts.isIdentifier(node.expression.expression)
-        ? node.expression.expression.text
-        : undefined
-      // Only calls on the factory's own API object count; a local helper named the same does not.
-      if (receiver !== undefined && receivers.has(receiver)) {
+      // Any receiver: see the note above `analyseSource`. Comments and strings never reach this walk.
+      {
         const mapped = METHOD_API[method]
         if (mapped) found.add(mapped)
         if (method === 'on') {
