@@ -16,6 +16,9 @@ import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { DurableCustomizations } from './customizations'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
+import { createToolSearchExtension } from '@earendil-works/pi-durable/tool-search'
+import { loadDurableMcpConfig } from './mcpConfig'
+import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openDurableStorage } from './storage'
 import type {
@@ -114,6 +117,25 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     ctx
   )
   if (options.tools !== false) registry.install(CodingTools)
+
+  // MCP tools are registered deferred and tool-only, so `tool_search` is what lets the model reach
+  // them — install it alongside rather than leaving the tools unreachable.
+  let closeMcp: (() => Promise<void>) | undefined
+  if (options.mcp && options.workspacePath) {
+    const config = loadDurableMcpConfig({
+      agentDir: options.userAgentDir ?? '',
+      workspacePath: options.workspacePath,
+      projectTrusted: options.projectTrusted === true,
+    })
+    diagnostics.push(...config.errors.map((message) => ({ type: 'warning' as const, message })))
+    const bridge = await loadMcpExtension(config.servers, options.workspacePath)
+    diagnostics.push(...bridge.errors.map((message) => ({ type: 'warning' as const, message })))
+    if (bridge.extension) {
+      registry.install(bridge.extension)
+      registry.install(createToolSearchExtension())
+    }
+    closeMcp = bridge.close
+  }
   const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
   if (options.workspacePath) agent.cwd = options.workspacePath
   const root = await harness.root(ctx, { agent })
@@ -165,7 +187,8 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return diagnostics
     },
 
-    close(): Promise<void> {
+    async close(): Promise<void> {
+      await closeMcp?.()
       return harness.close(ctx)
     },
   }
