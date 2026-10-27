@@ -12,12 +12,24 @@
  * tests import `startSidecarHarness`, `SidecarHarness`, `SessionEvent` and
  * `SidecarHarnessOptions` from here; keep those exports.
  */
-import { createSandbox, removeSandbox, type SidecarHarnessOptions } from './shippedSidecarBuild'
+import {
+  createSandbox,
+  removeSandbox,
+  type HarnessMcpConfig,
+  type HarnessMcpServer,
+  type SidecarHarnessOptions,
+} from './shippedSidecarBuild'
 import { createCommands, type SidecarCommands } from './shippedSidecarCommands'
 import { startTransport, type SidecarError } from './shippedSidecarTransport'
 import type { SessionEvent } from './shippedReplies'
 
-export type { SessionEvent, SidecarError, SidecarHarnessOptions }
+export type {
+  HarnessMcpConfig,
+  HarnessMcpServer,
+  SessionEvent,
+  SidecarError,
+  SidecarHarnessOptions,
+}
 
 export interface SidecarHarness extends SidecarCommands {
   /** The child's HOME: session files must land under it. */

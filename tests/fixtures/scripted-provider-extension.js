@@ -39,6 +39,19 @@ export const SCRIPTED_CODEMODE_FILE_CONTENT = 'nested via codemode\n'
 export const SCRIPTED_CODEMODE_SCRIPT = `return await tools.write({ path: ${JSON.stringify(SCRIPTED_CODEMODE_FILE_PATH)}, content: ${JSON.stringify(SCRIPTED_CODEMODE_FILE_CONTENT)} })`
 export const SCRIPTED_CODEMODE_FINAL_TEXT = 'scripted codemode done'
 
+// MCP turn: asks for the codemode tool with a script that calls the fixture MCP
+// server's tool. Pi's MCP extension registers the tool as `mcp__<server>__<tool>`
+// with the default `codemode` exposure, so a codemode script is the documented
+// way to reach it (docs/mcp.md, "Control tool exposure"). Without an active
+// codemode tool the diagnostic lists the offered tools, so the guard cases read
+// the active set directly.
+export const SCRIPTED_MCP_PROMPT = 'Call the fixture MCP echo tool through codemode.'
+export const SCRIPTED_MCP_SERVER = 'fixture'
+export const SCRIPTED_MCP_TOOL_NAME = `mcp__${SCRIPTED_MCP_SERVER}__echo`
+export const SCRIPTED_MCP_TOOL_TEXT = 'hello from the shipped-path test'
+export const SCRIPTED_MCP_SCRIPT = `return await tools.${SCRIPTED_MCP_TOOL_NAME}({ text: ${JSON.stringify(SCRIPTED_MCP_TOOL_TEXT)} })`
+export const SCRIPTED_MCP_FINAL_TEXT = 'scripted mcp done'
+
 // Tools probe: always answers with the tools offered on this request.
 export const SCRIPTED_TOOLS_PROMPT = 'List the tools you were offered.'
 export const SCRIPTED_TOOLS_ANSWER_PREFIX = 'scripted provider offered tools: '
@@ -50,6 +63,9 @@ function scriptedStream(model, context) {
   }
   if (prompt === SCRIPTED_TOOLS_PROMPT) {
     return scriptedToolsStream(model, context)
+  }
+  if (prompt === SCRIPTED_MCP_PROMPT) {
+    return scriptedMcpStream(model, context)
   }
   const stream = createAssistantMessageEventStream()
   // Pi 0.86 passes a normalized TranscriptContext to custom providers. Read
@@ -188,6 +204,38 @@ function scriptedCodemodeStream(model, context) {
     })
   } else {
     pushText(stream, output, SCRIPTED_CODEMODE_FINAL_TEXT)
+  }
+  stream.push({ type: 'done', reason: output.stopReason, message: output })
+  stream.end()
+  return stream
+}
+
+/**
+ * MCP turn: asks for codemode once with a script that calls the fixture server's
+ * tool; after its result, answers with a fixed final text. Without an active
+ * codemode tool (no MCP server configured, the builtin disabled, or an untrusted
+ * workspace) it answers with the same kind of tool-list diagnostic.
+ */
+function scriptedMcpStream(model, context) {
+  const stream = createAssistantMessageEventStream()
+  const tools = getCurrentTools(context.messages)
+  const output = newAssistantOutput(model)
+  const answered = context.messages.some(
+    (message) => message.role === 'toolResult' && message.toolName === 'codemode'
+  )
+  stream.push({ type: 'start', partial: output })
+  if (!tools.some((tool) => tool.name === 'codemode')) {
+    const names = tools.map((tool) => tool.name).join(', ')
+    pushText(stream, output, `scripted provider: codemode tool not active (tools: ${names})`)
+  } else if (!answered) {
+    pushToolCall(stream, output, {
+      type: 'toolCall',
+      id: 'scripted-mcp-1',
+      name: 'codemode',
+      arguments: { code: SCRIPTED_MCP_SCRIPT },
+    })
+  } else {
+    pushText(stream, output, SCRIPTED_MCP_FINAL_TEXT)
   }
   stream.push({ type: 'done', reason: output.stopReason, message: output })
   stream.end()

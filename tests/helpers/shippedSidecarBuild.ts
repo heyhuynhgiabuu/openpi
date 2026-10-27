@@ -23,6 +23,24 @@ export interface HarnessSettings {
   extensions?: string[]
 }
 
+/** One stdio server entry, the shape of an `mcpServers` value in Pi's `mcp.json`. */
+export interface HarnessMcpServer {
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+  /** `codemode` (Pi's default), `deferred`, `direct`, or `hidden`. */
+  exposure?: 'codemode' | 'deferred' | 'direct' | 'hidden'
+  /** Set false to keep the entry without connecting to it. */
+  enabled?: boolean
+}
+
+/** An `mcp.json` body, written to the project or the global agent dir. */
+export interface HarnessMcpConfig {
+  mcpServers: Record<string, HarnessMcpServer>
+  autoEnableCodemode?: boolean
+}
+
 export interface SidecarHarnessOptions {
   /** Names the bundle and workspace cache dir. Test files use distinct names. */
   cacheName: string
@@ -30,6 +48,13 @@ export interface SidecarHarnessOptions {
   projectSettings?: HarnessSettings
   /** Written to <HOME>/.pi/agent/settings.json when given. */
   globalSettings?: HarnessSettings
+  /**
+   * Written to <workspace>/.pi/mcp.json when given. Pi reads it only when the
+   * project is trusted (`loadMcpConfig`, dist/extensions/mcp/config.js:106).
+   */
+  projectMcp?: HarnessMcpConfig
+  /** Written to <HOME>/.pi/agent/mcp.json when given. Always read. */
+  globalMcp?: HarnessMcpConfig
   /** Trust passed to start_session. Defaults to trusted. */
   workspaceTrusted?: boolean
   /**
@@ -65,7 +90,7 @@ async function bundleSidecar(bundle: string): Promise<void> {
   })
 }
 
-function writeJson(file: string, value: HarnessSettings): void {
+function writeJson(file: string, value: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, JSON.stringify(value))
 }
@@ -87,6 +112,23 @@ function layoutFixtures(home: string, workspace: string, options: SidecarHarness
   if (options.globalSettings) {
     writeJson(path.join(home, '.pi', 'agent', 'settings.json'), options.globalSettings)
   }
+  if (options.projectMcp) {
+    writeJson(path.join(workspace, '.pi', 'mcp.json'), options.projectMcp)
+  }
+  if (options.globalMcp) {
+    writeJson(path.join(home, '.pi', 'agent', 'mcp.json'), options.globalMcp)
+  }
+}
+
+/** Path of the fixture MCP server, spawned as a real stdio MCP server by the tests. */
+export const MCP_FIXTURE_SERVER = path.join(FIXTURES_DIR, 'mcp-stdio-server.js')
+
+/**
+ * The fixture server as an `mcpServers` entry: the current Node binary runs the
+ * fixture script, so no network, no package install, no PATH lookup.
+ */
+export function fixtureMcpServer(overrides: Partial<HarnessMcpServer> = {}): HarnessMcpServer {
+  return { command: process.execPath, args: [MCP_FIXTURE_SERVER], ...overrides }
 }
 
 export interface Sandbox {
