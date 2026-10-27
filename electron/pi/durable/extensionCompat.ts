@@ -110,23 +110,35 @@ function factoryParameters(sourceFile: ts.SourceFile): Set<string> {
     ts.canHaveModifiers(node) &&
     (ts.getModifiers(node) ?? []).some((mod) => mod.kind === ts.SyntaxKind.DefaultKeyword)
 
-  // Only top-level declarations can be the module's factory; a nested function that happens to
-  // share the name is a helper and must not contribute receivers.
+  // Module-scope declarations can be the factory. A block such as
+  // `if (cond) { var extension = function (api) {...} }` still binds at module scope, so blocks are
+  // descended into — but function bodies are not, because a function-scoped same-name declaration
+  // is a helper, not the factory.
   const topLevelByName = new Map<string, ts.Node>()
-  for (const statement of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(statement)) {
-      // `export default function (pi) {}` and `export default function extension(pi) {}`: the
-      // default modifier sits on the declaration itself in both forms.
-      if (hasDefaultModifier(statement)) addFromNode(statement)
-      if (statement.name) topLevelByName.set(statement.name.text, statement)
-    } else if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-          topLevelByName.set(declaration.name.text, declaration.initializer)
-        }
+
+  const collectModuleScope = (statement: ts.Node): void => {
+    if (ts.isFunctionDeclaration(statement) || ts.isFunctionExpression(statement)) {
+      // `export default function (pi) {}` / `export default function extension(pi) {}`.
+      if (ts.isFunctionDeclaration(statement) && hasDefaultModifier(statement))
+        addFromNode(statement)
+      if (ts.isFunctionDeclaration(statement) && statement.name) {
+        topLevelByName.set(statement.name.text, statement)
       }
+      return
     }
+    if (ts.isArrowFunction(statement)) return
+    if (
+      ts.isVariableDeclaration(statement) &&
+      ts.isIdentifier(statement.name) &&
+      statement.initializer
+    ) {
+      topLevelByName.set(statement.name.text, statement.initializer)
+      return
+    }
+    // Descend into module-scope blocks and statements, but never into function bodies.
+    ts.forEachChild(statement, collectModuleScope)
   }
+  for (const statement of sourceFile.statements) collectModuleScope(statement)
 
   for (const statement of sourceFile.statements) {
     if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue

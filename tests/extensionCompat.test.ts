@@ -119,6 +119,18 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerCommand'])
   })
 
+  it('finds a factory declared inside a module-scope block', () => {
+    const { apis } = analyseSource(`
+      if (process.platform === 'darwin') {
+        var extension = function (api) {
+          api.registerCommand('hello', {});
+        };
+      }
+      export default extension;
+    `)
+    expect(apis).toEqual(['registerCommand'])
+  })
+
   it('ignores a nested function that shares the factory name', () => {
     const { apis } = analyseSource(`
       function extension(pi) {
