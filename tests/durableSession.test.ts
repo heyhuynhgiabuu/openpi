@@ -283,9 +283,16 @@ describe('durable abort', () => {
       expect(t.logs.join('\n')).not.toContain('without an answer')
       expect(t.types()).toContain('session_index_updated')
 
+      // Read the export *before* the next prompt: the cancelled run's input must already be there.
+      const cancelled = await importSessionFile(t.identity.sessionFile)
+      expect(cancelled.invalid).toBe(false)
+      expect(JSON.stringify(cancelled.messages)).toContain('a long task')
+
       await t.sessions.handleCommand(prompt('and again'))
       const imported = await importSessionFile(t.identity.sessionFile)
       expect(JSON.stringify(imported.messages)).toContain('after the abort')
+      // Nothing from the cancelled run was lost by the later export.
+      expect(JSON.stringify(imported.messages)).toContain('a long task')
     } finally {
       await t.sessions.stop()
     }
