@@ -37,10 +37,10 @@ describe('Pi package update transaction', () => {
   it.each(['npm', 'pnpm', 'yarn', 'bun'] as const)(
     'updates the complete supported Pi family with %s',
     (manager) => {
-      const args = updaterTest.buildInstallArgs(manager, '0.86.1')
-      expect(args).toContain('@earendil-works/pi-coding-agent@0.86.1')
-      expect(args).toContain('@earendil-works/pi-ai@0.86.1')
-      expect(args).toContain('@earendil-works/pi-tui@0.86.1')
+      const args = updaterTest.buildInstallArgs(manager, '1.4.0')
+      expect(args).toContain('@earendil-works/pi-coding-agent@1.4.0')
+      expect(args).toContain('@earendil-works/pi-ai@1.4.0')
+      expect(args).toContain('@earendil-works/pi-tui@1.4.0')
       expect(args).toContain(manager === 'npm' || manager === 'pnpm' ? '--save-exact' : '--exact')
     }
   )
@@ -49,7 +49,7 @@ describe('Pi package update transaction', () => {
 describe('Pi version compatibility', () => {
   it('keeps the host gate aligned with the direct Pi package pins', () => {
     const piVersion = packageManifest.dependencies['@earendil-works/pi-coding-agent']
-    expect(piVersion).toBe('1.0.1')
+    expect(piVersion).toBe('1.4.0')
     expect(packageManifest.dependencies['@earendil-works/pi-ai']).toBe(piVersion)
     expect(packageManifest.dependencies['@earendil-works/pi-tui']).toBe(piVersion)
     expect(updaterTest.isSupportedPiVersion(piVersion)).toBe(true)
@@ -57,16 +57,17 @@ describe('Pi version compatibility', () => {
   })
 
   it('supports only the Pi version validated by this OpenPi host', () => {
-    expect(updaterTest.isSupportedPiVersion('1.0.1')).toBe(true)
+    expect(updaterTest.isSupportedPiVersion('1.4.0')).toBe(true)
     expect(updaterTest.isSupportedPiVersion('0.99.2')).toBe(false)
     expect(updaterTest.isSupportedPiVersion('1.0.0')).toBe(false)
-    expect(updaterTest.isSupportedPiVersion('1.0.1-beta.1')).toBe(false)
+    expect(updaterTest.isSupportedPiVersion('1.0.1')).toBe(false)
+    expect(updaterTest.isSupportedPiVersion('1.4.0-beta.1')).toBe(false)
   })
 
   it('refuses an unsupported future version before package-manager detection', async () => {
-    const result = await updater.installPiUpdate('1.0.2')
+    const result = await updater.installPiUpdate('1.4.1')
     expect(result).toMatchObject({ ok: false, requiresRestart: false })
-    expect(result.message).toContain('validated only with Pi 1.0.1')
+    expect(result.message).toContain('validated only with Pi 1.4.0')
   })
 })
 
