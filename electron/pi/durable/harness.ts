@@ -10,7 +10,7 @@ import {
   defineExtension,
   hook,
 } from '@earendil-works/pi-durable'
-import type { EntryRecord } from '@earendil-works/pi-durable'
+import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
@@ -29,6 +29,7 @@ import type {
   DurableHarnessOptions,
   DurableSubmitResult,
   DurableView,
+  DurableQueued,
 } from './types'
 
 /**
@@ -143,21 +144,62 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   if (options.workspacePath) agent.cwd = options.workspacePath
   const root = await harness.root(ctx, { agent })
 
+  // `/template args` expands at invocation time, not in the prompt section.
+  const expand = (text: string): string =>
+    customizations ? expandInput(text, customizations) : text
+  // Pending messages by submission id: `inbox_update` carries ids, the renderer shows text.
+  const queuedText = new Map<number, string>()
+  // `inbox_update` fires *inside* `submit()`, before its id is known to us, so the text is
+  // registered first and the first unknown id claims the oldest one. Items arrive in id order.
+  const awaitingId: string[] = []
+  const textFor = (id: number): string | undefined => {
+    const known = queuedText.get(id)
+    if (known !== undefined) return known
+    const claimed = awaitingId.shift()
+    if (claimed !== undefined) queuedText.set(id, claimed)
+    return claimed
+  }
+
+  /** The outcome of a settled input submission, with the answer text when the run answered. */
+  const resultOf = async (settled: SettledSubmissionRecord): Promise<DurableSubmitResult> => {
+    if (settled.status !== 'done' || settled.type !== 'input') {
+      const unresolved: DurableSubmitResult = { status: settled.status }
+      if ('reason' in settled && settled.reason !== undefined)
+        unresolved.reason = String(settled.reason)
+      return unresolved
+    }
+    const view = await root.context(ctx)
+    const answer = answerText(view.entries, settled.answer)
+    return answer === undefined ? { status: 'done' } : { status: 'done', answerText: answer }
+  }
+
   return {
     async prompt(text: string): Promise<DurableSubmitResult> {
-      // `/template args` expands here, at invocation time, not in the prompt section.
-      const input = customizations ? expandInput(text, customizations) : text
-      const submission = await root.submit({ type: 'input', content: input }, ctx)
-      const settled = await submission.wait(ctx)
-      if (settled.status !== 'done' || settled.type !== 'input') {
-        const unresolved: DurableSubmitResult = { status: settled.status }
-        if ('reason' in settled && settled.reason !== undefined)
-          unresolved.reason = String(settled.reason)
-        return unresolved
+      const submission = await root.submit({ type: 'input', content: expand(text) }, ctx)
+      return resultOf(await submission.wait(ctx))
+    },
+
+    async queue(text: string, mode: 'steer' | 'followUp'): Promise<DurableQueued> {
+      awaitingId.push(text)
+      let submission: Awaited<ReturnType<typeof root.submit>>
+      try {
+        submission = await root.submit(
+          { type: 'input', content: expand(text), whenBusy: mode },
+          ctx
+        )
+      } catch (error) {
+        const index = awaitingId.indexOf(text)
+        if (index >= 0) awaitingId.splice(index, 1)
+        throw error
       }
-      const view = await root.context(ctx)
-      const answer = answerText(view.entries, settled.answer)
-      return answer === undefined ? { status: 'done' } : { status: 'done', answerText: answer }
+      const id = Number(submission.id)
+      if (!queuedText.has(id)) {
+        // No event named this submission (it ran at once): drop its unclaimed registration.
+        const index = awaitingId.indexOf(text)
+        if (index >= 0) awaitingId.splice(index, 1)
+        queuedText.set(id, text)
+      }
+      return { settled: submission.wait(ctx).then(resultOf) }
     },
 
     async abort(): Promise<void> {
@@ -197,7 +239,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     async watchEvents(
       onEvent: (event: Record<string, unknown>) => void
     ): Promise<() => Promise<void>> {
-      const handle = await attachDurableEvents(harness, root.id, ctx, onEvent)
+      const handle = await attachDurableEvents(harness, root.id, ctx, onEvent, textFor)
       return handle.stop
     },
 

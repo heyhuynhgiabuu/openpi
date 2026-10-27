@@ -50,12 +50,12 @@ interface ActiveSession {
   stopEvents: () => Promise<void>
   /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
   abortRequested: boolean
+  /** Set before shutdown: queued messages still settling must not report or export afterwards. */
+  closing: boolean
 }
 
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
-  'steer',
-  'follow_up',
   'execute_bash',
   'set_model',
   'set_thinking',
@@ -101,6 +101,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     const session = active
     active = null
     if (!session) return
+    session.closing = true
     try {
       await session.stopEvents()
       await session.harness.close()
@@ -120,6 +121,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       startedAt: deps.now().toISOString(),
       stopEvents: async () => undefined,
       abortRequested: false,
+      closing: false,
     }
     active = session
     deps.send({
@@ -146,29 +148,68 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  async function prompt(cmd: Extract<SidecarCommand, { type: 'prompt' }>): Promise<void> {
-    const session = active
-    if (!session) return
+  /** Slash commands are refused; the context prefix is applied the way the SDK path does. */
+  function promptText(cmd: { text: string; contextPrefix?: string }): string {
     const text = cmd.text.trim()
     if (text.startsWith('/')) {
       throw new Error('slash commands are not supported on the durable runtime yet')
     }
     const prefix = cmd.contextPrefix?.trim()
+    return prefix ? `${prefix}\n\n${text}` : text
+  }
+
+  function reportUnanswered(
+    session: ActiveSession,
+    result: { status: string; reason?: string }
+  ): void {
+    if (result.status !== 'unanswered' || session.abortRequested) return
+    deps.log(
+      'warn',
+      `[durable] run ended without an answer${result.reason ? `: ${result.reason}` : ''}`
+    )
+  }
+
+  async function prompt(cmd: Extract<SidecarCommand, { type: 'prompt' }>): Promise<void> {
+    const session = active
+    if (!session) return
+    const text = promptText(cmd)
     session.abortRequested = false
-    const result = await session.harness.prompt(prefix ? `${prefix}\n\n${text}` : text)
-    if (result.status === 'unanswered' && !session.abortRequested) {
-      deps.log(
-        'warn',
-        `[durable] run ended without an answer${result.reason ? `: ${result.reason}` : ''}`
-      )
-    }
+    reportUnanswered(session, await session.harness.prompt(text))
     await exportNow(session)
+  }
+
+  /**
+   * Steer / follow-up: returns once the message is admitted, like the SDK's `steer()`. The run it
+   * joins (or starts, when idle) is tracked in the background so its outcome is still exported.
+   */
+  async function queue(
+    cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>
+  ): Promise<void> {
+    const session = active
+    if (!session) return
+    const text = promptText(cmd)
+    session.abortRequested = false
+    const queued = await session.harness.queue(text, cmd.type === 'steer' ? 'steer' : 'followUp')
+    void queued.settled
+      .then(async (result) => {
+        if (session.closing) return
+        reportUnanswered(session, result)
+        await exportNow(session)
+      })
+      .catch((error) => {
+        if (!session.closing)
+          deps.log('error', `[durable] queued message failed: ${errorText(error)}`)
+      })
   }
 
   async function handleCommand(cmd: SidecarCommand): Promise<boolean> {
     if (!active) return false
     if (cmd.type === 'prompt') {
       await prompt(cmd)
+      return true
+    }
+    if (cmd.type === 'steer' || cmd.type === 'follow_up') {
+      await queue(cmd)
       return true
     }
     if (cmd.type === 'abort') {
