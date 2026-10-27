@@ -1,5 +1,6 @@
 import type { MutableModels } from '@earendil-works/pi-ai'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
+import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 
 /** Provider/model the durable conversation runs with (resolved through pi-ai `Models`). */
 export interface DurableModelRef {
@@ -68,5 +69,10 @@ export interface DurableHarness {
    * then each batch in the coding agent's event vocabulary.
    */
   watchEvents(onEvent: (event: Record<string, unknown>) => void): Promise<() => Promise<void>>
+  /**
+   * Write the root conversation as a Pi JSONL v3 session file. `header.sessionId` is the ownership key: only a
+   * file carrying the same id is overwritten, any other session's file is refused.
+   */
+  exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult>
   close(): Promise<void>
 }

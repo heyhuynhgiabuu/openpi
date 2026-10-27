@@ -21,6 +21,7 @@ import { loadDurableMcpConfig } from './mcpConfig'
 import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { attachDurableEvents } from './events'
+import { writeSessionFile, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {
   DurableEntrySnapshot,
@@ -193,6 +194,11 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     ): Promise<() => Promise<void>> {
       const handle = await attachDurableEvents(harness, root.id, ctx, onEvent)
       return handle.stop
+    },
+
+    async exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult> {
+      const view = await root.context(ctx)
+      return writeSessionFile(path, header, view.entries)
     },
 
     async close(): Promise<void> {
