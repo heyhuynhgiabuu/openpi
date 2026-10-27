@@ -41,6 +41,27 @@ describe('sidecar session replacement queue', () => {
     ])
   })
 
+  it('runs abort while a prompt is still in flight instead of queueing it behind', async () => {
+    const events: string[] = []
+    const promptDone = deferred()
+    const queue = createSidecarCommandQueue(async (command) => {
+      events.push(`start:${command.type}`)
+      if (command.type === 'prompt') await promptDone.promise
+      events.push(`end:${command.type}`)
+    })
+
+    const promptRun = queue({ type: 'prompt', text: 'long task' })
+    await settleQueue()
+    const abortRun = queue({ type: 'abort' })
+    await abortRun
+
+    // The prompt has not finished, yet the abort already ran to completion.
+    expect(events).toEqual(['start:prompt', 'start:abort', 'end:abort'])
+    promptDone.resolve()
+    await promptRun
+    expect(events.at(-1)).toBe('end:prompt')
+  })
+
   it('allows replacement to abort a prompt that was already running', async () => {
     const events: string[] = []
     const prompt = deferred()

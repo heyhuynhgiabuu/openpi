@@ -160,6 +160,10 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return answer === undefined ? { status: 'done' } : { status: 'done', answerText: answer }
     },
 
+    async abort(): Promise<void> {
+      await root.abort(ctx)
+    },
+
     watch(onView: (view: DurableView) => void): () => void {
       let stopped = false
       let stopHandle: (() => void) | undefined
