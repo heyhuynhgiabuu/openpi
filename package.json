@@ -46,6 +46,7 @@
     "@codemirror/view": "^6.43.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-coding-agent": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
     "@earendil-works/pi-tui": "1.4.0",
     "@ff-labs/fff-node": "^0.7.2",
     "@kobalte/core": "^0.13.11",
