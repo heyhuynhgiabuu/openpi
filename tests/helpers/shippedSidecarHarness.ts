@@ -18,6 +18,7 @@ import path from 'node:path'
 import { build as esbuildBuild } from 'esbuild'
 import type { SidecarMessage } from '../../electron/pi/sidecarTypes'
 import {
+  navigateTreeReply,
   parseReply,
   readSessionEvent,
   sessionInfoReply,
@@ -58,6 +59,11 @@ export interface SidecarHarness {
   prompt(text: string): Promise<void>
   /** Reads get_session_info for the active session. */
   sessionInfo(requestId: string): Promise<{ messageCount: number }>
+  /** Moves the session leaf with navigate_tree (same file, no fork). Rejects on a sidecar error. */
+  navigateTree(
+    requestId: string,
+    entryId: string
+  ): Promise<{ cancelled: boolean; leafId: string | null }>
   /** Stops the child and removes the temp HOME and workspace. */
   dispose(): Promise<void>
 }
@@ -259,6 +265,18 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
         REPLY_TIMEOUT_MS
       )
       return parseReply(sessionInfoReply, reply).info
+    },
+
+    async navigateTree(requestId, entryId) {
+      send({ type: 'navigate_tree', entryId, requestId })
+      const reply = await waitFor(
+        (message) =>
+          (message.type === 'navigate_tree_result' || message.type === 'error') &&
+          message.requestId === requestId,
+        REPLY_TIMEOUT_MS
+      )
+      if (reply.type === 'error') throw new Error(`navigate_tree failed: ${reply.message}`)
+      return parseReply(navigateTreeReply, reply).result
     },
 
     async dispose() {

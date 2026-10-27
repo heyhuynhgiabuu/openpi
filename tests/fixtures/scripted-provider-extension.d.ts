@@ -11,5 +11,7 @@ export declare const SCRIPTED_CODEMODE_FILE_PATH: string
 export declare const SCRIPTED_CODEMODE_FILE_CONTENT: string
 export declare const SCRIPTED_CODEMODE_SCRIPT: string
 export declare const SCRIPTED_CODEMODE_FINAL_TEXT: string
+export declare const SCRIPTED_TOOLS_PROMPT: string
+export declare const SCRIPTED_TOOLS_ANSWER_PREFIX: string
 
 export default function (pi: unknown): void

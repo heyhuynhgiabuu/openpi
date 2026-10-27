@@ -15,8 +15,10 @@
  * deterministic `write` tool call, and the call after the tool result emits a
  * fixed final text. A prompt equal to SCRIPTED_CODEMODE_PROMPT instead gets one
  * codemode call whose script makes one nested `write`, then the same kind of
- * fixed final text. Constants are exported so the test and this extension
- * cannot drift apart.
+ * fixed final text. A prompt equal to SCRIPTED_TOOLS_PROMPT answers with the
+ * names of the tools the provider was offered on that request, so a test can
+ * read the active tool set directly. Constants are exported so the test and
+ * this extension cannot drift apart.
  */
 import {
   createAssistantMessageEventStream,
@@ -37,9 +39,17 @@ export const SCRIPTED_CODEMODE_FILE_CONTENT = 'nested via codemode\n'
 export const SCRIPTED_CODEMODE_SCRIPT = `return await tools.write({ path: ${JSON.stringify(SCRIPTED_CODEMODE_FILE_PATH)}, content: ${JSON.stringify(SCRIPTED_CODEMODE_FILE_CONTENT)} })`
 export const SCRIPTED_CODEMODE_FINAL_TEXT = 'scripted codemode done'
 
+// Tools probe: always answers with the tools offered on this request.
+export const SCRIPTED_TOOLS_PROMPT = 'List the tools you were offered.'
+export const SCRIPTED_TOOLS_ANSWER_PREFIX = 'scripted provider offered tools: '
+
 function scriptedStream(model, context) {
-  if (lastUserText(context.messages) === SCRIPTED_CODEMODE_PROMPT) {
+  const prompt = lastUserText(context.messages)
+  if (prompt === SCRIPTED_CODEMODE_PROMPT) {
     return scriptedCodemodeStream(model, context)
+  }
+  if (prompt === SCRIPTED_TOOLS_PROMPT) {
+    return scriptedToolsStream(model, context)
   }
   const stream = createAssistantMessageEventStream()
   // Pi 0.86 passes a normalized TranscriptContext to custom providers. Read
@@ -179,6 +189,18 @@ function scriptedCodemodeStream(model, context) {
   } else {
     pushText(stream, output, SCRIPTED_CODEMODE_FINAL_TEXT)
   }
+  stream.push({ type: 'done', reason: output.stopReason, message: output })
+  stream.end()
+  return stream
+}
+
+/** Tools probe turn: reports the tool names the provider was offered, comma separated. */
+function scriptedToolsStream(model, context) {
+  const stream = createAssistantMessageEventStream()
+  const output = newAssistantOutput(model)
+  const names = getCurrentTools(context.messages).map((tool) => tool.name)
+  stream.push({ type: 'start', partial: output })
+  pushText(stream, output, `${SCRIPTED_TOOLS_ANSWER_PREFIX}${names.join(', ')}`)
   stream.push({ type: 'done', reason: output.stopReason, message: output })
   stream.end()
   return stream
