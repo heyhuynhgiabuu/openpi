@@ -46,7 +46,8 @@ export const SECTIONS: SettingSection[] = [
         key: 'compaction.reserveTokens',
         type: 'number',
         label: 'Reserve Tokens',
-        description: 'Tokens reserved for the LLM response during compaction',
+        description:
+          'Free context tokens below which auto-compaction starts. It does not limit summary length.',
         default: 16384,
         min: 512,
         max: 131072,
