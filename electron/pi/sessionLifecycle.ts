@@ -24,11 +24,16 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime. The adapter and the renderer event feed
- * exist; session-file persistence and index integration do not, so a user opt-in still lands on the
- * SDK path.
+ * Capabilities this build has the building blocks for. The adapter, the renderer event feed and the
+ * JSONL v3 session export exist; the export is not yet called per run and the sidebar index is not
+ * yet fed from it, so a user opt-in still lands on the SDK path (the gate throws if it ever says
+ * durable before that wiring lands).
  */
-const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = ['adapter', 'eventBridge']
+const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
+  'adapter',
+  'eventBridge',
+  'sessionFiles',
+]
 const DURABLE_ADAPTER_AVAILABLE = true
 import { teardownSession } from './sessionTeardown'
 
