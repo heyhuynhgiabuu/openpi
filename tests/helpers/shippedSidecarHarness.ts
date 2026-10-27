@@ -17,10 +17,17 @@ import path from 'node:path'
 // test: reused so the test bundles the sidecar entry like the real build.
 import { build as esbuildBuild } from 'esbuild'
 import type { SidecarMessage } from '../../electron/pi/sidecarTypes'
+import {
+  parseReply,
+  readSessionEvent,
+  sessionInfoReply,
+  sessionReadyReply,
+  type SessionEvent,
+} from './shippedReplies'
 
-export type SessionEvent = { type: string; [key: string]: unknown }
+export type { SessionEvent }
 
-export type SidecarHarnessOptions = {
+export interface SidecarHarnessOptions {
   /** Names the bundle and workspace cache dir. Test files use distinct names. */
   cacheName: string
   /** Written to <workspace>/.pi/settings.json when given. */
@@ -37,7 +44,7 @@ export type SidecarHarnessOptions = {
   providerScope?: 'project' | 'global'
 }
 
-export type SidecarHarness = {
+export interface SidecarHarness {
   /** The child's HOME: session files must land under it. */
   home: string
   workspace: string
@@ -63,9 +70,10 @@ const REPLY_TIMEOUT_MS = 30_000
 const READY_TIMEOUT_MS = 60_000
 const AGENT_END_TIMEOUT_MS = 60_000
 
-type Waiter = {
+interface Waiter {
   predicate: (message: SidecarMessage) => boolean
   resolve: (message: SidecarMessage) => void
+  reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -134,6 +142,8 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
   layoutFixtures(home, workspace, options)
 
   let childStderr = ''
+  // First malformed session_event: fails pending and later waits with its detail.
+  let protocolError: Error | null = null
   const waiters: Waiter[] = []
   const events: SessionEvent[] = []
 
@@ -156,6 +166,10 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
 
   const waitFor = (predicate: Waiter['predicate'], timeoutMs: number) =>
     new Promise<SidecarMessage>((resolve, reject) => {
+      if (protocolError) {
+        reject(protocolError)
+        return
+      }
       const timer = setTimeout(() => {
         reject(
           new Error(
@@ -163,16 +177,24 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
           )
         )
       }, timeoutMs)
-      waiters.push({ predicate, resolve, timer })
+      waiters.push({ predicate, resolve, reject, timer })
     })
 
   child.on('message', (message: SidecarMessage) => {
-    if (message.type === 'session_event') events.push(message.event as SessionEvent)
-    const index = waiters.findIndex((waiter) => waiter.predicate(message))
-    if (index !== -1) {
-      const [waiter] = waiters.splice(index, 1)
-      clearTimeout(waiter?.timer)
-      waiter?.resolve(message)
+    try {
+      if (message.type === 'session_event') events.push(readSessionEvent(message))
+      const index = waiters.findIndex((waiter) => waiter.predicate(message))
+      if (index !== -1) {
+        const [waiter] = waiters.splice(index, 1)
+        clearTimeout(waiter?.timer)
+        waiter?.resolve(message)
+      }
+    } catch (error) {
+      protocolError = error instanceof Error ? error : new Error(String(error))
+      for (const waiter of waiters.splice(0)) {
+        clearTimeout(waiter.timer)
+        waiter.reject(protocolError)
+      }
     }
   })
   child.stdout?.on('data', () => {}) // drain so a verbose child cannot fill the pipe
@@ -200,7 +222,7 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
         (message) => message.type === 'session_ready' && message.requestId === requestId,
         READY_TIMEOUT_MS
       )
-      return (ready as { payload: { sessionFile: string | null } }).payload.sessionFile
+      return parseReply(sessionReadyReply, ready).payload.sessionFile
     },
 
     async selectScriptedModel() {
@@ -214,7 +236,7 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
           (message) => message.type === 'session_info_result' && message.requestId === requestId,
           REPLY_TIMEOUT_MS
         )
-        const info = (reply as { info: { model: { provider: string } | null } }).info
+        const { info } = parseReply(sessionInfoReply, reply)
         if (info.model?.provider === 'scripted') return
         await sleep(50)
       }
@@ -225,7 +247,7 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
       send({ type: 'prompt', text })
       await waitFor(
         (message) =>
-          message.type === 'session_event' && (message.event as SessionEvent).type === 'agent_end',
+          message.type === 'session_event' && readSessionEvent(message).type === 'agent_end',
         AGENT_END_TIMEOUT_MS
       )
     },
@@ -236,7 +258,7 @@ export async function startSidecarHarness(options: SidecarHarnessOptions): Promi
         (message) => message.type === 'session_info_result' && message.requestId === requestId,
         REPLY_TIMEOUT_MS
       )
-      return (reply as { info: { messageCount: number } }).info
+      return parseReply(sessionInfoReply, reply).info
     },
 
     async dispose() {
