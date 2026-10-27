@@ -1,32 +1,34 @@
 import { readFileSync } from 'node:fs'
+import ts from 'typescript'
 import { z } from 'zod'
 
 /**
  * Phase 8.2d: extension compatibility gate for the durable runtime.
  *
- * Pi extensions are TypeScript modules against `ExtensionAPI` (tools, commands, shortcuts,
- * providers, session events, message injection). pi-durable's registry is a different surface —
- * tools, prompt sections, task hooks — so not every extension can run there, and pretending
- * otherwise would silently drop behaviour.
+ * Pi extensions are TS modules against `ExtensionAPI` (tools, commands, shortcuts, providers,
+ * session events, message injection). pi-durable's registry is a different surface — tools, prompt
+ * sections, task hooks — so not every extension can run there, and pretending otherwise would
+ * silently drop behaviour.
  *
- * This module classifies an extension file by the API it uses and names what has no durable
- * equivalent, so the cutover gate can report "these extensions will not work" instead of letting a
- * user flip the runtime and lose them.
+ * The analysis parses the file with the TypeScript compiler instead of matching text, so comments
+ * and string literals never count as calls, and the API object is tracked by the factory parameter
+ * name rather than requiring it to be called `pi`.
  */
 
-/** Pi ExtensionAPI members, ordered from fully mappable to unmappable. */
+/** Every `ExtensionAPI` member this gate understands. */
 export const extensionApis = [
   'registerTool',
-  'tool_call',
-  'context',
-  'resources_discover',
   'registerCommand',
   'registerShortcut',
   'registerProvider',
   'sendMessage',
   'appendEntry',
   'setActiveTools',
+  'tool_call',
+  'context',
+  'resources_discover',
   'session_events',
+  'unknown_events',
 ] as const
 
 export type ExtensionApi = (typeof extensionApis)[number]
@@ -44,6 +46,28 @@ const API_SUPPORT: Record<ExtensionApi, 'supported' | 'partial' | 'unsupported'>
   appendEntry: 'unsupported',
   setActiveTools: 'unsupported',
   session_events: 'unsupported',
+  // An event this gate does not classify could do anything: never call it compatible.
+  unknown_events: 'unsupported',
+}
+
+/** Method calls that map onto a durable concept. */
+const METHOD_API: Readonly<Record<string, ExtensionApi>> = {
+  registerTool: 'registerTool',
+  registerCommand: 'registerCommand',
+  registerShortcut: 'registerShortcut',
+  registerProvider: 'registerProvider',
+  sendMessage: 'sendMessage',
+  appendEntry: 'appendEntry',
+  setActiveTools: 'setActiveTools',
+}
+
+/** `on('<event>')` names mapped onto a category; anything else is `unknown_events`. */
+const EVENT_API: Readonly<Record<string, ExtensionApi>> = {
+  tool_call: 'tool_call',
+  context: 'context',
+  context_with_system: 'context',
+  before_provider_request: 'context',
+  resources_discover: 'resources_discover',
 }
 
 export const extensionCompatSchema = z.object({
@@ -54,64 +78,97 @@ export const extensionCompatSchema = z.object({
   verdict: z.enum(['compatible', 'partial', 'unsupported']),
   /** APIs with no durable equivalent; empty when fully compatible. */
   blocking: z.array(z.enum(extensionApis)),
+  /** Hook names the gate could not classify, for reporting rather than guessing. */
+  unknownEvents: z.array(z.string()),
 })
 
 export type ExtensionCompat = z.infer<typeof extensionCompatSchema>
 
-/** Direct `pi.<member>(` usage. */
-const MEMBER_PATTERNS: ReadonlyArray<{ api: ExtensionApi; pattern: RegExp }> = [
-  { api: 'registerTool', pattern: /\b(?:pi|api|ctx)\s*\.\s*registerTool\s*\(/ },
-  { api: 'registerCommand', pattern: /\b(?:pi|api|ctx)\s*\.\s*registerCommand\s*\(/ },
-  { api: 'registerShortcut', pattern: /\b(?:pi|api|ctx)\s*\.\s*registerShortcut\s*\(/ },
-  { api: 'registerProvider', pattern: /\b(?:pi|api|ctx)\s*\.\s*registerProvider\s*\(/ },
-  { api: 'sendMessage', pattern: /\b(?:pi|api|ctx)\s*\.\s*sendMessage\s*\(/ },
-  { api: 'appendEntry', pattern: /\b(?:pi|api|ctx)\s*\.\s*appendEntry\s*\(/ },
-  { api: 'setActiveTools', pattern: /\b(?:pi|api|ctx)\s*\.\s*setActiveTools\s*\(/ },
-]
+/** Collect the parameter names bound to the exported extension factory. */
+function factoryParameters(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  const isFactory = (node: ts.Node): node is ts.FunctionLikeDeclaration =>
+    ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)
 
-/** `on("<event>", ...)` usages, mapped onto the categories above. */
-const EVENT_SUPPORT: Readonly<Record<string, ExtensionApi>> = {
-  tool_call: 'tool_call',
-  context: 'context',
-  context_with_system: 'context',
-  before_provider_request: 'context',
-  resources_discover: 'resources_discover',
+  const visit = (node: ts.Node): void => {
+    if (isFactory(node) && node.parameters.length > 0) {
+      const parent = node.parent
+      // `export default function (pi) {}` (modifiers on the function itself),
+      // `export default (pi) => {}` (an ExportAssignment wrapping the arrow), or `export function`.
+      const ownModifiers = ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : []
+      const exported =
+        ts.isExportAssignment(parent) ||
+        ownModifiers.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)
+      if (exported) {
+        const first = node.parameters[0]
+        if (ts.isIdentifier(first.name)) names.add(first.name.text)
+      }
+    }
+    ts.forEachChild(node, visit)
+  }
+  ts.forEachChild(sourceFile, visit)
+  return names
 }
 
-/** Any other `session_*`/`project_trust`/`mcp_servers_change` event has no durable equivalent. */
-const SESSION_EVENT =
-  /\b(?:pi|api|ctx)\s*\.\s*on\s*\(\s*["'](session_[a-z_]+|project_trust|mcp_servers_change|after_provider_response|provider_stream_event|cache_warming_decision|before_provider_headers)["']/g
+/** Analyse a source string, returning the detected APIs and unknown hook names. */
+export function analyseSource(source: string): { apis: ExtensionApi[]; unknownEvents: string[] } {
+  const sourceFile = ts.createSourceFile(
+    'extension.ts',
+    source,
+    ts.ScriptTarget.ESNext,
+    true,
+    ts.ScriptKind.TS
+  )
+  const receivers = factoryParameters(sourceFile)
 
-const ON_EVENT = /\b(?:pi|api|ctx)\s*\.\s*on\s*\(\s*["']([a-z_]+)["']/g
-
-/** Detect the ExtensionAPI surface an extension source uses. */
-export function detectApis(source: string): ExtensionApi[] {
   const found = new Set<ExtensionApi>()
-  for (const { api, pattern } of MEMBER_PATTERNS) {
-    if (pattern.test(source)) found.add(api)
+  const unknownEvents = new Set<string>()
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const method = node.expression.name.text
+      const receiver = ts.isIdentifier(node.expression.expression)
+        ? node.expression.expression.text
+        : undefined
+      // Only calls on the factory's own API object count; a local helper named the same does not.
+      if (receiver !== undefined && receivers.has(receiver)) {
+        const mapped = METHOD_API[method]
+        if (mapped) found.add(mapped)
+        if (method === 'on') {
+          const event = node.arguments[0]
+          if (event && ts.isStringLiteralLike(event)) {
+            const category = EVENT_API[event.text]
+            if (category) found.add(category)
+            else {
+              found.add('unknown_events')
+              unknownEvents.add(event.text)
+            }
+          } else {
+            // A computed event name cannot be classified.
+            found.add('unknown_events')
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit)
   }
-  for (const match of source.matchAll(ON_EVENT)) {
-    const event = match[1]
-    const mapped = EVENT_SUPPORT[event]
-    if (mapped) found.add(mapped)
-  }
-  if (SESSION_EVENT.test(source)) found.add('session_events')
-  SESSION_EVENT.lastIndex = 0
-  return extensionApis.filter((api) => found.has(api))
+  visit(sourceFile)
+
+  return { apis: extensionApis.filter((api) => found.has(api)), unknownEvents: [...unknownEvents] }
 }
 
-/** Classify one extension file. A read failure is reported, never thrown. */
+/** Classify one extension file. A read or parse failure is reported, never thrown. */
 export function classifyExtension(filePath: string): ExtensionCompat {
   let source: string
   try {
     source = readFileSync(filePath, 'utf-8')
   } catch {
-    return { path: filePath, apis: [], verdict: 'unsupported', blocking: [] }
+    return { path: filePath, apis: [], verdict: 'unsupported', blocking: [], unknownEvents: [] }
   }
-  const apis = detectApis(source)
+  const { apis, unknownEvents } = analyseSource(source)
   const blocking = apis.filter((api) => API_SUPPORT[api] === 'unsupported')
   const partial = apis.filter((api) => API_SUPPORT[api] === 'partial')
   const verdict: ExtensionCompat['verdict'] =
     blocking.length > 0 ? 'unsupported' : partial.length > 0 ? 'partial' : 'compatible'
-  return { path: filePath, apis, verdict, blocking }
+  return { path: filePath, apis, verdict, blocking, unknownEvents }
 }
