@@ -63,6 +63,15 @@ describe('durable conversation index', () => {
     })
   })
 
+  it('rejects a cursor that does not match the store contract', async () => {
+    await withStore(async (storage, harness) => {
+      await harness.root(BACKGROUND_CONTEXT)
+      await expect(
+        listDurableConversations(storage, { limit: 1, cursor: 'not-a-cursor' }, BACKGROUND_CONTEXT)
+      ).rejects.toThrow('invalid pagination cursor')
+    })
+  })
+
   it('paginates with the returned cursor and can order ascending', async () => {
     await withStore(async (storage, harness) => {
       await harness.root(BACKGROUND_CONTEXT)

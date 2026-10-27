@@ -1,5 +1,5 @@
 import type { Context } from '@earendil-works/chord'
-import type { ConversationRecord, Storage } from '@earendil-works/pi-durable'
+import type { ConversationRecord, Cursor, Storage } from '@earendil-works/pi-durable'
 import { z } from 'zod'
 
 /**
@@ -21,11 +21,22 @@ export const durableConversationSummarySchema = z.object({
 
 export type DurableConversationSummary = z.infer<typeof durableConversationSummarySchema>
 
+/** A cursor is an opaque JSON record; validate it instead of casting at the boundary. */
+const cursorSchema = z.record(z.string(), z.unknown())
+
+function parseCursor(value: unknown): Cursor | undefined {
+  if (value === undefined || value === null) return undefined
+  const parsed = cursorSchema.safeParse(value)
+  if (!parsed.success) throw new Error('invalid pagination cursor')
+  // SAFETY: `Cursor` is `Readonly<Record<string, JsonValue>>`; the record shape is validated above.
+  return parsed.data as unknown as Cursor
+}
+
 /** One page of conversation summaries plus the cursor for the next page. */
 export interface DurableConversationPage {
   items: DurableConversationSummary[]
   /** Pass back to `listDurableConversations` to continue; `undefined` when the page was the last. */
-  cursor: unknown
+  cursor: Cursor | undefined
 }
 
 function toSummary(record: ConversationRecord): DurableConversationSummary {
@@ -50,7 +61,7 @@ export async function listDurableConversations(
   const page = await storage.scanConversations(
     { order: options.newestFirst === false ? 'ascending' : 'descending' },
     options.limit,
-    options.cursor as never,
+    parseCursor(options.cursor),
     context
   )
   return {
