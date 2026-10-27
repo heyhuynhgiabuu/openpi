@@ -73,7 +73,33 @@ export type NumField = BaseField & {
 }
 export type SelField = BaseField & { type: 'select'; options: string[] }
 export type ArrField = BaseField & { type: 'string-array'; placeholder?: string }
-export type SettingField = BoolField | StrField | NumField | SelField | ArrField
+
+/** One option of a `choice` field. `value` keeps its persisted type (boolean or string). */
+export interface ChoiceOption {
+  value: boolean | string
+  label: string
+  help: string
+}
+export interface ChoiceField extends BaseField {
+  type: 'choice'
+  options: readonly ChoiceOption[]
+}
+
+export type SettingField = BoolField | StrField | NumField | SelField | ArrField | ChoiceField
+
+/** Position of the option whose persisted value is `value` (strict equality), or -1. */
+export function choiceIndex(options: readonly ChoiceOption[], value: unknown): number {
+  return options.findIndex((option) => option.value === value)
+}
+
+/**
+ * Option shown and applied for a stored value. Unknown or missing values resolve
+ * to the field default, matching how Pi reads quietStartup.
+ */
+export function effectiveChoiceIndex(field: ChoiceField, value: unknown): number {
+  const exact = choiceIndex(field.options, value)
+  return exact >= 0 ? exact : choiceIndex(field.options, field.default)
+}
 
 export interface SettingSection {
   id: string

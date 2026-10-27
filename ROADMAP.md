@@ -132,7 +132,7 @@ Roadmap implications:
 
 ---
 
-## Pi Integration Reality (v1.0.0)
+## Pi Integration Reality (v1.4.0)
 
 These facts must drive implementation. Do not guess or approximate.
 

@@ -1,6 +1,6 @@
 import { Check, RotateCcw } from 'lucide-solid'
 import { createSignal, For, Show } from 'solid-js'
-import type { SettingField } from './settingsHelpers'
+import { type ChoiceField, effectiveChoiceIndex, type SettingField } from './settingsHelpers'
 
 interface RowProps {
   field: SettingField
@@ -16,6 +16,12 @@ interface RowProps {
 export function SettingRow(props: RowProps) {
   const isOverride = () => props.scope === 'project' && props.isExplicit
   const justSaved = () => props.savedKey === props.field.key
+  const choiceHelp = () => {
+    const field = props.field
+    if (field.type !== 'choice') return undefined
+    const index = effectiveChoiceIndex(field, props.value)
+    return index >= 0 ? field.options[index]?.help : undefined
+  }
 
   return (
     <div
@@ -35,6 +41,9 @@ export function SettingRow(props: RowProps) {
           </Show>
         </div>
         <div class="osp-row-desc">{props.field.description}</div>
+        <Show when={choiceHelp()}>
+          <div class="osp-row-desc">{choiceHelp()}</div>
+        </Show>
       </div>
 
       <div class="osp-row-right">
@@ -59,6 +68,10 @@ function FieldControl(props: {
   value: unknown
   onChange: (v: unknown) => void
 }) {
+  if (props.field.type === 'choice') {
+    return <ChoiceControl field={props.field} value={props.value} onChange={props.onChange} />
+  }
+
   if (props.field.type === 'boolean') {
     const on = () =>
       typeof props.value === 'boolean'
@@ -149,6 +162,28 @@ function FieldControl(props: {
   }
 
   return null
+}
+
+/** Select over typed options: the change event carries an index, never a stringified value. */
+function ChoiceControl(props: {
+  field: ChoiceField
+  value: unknown
+  onChange: (v: unknown) => void
+}) {
+  return (
+    <select
+      class="osp-select"
+      value={String(effectiveChoiceIndex(props.field, props.value))}
+      onChange={(e) => {
+        const option = props.field.options[Number(e.currentTarget.value)]
+        if (option) props.onChange(option.value)
+      }}
+    >
+      <For each={props.field.options}>
+        {(option, index) => <option value={String(index())}>{option.label}</option>}
+      </For>
+    </select>
+  )
 }
 
 function TagControl(props: {

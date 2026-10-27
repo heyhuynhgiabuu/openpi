@@ -13,7 +13,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 - Secure Electron main/preload boundary (Zod IPC, sandboxed renderer, main-owned FS/PTY/Git).
 - Pi session host: streaming conversation, model controls, steer/follow-up queues, abort, fork, rename.
 - Workspace/session sidebar: search/sort/group, pin/archive, token/cost badges, Git branch metadata.
-- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 1.0.0 `ModelRuntime` authentication with API-key and supported account-login flows.
+- Customizations: Extensions, Skills, Prompts, Themes, Packages, Settings, General, Keybindings; Pi 1.4.0 `ModelRuntime` authentication with API-key and supported account-login flows.
 - Command palette (`⇧⌘P`): commands, `fff` files, sessions.
 - Git panel, file tree/search, CM6 file viewer, split diff viewer (main-owned Git).
 - Terminal/output panel: multi-tab PTY, renameable tabs, exit indicators.
@@ -39,7 +39,7 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 ## Open review follow-ups
 
 - Per-turn usage attributes a summarization call to the last assistant turn in file order. A `model_change` between that turn and the compaction (15 of 160 locally) credits the summary's tokens to the earlier model in per-model buckets, and a branch switch could point at a turn on another branch; walking the compaction's parent chain would be the precise fix. Standalone Pi 0.86 usage entries are accounted for in session totals but remain metadata rows.
-- Session totals count assistant messages plus the summarization calls on `compaction`/`branch_summary` entries. Pi's own `getSessionStats` also counts `toolResult` message usage; OpenPi does not, and no entry in the local corpus carries it, so it is a gap rather than a live discrepancy.
+- Session totals count assistant messages, the summarization calls on `compaction`/`branch_summary` entries, and `toolResult` nested usage, which is stored as its own `tool_result` row (tokens and cost, never a turn). Standalone Pi 0.86 `usage` entries are counted too. These are the same usage sources as Pi's `getSessionStats`. No `toolResult` entry in the repo's captured session corpus (`.pi/artifacts`) carries `usage`, so the path is pinned by `tests/sessionUsage.test.ts` and `tests/usageTurnCount.test.ts` rather than by live data.
 - The loader test runs the loaded `tool_call` handler through Pi's extension loader (the deny path), but `session_start` and `turn_end` are still only counted there, not executed; their behavior is covered by the direct unit tests.
 - The search fallback treats `mode: 'fuzzy'` as a literal search (it cannot rank fuzzy hits), returns one entry per occurrence where the native index returns one per line, and skips `dist`/`out`/`release` where the native index walks them. `timeBudgetMs: 0` means "stop now" rather than the native's "no limit", which the IPC schema cannot produce because it requires a positive value.
 - The fallback checks its time budget once per directory, so one directory with a very large number of files is still walked to the end. The native index truncates a matched line at 512 bytes; the fallback does not.
@@ -68,8 +68,8 @@ OpenPi is a **human-enabling workbench** for [Pi](https://pi.dev) (`@earendil-wo
 ## Known constraints
 
 - macOS primary; other platforms less tested.
-- Pi SDK pinned at 1.0.0. Pi 0.86 system-message patches and standalone usage entries are hidden from ordinary conversation rows while their prompt state and token/cost totals remain inspectable. The 0.85 `@earendil-works/pi-server` workaround is no longer required. Pi 0.99+ built-in extensions (MCP, codemode, tool-search) load through the SDK; OpenPi has no dedicated surface for them yet.
-- Packaging via `electron-builder`; Pi package updates are limited to writable development installs because packaged `app.asar` bundles are read-only, while signed/notarized release artifacts remain required before broad rollout. npm's Pi 1.0.0 dependency shrinkwrap still installs its nested `ws@8.21.0` despite the root override; pnpm resolves `ws@8.21.1`, so the npm path needs an upstream Pi republish or shrinkwrap fix before the nested copy can be aligned.
+- Pi SDK pinned at 1.4.0. Pi 0.86 system-message patches and standalone usage entries are hidden from ordinary conversation rows while their prompt state and token/cost totals remain inspectable. The 0.85 `@earendil-works/pi-server` workaround is no longer required. Pi 0.99+ built-in codemode loads in the sidecar through the SDK resource loader as `builtin:codemode` (skipped by `-builtin:codemode` and in untrusted workspaces); its tool stays off unless `defaultTools` names `+codemode`. MCP and tool-search are not wired yet, and OpenPi has no dedicated surface for codemode.
+- Packaging via `electron-builder`; Pi package updates are limited to writable development installs because packaged `app.asar` bundles are read-only, while signed/notarized release artifacts remain required before broad rollout. Pi stopped publishing `npm-shrinkwrap.json` in 1.0.1 and 1.4.0 still ships none, so the npm path hoists `ws@8.21.1` from the root override instead of nesting a Pi-pinned `ws` under `@earendil-works/pi-coding-agent`.
 - Single-user, local-only, no cloud sync.
 - Pi defaults to **YOLO**; OpenPi adds **optional** desktop policy rails — users can still install Pi [example extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions) for TUI-style gates.
 

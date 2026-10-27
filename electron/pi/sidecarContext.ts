@@ -9,9 +9,11 @@ import path from 'node:path'
 import './sidecarEnv'
 import {
   createAgentSession,
+  createCodemodeExtension,
   DefaultResourceLoader,
   ModelRuntime,
   SettingsManager,
+  type InlineExtension,
 } from '@earendil-works/pi-coding-agent'
 import { ProviderAuthBridge } from './providerAuth'
 import type { SidecarMessage } from './sidecarTypes'
@@ -116,6 +118,18 @@ export function clearResourceLoaderCache(): void {
   _cachedResourceLoader = null
 }
 
+// Pi's built-in codemode, registered the way the CLI registers it (`builtInExtensions`
+// in pi-coding-agent). As a `builtin` entry it loads as `builtin:codemode`: on by
+// default, off with `-builtin:codemode` in the `extensions` setting, and skipped
+// when noExtensions is set (untrusted workspace). The factory registers the tool
+// inactive, so `defaultTools: ["+codemode"]` stays the only opt-in.
+const CODEMODE_BUILTIN: InlineExtension = {
+  name: 'codemode',
+  factory: createCodemodeExtension(),
+  builtin: true,
+  replaceable: true,
+}
+
 export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
   const agentDir = getAgentDir()
   if (
@@ -149,6 +163,7 @@ export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) 
     settingsManager,
     noExtensions,
     additionalExtensionPaths: noExtensions ? [agentDir] : [],
+    extensionFactories: [CODEMODE_BUILTIN],
   })
   try {
     await loader.reload()
