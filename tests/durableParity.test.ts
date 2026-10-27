@@ -131,7 +131,8 @@ describe('durable harness event feed', () => {
     try {
       await harness.prompt('hello')
       expect(seen[0]).toBe('snapshot')
-      expect(seen).toContain('run_start')
+      // The adapter speaks the renderer's vocabulary, not pi-durable's.
+      expect(seen).toContain('agent_start')
       expect(seen).toContain('message_end')
     } finally {
       await stop()

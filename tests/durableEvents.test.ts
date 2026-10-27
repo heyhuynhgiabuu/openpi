@@ -3,7 +3,7 @@ import { createModels, fauxAssistantMessage, fauxProvider, fauxText } from '@ear
 import type { ConversationId } from '@earendil-works/pi-durable'
 import { Harness, MemoryStorage, createRegistry } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
-import { attachDurableEvents } from '../electron/pi/durable/events'
+import { attachDurableEvents, toWireEvent } from '../electron/pi/durable/events'
 
 /**
  * Phase 8.3d: the durable event feed carries the vocabulary the renderer already consumes, so tool
@@ -75,14 +75,17 @@ describe('durable event bridge', () => {
         await submission.wait(BACKGROUND_CONTEXT)
 
         const types = events.map((event) => String(event.type))
-        // The events the renderer's tool cards, streaming text and turn accounting rely on.
-        // `message_update` needs a token-by-token stream; the faux provider answers in one block,
-        // so the message arrives through `message_start`/`message_end` instead.
-        expect(types).toContain('run_start')
+        // The renderer's vocabulary, not pi-durable's: it starts and ends runs on
+        // `agent_start`/`agent_end` (src/lib/ipc/_full.ts, sessionEventPipe), never on `run_*`.
+        // `message_update` needs a token-by-token stream and the faux provider answers in one
+        // block, so the message arrives through `message_start`/`message_end` here.
+        expect(types).toContain('agent_start')
+        expect(types).toContain('agent_end')
+        expect(types).not.toContain('run_start')
+        expect(types).not.toContain('run_end')
         expect(types).toContain('message_start')
         expect(types).toContain('message_end')
         expect(types).toContain('turn_start')
-        expect(types).toContain('run_end')
         expect(JSON.stringify(events)).toContain(ANSWER)
       } finally {
         await handle.stop()
@@ -111,5 +114,25 @@ describe('durable event bridge', () => {
       await submission.wait(BACKGROUND_CONTEXT)
       expect(events.length).toBe(afterStop)
     })
+  })
+})
+
+describe('durable event translation', () => {
+  it('renames run boundaries to the renderer agent boundaries', () => {
+    expect(toWireEvent({ type: 'run_start' })?.type).toBe('agent_start')
+    expect(toWireEvent({ type: 'run_end' })?.type).toBe('agent_end')
+  })
+
+  it('passes every other event through unchanged', () => {
+    expect(toWireEvent({ type: 'turn_start' })?.type).toBe('turn_start')
+    expect(toWireEvent({ type: 'tool_execution_start', toolName: 'bash' })).toMatchObject({
+      type: 'tool_execution_start',
+      toolName: 'bash',
+    })
+  })
+
+  it('drops a payload the renderer could not read', () => {
+    expect(toWireEvent({} as Record<string, unknown>)).toBeUndefined()
+    expect(toWireEvent({ type: 42 } as unknown as Record<string, unknown>)).toBeUndefined()
   })
 })
