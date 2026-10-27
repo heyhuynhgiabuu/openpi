@@ -6,6 +6,7 @@
 
 import { batch } from 'solid-js'
 import type { SessionEvent } from '../../lib/ipc'
+import { isNestedToolEvent } from '../../lib/nestedToolEvents'
 import { asUiPromptEvent, applySessionEvent } from '../../lib/sessionEvents'
 import type { Message } from '../../types/session'
 import type { useAgentRunMetrics } from '../useAgentRunMetrics'
@@ -103,7 +104,9 @@ export function createSessionEventHandle(deps: SessionEventPipeDeps) {
     // state and, since 0.86, post-turn cache-warm usage entries.
     if (event.type === 'message_start' || event.type === 'entry_appended')
       deps.setBranchLeafId(null)
-    if (APPEND_EVENTS.has(event.type)) deps.setTreeVersion((version) => version + 1)
+    // Nested tool calls (codemode `tools.*`) append no entry, so they leave the tree alone.
+    if (APPEND_EVENTS.has(event.type) && !isNestedToolEvent(event))
+      deps.setTreeVersion((version) => version + 1)
 
     if (event.type === 'queue_update') {
       const e = event as { steering?: readonly string[]; followUp?: readonly string[] }

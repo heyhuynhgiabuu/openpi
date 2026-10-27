@@ -1,5 +1,6 @@
 import type { ExtensionResponseMessage, Message, SystemMessage, ToolCard } from '../types/session'
 import type { SessionEvent } from './ipc'
+import { isNestedToolEvent } from './nestedToolEvents'
 import { numeric, parseUsage } from './usageParse'
 
 /** The two ctx.ui prompt events, as declared in sessionEventKnownSchema. */
@@ -31,6 +32,8 @@ export function applySessionEvent(
    * the original `messages` reference so downstream memos (groupMessages,
    * aggregateUsage) see no change and skip recomputation.
    */
+  // A tool's nested calls (codemode `tools.*`) never get their own card.
+  if (isNestedToolEvent(event)) return messages
   switch (event.type) {
     case 'message_start': {
       const msg = event.message as { role: string; content?: unknown; timestamp?: number }
