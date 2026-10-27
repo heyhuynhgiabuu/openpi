@@ -20,6 +20,7 @@ import {
   SCRIPTED_MCP_PROMPT,
   SCRIPTED_MCP_TOOL_NAME,
   SCRIPTED_MCP_TOOL_TEXT,
+  SCRIPTED_SEARCH_PROMPT,
   SCRIPTED_TOOLS_PROMPT,
 } from './fixtures/scripted-provider-extension.js'
 import { MCP_ECHO_PREFIX, MCP_PI_TOOL_NAME } from './fixtures/mcp-stdio-server.js'
@@ -130,5 +131,51 @@ describe('shipped path: project mcp.json server → codemode → MCP tool', () =
     })
     expect(answeredText(events)).toContain(SCRIPTED_MCP_FINAL_TEXT)
     expect(answeredText(events)).not.toContain('ctx is stale')
+  }, 120_000)
+})
+
+describe('shipped path: deferred exposure is found by tool_search and then runs', () => {
+  let harness: SidecarHarness | null = null
+
+  beforeAll(async () => {
+    harness = await startSidecarHarness({
+      cacheName: 'mcp-deferred',
+      // Deferred exposure: the tool is hidden from the model until tool_search
+      // declares it. tool_search itself needs an opt-in.
+      projectMcp: { mcpServers: { fixture: { ...fixtureMcpServer(), exposure: 'deferred' } } },
+      projectSettings: { defaultTools: ['+tool_search'] },
+    })
+  }, 120_000)
+
+  afterAll(async () => {
+    await harness?.dispose()
+    harness = null
+  })
+
+  it('search finds the fixture tool, Pi declares it, and the tool runs', async () => {
+    const h = harness as SidecarHarness
+    await h.startSession('mcp-deferred-start')
+    await h.selectScriptedModel()
+    await h.prompt(SCRIPTED_SEARCH_PROMPT)
+
+    const events = h.events
+    const searchStart = toolEvents(events).find(
+      (event) => event.type === 'tool_execution_start' && event.toolName === 'tool_search'
+    )
+    expect(searchStart, `provider answered: ${answeredText(events)}`).toBeTruthy()
+    const mcpStart = toolEvents(events).find(
+      (event) => event.type === 'tool_execution_start' && event.toolName === MCP_PI_TOOL_NAME
+    )
+    // The model called the MCP tool DIRECTLY (not through codemode): tool_search
+    // declared it after the search, which is the deferred route working.
+    expect(mcpStart, `provider answered: ${answeredText(events)}`).toBeTruthy()
+    expect(Object.hasOwn(mcpStart ?? {}, 'parentToolCallId')).toBe(false)
+    const mcpEnd = toolEvents(events).find(
+      (event) => event.type === 'tool_execution_end' && event.toolName === MCP_PI_TOOL_NAME
+    )
+    expect(mcpEnd).toMatchObject({ isError: false })
+    expect(answeredText(events)).toContain(
+      `scripted search done; declared=true result=${MCP_ECHO_PREFIX}`
+    )
   }, 120_000)
 })

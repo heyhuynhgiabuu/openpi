@@ -51,6 +51,8 @@ export const SCRIPTED_MCP_TOOL_NAME = `mcp__${SCRIPTED_MCP_SERVER}__echo`
 export const SCRIPTED_MCP_TOOL_TEXT = 'hello from the shipped-path test'
 export const SCRIPTED_MCP_SCRIPT = `return await tools.${SCRIPTED_MCP_TOOL_NAME}({ text: ${JSON.stringify(SCRIPTED_MCP_TOOL_TEXT)} })`
 export const SCRIPTED_MCP_FINAL_TEXT = 'scripted mcp done'
+export const SCRIPTED_SEARCH_PROMPT = 'Find the fixture echo tool with tool_search, then call it.'
+export const SCRIPTED_SEARCH_QUERY = 'echo'
 
 // Tools probe: always answers with the tools offered on this request.
 export const SCRIPTED_TOOLS_PROMPT = 'List the tools you were offered.'
@@ -66,6 +68,9 @@ function scriptedStream(model, context) {
   }
   if (prompt === SCRIPTED_MCP_PROMPT) {
     return scriptedMcpStream(model, context)
+  }
+  if (prompt === SCRIPTED_SEARCH_PROMPT) {
+    return scriptedSearchStream(model, context)
   }
   const stream = createAssistantMessageEventStream()
   // Pi 0.86 passes a normalized TranscriptContext to custom providers. Read
@@ -240,6 +245,68 @@ function scriptedMcpStream(model, context) {
   stream.push({ type: 'done', reason: output.stopReason, message: output })
   stream.end()
   return stream
+}
+
+/**
+ * Deferred-exposure turn: calls `tool_search` for the fixture tool, then — once
+ * the search declared it — calls the MCP tool directly, then reports what it
+ * returned. Proves the deferred route (search finds the tool, Pi declares it,
+ * the tool runs) rather than only that `tool_search` is offered.
+ */
+function scriptedSearchStream(model, context) {
+  const stream = createAssistantMessageEventStream()
+  const tools = getCurrentTools(context.messages)
+  const output = newAssistantOutput(model)
+  const searchResult = context.messages.findLast(
+    (message) => message.role === 'toolResult' && message.toolName === 'tool_search'
+  )
+  if (!tools.some((tool) => tool.name === 'tool_search')) {
+    const names = tools.map((tool) => tool.name).join(', ')
+    pushText(stream, output, `scripted provider: tool_search not active (tools: ${names})`)
+  } else if (!searchResult) {
+    pushToolCall(stream, output, {
+      type: 'toolCall',
+      id: 'scripted-search-1',
+      name: 'tool_search',
+      arguments: { query: SCRIPTED_SEARCH_QUERY },
+    })
+  } else {
+    const searched = toolResultText(searchResult)
+    const declared = searched.includes(SCRIPTED_MCP_TOOL_NAME)
+    const ranTool = context.messages.some(
+      (message) => message.role === 'toolResult' && message.toolName === SCRIPTED_MCP_TOOL_NAME
+    )
+    if (declared && !ranTool) {
+      pushToolCall(stream, output, {
+        type: 'toolCall',
+        id: 'scripted-search-2',
+        name: SCRIPTED_MCP_TOOL_NAME,
+        arguments: { text: SCRIPTED_MCP_TOOL_TEXT },
+      })
+    } else {
+      const echoResult = context.messages.findLast(
+        (message) => message.role === 'toolResult' && message.toolName === SCRIPTED_MCP_TOOL_NAME
+      )
+      pushText(
+        stream,
+        output,
+        `scripted search done; declared=${declared} result=${toolResultText(echoResult)}`
+      )
+    }
+  }
+  stream.push({ type: 'done', reason: output.stopReason, message: output })
+  stream.end()
+  return stream
+}
+
+/** Concatenated text of a toolResult message's content. */
+function toolResultText(message) {
+  const content = message?.content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => (part && part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+    .join('')
 }
 
 /** Tools probe turn: reports the tool names the provider was offered, comma separated. */

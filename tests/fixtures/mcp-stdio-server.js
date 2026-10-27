@@ -16,6 +16,7 @@
  * absent or unchanged), not merely that its tools were unreachable.
  */
 import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
 export const MCP_SERVER_NAME = 'fixture'
 export const MCP_TOOL_NAME = 'echo'
@@ -72,24 +73,32 @@ function handle(message) {
   error(id, -32601, `Method not found: ${String(method)}`)
 }
 
-// Split on \n only, the way the MCP stdio transport frames messages.
-let buffer = ''
-process.stdin.setEncoding('utf8')
-process.stdin.on('data', (chunk) => {
-  buffer += chunk
-  for (let newline = buffer.indexOf('\n'); newline >= 0; newline = buffer.indexOf('\n')) {
-    const line = buffer.slice(0, newline).replace(/\r$/, '')
-    buffer = buffer.slice(newline + 1)
-    if (!line.trim()) continue
-    let message
-    try {
-      message = JSON.parse(line)
-    } catch {
-      error(null, -32700, 'Parse error')
-      continue
+// Constants above are safe to import (tests do); the server loop only starts
+// when this file is the entry point, so importing it never installs stdin
+// listeners that could `process.exit(0)` a test worker.
+const isEntrypoint =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href
+if (!isEntrypoint) process.exitCode = undefined
+else {
+  // Split on \n only, the way the MCP stdio transport frames messages.
+  let buffer = ''
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk) => {
+    buffer += chunk
+    for (let newline = buffer.indexOf('\n'); newline >= 0; newline = buffer.indexOf('\n')) {
+      const line = buffer.slice(0, newline).replace(/\r$/, '')
+      buffer = buffer.slice(newline + 1)
+      if (!line.trim()) continue
+      let message
+      try {
+        message = JSON.parse(line)
+      } catch {
+        error(null, -32700, 'Parse error')
+        continue
+      }
+      handle(message)
     }
-    handle(message)
-  }
-})
-// Closing stdin is the shutdown request: exit cleanly so no process outlives the test.
-process.stdin.on('end', () => process.exit(0))
+  })
+  // Closing stdin is the shutdown request: exit cleanly so no process outlives the test.
+  process.stdin.on('end', () => process.exit(0))
+}
