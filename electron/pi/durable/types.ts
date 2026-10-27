@@ -1,4 +1,4 @@
-import type { MutableModels } from '@earendil-works/pi-ai'
+import type { Models, MutableModels } from '@earendil-works/pi-ai'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 
@@ -39,6 +39,12 @@ export interface DurableHarnessOptions {
   backend?: DurableBackend
   /** Model the root conversation runs. */
   model: DurableModelRef
+  /**
+   * Model registry to run against. Production passes the SDK's `ModelRuntime` (it implements
+   * `Models`), so auth.json, models.json and OAuth are shared with the SDK path instead of being
+   * rebuilt. Omit to use a fresh registry that `registerProviders` populates (tests).
+   */
+  models?: Models
   /** Register pi-ai providers (e.g. the faux provider in tests) before any request. */
   registerProviders?: (models: MutableModels) => void
   /** User agent dir (`~/.pi/agent`); customizations are discovered from it. */

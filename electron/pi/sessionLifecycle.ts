@@ -10,7 +10,8 @@ import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { rejectAllExtensionUiPending } from './extensionUiPending'
 import { forwardSessionEvents } from './eventBridge'
 import { createSessionSettingsManager } from './sessionSettings'
-import { decideCutover, type DurableCapability } from './cutover'
+import { chooseSessionRuntime, decideCutover, type DurableCapability } from './cutover'
+import { durableSessions } from './durableHost'
 import { isStaleExtensionCtxMessage } from './staleCtx'
 import {
   clearResourceLoaderCache,
@@ -24,13 +25,16 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has the building blocks for. The adapter, the renderer event feed and the
- * JSONL v3 session export exist; the export is not yet called per run and the sidebar index is not
- * yet fed from it, so a user opt-in still lands on the SDK path (the gate throws if it ever says
- * durable before that wiring lands).
+ * Capabilities this build has wired for the durable runtime. Everything a session needs except the
+ * command set: prompt works, but steer/follow-up/abort/model/thinking/compact/bash/fork/navigate do
+ * not, so `sessionCommands` stays missing and an opt-in still lands on the SDK path.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
+  'customizations',
+  'policy',
+  'mcp',
+  'sessionIndex',
   'eventBridge',
   'sessionFiles',
 ]
@@ -77,6 +81,14 @@ export async function stopSession(
   }
 }
 
+async function stopSdkSession(reason: 'new' | 'resume' | 'fork'): Promise<void> {
+  const previous = getState()
+  if (!previous) return
+  setState(null)
+  previous.unsubscribe()
+  await stopSession(previous.session, reason)
+}
+
 export async function startSession(
   cwd: string,
   opts: {
@@ -88,19 +100,26 @@ export async function startSession(
     runtimePreference?: string
   } = {}
 ): Promise<void> {
+  // A durable session from a previous start must not outlive this one.
+  await durableSessions.stop()
+
   // Cutover gate: the durable runtime may only serve a session when every capability it needs is
-  // wired. This build reports `adapter` only, so an opt-in still runs on the SDK path and says why.
+  // wired, and only for a new session (resume/fork stay on the SDK path).
   const decision = decideCutover({
     stored: opts.runtimePreference,
     durableAvailable: DURABLE_ADAPTER_AVAILABLE,
     capabilities: WIRED_DURABLE_CAPABILITIES,
   })
-  if (decision.runtime === 'durable') {
-    // Unreachable until the remaining capabilities are wired; keep it loud rather than silent.
-    throw new Error('durable runtime requested but session wiring is incomplete')
-  }
-  if (decision.reason) {
-    outputLine('warn', `[runtime] staying on the Pi SDK path: ${decision.reason}`)
+  const choice = chooseSessionRuntime(decision, opts)
+  const reason = decision.reason ?? choice.reason
+  if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
+  if (choice.runtime === 'durable') {
+    await stopSdkSession('new')
+    await durableSessions.start(cwd, {
+      workspaceTrusted: opts.workspaceTrusted ?? false,
+      requestId: opts.requestId,
+    })
+    return
   }
 
   // Validate fork identity before disposing the active session so malformed or
@@ -114,17 +133,7 @@ export async function startSession(
 
   // Dispose previous session — emit session_shutdown first so extensions
   // (e.g. pi-task polling) clear timers and drop captured `pi` before ctx invalidates.
-  const previous = getState()
-  if (previous) {
-    setState(null)
-    previous.unsubscribe()
-    const shutdownReason: 'new' | 'resume' | 'fork' = opts.forkEntryId
-      ? 'fork'
-      : opts.sessionFile
-        ? 'resume'
-        : 'new'
-    await stopSession(previous.session, shutdownReason)
-  }
+  await stopSdkSession(opts.forkEntryId ? 'fork' : opts.sessionFile ? 'resume' : 'new')
 
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()

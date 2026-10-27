@@ -19,6 +19,7 @@ export const durableCapabilitySchema = z.enum([
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
+  'sessionCommands',
 ])
 
 export type DurableCapability = z.infer<typeof durableCapabilitySchema>
@@ -32,6 +33,7 @@ export const REQUIRED_CAPABILITIES: readonly DurableCapability[] = [
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
+  'sessionCommands',
 ]
 
 export const cutoverDecisionSchema = z.object({
@@ -86,4 +88,28 @@ export function decideCutover(options: {
     }
   }
   return { runtime: 'durable', available, missing: [] }
+}
+
+export type SessionRuntimeChoice =
+  | { runtime: 'sdk'; reason?: string }
+  | { runtime: 'durable'; reason?: undefined }
+
+/**
+ * Per-session routing once the gate has said `durable`. The durable runtime only starts *new*
+ * sessions: resuming or forking would re-import an SDK session, and exporting that back would
+ * flatten its branch tree — a history loss the importer never has to risk. Those requests stay on
+ * the SDK path, with the reason surfaced.
+ */
+export function chooseSessionRuntime(
+  decision: CutoverDecision,
+  request: { sessionFile?: string; forkEntryId?: string }
+): SessionRuntimeChoice {
+  if (decision.runtime !== 'durable') return { runtime: 'sdk' }
+  if (request.sessionFile || request.forkEntryId) {
+    return {
+      runtime: 'sdk',
+      reason: 'the durable runtime starts new sessions only; resume and fork use the SDK path',
+    }
+  }
+  return { runtime: 'durable' }
 }
