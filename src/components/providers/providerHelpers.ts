@@ -11,7 +11,7 @@ export const POPULAR_PROVIDER_IDS = new Set([
   'mistral',
   'xai',
   'amazon-bedrock',
-  'azure-openai-responses',
+  'azure',
   'cloudflare-ai-gateway',
 ])
 
@@ -75,7 +75,7 @@ export const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   mistral: 'Open and proprietary European AI models',
   xai: 'Grok models from xAI',
   'amazon-bedrock': 'AWS Bedrock model access',
-  'azure-openai-responses': 'Azure-hosted OpenAI models',
+  azure: 'Azure-hosted OpenAI and Foundry models',
   'cloudflare-ai-gateway': 'Cloudflare AI Gateway proxy',
 }
 

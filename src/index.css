@@ -11232,6 +11232,16 @@ body.panel-dragging {
   color: var(--danger, #f87171);
   margin: 4px 0 0;
 }
+.cp-legacy-notice {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-inset);
+}
 .cp-key-actions {
   display: flex;
   justify-content: flex-end;

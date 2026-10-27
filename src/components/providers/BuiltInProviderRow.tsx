@@ -60,6 +60,15 @@ export function BuiltInProviderRow(props: BuiltInProviderRowProps) {
         </div>
       </div>
 
+      <Show when={props.provider.legacyCredentialId}>
+        {(legacyId) => (
+          <p class="cp-legacy-notice" role="note">
+            Your saved key under the old "{legacyId()}" provider is no longer used. Pi does not
+            migrate it, so add it again here under "{props.provider.id}".
+          </p>
+        )}
+      </Show>
+
       <Show when={props.expanded}>
         <div class="cp-key-form">
           <input
