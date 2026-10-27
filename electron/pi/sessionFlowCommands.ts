@@ -17,6 +17,7 @@ export async function handleStartSessionCommand(
       forkEntryId: cmd.forkEntryId,
       requestId: cmd.requestId,
       workspaceTrusted: cmd.workspaceTrusted,
+      runtimePreference: cmd.runtimePreference,
     })
   } catch (err) {
     send({

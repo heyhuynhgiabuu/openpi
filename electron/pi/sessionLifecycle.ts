@@ -10,6 +10,7 @@ import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { rejectAllExtensionUiPending } from './extensionUiPending'
 import { forwardSessionEvents } from './eventBridge'
 import { createSessionSettingsManager } from './sessionSettings'
+import { decideCutover, type DurableCapability } from './cutover'
 import { isStaleExtensionCtxMessage } from './staleCtx'
 import {
   clearResourceLoaderCache,
@@ -21,6 +22,14 @@ import {
   setState,
   getState,
 } from './sidecarContext'
+
+/**
+ * Capabilities this build has wired for the durable runtime. Only the adapter exists so far: the
+ * event bridge (tool cards/streaming), session-file persistence, and index integration are the
+ * remaining work, so a user opt-in still lands on the SDK path.
+ */
+const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = ['adapter']
+const DURABLE_ADAPTER_AVAILABLE = true
 import { teardownSession } from './sessionTeardown'
 
 /**
@@ -70,8 +79,25 @@ export async function startSession(
     forkEntryId?: string
     requestId?: string
     workspaceTrusted?: boolean
+    /** Stored runtime preference from Electron main; the cutover gate decides what actually runs. */
+    runtimePreference?: string
   } = {}
 ): Promise<void> {
+  // Cutover gate: the durable runtime may only serve a session when every capability it needs is
+  // wired. This build reports `adapter` only, so an opt-in still runs on the SDK path and says why.
+  const decision = decideCutover({
+    stored: opts.runtimePreference,
+    durableAvailable: DURABLE_ADAPTER_AVAILABLE,
+    capabilities: WIRED_DURABLE_CAPABILITIES,
+  })
+  if (decision.runtime === 'durable') {
+    // Unreachable until the remaining capabilities are wired; keep it loud rather than silent.
+    throw new Error('durable runtime requested but session wiring is incomplete')
+  }
+  if (decision.reason) {
+    outputLine('warn', `[runtime] staying on the Pi SDK path: ${decision.reason}`)
+  }
+
   // Validate fork identity before disposing the active session so malformed or
   // stale renderer entry IDs cannot leave the sidecar without a session.
   let preparedForkFile: string | undefined

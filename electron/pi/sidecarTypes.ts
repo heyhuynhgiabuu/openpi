@@ -16,6 +16,7 @@ export type SidecarCommand =
       forkEntryId?: string
       requestId?: string
       workspaceTrusted?: boolean
+      runtimePreference?: string
     }
   | { type: 'prompt'; text: string; contextPrefix?: string }
   | { type: 'steer'; text: string; contextPrefix?: string }

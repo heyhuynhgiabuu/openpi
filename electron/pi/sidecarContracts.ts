@@ -29,6 +29,8 @@ export const sidecarCommandSchema = z.discriminatedUnion('type', [
       forkEntryId: z.string().min(1).optional(),
       requestId: requestIdSchema.optional(),
       workspaceTrusted: z.boolean().optional(),
+      /** Stored runtime preference, resolved by Electron main from `agent.runtime`. */
+      runtimePreference: z.string().optional(),
     })
     .strict(),
   z.object({ type: z.literal('prompt'), text: z.string(), ...optionalContextSchema }).strict(),
