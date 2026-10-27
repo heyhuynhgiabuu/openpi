@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import packageManifest from '../package.json'
 
 /**
@@ -12,14 +13,18 @@ const root = resolve(import.meta.dirname, '..')
 const FIXED = '5.0.12'
 const OVERRIDE_KEY = 'brace-expansion@>=5.0.0 <5.0.12'
 
+const overridesSchema = z.record(z.string())
+const npmLockSchema = z.object({
+  packages: z.record(z.object({ version: z.string().optional() }).passthrough()),
+})
+
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), 'utf8')
 }
 
 describe('brace-expansion override', () => {
   it('pins the npm override to the first fixed 5.x release', () => {
-    // SAFETY: package.json `overrides` is a flat package-spec → version map.
-    const overrides = packageManifest.overrides as Record<string, string>
+    const overrides = overridesSchema.parse(packageManifest.overrides)
     expect(overrides[OVERRIDE_KEY]).toBe(FIXED)
     expect(Object.keys(overrides).filter((key) => key.startsWith('brace-expansion'))).toEqual([
       OVERRIDE_KEY,
@@ -40,10 +45,7 @@ describe('brace-expansion override', () => {
   })
 
   it('resolves every npm lock entry in the 5.x line to the fixed release', () => {
-    // SAFETY: package-lock.json is npm lockfile v3; only `packages[*].version` is read.
-    const lock = JSON.parse(readRepoFile('package-lock.json')) as {
-      packages: Record<string, { version?: string }>
-    }
+    const lock = npmLockSchema.parse(JSON.parse(readRepoFile('package-lock.json')))
     const braceEntries = Object.entries(lock.packages).filter(([key]) =>
       key.endsWith('node_modules/brace-expansion')
     )
