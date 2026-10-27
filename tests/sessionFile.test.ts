@@ -148,4 +148,39 @@ describe('durable session export', () => {
     expect(await readFile(path, 'utf8')).toContain('"version":3')
     expect(await readdir(join(root, 'deep', 'nested'))).toEqual(['d.jsonl'])
   })
+
+  it('refuses a same-id file with another version', async () => {
+    const path = join(root, 'v2.jsonl')
+    const v2 = `{"type":"session","version":2,"id":"${header.sessionId}","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/x"}\n`
+    await writeFile(path, v2, 'utf8')
+    await expect(writeSessionFile(path, header, [])).rejects.toThrow(/another session/)
+    expect(await readFile(path, 'utf8')).toBe(v2)
+  })
+
+  it('serializes overlapping exports to one destination', async () => {
+    const path = join(root, 'race.jsonl')
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, () => writeSessionFile(path, header, []))
+    )
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true)
+    expect(await readdir(root)).toEqual(['race.jsonl'])
+  })
+
+  it('leaves no temp file when the rename fails, and the next export still works', async () => {
+    const path = join(root, 'fails.jsonl')
+    const failing = { rename: () => Promise.reject(new Error('simulated rename failure')) }
+    await expect(writeSessionFile(path, header, [], failing)).rejects.toThrow(
+      /simulated rename failure/
+    )
+    expect(await readdir(root)).toEqual([])
+
+    await writeSessionFile(path, header, [])
+    expect(await readdir(root)).toEqual(['fails.jsonl'])
+  })
+
+  it('treats an unreadable destination as foreign instead of crashing', async () => {
+    const path = join(root, 'adir')
+    await mkdir(path)
+    await expect(writeSessionFile(path, header, [])).rejects.toThrow(/another session/)
+  })
 })

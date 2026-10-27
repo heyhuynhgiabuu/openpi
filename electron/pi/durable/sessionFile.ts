@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
@@ -31,7 +32,10 @@ export interface SessionFileResult {
   messages: number
 }
 
-const headerLine = z.object({ type: z.literal('session'), id: z.string() }).passthrough()
+// `version` is part of ownership: a v2 (or future) file with the same id is not ours to rewrite.
+const headerLine = z
+  .object({ type: z.literal('session'), version: z.literal(3), id: z.string() })
+  .passthrough()
 
 /** 8-char hex ids, the shape Pi's own entries use. Deterministic from the transcript position. */
 function entryId(position: number): string {
@@ -82,20 +86,29 @@ export function renderSessionJsonl(
 /** Header id of an existing file, or undefined when it is empty or not a v3 session. */
 async function existingSessionId(path: string): Promise<string | undefined> {
   if (!existsSync(path)) return undefined
-  const first = (await readFile(path, 'utf8')).split('\n', 1)[0] ?? ''
   try {
+    const first = (await readFile(path, 'utf8')).split('\n', 1)[0] ?? ''
     const parsed = headerLine.safeParse(JSON.parse(first))
     return parsed.success ? parsed.data.id : undefined
   } catch {
+    // Unreadable (a directory, a permission error) or not JSON: not a session we own.
     return undefined
   }
 }
 
-/** Write the transcript atomically (temp file + rename); refuse to overwrite a foreign file. */
-export async function writeSessionFile(
+/** The one filesystem step a test needs to fail on demand; production always uses the real one. */
+export interface SessionFileIo {
+  rename: (from: string, to: string) => Promise<void>
+}
+
+/** Exports to the same destination run one at a time, so check-then-rename cannot interleave. */
+const pendingByPath = new Map<string, Promise<unknown>>()
+
+async function writeOnce(
   path: string,
   header: SessionFileHeader,
-  entries: readonly EntryRecord[]
+  entries: readonly EntryRecord[],
+  io: SessionFileIo
 ): Promise<SessionFileResult> {
   if (existsSync(path)) {
     const owner = await existingSessionId(path)
@@ -105,8 +118,32 @@ export async function writeSessionFile(
   }
   const { text, messages } = renderSessionJsonl(header, entries)
   await mkdir(dirname(path), { recursive: true })
-  const temp = `${path}.${process.pid}.tmp`
-  await writeFile(temp, text, 'utf8')
-  await rename(temp, path)
+  // Unique per call: even a stray overlap can never share a temp file.
+  const temp = `${path}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temp, text, 'utf8')
+    await io.rename(temp, path)
+  } catch (error) {
+    await rm(temp, { force: true })
+    throw error
+  }
   return { path, messages }
+}
+
+/** Write the transcript atomically (temp file + rename); refuse to overwrite a foreign file. */
+export function writeSessionFile(
+  path: string,
+  header: SessionFileHeader,
+  entries: readonly EntryRecord[],
+  io: SessionFileIo = { rename }
+): Promise<SessionFileResult> {
+  const previous = pendingByPath.get(path) ?? Promise.resolve()
+  // A failed earlier export must not block the next one.
+  const run = previous.catch(() => undefined).then(() => writeOnce(path, header, entries, io))
+  const tail = run.catch(() => undefined)
+  pendingByPath.set(path, tail)
+  void tail.then(() => {
+    if (pendingByPath.get(path) === tail) pendingByPath.delete(path)
+  })
+  return run
 }
