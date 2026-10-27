@@ -132,7 +132,7 @@ describe('durable event translation', () => {
   })
 
   it('drops a payload the renderer could not read', () => {
-    expect(toWireEvent({} as Record<string, unknown>)).toBeUndefined()
-    expect(toWireEvent({ type: 42 } as unknown as Record<string, unknown>)).toBeUndefined()
+    expect(toWireEvent({})).toBeUndefined()
+    expect(toWireEvent({ type: 42 })).toBeUndefined()
   })
 })
