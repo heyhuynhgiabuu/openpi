@@ -17,17 +17,17 @@ describe('cutover decision', () => {
     expect(decision.reason).toBeUndefined()
   })
 
-  it('never reports the durable runtime when only the adapter is wired', () => {
-    // This is the shipped state: the adapter exists, the rest does not.
+  it('never reports the durable runtime while session persistence is unwired', () => {
+    // This is the shipped state: adapter + event feed exist, persistence and index do not.
     const decision = decideCutover({
       stored: 'durable',
       durableAvailable: true,
-      capabilities: ['adapter'],
+      capabilities: ['adapter', 'eventBridge'],
     })
     expect(decision.runtime).toBe('sdk')
-    expect(decision.missing).toContain('eventBridge')
     expect(decision.missing).toContain('sessionFiles')
     expect(decision.missing).toContain('sessionIndex')
+    expect(decision.missing).not.toContain('eventBridge')
     expect(decision.reason).toContain('durable runtime is missing')
   })
 
