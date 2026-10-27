@@ -45,44 +45,44 @@ export interface ImportResult {
 }
 
 const textPart = z.object({ type: z.literal('text'), text: z.string() }).passthrough()
+// Images and other provider parts must survive: rejecting them would drop the whole message,
+// including its text, so any well-formed part is accepted here.
+const imagePart = z
+  .object({ type: z.literal('image'), data: z.string(), mimeType: z.string() })
+  .passthrough()
+const anyPart = z.object({ type: z.string() }).passthrough()
+const userContent = z.union([
+  z.string().min(1),
+  z.array(z.union([textPart, imagePart, anyPart])).min(1),
+])
 
 /**
  * Validate the message payloads the importer accepts, keyed by role. Content must be present and
  * non-empty: `{ "role": "user" }` alone is a malformed line, not a message.
  */
 const messageSchemas = {
-  user: z
-    .object({
-      role: z.literal('user'),
-      content: z.union([z.string().min(1), z.array(textPart).min(1)]),
-    })
-    .passthrough(),
-  system: z
-    .object({
-      role: z.literal('system'),
-      content: z.union([z.string().min(1), z.array(textPart).min(1)]),
-    })
-    .passthrough(),
+  user: z.object({ role: z.literal('user'), content: userContent }).passthrough(),
+  system: z.object({ role: z.literal('system'), content: userContent }).passthrough(),
   assistant: z
-    .object({
-      role: z.literal('assistant'),
-      content: z.array(z.object({ type: z.string() }).passthrough()).min(1),
-    })
+    .object({ role: z.literal('assistant'), content: z.array(anyPart).min(1) })
     .passthrough(),
   toolResult: z
-    .object({
-      role: z.literal('toolResult'),
-      content: z.union([z.string(), z.array(z.object({ type: z.string() }).passthrough())]),
-    })
+    .object({ role: z.literal('toolResult'), content: z.union([z.string(), z.array(anyPart)]) })
     .passthrough(),
 } as const
+
+/** Own-key lookup: `role: "constructor"` must not reach `Object.prototype`. */
+function schemaFor(role: string): (typeof messageSchemas)[keyof typeof messageSchemas] | undefined {
+  if (!Object.hasOwn(messageSchemas, role)) return undefined
+  return messageSchemas[role as keyof typeof messageSchemas]
+}
 
 /** Validate an unknown JSONL `message` payload against the role it claims to have. */
 function asMessage(value: unknown): Message | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const role = z.object({ role: z.string() }).passthrough().safeParse(value)
   if (!role.success) return undefined
-  const schema = messageSchemas[role.data.role as keyof typeof messageSchemas]
+  const schema = schemaFor(role.data.role)
   if (!schema) return undefined
   const parsed = schema.safeParse(value)
   if (!parsed.success) return undefined

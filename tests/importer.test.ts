@@ -148,6 +148,39 @@ describe('session importer', () => {
     expect(result.skipped.join(' ')).toContain('unsupported role')
   })
 
+  it('keeps messages that carry images alongside text', async () => {
+    await writeSession([
+      header,
+      entry('a1', null, {
+        type: 'message',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'look at this' },
+            { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+          ],
+        },
+      }),
+      assistantMessage('a2', 'a1', 'seen'),
+    ])
+    const result = await importSessionFile(file)
+    expect(result.messages.map((message) => message.role)).toEqual(['user', 'assistant'])
+    const text = JSON.stringify(result.messages[0].message)
+    expect(text).toContain('look at this')
+    expect(text).toContain('image/png')
+  })
+
+  it('does not crash on a prototype-inherited role', async () => {
+    await writeSession([
+      header,
+      entry('a1', null, { type: 'message', message: { role: 'constructor', content: 'x' } }),
+      assistantMessage('a2', 'a1', 'fine'),
+    ])
+    const result = await importSessionFile(file)
+    expect(result.messages.map((message) => message.role)).toEqual(['assistant'])
+    expect(result.skipped.join(' ')).toContain('unsupported role')
+  })
+
   it('flags a file without a session header as invalid', async () => {
     await writeSession([userMessage('a1', null, 'orphan')])
     const result = await importSessionFile(file)
