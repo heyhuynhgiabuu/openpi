@@ -100,6 +100,28 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerTool'])
   })
 
+  it('follows a default export through an identifier', () => {
+    const { apis } = analyseSource(`
+      function extension(pi) {
+        pi.registerCommand('hello', { handler() {} });
+      }
+      export default extension;
+    `)
+    expect(apis).toEqual(['registerCommand'])
+  })
+
+  it('ignores exported helper functions that are not the factory', () => {
+    const { apis } = analyseSource(`
+      export function notify(client) {
+        client.sendMessage('hello');
+      }
+      export default function (pi) {
+        pi.registerTool({ name: 'x' });
+      }
+    `)
+    expect(apis).toEqual(['registerTool'])
+  })
+
   it('maps context-shaping events onto the context category', () => {
     const { apis } = analyseSource(`
       export default function (pi) {
