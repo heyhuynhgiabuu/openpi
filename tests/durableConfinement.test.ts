@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /** Phase 8 confinement: @earendil-works/pi-durable may only be imported inside electron/pi/durable/. */
@@ -8,9 +8,9 @@ const ROOT = join(import.meta.dirname, '..')
 const ALLOWED_DIR = 'electron/pi/durable'
 const SCAN_DIRS = ['electron', 'src', 'tests']
 
-/** Posix-normalized path relative to the repo root, so checks behave the same on Windows. */
+/** Posix-normalized path relative to the repo root, so the check behaves the same on Windows. */
 function repoPath(file: string): string {
-  return file.slice(ROOT.length + 1).replaceAll('\\', '/')
+  return relative(ROOT, file).split(sep).join('/')
 }
 
 async function walkSources(dir: string, out: string[] = []): Promise<string[]> {
@@ -33,9 +33,10 @@ describe('pi-durable import confinement', () => {
     for (const dir of SCAN_DIRS) {
       const files = await walkSources(join(ROOT, dir))
       for (const file of files) {
-        if (file.includes(ALLOWED_DIR)) continue
+        const path = repoPath(file)
+        if (path.startsWith(`${ALLOWED_DIR}/`)) continue
         const source = await readFile(file, 'utf8')
-        if (source.includes('@earendil-works/pi-durable')) violations.push(file)
+        if (source.includes('@earendil-works/pi-durable')) violations.push(path)
       }
     }
     expect(violations).toEqual([])
