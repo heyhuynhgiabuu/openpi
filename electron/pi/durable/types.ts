@@ -48,6 +48,10 @@ export interface DurableHarnessOptions {
   policy?: boolean
   /** Install pi-durable's built-in coding tools (read/write/edit/bash). Defaults to true. */
   tools?: boolean
+  /** Read `.mcp.json` and bridge its servers (requires `projectTrusted` for the project file). */
+  mcp?: boolean
+  /** Whether the workspace is trusted, gating `.pi/mcp.json` and project extensions. */
+  projectTrusted?: boolean
 }
 
 export interface DurableHarness {
