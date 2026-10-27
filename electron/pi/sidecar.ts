@@ -25,6 +25,7 @@ import { handleResourceCommand, isResourceCommand } from './resourceCommands'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 import { getResourceLoader, getState, onParentMessage, send } from './sidecarContext'
 import { handleAbortCommand } from './conversationCommands'
+import { durableSessions } from './durableHost'
 import {
   handleCompactCommand,
   handleCopyLastAssistantTextCommand,
@@ -69,6 +70,10 @@ export type { SessionReadyPayload, SidecarCommand, SidecarMessage }
 // (evaluated before every other sidecar module side effect).
 
 async function handleCommand(cmd: SidecarCommand): Promise<void> {
+  // A durable session (opt-in, new sessions only) is served first; anything it does not handle
+  // falls through to the SDK handlers below.
+  if (await durableSessions.handleCommand(cmd)) return
+
   if (isResourceCommand(cmd)) {
     await handleResourceCommand(cmd, {
       getCwd: () => getState()?.cwd ?? null,

@@ -1,6 +1,6 @@
 import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { createModels, type Message, type MutableModels } from '@earendil-works/pi-ai'
+import { createModels, type Message, type Models, type MutableModels } from '@earendil-works/pi-ai'
 import {
   AssistantEntry,
   Harness,
@@ -83,8 +83,9 @@ function answerText(
 export async function openDurableHarness(options: DurableHarnessOptions): Promise<DurableHarness> {
   const backend = options.backend ?? 'jsonl'
   const storage = await openDurableStorage({ backend, directory: options.directory }, ctx)
-  const models: MutableModels = createModels()
-  options.registerProviders?.(models)
+  const registryModels: MutableModels = createModels()
+  options.registerProviders?.(registryModels)
+  const models: Models = options.models ?? registryModels
   const registry = createRegistry()
   // Parity extensions: customizations render as prompt sections; the policy gate mirrors the
   // desktop protected-path and high-risk gates the SDK path applies in Electron main.

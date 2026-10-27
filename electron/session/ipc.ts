@@ -24,7 +24,7 @@ import {
   sessionPromptSchema,
 } from '../../src/lib/ipc'
 import type { SidecarCommand, SidecarMessage } from '../pi/sidecar'
-import { highRiskShellReason } from '../services/shellEnv'
+import { highRiskShellReason } from '../services/highRisk'
 import { registerSessionInspectionIpc } from './inspectionIpc'
 import { registerSessionLifecycleIpc } from './lifecycleIpc'
 import type { SessionState } from './sessionHost'

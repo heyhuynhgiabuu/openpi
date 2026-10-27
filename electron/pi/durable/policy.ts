@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ToolHookCall, ToolHooks } from '@earendil-works/pi-durable'
 import { checkProtectedPath } from '../../services/protectedPaths'
-import { highRiskShellReason } from '../../services/shellEnv'
+import { highRiskShellReason } from '../../services/highRisk'
 
 /** Policy decisions the durable runtime must honor, mirroring the SDK-path gates in Electron main. */
 export interface DurablePolicyOptions {
