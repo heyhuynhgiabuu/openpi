@@ -89,7 +89,8 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerTool'])
   })
 
-  it('ignores calls on objects that are not the factory parameter', () => {
+  it('counts any receiver, because the gate fails safe rather than modelling scope', () => {
+    // A false "unsupported" costs a review; a false "compatible" loses behaviour silently.
     const { apis } = analyseSource(`
       export default function (pi) {
         const helper = { registerCommand() {} };
@@ -97,7 +98,7 @@ describe('extension API detection', () => {
         pi.registerTool({ name: 'x' });
       }
     `)
-    expect(apis).toEqual(['registerTool'])
+    expect(apis).toEqual(['registerTool', 'registerCommand'])
   })
 
   it('follows a default export through an identifier', () => {
@@ -119,6 +120,17 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerCommand'])
   })
 
+  it('is unaffected by block-scoped shadowing of the factory name', () => {
+    const { apis } = analyseSource(`
+      function extension(api) {
+        api.registerCommand('hello', {});
+      }
+      { const extension = (unused) => {}; }
+      export default extension;
+    `)
+    expect(apis).toEqual(['registerCommand'])
+  })
+
   it('finds a factory declared inside a module-scope block', () => {
     const { apis } = analyseSource(`
       if (process.platform === 'darwin') {
@@ -131,7 +143,7 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerCommand'])
   })
 
-  it('ignores a nested function that shares the factory name', () => {
+  it('still counts a same-name nested helper, failing safe', () => {
     const { apis } = analyseSource(`
       function extension(pi) {
         pi.registerTool({ name: 'x' });
@@ -144,10 +156,10 @@ describe('extension API detection', () => {
       }
       export default extension;
     `)
-    expect(apis).toEqual(['registerTool'])
+    expect(apis).toEqual(['registerTool', 'sendMessage'])
   })
 
-  it('ignores exported helper functions that are not the factory', () => {
+  it('scans exported helpers too, failing safe', () => {
     const { apis } = analyseSource(`
       export function notify(client) {
         client.sendMessage('hello');
@@ -156,7 +168,7 @@ describe('extension API detection', () => {
         pi.registerTool({ name: 'x' });
       }
     `)
-    expect(apis).toEqual(['registerTool'])
+    expect(apis).toEqual(['registerTool', 'sendMessage'])
   })
 
   it('maps context-shaping events onto the context category', () => {
