@@ -1,4 +1,5 @@
 import type { MutableModels } from '@earendil-works/pi-ai'
+import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 
 /** Provider/model the durable conversation runs with (resolved through pi-ai `Models`). */
 export interface DurableModelRef {
@@ -39,6 +40,14 @@ export interface DurableHarnessOptions {
   model: DurableModelRef
   /** Register pi-ai providers (e.g. the faux provider in tests) before any request. */
   registerProviders?: (models: MutableModels) => void
+  /** User agent dir (`~/.pi/agent`); customizations are discovered from it. */
+  userAgentDir?: string
+  /** Active workspace root: project customizations and out-of-workspace policy checks. */
+  workspacePath?: string | null
+  /** Install the desktop policy gate (`beforeTool`) on tool calls. Defaults to true. */
+  policy?: boolean
+  /** Install pi-durable's built-in coding tools (read/write/edit/bash). Defaults to true. */
+  tools?: boolean
 }
 
 export interface DurableHarness {
@@ -48,5 +57,7 @@ export interface DurableHarness {
   watch(onView: (view: DurableView) => void): () => void
   /** Current structural view of the root conversation. */
   snapshot(): Promise<DurableView>
+  /** Non-fatal diagnostics from resource discovery (customizations), surfaced like the SDK path. */
+  diagnostics(): readonly CustomizationDiagnostic[]
   close(): Promise<void>
 }

@@ -1,8 +1,22 @@
 import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import { createModels, type Message, type MutableModels } from '@earendil-works/pi-ai'
-import { AssistantEntry, Harness, UserEntry, createRegistry } from '@earendil-works/pi-durable'
+import {
+  AssistantEntry,
+  Harness,
+  ToolTask,
+  UserEntry,
+  createRegistry,
+  defineExtension,
+  hook,
+} from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import { expandInput, loadCustomizationsExtension } from './sections'
+import { policyToolHooks } from './policy'
+import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
+import type { DurableCustomizations } from './customizations'
+import { CodingTools } from '@earendil-works/pi-durable/tools'
+import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { openDurableStorage } from './storage'
 import type {
   DurableEntrySnapshot,
@@ -67,12 +81,48 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   const models: MutableModels = createModels()
   options.registerProviders?.(models)
   const registry = createRegistry()
-  const harness = await Harness.open(storage, { models, registry }, ctx)
-  const root = await harness.root(ctx, { agent: { model: options.model } })
+  // Parity extensions: customizations render as prompt sections; the policy gate mirrors the
+  // desktop protected-path and high-risk gates the SDK path applies in Electron main.
+  const diagnostics: CustomizationDiagnostic[] = []
+  let customizations: DurableCustomizations | undefined
+  if (options.userAgentDir) {
+    const loaded = await loadCustomizationsExtension({
+      userAgentDir: options.userAgentDir,
+      workspacePath: options.workspacePath,
+    })
+    registry.install(loaded.extension)
+    customizations = loaded.found
+    diagnostics.push(...loaded.found.diagnostics)
+  }
+  if (options.policy !== false) {
+    registry.install(
+      defineExtension({
+        name: 'openpi.policy',
+        hooks: [hook(ToolTask, policyToolHooks({ workspacePath: options.workspacePath }))],
+      })
+    )
+  }
+  // The built-in coding tools need an execution environment; without it every tool call would fail.
+  const harness = await Harness.open(
+    storage,
+    {
+      models,
+      registry,
+      env: ({ cwd }) =>
+        new NodeExecutionEnv({ cwd: cwd ?? options.workspacePath ?? process.cwd() }),
+    },
+    ctx
+  )
+  if (options.tools !== false) registry.install(CodingTools)
+  const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
+  if (options.workspacePath) agent.cwd = options.workspacePath
+  const root = await harness.root(ctx, { agent })
 
   return {
     async prompt(text: string): Promise<DurableSubmitResult> {
-      const submission = await root.submit({ type: 'input', content: text }, ctx)
+      // `/template args` expands here, at invocation time, not in the prompt section.
+      const input = customizations ? expandInput(text, customizations) : text
+      const submission = await root.submit({ type: 'input', content: input }, ctx)
       const settled = await submission.wait(ctx)
       if (settled.status !== 'done' || settled.type !== 'input') {
         const unresolved: DurableSubmitResult = { status: settled.status }
@@ -109,6 +159,10 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     async snapshot(): Promise<DurableView> {
       const view = await root.context(ctx)
       return toView(root.id, view.entries)
+    },
+
+    diagnostics(): readonly CustomizationDiagnostic[] {
+      return diagnostics
     },
 
     close(): Promise<void> {
