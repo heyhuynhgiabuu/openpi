@@ -76,6 +76,41 @@ describe('durable mcp config', () => {
     expect(config.errors).toHaveLength(2)
   })
 
+  it('keeps the exposure setting and defaults to codemode', async () => {
+    await writeMcpFile(join(agentDir, 'mcp.json'), {
+      fixture: { ...fixtureServer(), exposure: 'hidden' },
+      plain: fixtureServer(),
+    })
+    const config = loadDurableMcpConfig({ agentDir, workspacePath, projectTrusted: false })
+    expect(config.servers.find((server) => server.name === 'fixture')?.exposure).toBe('hidden')
+    expect(config.servers.find((server) => server.name === 'plain')?.exposure).toBe('codemode')
+  })
+
+  it('registers no tools for a hidden server', async () => {
+    const bridge = await loadMcpExtension(
+      [
+        {
+          name: 'fixture',
+          command: process.execPath,
+          args: [FIXTURE],
+          env: {},
+          enabled: true,
+          exposure: 'hidden',
+          timeoutMs: 60_000,
+        },
+      ],
+      workspacePath
+    )
+    expect(bridge.extension).toBeUndefined()
+    await bridge.close()
+  })
+
+  it('converts the configured timeout from seconds to milliseconds', async () => {
+    await writeMcpFile(join(agentDir, 'mcp.json'), { fixture: { ...fixtureServer(), timeout: 5 } })
+    const config = loadDurableMcpConfig({ agentDir, workspacePath, projectTrusted: false })
+    expect(config.servers[0].timeoutMs).toBe(5000)
+  })
+
   it('honors enabled: false', async () => {
     await writeMcpFile(join(agentDir, 'mcp.json'), {
       fixture: { ...fixtureServer(), enabled: false },
@@ -98,6 +133,9 @@ describe('durable mcp bridge', () => {
       expect(tool).toBeDefined()
       // Not offered up front: `tool_search` loads it for the next request.
       expect(tool?.deferred).toBe(true)
+      // The server's own schema and description reach the model, not an empty placeholder.
+      expect(JSON.stringify(tool?.parameters ?? {})).toContain('text')
+      expect(tool?.description.toLowerCase()).toContain('echo')
 
       const output = await tool?.execute(
         { text: 'hello' } as never,
@@ -114,7 +152,17 @@ describe('durable mcp bridge', () => {
 
   it('returns no extension when every server is disabled', async () => {
     const bridge = await loadMcpExtension(
-      [{ name: 'fixture', command: process.execPath, args: [FIXTURE], env: {}, enabled: false }],
+      [
+        {
+          name: 'fixture',
+          command: process.execPath,
+          args: [FIXTURE],
+          env: {},
+          enabled: false,
+          exposure: 'codemode' as const,
+          timeoutMs: 60_000,
+        },
+      ],
       workspacePath
     )
     expect(bridge.extension).toBeUndefined()
@@ -131,6 +179,8 @@ describe('durable mcp bridge', () => {
           args: [],
           env: {},
           enabled: true,
+          exposure: 'codemode' as const,
+          timeoutMs: 60_000,
         },
       ],
       workspacePath

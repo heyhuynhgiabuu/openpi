@@ -32,6 +32,10 @@ export interface DurableMcpServer {
   env: Record<string, string>
   cwd?: string
   enabled: boolean
+  /** `hidden` registers no tools at all; the other exposures are all reachable (see mcp.ts). */
+  exposure: 'codemode' | 'deferred' | 'direct' | 'hidden'
+  /** Per-request timeout in milliseconds; the config file states seconds. */
+  timeoutMs: number
 }
 
 export interface DurableMcpConfig {
@@ -89,6 +93,9 @@ export function loadDurableMcpConfig(options: {
         args: value.args ?? [],
         env: value.env ?? {},
         enabled: value.enabled !== false,
+        exposure: value.exposure ?? 'codemode',
+        // Pi's config uses seconds (default 60); MCP requests take milliseconds.
+        timeoutMs: (value.timeout ?? 60) * 1000,
       }
       if (value.cwd !== undefined) entry.cwd = value.cwd
       servers.set(name, entry)
