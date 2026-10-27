@@ -63,5 +63,10 @@ export interface DurableHarness {
   snapshot(): Promise<DurableView>
   /** Non-fatal diagnostics from resource discovery (customizations), surfaced like the SDK path. */
   diagnostics(): readonly CustomizationDiagnostic[]
+  /**
+   * Attach the renderer event feed for the root conversation; `onEvent` receives the snapshot first,
+   * then each batch in the coding agent's event vocabulary.
+   */
+  watchEvents(onEvent: (event: Record<string, unknown>) => void): Promise<() => Promise<void>>
   close(): Promise<void>
 }

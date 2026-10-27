@@ -108,3 +108,35 @@ describe('durable parity extensions end-to-end', () => {
     }
   })
 })
+
+describe('durable harness event feed', () => {
+  it('exposes the renderer feed through the adapter', async () => {
+    const setup = fauxSetup()
+    setup.faux.setResponses([
+      (context) => {
+        setup.contexts.push(context)
+        return fauxAssistantMessage([fauxText('adapter streams')], { stopReason: 'stop' as const })
+      },
+    ])
+    const harness = await openDurableHarness({
+      backend: 'memory',
+      model: setup.model,
+      registerProviders: setup.registerProviders,
+      workspacePath,
+    })
+    const seen: string[] = []
+    const stop = await harness.watchEvents((event) => {
+      seen.push(String(event.type))
+    })
+    try {
+      await harness.prompt('hello')
+      expect(seen[0]).toBe('snapshot')
+      // The adapter speaks the renderer's vocabulary, not pi-durable's.
+      expect(seen).toContain('agent_start')
+      expect(seen).toContain('message_end')
+    } finally {
+      await stop()
+      await harness.close()
+    }
+  })
+})
