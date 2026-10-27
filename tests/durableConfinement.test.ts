@@ -8,6 +8,11 @@ const ROOT = join(import.meta.dirname, '..')
 const ALLOWED_DIR = 'electron/pi/durable'
 const SCAN_DIRS = ['electron', 'src', 'tests']
 
+/** Posix-normalized path relative to the repo root, so checks behave the same on Windows. */
+function repoPath(file: string): string {
+  return file.slice(ROOT.length + 1).replaceAll('\\', '/')
+}
+
 async function walkSources(dir: string, out: string[] = []): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true })
   for (const entry of entries) {
