@@ -60,6 +60,23 @@ CSC_IDENTITY_AUTO_DISCOVERY=false OPENPI_RELEASE_CHANNEL=beta \
   npx electron-builder --config electron-builder.json --dir --publish never
 ```
 
+## Lockfiles
+
+CI installs with `npm ci`, so **`package-lock.json` is authoritative**: it is what CI lints, typechecks, tests, and builds against. `pnpm-lock.yaml` exists for contributors who prefer pnpm and must resolve the same versions, otherwise a change validated locally can pass or fail differently in CI (for example `@pierre/diffs` 1.4.3 vs 1.2.11 have different `FileDiffOptions` generics).
+
+- **npm:** `npm ci` to install; change dependencies with `npm install`, then commit `package-lock.json`.
+- **pnpm:** install with `pnpm install --frozen-lockfile`. Whenever `package-lock.json` changes, regenerate `pnpm-lock.yaml` from it. Do this in a clean temp directory because `pnpm import` prefers an existing `node_modules` over the npm lock:
+
+  ```bash
+  tmp=$(mktemp -d) && cp package.json package-lock.json pnpm-workspace.yaml "$tmp" \
+    && (cd "$tmp" && pnpm import) && cp "$tmp/pnpm-lock.yaml" pnpm-lock.yaml && rm -rf "$tmp"
+  pnpm install --frozen-lockfile --no-optimistic-repeat-install
+  ```
+
+  `pnpm-workspace.yaml` is copied so its `overrides` still apply. Do not hand-edit `pnpm-lock.yaml`, and do not commit a `pnpm update`/`pnpm add` result on its own: those resolve against the registry, not `package-lock.json`.
+
+`tests/lockfileSkew.test.ts` (part of `npm test` and CI) fails and names every direct dependency whose version differs between the two lockfiles.
+
 ## Release process
 
 Maintainers should use the release helper instead of hand-editing versions and tags:
