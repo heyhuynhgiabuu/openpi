@@ -7,6 +7,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'amazon-bedrock': 'Amazon Bedrock',
   'ant-ling': 'Ant Ling',
   anthropic: 'Anthropic',
+  azure: 'Azure OpenAI',
+  // Legacy id (Pi < 1.0.3). Kept so historical sessions and usage rows still label correctly.
   'azure-openai-responses': 'Azure OpenAI',
   cerebras: 'Cerebras',
   'cloudflare-ai-gateway': 'Cloudflare AI Gateway',
@@ -38,6 +40,28 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   'xiaomi-token-plan-cn': 'Xiaomi MiMo (China)',
   'xiaomi-token-plan-sgp': 'Xiaomi MiMo (Singapore)',
   zai: 'ZAI',
+}
+
+/**
+ * Provider ids Pi has renamed, mapped to their replacement. Pi does not migrate stored
+ * credentials, so OpenPi only uses this to detect stale ones and tell the user.
+ */
+export const LEGACY_PROVIDER_IDS: Readonly<Record<string, string>> = {
+  'azure-openai-responses': 'azure',
+}
+
+/**
+ * Return the legacy id that still holds a stored credential for `providerId`, if any.
+ * Pure: callers pass the stored credential provider ids.
+ */
+export function findLegacyCredentialId(
+  providerId: string,
+  storedCredentialIds: Iterable<string>
+): string | undefined {
+  const stored = new Set(storedCredentialIds)
+  return Object.keys(LEGACY_PROVIDER_IDS).find(
+    (legacyId) => LEGACY_PROVIDER_IDS[legacyId] === providerId && stored.has(legacyId)
+  )
 }
 
 /** Return a human-readable provider label, falling back to title-casing the id */

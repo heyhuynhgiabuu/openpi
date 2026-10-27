@@ -7,6 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { SettingsManager } from '@earendil-works/pi-coding-agent'
+import { findLegacyCredentialId } from '../../src/lib/providers'
 import { fulfillExtensionUiPending } from './extensionUiPending'
 import { answerApiKeyPrompt, providerLoginFailureEvent } from './providerAuth'
 import type { SidecarCommand } from './sidecarTypes'
@@ -124,6 +125,11 @@ export async function handleGetProvidersCommand(
     const authMethods: Array<'api_key' | 'oauth'> = []
     if (provider.auth.apiKey?.login) authMethods.push('api_key')
     if (provider.auth.oauth) authMethods.push('oauth')
+    // Pi does not migrate renamed provider ids. Only flag a stale credential while the
+    // replacement is not connected; OpenPi never reads or rewrites auth.json itself.
+    const legacyCredentialId = status.configured
+      ? undefined
+      : findLegacyCredentialId(provider.id, credentialTypes.keys())
     return {
       id: provider.id,
       displayName: provider.name,
@@ -132,6 +138,7 @@ export async function handleGetProvidersCommand(
       source: status.source,
       credentialType,
       authMethods,
+      legacyCredentialId,
     }
   })
   send({ type: 'providers_result', requestId: cmd.requestId, providers })

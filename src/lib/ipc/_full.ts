@@ -411,6 +411,8 @@ export const providerInfoSchema = z.object({
   source: z.string().optional(),
   credentialType: z.enum(['api_key', 'oauth', 'env', 'other']).optional(),
   authMethods: z.array(z.enum(['api_key', 'oauth'])).default([]),
+  /** Set when a credential is still stored under this provider's renamed (legacy) id. */
+  legacyCredentialId: z.string().optional(),
 })
 export type ProviderInfo = z.infer<typeof providerInfoSchema>
 

@@ -7,6 +7,7 @@ import {
   customProviderSchema,
   IPC,
   loginProviderSchema,
+  providerInfoSchema,
   logoutProviderSchema,
   type ProviderInfo,
   removeCustomProviderSchema,
@@ -93,7 +94,7 @@ export function registerProviderHandlers(ipcMain: IpcMain): void {
       type: 'get_providers',
       requestId,
     })
-    return response.providers as ProviderInfo[]
+    return providerInfoSchema.array().parse(response.providers)
   })
 
   ipcMain.handle(IPC.SET_PROVIDER_KEY, async (_event, raw: unknown): Promise<void> => {
