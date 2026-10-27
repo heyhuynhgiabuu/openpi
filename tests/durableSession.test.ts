@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { FauxResponseStep } from '@earendil-works/pi-ai'
 import { fauxAssistantMessage, fauxProvider, fauxText } from '@earendil-works/pi-ai'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDurableHarness } from '../electron/pi/durable/harness'
@@ -25,16 +26,22 @@ afterEach(async () => {
 const MODEL = { id: 'm', name: 'M', provider: 'faux', reasoning: false, contextWindow: 1000 }
 
 async function setup(
-  options: { answers?: string[]; sessionFile?: string; failOpen?: boolean } = {}
+  options: {
+    answers?: string[]
+    responses?: FauxResponseStep[]
+    sessionFile?: string
+    failOpen?: boolean
+  } = {}
 ) {
   const sent: SidecarMessage[] = []
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
   const faux = fauxProvider()
   faux.setResponses(
-    (options.answers ?? ['an answer']).map((text) =>
-      fauxAssistantMessage([fauxText(text)], { stopReason: 'stop' as const })
-    )
+    options.responses ??
+      (options.answers ?? ['an answer']).map((text) =>
+        fauxAssistantMessage([fauxText(text)], { stopReason: 'stop' as const })
+      )
   )
   const identity = {
     sessionId: 'sess-1',
@@ -186,7 +193,6 @@ describe('durable command routing', () => {
   const unsupported: SidecarCommand[] = [
     { type: 'steer', text: 'x' },
     { type: 'follow_up', text: 'x' },
-    { type: 'abort' },
     { type: 'execute_bash', requestId: 'r', command: 'ls' },
     { type: 'set_model', provider: 'p', modelId: 'm' },
     { type: 'set_thinking', level: 'low' },
@@ -238,4 +244,62 @@ describe('durable command routing', () => {
     expect(await t.sessions.handleCommand({ type: 'stop' })).toBe(false)
     expect(t.sessions.isActive()).toBe(false)
   })
+})
+
+describe('durable abort', () => {
+  /** A model call that stays open until the run's abort signal fires. */
+  function heldUntilAborted(entered: { resolve: () => void }): FauxResponseStep {
+    return (_context, options) =>
+      new Promise((_resolve, reject) => {
+        entered.resolve()
+        options?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+  }
+
+  it('cancels a run in flight and leaves the session usable', async () => {
+    let enter = () => {}
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve
+    })
+    const t = await setup({
+      responses: [
+        heldUntilAborted({ resolve: enter }),
+        fauxAssistantMessage([fauxText('after the abort')], { stopReason: 'stop' as const }),
+      ],
+    })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      const running = t.sessions.handleCommand(prompt('a long task'))
+      await entered
+
+      expect(await t.sessions.handleCommand({ type: 'abort' })).toBe(true)
+      await expect(running).resolves.toBe(true)
+
+      const eventTypes = t.sent.flatMap((m) =>
+        m.type === 'session_event' ? [String(m.event.type)] : []
+      )
+      expect(eventTypes).toContain('agent_end')
+      // The user cancelled it: that is not a failure worth a warning.
+      expect(t.logs.join('\n')).not.toContain('without an answer')
+      expect(t.types()).toContain('session_index_updated')
+
+      await t.sessions.handleCommand(prompt('and again'))
+      const imported = await importSessionFile(t.identity.sessionFile)
+      expect(JSON.stringify(imported.messages)).toContain('after the abort')
+    } finally {
+      await t.sessions.stop()
+    }
+  }, 30_000)
+
+  it('is harmless when nothing is running, and repeatable', async () => {
+    const t = await setup()
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      expect(await t.sessions.handleCommand({ type: 'abort' })).toBe(true)
+      expect(await t.sessions.handleCommand({ type: 'abort' })).toBe(true)
+      expect(t.logs).toEqual([])
+    } finally {
+      await t.sessions.stop()
+    }
+  }, 30_000)
 })

@@ -64,6 +64,11 @@ export interface DurableHarnessOptions {
 export interface DurableHarness {
   /** Submit one input and wait for the run to settle. */
   prompt(text: string): Promise<DurableSubmitResult>
+  /**
+   * Abort the root conversation: withdraw queued inputs, signal the live run, and resolve once it
+   * is idle. A `prompt()` still awaiting the aborted run settles `unanswered`. Idempotent.
+   */
+  abort(): Promise<void>
   /** Subscribe to structural views; returns the unsubscribe function. */
   watch(onView: (view: DurableView) => void): () => void
   /** Current structural view of the root conversation. */

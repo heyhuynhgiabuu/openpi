@@ -48,13 +48,14 @@ interface ActiveSession {
   identity: DurableIdentity
   startedAt: string
   stopEvents: () => Promise<void>
+  /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
+  abortRequested: boolean
 }
 
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
   'steer',
   'follow_up',
-  'abort',
   'execute_bash',
   'set_model',
   'set_thinking',
@@ -118,6 +119,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       identity,
       startedAt: deps.now().toISOString(),
       stopEvents: async () => undefined,
+      abortRequested: false,
     }
     active = session
     deps.send({
@@ -152,8 +154,9 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       throw new Error('slash commands are not supported on the durable runtime yet')
     }
     const prefix = cmd.contextPrefix?.trim()
+    session.abortRequested = false
     const result = await session.harness.prompt(prefix ? `${prefix}\n\n${text}` : text)
-    if (result.status === 'unanswered') {
+    if (result.status === 'unanswered' && !session.abortRequested) {
       deps.log(
         'warn',
         `[durable] run ended without an answer${result.reason ? `: ${result.reason}` : ''}`
@@ -166,6 +169,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!active) return false
     if (cmd.type === 'prompt') {
       await prompt(cmd)
+      return true
+    }
+    if (cmd.type === 'abort') {
+      active.abortRequested = true
+      await active.harness.abort()
       return true
     }
     if (cmd.type === 'stop') {
