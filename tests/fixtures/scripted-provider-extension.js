@@ -1,24 +1,12 @@
 /**
- * Scripted model provider for the shipped-path test.
- *
- * Loaded by Pi's extension loader inside the real sidecar process via
- * project-extension discovery (<cwd>/.pi/extensions). Plain JavaScript works;
- * a TypeScript version with the same content also loads and registers fine —
- * an earlier "TS extensions silently fail" conclusion was a misdiagnosis of
- * an incomplete provider config: a provider registered without `apiKey` is
- * silently unusable (the model registry rejects it at selection time with no
- * diagnostic — still true, and a Pi-level behavior, not surfaced here). What
- * IS surfaced now: extension load failures, as extension_error events (see
- * sidecar.ts).
- *
- * The provider never touches the network: the first stream call emits a
- * deterministic `write` tool call, and the call after the tool result emits a
- * fixed final text. A prompt equal to SCRIPTED_CODEMODE_PROMPT instead gets one
- * codemode call whose script makes one nested `write`, then the same kind of
- * fixed final text. A prompt equal to SCRIPTED_TOOLS_PROMPT answers with the
- * names of the tools the provider was offered on that request, so a test can
- * read the active tool set directly. Constants are exported so the test and
- * this extension cannot drift apart.
+ * Scripted model provider for the shipped-path test: plain JavaScript loaded by
+ * Pi's extension loader inside the real sidecar (project-extension discovery).
+ * Never touches the network. Prompts select deterministic turns (write, nested
+ * codemode write, MCP via codemode, deferred MCP via tool_search, tools probe),
+ * each ending in a fixed final text. Constants are exported so the test and
+ * this extension cannot drift apart. A provider without `apiKey` is silently
+ * unusable (registry rejects it at selection, no diagnostic); extension load
+ * failures ARE surfaced, as extension_error events.
  */
 import {
   createAssistantMessageEventStream,
@@ -84,45 +72,16 @@ function scriptedStream(model, context) {
   const afterToolResult = context.messages.some((message) => message.role === 'toolResult')
   stream.push({ type: 'start', partial: output })
   if (!systemPrompt.trim() || !hasWriteTool) {
-    const diagnostic = 'scripted provider received an incomplete normalized transcript'
-    output.content.push({ type: 'text', text: diagnostic })
-    stream.push({ type: 'text_start', contentIndex: 0, partial: output })
-    stream.push({ type: 'text_delta', contentIndex: 0, delta: diagnostic, partial: output })
-    stream.push({ type: 'text_end', contentIndex: 0, content: diagnostic, partial: output })
-    output.stopReason = 'stop'
+    pushText(stream, output, 'scripted provider received an incomplete normalized transcript')
   } else if (!afterToolResult) {
-    const toolCall = {
+    pushToolCall(stream, output, {
       type: 'toolCall',
       id: 'scripted-call-1',
       name: 'write',
       arguments: { path: SCRIPTED_FILE_PATH, content: SCRIPTED_FILE_CONTENT },
-    }
-    output.content.push(toolCall)
-    stream.push({ type: 'toolcall_start', contentIndex: 0, partial: output })
-    stream.push({
-      type: 'toolcall_delta',
-      contentIndex: 0,
-      delta: JSON.stringify(toolCall.arguments),
-      partial: output,
     })
-    stream.push({ type: 'toolcall_end', contentIndex: 0, toolCall, partial: output })
-    output.stopReason = 'toolUse'
   } else {
-    output.content.push({ type: 'text', text: SCRIPTED_FINAL_TEXT })
-    stream.push({ type: 'text_start', contentIndex: 0, partial: output })
-    stream.push({
-      type: 'text_delta',
-      contentIndex: 0,
-      delta: SCRIPTED_FINAL_TEXT,
-      partial: output,
-    })
-    stream.push({
-      type: 'text_end',
-      contentIndex: 0,
-      content: SCRIPTED_FINAL_TEXT,
-      partial: output,
-    })
-    output.stopReason = 'stop'
+    pushText(stream, output, SCRIPTED_FINAL_TEXT)
   }
   stream.push({ type: 'done', reason: output.stopReason, message: output })
   stream.end()
@@ -155,9 +114,8 @@ function lastUserText(messages) {
     const message = messages[index]
     if (message.role !== 'user') continue
     if (typeof message.content === 'string') return message.content
-    return Array.isArray(message.content)
-      ? message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
-      : ''
+    if (!Array.isArray(message.content)) return ''
+    return message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')
   }
   return ''
 }
@@ -173,22 +131,13 @@ function pushText(stream, output, text) {
 function pushToolCall(stream, output, toolCall) {
   output.content.push(toolCall)
   stream.push({ type: 'toolcall_start', contentIndex: 0, partial: output })
-  stream.push({
-    type: 'toolcall_delta',
-    contentIndex: 0,
-    delta: JSON.stringify(toolCall.arguments),
-    partial: output,
-  })
+  const delta = JSON.stringify(toolCall.arguments)
+  stream.push({ type: 'toolcall_delta', contentIndex: 0, delta, partial: output })
   stream.push({ type: 'toolcall_end', contentIndex: 0, toolCall, partial: output })
   output.stopReason = 'toolUse'
 }
 
-/**
- * Codemode turn: asks for the codemode tool once, with one script that makes
- * one nested write; after its result, answers with a fixed final text. Without
- * an active codemode tool it answers with a diagnostic that lists the tools it
- * was offered, so a missing activation is visible in the transcript.
- */
+// Codemode turn: one codemode call writing a fixed file, then a fixed final text.
 function scriptedCodemodeStream(model, context) {
   const stream = createAssistantMessageEventStream()
   const tools = getCurrentTools(context.messages)
@@ -215,12 +164,7 @@ function scriptedCodemodeStream(model, context) {
   return stream
 }
 
-/**
- * MCP turn: asks for codemode once with a script that calls the fixture server's
- * tool; after its result, answers with a fixed final text. Without an active
- * codemode tool (no MCP server configured, the builtin disabled, or an untrusted
- * workspace) it answers with the same kind of tool-list diagnostic.
- */
+// MCP turn: codemode script calls the fixture MCP tool; fixed final text after.
 function scriptedMcpStream(model, context) {
   const stream = createAssistantMessageEventStream()
   const tools = getCurrentTools(context.messages)
@@ -247,12 +191,7 @@ function scriptedMcpStream(model, context) {
   return stream
 }
 
-/**
- * Deferred-exposure turn: calls `tool_search` for the fixture tool, then — once
- * the search declared it — calls the MCP tool directly, then reports what it
- * returned. Proves the deferred route (search finds the tool, Pi declares it,
- * the tool runs) rather than only that `tool_search` is offered.
- */
+// Deferred turn: tool_search first, then the declared MCP tool directly, then report.
 function scriptedSearchStream(model, context) {
   const stream = createAssistantMessageEventStream()
   const tools = getCurrentTools(context.messages)
@@ -304,9 +243,7 @@ function toolResultText(message) {
   const content = message?.content
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
-  return content
-    .map((part) => (part && part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-    .join('')
+  return content.map((part) => (part?.type === 'text' && part.text) || '').join('')
 }
 
 /** Tools probe turn: reports the tool names the provider was offered, comma separated. */
