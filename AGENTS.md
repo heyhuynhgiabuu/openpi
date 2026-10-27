@@ -14,7 +14,7 @@
 
 OpenPi is a **local-first desktop workbench** for [Pi](https://pi.dev) (`@earendil-works/pi-coding-agent`, upstream [earendil-works/pi](https://github.com/earendil-works/pi)). It **hosts the MIT agent in Electron main** and renders session tree, tools, Git, editor, and terminal — **not** a second agent runtime, **not** VS Code/Warp, **not** a Codex/Kun parity product.
 
-OpenPi is **desktop-first**. A **read-only remote surface** (session monitoring and approval of pending gates) may ship later as an explicit, opt-in extension of the review workflow. A remote client is an **untrusted renderer**: it goes through the same main-process authorization and policy as the desktop renderer, never around it. Remote mutation surfaces (prompt, PTY, file writes, Git) require a separate approved design — see `docs/decisions/2026-09-13-remote-access-deferred.md`.
+OpenPi is **desktop-first** — and since 2026-10-27 (owner decision, [#33](https://github.com/heyhuynhgiabuu/openpi/issues/33)) it gains staged **remote surfaces**: the agent runtime migrates to `@earendil-works/pi-durable` (ROADMAP Phase 8), then SSH + a PWA mobile **client** ship read-only → approvals → prompt (Phase 9). The phone is an untrusted **client**, never the host, and never runs the agent. A remote client is an **untrusted renderer**: it goes through the same main-process authorization and policy as the desktop renderer, never around it. Security requirements in `docs/decisions/2026-09-13-remote-access-deferred.md` remain binding; sequencing lives in `docs/decisions/2026-10-27-durable-runtime-remote-surfaces.md`.
 
 **For agents implementing features:** Pi is intentionally **minimal** (small prompt, four core tools, **YOLO by default**). Plan mode, todos, permission gates, and sub-agents stay **out of core** — they belong in **user extensions** or documented Pi [examples](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions); MCP, codemode, and tool-search are **built-in extensions** as of Pi 0.99+ (surface them through the SDK — do not reimplement or wrap them). OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate** — prefer review surfaces and Phase 7 P0 work (diff review before apply, test evidence) over velocity features (auto-commit stacks, agent armies, new builtins); remote surfaces come after Phase 7 P0. **Do not** propose Kun runtimes, SDD wizards, senpi-style permission/todo forks in main, or influencer “extension stack” installers unless the user explicitly asks.
 
@@ -39,7 +39,8 @@ Target UX: sessions sidebar (workspace-grouped, token/cost) + conversation (stee
 | Validation | Zod at every IPC/JSON boundary |
 | Terminal | xterm.js + node-pty in Electron main |
 | Diff renderer | @pierre/diffs (replaceable renderer only) |
-| Pi integration | @earendil-works/pi-coding-agent SDK (imported in Electron main) |
+| Pi integration (current) | @earendil-works/pi-coding-agent SDK (imported in Electron main) |
+| Pi integration (Phase 8 target) | @earendil-works/pi-durable Harness behind adapter modules; pinned exact version |
 | Persistence | SQLite via better-sqlite3 in Electron main |
 | Secrets | OS keychain via Electron safeStorage |
 
@@ -73,6 +74,10 @@ session.subscribe((event: AgentSessionEvent) => {
 
 await session.prompt(text);
 ```
+
+### Target runtime (Phase 8): pi-durable
+
+`@earendil-works/pi-durable` is the Pi author's own durable runtime (same monorepo, lockstep-versioned, **Experimental**). Migration is staged in ROADMAP Phase 8; until the cutover gate passes, the SDK path above stays the shipped runtime. Rules: pin the exact version, confine every pi-durable import to adapter modules, keep the renderer render-only (the Harness lives in Electron main), and never lose session history (one-time JSONL v3 importer, originals preserved). Remote surfaces (Phase 9) build on `watch()` ops; evaluate first-party `pi-server`/`pi-client` before writing an OpenPi-owned transport.
 
 ### RPC subprocess — only when process isolation is explicitly required
 
@@ -412,10 +417,10 @@ Before tagging, pushing, or claiming any version release:
 - Do not let renderer code be the patch, secret, or Git authority.
 - Do not import `@earendil-works/pi-coding-agent` in the renderer.
 - Do not implement Pi-core features (plan mode, todos, permission gates, sub-agents) **inside the SDK path**, and do not rebuild Pi's built-in MCP/codemode/tool-search with custom equivalents — use extensions or OpenPi’s documented exceptions (main policy, sidecar subagents).
-- Do not add a **second agent runtime** (Kun-style HTTP server) or fork `pi-coding-agent` like senpi.
-- Do not build **Codex/Kun/DODO “extension stack”** wizards, SDD/requirement-first wizards, Write mode, or phone/IM agents unless explicitly requested.
+- Do not add a **second agent runtime** (Kun-style HTTP server) or fork `pi-coding-agent` like senpi. (Adopting the first-party `pi-durable` runtime per ROADMAP Phase 8 is the approved exception, not a second runtime.)
+- Do not build **Codex/Kun/DODO “extension stack”** wizards, SDD/requirement-first wizards, Write mode, or IM/Telegram-style agents. (The Phase 9 mobile *client* is explicitly requested and staged — it is not an IM agent, and the phone never runs the agent.)
 - Do not silently install or enable third-party Pi packages.
-- Do not build a subprocess RPC client before proving SDK in main is insufficient.
+- Do not hand-roll a transport for remote surfaces while the first-party `pi-server`/`pi-client` packages fit; if they do not fit at Phase 9 time, document why in a decision before writing an OpenPi-owned one.
 - Do not rewrite Pi's agent runtime, session manager, or tool execution.
 - Do not fork Warp or OpenWarp as the app base.
 - Do not ship `nodeIntegration: true` or disable `contextIsolation` as a convenience shortcut.
