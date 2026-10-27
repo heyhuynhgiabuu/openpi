@@ -2,6 +2,8 @@
 
 OpenPi is a **local-first desktop workbench** for the [Pi coding agent](https://pi.dev) (`@earendil-works/pi-coding-agent`). Electron main supervises the **MIT agent core in a local sidecar** and renders sessions, tools, Git, editor, and terminal in a SolidJS shell — **not** a second agent runtime, **not** a VS Code / Warp clone, **not** a “Codex app replacement” installer.
 
+**Direction update (2026-10-27, owner decision, [#33](https://github.com/heyhuynhgiabuu/openpi/issues/33)):** OpenPi is migrating its agent runtime to **`@earendil-works/pi-durable`** (first-party, same monorepo as Pi) and adding staged **remote surfaces** — SSH connectivity and a mobile **client** (the desktop stays the host; the phone never runs the agent). See **Phase 8 — Durable Runtime Migration**, **Phase 9 — Remote Surfaces**, and `docs/decisions/2026-10-27-durable-runtime-remote-surfaces.md`.
+
 **North star UI:** workspace-grouped session sidebar (token/cost, timestamps) + conversation (model selector, steer/follow-up/abort, tool cards) + customizations (extensions, skills, prompts, themes, packages) + command palette (`⇧⌘P`) + persistent Git panel + split diff viewer + bottom terminal/output.
 
 ---
@@ -25,6 +27,8 @@ These anchors come from Pi’s design and [Mario Zechner’s writing](https://ma
 ---
 
 ## Current Status (beta) — v0.2.14
+
+**Direction (2026-10-27):** Phase 8 (durable runtime migration) and Phase 9 (SSH + mobile remote surfaces) are approved and sequenced after the current beta blockers. The pi-coding-agent SDK path remains the shipped runtime until the Phase 8 cutover gate passes.
 
 Done so far:
 - Electron shell with secure preload bridge, Zod-backed IPC contracts, sandboxed renderer, and main-owned authority for filesystem, PTY, Git, and app metadata.
@@ -144,6 +148,17 @@ const { session } = await createAgentSession({ modelRuntime, sessionManager: Ses
 session.subscribe((event) => { /* AgentSessionEvent stream */ });
 await session.prompt("...");
 ```
+
+### Target runtime: pi-durable (Phase 8 migration target)
+
+Facts verified 2026-10-27 against <https://github.com/earendil-works/pi/blob/main/packages/durable/README.md> and the npm registry. Do not guess beyond them.
+
+- **First-party and lockstep-versioned** (`packages/durable` in `earendil-works/pi`, 1.4.0 alongside pi-coding-agent 1.4.0) but marked **Experimental: "The API changes without notice between releases."** Pin the exact version; confine every import to adapter modules.
+- **Model:** `Harness.open(storage)` → durable `Conversation`s of immutable `Entry`s, atomic `commit()`, typed `Document`s (`pi.agent`, `pi.live`, `pi.inbox`, `pi.usage`), and crash-resumable `Task`s (restart limits, parked tasks, `retryTask`). Storage: Node SQLite (WAL), JSONL, Cloudflare DO, IndexedDB, Memory.
+- **Viewer story is first-class:** `readOnly: true` sessions for processes that only display; `watch()` streams the structural view plus folded commit ops — the README's own example forwards them "to a remote client that applies them". This is the substrate for Phase 9.
+- **Parity with what OpenPi consumes today:** `CodingTools` (read/write/edit/bash, env-scoped), codemode (`@earendil-works/pi-durable/codemode`, QuickJS, restart-safe), `tool_search` + deferred tools, MCP as namespaced tools via `api.executeTool` bridges, forks, compaction, subagents, per-conversation agent choices.
+- **Remote stack exists but lags the runtime train:** `pi-server` 1.1.0 + `pi-client` 1.1.0 (framed CBOR, "routes clients to application-hosted durable Sessions") — evaluate at Phase 9 time; an OpenPi-owned WebSocket applying `watch()` ops is the fallback.
+- **What pi-durable does NOT provide** (OpenPi must own these before cutover): file-based extension discovery (`.pi/extensions`), skills/prompts/themes loading, `.pi/mcp.json` config compat, the desktop trust/policy gates, and the JSONL v3 session tree (a one-time importer covers old sessions).
 
 ### Session format (JSONL v3 tree)
 - Stored at `~/.pi/agent/sessions/<path-slug>_<name>.jsonl`
@@ -495,6 +510,30 @@ Acceptance criteria:
 
 ---
 
+## Phase 8 — Durable Runtime Migration
+
+**Goal:** move the agent runtime from the pi-coding-agent SDK surface to `@earendil-works/pi-durable` without losing a shipped feature and without ever losing session history. Full analysis: `docs/decisions/2026-10-27-durable-runtime-remote-surfaces.md`.
+
+**Sequencing (each slice ships behind the previous one; the SDK path stays the default until the 8.3 cutover gate passes):**
+
+1. **8.1 — Parallel prototype (no user switch):** a `Harness` over Node SQLite in Electron main driving one conversation end-to-end (prompt → tool call → answer) through adapter modules only; `watch()` ops mapped onto the existing tool-card renderer. Shipped-path test drives both runtimes.
+2. **8.2 — Parity:** customizations (skills/prompts/themes → prompt sections and tools reading the existing Pi directories), extension compat loader (user/project `.ts` extensions → registry installs), `.pi/mcp.json` → MCP bridges with namespaces + deferred tools, trust/policy gates via `beforeTool` block hooks (pre-apply review equivalent), session index reading the durable store.
+3. **8.3 — Cutover gate:** one-time importer JSONL v3 → durable conversations (originals never rewritten); runtime choice behind a setting, default flips only when the parity matrix and shipped-path suites pass on all platforms.
+4. **8.4 — Cleanup:** remove the SDK sidecar path one full release cycle after cutover; keep the JSONL reader for export/archive.
+
+**Acceptance:** same user-visible features on both runtimes (session sidebar, tool cards, steer/follow-up/abort, customizations, MCP/codemode, pre-apply gate, Git review flow); no session history lost across the import; pin + adapter test suite runs on every pi-durable bump.
+
+## Phase 9 — Remote Surfaces (SSH + Mobile)
+
+**Goal:** let an owner monitor and gate OpenPi from their phone. The desktop is the **host** and stays the single authority; the phone is an **untrusted renderer** with the same main-process policy as the desktop renderer. Security requirements from `2026-09-13-remote-access-deferred.md` apply in full, plus the termux-audit negative checklist: **no tokens in query strings, no wildcard-interface binds, no static shared secrets; per-device pairing, revocable.**
+
+1. **9.1 — Host feed:** Electron main exposes the durable `watch()` op stream to paired clients over SSH forwarding (loopback bind + forwarded socket; `pi-server`/`pi-client` evaluated first, OpenPi-owned WebSocket fallback). Read-only by construction: no remote call may mutate.
+2. **9.2 — PWA mobile client (read-only):** session list, live conversation watch (tool cards, streaming text), token/cost. PWA, not a native app; no relay service.
+3. **9.3 — Approvals from mobile (P1):** high-risk confirms and the pre-apply gate resolve from the phone; a deny is final and logged. Nothing applies without an explicit approve.
+4. **9.4 — Prompt/steer from mobile (P2, separate design sign-off):** typed input and steer/abort over the paired channel, policy-gated identically to desktop.
+
+**Explicitly out of scope:** Android/Termux local agent execution (the termux fork's embedding model), IM/Telegram-style agents, cloud relay, multi-user.
+
 ## Testing Strategy
 
 Each phase gets the smallest reliable verification for its slice.
@@ -508,6 +547,8 @@ Each phase gets the smallest reliable verification for its slice.
 | PTY | Smoke tests: spawn shell, echo command, resize, exit |
 | Diff/patch | Unit tests with fixture repos; accept/reject via git apply |
 | Permission | Gate tests: blocked paths, destructive command detection |
+| Durable harness | Adapter tests against a pinned pi-durable: commit/resume/watch roundtrips, readOnly enforcement, importer fixtures (JSONL v3 → durable) |
+| Remote feed | Pairing/token tests, no-token-in-URL and loopback-bind assertions, op-stream replay from a cold client |
 | E2E | Playwright: open workspace → prompt → see tool cards → diff |
 
 ---
@@ -517,13 +558,13 @@ Each phase gets the smallest reliable verification for its slice.
 - **Second agent runtime** (Kun `serve`, custom HTTP loops) or senpi-style fork of `pi-coding-agent`
 - **Requirement-first / SDD** product wizards (`.kunsdd`-style) as default workflow
 - **“Official extension stack”** wizards marketing Codex/Kun parity
-- **Write mode**, **phone/IM agents**, media generation workbenches
+- **Write mode**, media generation workbenches; **IM/Telegram-style agents**
 - Subprocess RPC isolation for Pi SDK (only if isolation is proven necessary)
 - Cloud sync or collaboration
 - Curated plugin marketplace (discovery UI is fine; marketplace is not)
 - Full IDE replacement (CM6 editor ≠ VS Code)
 - Custom Rust UI renderer
-- **Mobile app / remote IDE surfaces** — deferred, not rejected. Revisit only after Phase 7 P0 (diff review before apply, test evidence) ships. If revisited: P0 is read-only monitoring + approval via PWA (no native app, no relay), mandatory per-device pairing, and no mutation surface until a separate design is approved. See `docs/decisions/2026-09-13-remote-access-deferred.md` and the PR #10 review findings.
+- **Mobile app / remote IDE surfaces** — **re-sequenced 2026-10-27:** no longer a blanket deferral; Phase 9 stages them (read-only → approvals → prompt) behind pairing and the security requirements. Still non-goals: native mobile app, relay service, remote IDE/terminal, and anything before the Phase 8 cutover gate passes. See `docs/decisions/2026-10-27-durable-runtime-remote-surfaces.md`.
 - Scheduler / cloud agents
 - Automatic third-party package installation
 - Rewriting Pi's agent loop, plan mode, todos, or MCP inside OpenPi main
