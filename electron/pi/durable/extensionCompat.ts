@@ -94,7 +94,7 @@ export type ExtensionCompat = z.infer<typeof extensionCompatSchema>
 function factoryParameters(sourceFile: ts.SourceFile): Set<string> {
   const names = new Set<string>()
 
-  const addFromNode = (node: ts.Node): boolean => {
+  const addFromNode = (node: ts.Node): void => {
     if (
       (ts.isFunctionDeclaration(node) ||
         ts.isArrowFunction(node) ||
@@ -102,48 +102,43 @@ function factoryParameters(sourceFile: ts.SourceFile): Set<string> {
       node.parameters.length > 0
     ) {
       const first = node.parameters[0]
-      if (!ts.isIdentifier(first.name)) return false
-      names.add(first.name.text)
-      return true
+      if (ts.isIdentifier(first.name)) names.add(first.name.text)
     }
-    return false
   }
 
-  // Declaration lookup for an identifier default export.
-  const declarationsByName = new Map<string, ts.Node[]>()
-  const deferredExports: string[] = []
+  const hasDefaultModifier = (node: ts.Node): boolean =>
+    ts.canHaveModifiers(node) &&
+    (ts.getModifiers(node) ?? []).some((mod) => mod.kind === ts.SyntaxKind.DefaultKeyword)
 
-  const visit = (node: ts.Node): void => {
-    if (ts.isExportAssignment(node) && !node.isExportEquals) {
-      const expression = node.expression
-      // Recorded, then resolved after the walk: the factory may be declared further down.
-      if (ts.isIdentifier(expression)) deferredExports.push(expression.text)
-      else addFromNode(expression)
+  // Only top-level declarations can be the module's factory; a nested function that happens to
+  // share the name is a helper and must not contribute receivers.
+  const topLevelByName = new Map<string, ts.Node>()
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement)) {
+      // `export default function (pi) {}` and `export default function extension(pi) {}`: the
+      // default modifier sits on the declaration itself in both forms.
+      if (hasDefaultModifier(statement)) addFromNode(statement)
+      if (statement.name) topLevelByName.set(statement.name.text, statement)
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+          topLevelByName.set(declaration.name.text, declaration.initializer)
+        }
+      }
     }
-    if (ts.isFunctionDeclaration(node) && !node.name) {
-      // `export default function (pi) {}`: an anonymous declaration carrying the default export.
-      const modifiers = ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : []
-      if (modifiers.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)) addFromNode(node)
-    }
-    if (ts.isFunctionDeclaration(node) && node.name) {
-      const list = declarationsByName.get(node.name.text) ?? []
-      list.push(node)
-      declarationsByName.set(node.name.text, list)
-      // `export function (pi) {}` is not a factory: extensions use a default export.
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const list = declarationsByName.get(node.name.text) ?? []
-      list.push(node.initializer)
-      declarationsByName.set(node.name.text, list)
-    }
-    ts.forEachChild(node, visit)
   }
-  visit(sourceFile)
 
-  // Resolve identifier default exports now that every declaration has been recorded.
-  for (const name of deferredExports) {
-    for (const declaration of declarationsByName.get(name) ?? []) addFromNode(declaration)
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExportAssignment(statement) || statement.isExportEquals) continue
+    const expression = statement.expression
+    if (ts.isIdentifier(expression)) {
+      const declaration = topLevelByName.get(expression.text)
+      if (declaration) addFromNode(declaration)
+    } else {
+      addFromNode(expression)
+    }
   }
+
   return names
 }
 

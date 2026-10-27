@@ -110,6 +110,31 @@ describe('extension API detection', () => {
     expect(apis).toEqual(['registerCommand'])
   })
 
+  it('follows a named default factory declaration', () => {
+    const { apis } = analyseSource(`
+      export default function extension(pi) {
+        pi.registerCommand('hello', {});
+      }
+    `)
+    expect(apis).toEqual(['registerCommand'])
+  })
+
+  it('ignores a nested function that shares the factory name', () => {
+    const { apis } = analyseSource(`
+      function extension(pi) {
+        pi.registerTool({ name: 'x' });
+      }
+      function unrelated() {
+        function extension(client) {
+          client.sendMessage('hello');
+        }
+        extension({});
+      }
+      export default extension;
+    `)
+    expect(apis).toEqual(['registerTool'])
+  })
+
   it('ignores exported helper functions that are not the factory', () => {
     const { apis } = analyseSource(`
       export function notify(client) {
