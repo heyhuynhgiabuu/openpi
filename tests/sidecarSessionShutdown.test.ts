@@ -19,6 +19,46 @@ function shutdownReasonForStart(opts: {
   return 'new'
 }
 
+describe('sidecar agent status notifications', () => {
+  it('waits for agent_settled and distinguishes a cancelled run from a finished one', () => {
+    const showSystemNotification = vi.fn()
+    const playSoundEffect = vi.fn()
+    const handler = createSidecarMessageHandler({
+      getMainWindow: () => null,
+      normalizeSessionReady: (payload) => payload,
+      applySessionReady: vi.fn(),
+      refreshSessionIndex: async () => {},
+      resolveActiveCwd: () => '/workspace/project',
+      showSystemNotification,
+      playSoundEffect,
+      getGitHost: async () => await import('../electron/git/gitHost'),
+      emitSessionError: vi.fn(),
+      emitOutputLine: vi.fn(),
+    })
+
+    handler({ type: 'session_event', event: { type: 'agent_end', messages: [], willRetry: false } })
+    expect(showSystemNotification).not.toHaveBeenCalled()
+    expect(playSoundEffect).not.toHaveBeenCalled()
+
+    handler({ type: 'session_event', event: { type: 'agent_settled', aborted: false } })
+    expect(showSystemNotification).toHaveBeenLastCalledWith(
+      'notifyAgentStatus',
+      'Agent complete',
+      'OpenPi finished working in project.'
+    )
+    expect(playSoundEffect).toHaveBeenLastCalledWith('soundAgentStatus')
+
+    handler({ type: 'session_event', event: { type: 'agent_end', messages: [], willRetry: false } })
+    handler({ type: 'session_event', event: { type: 'agent_settled', aborted: true } })
+    expect(showSystemNotification).toHaveBeenLastCalledWith(
+      'notifyAgentStatus',
+      'Agent stopped',
+      'OpenPi stopped before finishing work in project.'
+    )
+    expect(playSoundEffect).toHaveBeenLastCalledWith('soundAgentStatus')
+  })
+})
+
 describe('sidecar session teardown', () => {
   it('aborts active work before extension shutdown and disposal', async () => {
     const events: string[] = []

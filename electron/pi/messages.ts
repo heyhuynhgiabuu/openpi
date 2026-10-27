@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { type BrowserWindow, shell } from 'electron'
+import { z } from 'zod'
 import type { OutputLine, SessionReady } from '../../src/lib/ipc'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import { IPC, sessionEventSchema } from '../../src/lib/ipc'
@@ -36,6 +37,10 @@ interface SidecarMessageDeps {
   /** Sends an extension response to the sidecar (used by the remote hop). */
   sendExtensionUiResponse?: (response: ExtensionUiResponse) => void
 }
+
+const agentSettledEventSchema = z
+  .object({ type: z.literal('agent_settled'), aborted: z.boolean() })
+  .passthrough()
 
 interface SessionEventSummary {
   type?: string
@@ -80,12 +85,6 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
             void deps.refreshSessionIndex()
           }, 0)
           const cwd = deps.resolveActiveCwd()
-          deps.showSystemNotification(
-            'notifyAgentStatus',
-            'Agent complete',
-            `OpenPi finished working${cwd ? ` in ${path.basename(cwd)}` : ''}.`
-          )
-          deps.playSoundEffect('soundAgentStatus')
           if (cwd) {
             void deps.getGitHost().then(async (git) => {
               try {
@@ -102,6 +101,21 @@ export function createSidecarMessageHandler(deps: SidecarMessageDeps) {
               }
             })
           }
+        }
+
+        if (event.type === 'agent_settled') {
+          const settled = agentSettledEventSchema.safeParse(parsedEvent.data)
+          if (!settled.success) return
+          const cwd = deps.resolveActiveCwd()
+          const location = cwd ? ` in ${path.basename(cwd)}` : ''
+          deps.showSystemNotification(
+            'notifyAgentStatus',
+            settled.data.aborted ? 'Agent stopped' : 'Agent complete',
+            settled.data.aborted
+              ? `OpenPi stopped before finishing work${location}.`
+              : `OpenPi finished working${location}.`
+          )
+          deps.playSoundEffect('soundAgentStatus')
         }
 
         if (event.type === 'extension_error') {

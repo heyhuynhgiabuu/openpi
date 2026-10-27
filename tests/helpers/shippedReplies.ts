@@ -30,7 +30,7 @@ export const sessionInfoReply = z.object({
   type: z.literal('session_info_result'),
   info: z.object({
     messageCount: z.number(),
-    model: z.object({ provider: z.string() }).nullable(),
+    model: z.object({ provider: z.string(), id: z.string() }).nullable(),
   }),
 })
 
