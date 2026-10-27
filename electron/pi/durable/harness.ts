@@ -20,6 +20,7 @@ import { createToolSearchExtension } from '@earendil-works/pi-durable/tool-searc
 import { loadDurableMcpConfig } from './mcpConfig'
 import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
+import { attachDurableEvents } from './events'
 import { openDurableStorage } from './storage'
 import type {
   DurableEntrySnapshot,
@@ -185,6 +186,13 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
 
     diagnostics(): readonly CustomizationDiagnostic[] {
       return diagnostics
+    },
+
+    async watchEvents(
+      onEvent: (event: Record<string, unknown>) => void
+    ): Promise<() => Promise<void>> {
+      const handle = await attachDurableEvents(harness, root.id, ctx, onEvent)
+      return handle.stop
     },
 
     async close(): Promise<void> {
