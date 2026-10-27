@@ -14,7 +14,7 @@ OpenPi is a **local-first desktop workbench** for [Pi](https://pi.dev) (`@earend
 
 Pi is intentionally **minimal** (small prompt, four core tools, YOLO by default). Plan mode, todos, permission gates, and sub-agents stay out of core — they belong in user extensions. MCP, codemode, and tool-search are built-in extensions: surface them through the SDK, never reimplement or wrap them. OpenPi adds **inspectability** (UI, tokens, Git/diff) and **optional desktop policy** (protected paths, high-risk confirms in main). Treat the **human as the quality gate**.
 
-**Delegation:** use the `@heyhuynhgiabuu/pi-task` package. OpenPi registers no built-in `Agent` customTools; `.pi/extensions/openpi-task-guard.ts` strips invalid `task_id`/`conversation_id` (pi-task short IDs only; full UUIDs are rejected).
+**Delegation:** use the `@heyhuynhgiabuu/pi-task` package. OpenPi registers no built-in `Agent` customTools; `.pi/extensions/openpi-task-guard.ts` strips invalid IDs. `task_id` must be a pi-task-generated short ID; `conversation_id` may be any caller-chosen name. Full UUIDs are rejected as `task_id`.
 
 Target UX: sessions sidebar (workspace-grouped, token/cost) + conversation (steer/follow-up/abort, tool cards) + customizations modal + Git panel + split diff + terminal + command palette (`⇧⌘P`).
 

@@ -514,7 +514,7 @@ Acceptance criteria:
 
 **Goal:** move the agent runtime from the pi-coding-agent SDK surface to `@earendil-works/pi-durable` without losing a shipped feature and without ever losing session history. Full analysis: `docs/decisions/2026-10-27-durable-runtime-remote-surfaces.md`.
 
-**Sequencing (each slice ships behind the previous one; the SDK path stays the default until 8.4):**
+**Sequencing (each slice ships behind the previous one; the SDK path stays the default until the 8.3 cutover gate passes):**
 
 1. **8.1 — Parallel prototype (no user switch):** a `Harness` over Node SQLite in Electron main driving one conversation end-to-end (prompt → tool call → answer) through adapter modules only; `watch()` ops mapped onto the existing tool-card renderer. Shipped-path test drives both runtimes.
 2. **8.2 — Parity:** customizations (skills/prompts/themes → prompt sections and tools reading the existing Pi directories), extension compat loader (user/project `.ts` extensions → registry installs), `.pi/mcp.json` → MCP bridges with namespaces + deferred tools, trust/policy gates via `beforeTool` block hooks (pre-apply review equivalent), session index reading the durable store.
