@@ -125,6 +125,29 @@ describe('session importer', () => {
     expect(second.messages).toEqual(first.messages)
   })
 
+  it('reports a broken parent chain and drops the unreachable prefix', async () => {
+    await writeSession([
+      header,
+      userMessage('a1', null, 'kept?'),
+      // a2 is missing entirely, so the walk from a3 stops there.
+      assistantMessage('a3', 'a2', 'after the gap'),
+    ])
+    const result = await importSessionFile(file)
+    expect(result.messages).toHaveLength(1)
+    expect(result.skipped.join(' ')).toContain('missing parent a2')
+  })
+
+  it('rejects a malformed message payload instead of importing it', async () => {
+    await writeSession([
+      header,
+      entry('a1', null, { type: 'message', message: { role: 'user' } }),
+      assistantMessage('a2', 'a1', 'answer'),
+    ])
+    const result = await importSessionFile(file)
+    expect(result.messages.map((message) => message.role)).toEqual(['assistant'])
+    expect(result.skipped.join(' ')).toContain('unsupported role')
+  })
+
   it('flags a file without a session header as invalid', async () => {
     await writeSession([userMessage('a1', null, 'orphan')])
     const result = await importSessionFile(file)
@@ -176,13 +199,7 @@ describe('session importer into a durable conversation', () => {
       const root = await harness.root(BACKGROUND_CONTEXT, {
         agent: { model: { provider: faux.getModel().provider, modelId: faux.getModel().id } },
       })
-      const result = await importSessionInto(
-        root as unknown as {
-          submit: (draft: { type: 'write'; entry: unknown }, context: unknown) => Promise<unknown>
-        },
-        file,
-        BACKGROUND_CONTEXT
-      )
+      const result = await importSessionInto(root, file, BACKGROUND_CONTEXT)
       expect(result.messages).toHaveLength(2)
       // No provider request: a `write` submission is inert.
       expect(faux.state.callCount).toBe(0)

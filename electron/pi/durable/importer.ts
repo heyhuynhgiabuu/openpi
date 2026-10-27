@@ -1,6 +1,8 @@
+import type { Context } from '@earendil-works/chord'
 import { createReadStream, existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import type { Message } from '@earendil-works/pi-ai'
+import type { Conversation } from '@earendil-works/pi-durable'
 import { z } from 'zod'
 
 /**
@@ -42,19 +44,51 @@ export interface ImportResult {
   invalid: boolean
 }
 
-/** Narrow an unknown JSONL `message` payload to a pi-ai `Message` without casting. */
+const textPart = z.object({ type: z.literal('text'), text: z.string() }).passthrough()
+
+/**
+ * Validate the message payloads the importer accepts, keyed by role. Content must be present and
+ * non-empty: `{ "role": "user" }` alone is a malformed line, not a message.
+ */
+const messageSchemas = {
+  user: z
+    .object({
+      role: z.literal('user'),
+      content: z.union([z.string().min(1), z.array(textPart).min(1)]),
+    })
+    .passthrough(),
+  system: z
+    .object({
+      role: z.literal('system'),
+      content: z.union([z.string().min(1), z.array(textPart).min(1)]),
+    })
+    .passthrough(),
+  assistant: z
+    .object({
+      role: z.literal('assistant'),
+      content: z.array(z.object({ type: z.string() }).passthrough()).min(1),
+    })
+    .passthrough(),
+  toolResult: z
+    .object({
+      role: z.literal('toolResult'),
+      content: z.union([z.string(), z.array(z.object({ type: z.string() }).passthrough())]),
+    })
+    .passthrough(),
+} as const
+
+/** Validate an unknown JSONL `message` payload against the role it claims to have. */
 function asMessage(value: unknown): Message | undefined {
   if (typeof value !== 'object' || value === null) return undefined
-  const candidate = value as { role?: unknown }
-  if (
-    candidate.role === 'user' ||
-    candidate.role === 'assistant' ||
-    candidate.role === 'toolResult' ||
-    candidate.role === 'system'
-  ) {
-    return value as Message
-  }
-  return undefined
+  const role = z.object({ role: z.string() }).passthrough().safeParse(value)
+  if (!role.success) return undefined
+  const schema = messageSchemas[role.data.role as keyof typeof messageSchemas]
+  if (!schema) return undefined
+  const parsed = schema.safeParse(value)
+  if (!parsed.success) return undefined
+  // SAFETY: the four schemas encode the pi-ai message contracts for role and content (validated
+  // above, unknown roles rejected) and `.passthrough()` preserves the remaining provider fields.
+  return parsed.data as unknown as Message
 }
 
 /** Read every JSONL line of a session file, tolerating unparseable lines. */
@@ -114,16 +148,31 @@ export async function importSessionFile(filePath: string): Promise<ImportResult>
   }
   if (!sawHeader) return { messages: [], counts, skipped, invalid: true }
 
-  // Walk from the last entry (the leaf) back to the root through parentId.
+  // Walk from the last entry (the leaf) back to the root through parentId, reporting a chain that
+  // ends early so a caller can tell a complete import from a truncated one.
   const chain: string[] = []
   let cursor = order.at(-1)
   const seen = new Set<string>()
-  while (cursor !== undefined && !seen.has(cursor)) {
+  let cycle = false
+  while (cursor !== undefined) {
+    if (seen.has(cursor)) {
+      cycle = true
+      skipped.push(`cycle in parentId chain at entry ${cursor}`)
+      break
+    }
     seen.add(cursor)
     chain.push(cursor)
     const parsed = looseEntry.safeParse(byId.get(cursor))
-    if (!parsed.success) break
-    cursor = parsed.data.parentId ?? undefined
+    if (!parsed.success) {
+      skipped.push(`entry ${cursor} is unreadable; history before it is missing`)
+      break
+    }
+    const parent = parsed.data.parentId
+    if (parent !== null && parent !== undefined && !byId.has(parent)) {
+      skipped.push(`entry ${cursor} names missing parent ${parent}; history before it is missing`)
+      break
+    }
+    cursor = parent ?? undefined
   }
   chain.reverse()
 
@@ -151,11 +200,9 @@ export async function importSessionFile(filePath: string): Promise<ImportResult>
  * record which sessions were imported (the cutover slice owns that bookkeeping).
  */
 export async function importSessionInto(
-  conversation: {
-    submit: (draft: { type: 'write'; entry: unknown }, context: unknown) => Promise<unknown>
-  },
+  conversation: Conversation,
   filePath: string,
-  context: unknown
+  context: Context
 ): Promise<ImportResult> {
   const result = await importSessionFile(filePath)
   for (const message of result.messages) {
