@@ -35,6 +35,17 @@ function expandHome(target: string): string {
 }
 
 /**
+ * Resolve the path the way the tool will: `~` against the real home, relative paths against the
+ * tool's working directory. Falling back to `process.cwd()` would let `.ssh/id_rsa` slip past the
+ * hard rules whenever Electron was started outside the workspace.
+ */
+function resolveToolPath(target: string, workspacePath: string | null | undefined): string {
+  const expanded = expandHome(target)
+  if (path.isAbsolute(expanded)) return expanded
+  return path.resolve(workspacePath ?? process.cwd(), expanded)
+}
+
+/**
  * Map a tool call to the argument that names a filesystem path.
  * `write`/`read` use `path`, `edit` uses `filePath`; unknown tools contribute no path.
  */
@@ -58,7 +69,10 @@ export function beforeToolPolicy(
   if (fileTools.includes(call.name)) {
     const target = pathForCall(call.name, args)
     if (target) {
-      const violation = checkProtectedPath(expandHome(target), options.workspacePath ?? null)
+      const violation = checkProtectedPath(
+        resolveToolPath(target, options.workspacePath),
+        options.workspacePath ?? null
+      )
       if (violation && violation.level === 'hard') {
         return { block: `Blocked by desktop policy: ${violation.reason} (${violation.rule})` }
       }

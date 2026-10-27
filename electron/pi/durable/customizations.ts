@@ -18,6 +18,8 @@ export interface DurableSkill {
   name: string
   description: string
   filePath: string
+  /** Directory bundled files resolve against; skills reference them relatively. */
+  baseDir: string
   body: string
 }
 
@@ -109,6 +111,7 @@ export async function discoverCustomizations(
       name: skill.name,
       description: skill.description,
       filePath: skill.filePath,
+      baseDir: skill.baseDir,
       body: readBody(skill.filePath),
     }))
 

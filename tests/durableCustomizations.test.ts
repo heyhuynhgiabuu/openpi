@@ -1,9 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
+import type { PromptInput } from '@earendil-works/pi-durable'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { discoverCustomizations, stripFrontmatter } from '../electron/pi/durable/customizations'
 import {
+  expandInput,
   loadCustomizationsExtension,
   promptsSection,
   skillsSection,
@@ -14,6 +17,23 @@ import {
  * documented precedence rather than a private reimplementation (.pi + .agents, project over user,
  * disableModelInvocation kept out of the prompt).
  */
+
+/** Sections read none of this; the runtime supplies it, so tests pass the real contract. */
+const PROMPT_INPUT: PromptInput = {
+  conversationId: 1 as PromptInput['conversationId'],
+  agent: {
+    thinkingLevel: 'off',
+    extensions: [],
+    tools: [],
+    callable: [],
+    deferred: [],
+    sections: [],
+  },
+  env: undefined,
+  shown: {},
+  read: {} as PromptInput['read'],
+}
+const BACKGROUND = BACKGROUND_CONTEXT
 
 let root = ''
 let agentDir = ''
@@ -110,21 +130,40 @@ describe('durable customizations sections', () => {
   it('renders discovered skills and prompts into sections', async () => {
     await writeSkill(join(agentDir, 'skills'), 'review')
     await writePrompt(join(agentDir, 'prompts'), 'audit')
-    const { extension } = await loadCustomizationsExtension({
+    const { extension, found } = await loadCustomizationsExtension({
       userAgentDir: agentDir,
       workspacePath,
     })
     const rendered: string[] = []
     for (const promptSection of extension.sections ?? []) {
-      const text: string | undefined = await promptSection.render({} as never, {} as never)
+      const text: string | undefined = await promptSection.render(PROMPT_INPUT, BACKGROUND)
       if (text !== undefined) rendered.push(text)
     }
-    expect(rendered.join('\n')).toContain('review body')
-    expect(rendered.join('\n')).toContain('audit content')
+    const all = rendered.join('\n')
+    // Skills are model-facing context; prompt templates are advertised by name only, because their
+    // bodies carry $1/$ARGUMENTS placeholders that only resolve at invocation.
+    expect(all).toContain('review body')
+    expect(all).toContain('/audit')
+    expect(all).not.toContain('audit content')
+    expect(expandInput('/audit', found)).toContain('audit content')
+  })
+
+  it('substitutes template arguments at invocation time', async () => {
+    await mkdir(join(agentDir, 'prompts'), { recursive: true })
+    await writeFile(
+      join(agentDir, 'prompts', 'audit.md'),
+      'Review $1 and then $ARGUMENTS\n',
+      'utf-8'
+    )
+    const { found } = await loadCustomizationsExtension({ userAgentDir: agentDir, workspacePath })
+    expect(expandInput('/audit src/main.ts the rest', found)).toBe(
+      'Review src/main.ts and then src/main.ts the rest'
+    )
+    expect(expandInput('/unknown free text', found)).toBe('/unknown free text')
   })
 
   it('omits a section when it has nothing to render', async () => {
-    expect(await skillsSection([]).render({} as never, {} as never)).toBeUndefined()
-    expect(await promptsSection([]).render({} as never, {} as never)).toBeUndefined()
+    expect(await skillsSection([]).render(PROMPT_INPUT, BACKGROUND)).toBeUndefined()
+    expect(await promptsSection([]).render(PROMPT_INPUT, BACKGROUND)).toBeUndefined()
   })
 })

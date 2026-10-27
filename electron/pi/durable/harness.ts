@@ -11,7 +11,7 @@ import {
   hook,
 } from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { loadCustomizationsExtension } from './sections'
+import { expandInput, loadCustomizationsExtension } from './sections'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { DurableCustomizations } from './customizations'
@@ -83,14 +83,16 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   const registry = createRegistry()
   // Parity extensions: customizations render as prompt sections; the policy gate mirrors the
   // desktop protected-path and high-risk gates the SDK path applies in Electron main.
-  const diagnostics: DurableCustomizations['diagnostics'] = []
+  const diagnostics: CustomizationDiagnostic[] = []
+  let customizations: DurableCustomizations | undefined
   if (options.userAgentDir) {
     const loaded = await loadCustomizationsExtension({
       userAgentDir: options.userAgentDir,
       workspacePath: options.workspacePath,
     })
     registry.install(loaded.extension)
-    diagnostics.push(...loaded.diagnostics)
+    customizations = loaded.found
+    diagnostics.push(...loaded.found.diagnostics)
   }
   if (options.policy !== false) {
     registry.install(
@@ -118,7 +120,9 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
 
   return {
     async prompt(text: string): Promise<DurableSubmitResult> {
-      const submission = await root.submit({ type: 'input', content: text }, ctx)
+      // `/template args` expands here, at invocation time, not in the prompt section.
+      const input = customizations ? expandInput(text, customizations) : text
+      const submission = await root.submit({ type: 'input', content: input }, ctx)
       const settled = await submission.wait(ctx)
       if (settled.status !== 'done' || settled.type !== 'input') {
         const unresolved: DurableSubmitResult = { status: settled.status }

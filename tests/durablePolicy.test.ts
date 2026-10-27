@@ -1,10 +1,13 @@
+import type { ToolCall } from '@earendil-works/pi-ai'
 import { describe, expect, it } from 'vitest'
 import { beforeToolPolicy } from '../electron/pi/durable/policy'
 
 /** Phase 8.2b: the durable runtime blocks what the desktop policy blocks in the SDK path. */
 
-function call(name: string, args: Record<string, unknown>) {
-  return { id: 'call-1', name, arguments: args } as never
+type Args = ToolCall['arguments']
+
+function call(name: string, args: Args): ToolCall {
+  return { type: 'toolCall', id: 'call-1', name, arguments: args }
 }
 
 describe('durable tool policy', () => {
@@ -36,8 +39,8 @@ describe('durable tool policy', () => {
     expect(beforeToolPolicy(call('codemode', { code: 'return 1' }))).toBeUndefined()
   })
 
-  it('tolerates malformed arguments without throwing', () => {
+  it('tolerates non-string and missing arguments without throwing', () => {
     expect(beforeToolPolicy(call('write', { path: 42 }))).toBeUndefined()
-    expect(beforeToolPolicy({ id: 'x', name: 'write' } as never)).toBeUndefined()
+    expect(beforeToolPolicy(call('write', {}))).toBeUndefined()
   })
 })

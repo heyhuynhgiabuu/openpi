@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { TranscriptContext } from '@earendil-works/pi-ai'
-import { fauxAssistantMessage, fauxProvider, fauxText } from '@earendil-works/pi-ai'
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from '@earendil-works/pi-ai'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDurableHarness } from '../electron/pi/durable/harness'
 
