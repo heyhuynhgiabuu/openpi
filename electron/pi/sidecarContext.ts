@@ -10,12 +10,14 @@ import './sidecarEnv'
 import {
   createAgentSession,
   createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
   DefaultResourceLoader,
   ModelRuntime,
-  SettingsManager,
   type InlineExtension,
 } from '@earendil-works/pi-coding-agent'
 import { ProviderAuthBridge } from './providerAuth'
+import { createSessionSettingsManager } from './sessionSettings'
 import type { SidecarMessage } from './sidecarTypes'
 
 export type SessionState = {
@@ -130,6 +132,31 @@ const CODEMODE_BUILTIN: InlineExtension = {
   replaceable: true,
 }
 
+// Pi's built-in MCP extension, registered the same way (pi-coding-agent
+// dist/extensions/index.js `builtInExtensions`). It reads `mcp.json` from the
+// agent dir and, only when the project is trusted, from `<cwd>/.pi/mcp.json`
+// (dist/extensions/mcp/config.js:106 `loadMcpConfig`, gated by
+// `ctx.isProjectTrusted()`). No servers in config means no client load and no
+// connection; tools default to `codemode` exposure, which only activates the
+// codemode tool when a server actually asks for it. `autoEnableCodemode` is
+// left at Pi's default — OpenPi does not force tool activation.
+const MCP_BUILTIN: InlineExtension = {
+  name: 'mcp',
+  factory: createMcpExtension(),
+  builtin: true,
+  replaceable: true,
+}
+
+// Pi's built-in tool-search extension: registers `tool_search` inactive. It is
+// only activated by Pi settings (`defaultTools: ["+tool_search"]`) or when MCP
+// servers use `"exposure": "deferred"`.
+const TOOL_SEARCH_BUILTIN: InlineExtension = {
+  name: 'tool-search',
+  factory: createToolSearchExtension(),
+  builtin: true,
+  replaceable: true,
+}
+
 export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) {
   const agentDir = getAgentDir()
   if (
@@ -140,10 +167,9 @@ export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) 
     return _cachedResourceLoader.loader
   }
 
-  const fileSettingsManager = SettingsManager.create(cwd, agentDir)
-  const settingsManager = workspaceTrusted
-    ? fileSettingsManager
-    : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
+  // `projectTrusted` is what `ctx.isProjectTrusted()` reports to extensions; the
+  // built-in MCP extension gates `<cwd>/.pi/mcp.json` on it (see sessionSettings.ts).
+  const settingsManager = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
   // When the workspace is not yet trusted, project-local extensions (.pi/extensions)
   // are blocked by noExtensions=true — they're unknown third-party code.
   // Global extensions (~/.pi/agent/extensions) are the user's own trusted code and
@@ -163,7 +189,10 @@ export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) 
     settingsManager,
     noExtensions,
     additionalExtensionPaths: noExtensions ? [agentDir] : [],
-    extensionFactories: [CODEMODE_BUILTIN],
+    // `noExtensions` drops every `builtin:<name>` path from the load set
+    // (dist/core/resource-loader.js:409), so all three builtins are skipped in an
+    // untrusted workspace even though they are listed here.
+    extensionFactories: [CODEMODE_BUILTIN, MCP_BUILTIN, TOOL_SEARCH_BUILTIN],
   })
   try {
     await loader.reload()

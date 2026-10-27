@@ -5,16 +5,14 @@
  */
 
 import type { SessionReadyPayload } from './sidecarTypes'
-import {
-  createAgentSession,
-  SessionManager,
-  SettingsManager,
-} from '@earendil-works/pi-coding-agent'
+import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent'
 import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { rejectAllExtensionUiPending } from './extensionUiPending'
 import { forwardSessionEvents } from './eventBridge'
+import { createSessionSettingsManager } from './sessionSettings'
 import { isStaleExtensionCtxMessage } from './staleCtx'
 import {
+  clearResourceLoaderCache,
   getAgentDir,
   getModelRuntime,
   getResourceLoader,
@@ -51,7 +49,18 @@ export async function stopSession(
   // Settle any blocking extension UI prompt first so its dialogPromise
   // .finally emits ui_prompt_end before the session event stream shuts down.
   rejectAllExtensionUiPending(`session ${reason}`)
-  await teardownSession(session, () => emitSessionShutdown(session, reason))
+  try {
+    await teardownSession(session, () => emitSessionShutdown(session, reason))
+  } finally {
+    // `session.dispose()` invalidates the extension runtime of the resource loader the
+    // session was built from, and Pi never revives an invalidated runtime. Every
+    // extension's captured `pi` then throws "This extension ctx is stale ...". A loader
+    // kept for the next session would hand that runtime to it, and Pi's built-in MCP
+    // extension (its `tool_call` handler calls `pi.getAllTools()`) would block every tool
+    // call of that session. Pi's own session replacement builds a fresh loader each time
+    // (createAgentSessionServices); do the same here.
+    clearResourceLoaderCache()
+  }
 }
 
 export async function startSession(
@@ -88,11 +97,10 @@ export async function startSession(
 
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
-  const fileSettingsManager = SettingsManager.create(cwd, agentDir)
   const workspaceTrusted = opts.workspaceTrusted ?? false
-  const settingsManager = workspaceTrusted
-    ? fileSettingsManager
-    : SettingsManager.inMemory(fileSettingsManager.getGlobalSettings())
+  // `projectTrusted` here is what extensions see as `ctx.isProjectTrusted()`; the
+  // built-in MCP extension gates `<cwd>/.pi/mcp.json` on it (see sessionSettings.ts).
+  const settingsManager = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
   const sessionManager = preparedForkFile
     ? SessionManager.open(preparedForkFile, undefined, cwd)
     : opts.sessionFile

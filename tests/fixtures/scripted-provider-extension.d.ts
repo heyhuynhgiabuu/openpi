@@ -11,6 +11,14 @@ export declare const SCRIPTED_CODEMODE_FILE_PATH: string
 export declare const SCRIPTED_CODEMODE_FILE_CONTENT: string
 export declare const SCRIPTED_CODEMODE_SCRIPT: string
 export declare const SCRIPTED_CODEMODE_FINAL_TEXT: string
+export declare const SCRIPTED_MCP_PROMPT: string
+export declare const SCRIPTED_MCP_SERVER: string
+export declare const SCRIPTED_MCP_TOOL_NAME: string
+export declare const SCRIPTED_MCP_TOOL_TEXT: string
+export declare const SCRIPTED_MCP_SCRIPT: string
+export declare const SCRIPTED_MCP_FINAL_TEXT: string
+export declare const SCRIPTED_SEARCH_PROMPT: string
+export declare const SCRIPTED_SEARCH_QUERY: string
 export declare const SCRIPTED_TOOLS_PROMPT: string
 export declare const SCRIPTED_TOOLS_ANSWER_PREFIX: string
 
