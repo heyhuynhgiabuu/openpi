@@ -1,10 +1,10 @@
-import { stripVTControlCharacters } from 'node:util'
 import type { Context } from '@earendil-works/chord'
 import { withCancel } from '@earendil-works/chord/context'
 import { OutputBuffer } from '@earendil-works/chord/output'
 import type { EntryDraft } from '@earendil-works/pi-durable'
 import type { ExecutionEnv } from '@earendil-works/pi-durable/env'
 import { z } from 'zod'
+import { createOutputCleaner } from './ansi'
 
 /**
  * Phase 8.3n: the user's own shell commands (`execute_bash`, the `!` prefix in the composer) on a
@@ -83,19 +83,6 @@ export function bashEntryDraft(record: BashRecord): EntryDraft {
   }
 }
 
-const ESC = '\u001b'
-const COMPLETE_ESCAPE = new RegExp(`^${ESC}(?:\\[[0-9;?]*[ -/]*[@-~]|[^\\[])`)
-
-/**
- * Split off an escape sequence cut by the end of a chunk, so it is completed by the next chunk and
- * stripped whole instead of leaving its tail (`[31m`) in the output.
- */
-function splitIncompleteEscape(text: string): { complete: string; pending: string } {
-  const at = text.lastIndexOf(ESC)
-  if (at === -1 || COMPLETE_ESCAPE.test(text.slice(at))) return { complete: text, pending: '' }
-  return { complete: text.slice(0, at), pending: text.slice(at) }
-}
-
 export interface BashRunner {
   run: (command: string, cwd: string) => Promise<BashResult>
   /** Cancel every running command (session shutdown). */
@@ -107,12 +94,7 @@ export function createBashRunner(env: ExecutionEnv, ctx: Context): BashRunner {
   return {
     async run(command, cwd) {
       const output = new OutputBuffer({ maxBytes: MAX_BYTES, maxLines: MAX_LINES, retain: 'tail' })
-      let pending = ''
-      const accept = (text: string): void => {
-        const split = splitIncompleteEscape(pending + text)
-        pending = split.pending
-        output.push(stripVTControlCharacters(split.complete).replace(/\r/g, ''))
-      }
+      const cleaner = createOutputCleaner()
       const { context, cancel } = withCancel(ctx)
       running.add(cancel)
       try {
@@ -120,13 +102,12 @@ export function createBashRunner(env: ExecutionEnv, ctx: Context): BashRunner {
           command,
           {
             cwd,
-            onOutput: (text) => accept(text),
+            onOutput: (text) => void output.push(cleaner.clean(text)),
             spill: { afterBytes: MAX_BYTES, afterLines: MAX_LINES },
           },
           context
         )
-        accept('')
-        output.push(stripVTControlCharacters(pending))
+        output.push(cleaner.flush())
         output.end()
         const kept = output.snapshot()
         const text = kept.text

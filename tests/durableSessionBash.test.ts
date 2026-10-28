@@ -1,7 +1,9 @@
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { convertToLlm, SessionManager } from '@earendil-works/pi-coding-agent'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { bashText } from '../electron/pi/durable/bash'
 import type { SidecarCommand, SidecarMessage } from '../electron/pi/sidecarTypes'
 import { bashExecutionResultSchema } from '../src/lib/ipc'
@@ -19,6 +21,11 @@ const bash = (command: string, excludeFromContext?: boolean): SidecarCommand => 
   requestId: 'b1',
   command,
   excludeFromContext,
+})
+
+const exportedLine = z.object({
+  type: z.string(),
+  message: z.object({ role: z.string(), command: z.string().optional() }).optional(),
 })
 
 function lastResult(sent: SidecarMessage[]) {
@@ -39,7 +46,8 @@ describe('durable execute_bash', () => {
       await t.sessions.handleCommand(bash('pwd; echo oops >&2; exit 3'))
       const result = lastResult(t.sent)
       expect(result).toMatchObject({ exitCode: 3, cancelled: false, truncated: false })
-      expect(result.output).toContain(realpathSync(sessionRoot()))
+      // `pwd` prints a POSIX path even where the workspace path is a Windows one, so compare names.
+      expect(result.output).toContain(basename(sessionRoot()))
       expect(result.output).toContain('oops')
     } finally {
       await t.sessions.stop()
@@ -61,6 +69,18 @@ describe('durable execute_bash', () => {
     try {
       await t.sessions.handleCommand(bash("printf '\\033[3'; sleep 0.3; printf '1mred\\033[0m\\n'"))
       expect(lastResult(t.sent).output.trim()).toBe('red')
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('strips a window title split across two chunks', async () => {
+    const t = await session()
+    try {
+      await t.sessions.handleCommand(
+        bash("printf '\\033]0;private-title'; sleep 0.3; printf '\\007visible\\n'")
+      )
+      expect(lastResult(t.sent).output.trim()).toBe('visible')
     } finally {
       await t.sessions.stop()
     }
@@ -108,7 +128,7 @@ describe('durable execute_bash', () => {
       const lines = (await readFile(t.identity.sessionFile, 'utf8'))
         .trim()
         .split('\n')
-        .map((l) => JSON.parse(l) as { type: string; message?: { role: string; command?: string } })
+        .map((l) => exportedLine.parse(JSON.parse(l)))
       const ran = lines.filter((l) => l.message?.role === 'bashExecution')
       expect(ran.map((l) => l.message?.command)).toEqual(['echo seen; exit 2', 'echo hidden'])
 
