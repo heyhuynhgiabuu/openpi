@@ -33,7 +33,7 @@ import { attachDurableEvents } from './events'
 import { busyWith } from './activity'
 import { runCompaction } from './compaction'
 import { activeBranch, forkAtLine, navigate, readAll } from './branches'
-import { conversationIdOf } from './ids'
+import { openBranches } from './branches'
 import { writeSessionTree, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {
@@ -121,13 +121,9 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   }
   const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
   if (options.workspacePath) agent.cwd = options.workspacePath
-  // A forked or navigated session lives in its own conversations of the store; any other uses the root.
-  const branches: Conversation[] = []
-  for (const id of options.conversationIds ?? []) {
-    const branch = await harness.conversation(conversationIdOf(id), ctx)
-    if (!branch) throw new Error(`conversation ${id} not found in the store`)
-    branches.push(branch)
-  }
+  // A forked or navigated session lives in its own conversations of the store; any other uses the
+  // root. Ids come from a session file now, so a wrong one closes what this open created.
+  const branches = await openBranches(harness, options.conversationIds, closeMcp, ctx)
   if (branches.length === 0) branches.push(await harness.root(ctx, { agent }))
   // The active branch: the last. `navigate` moves it to a fork.
   let root = activeBranch(branches)

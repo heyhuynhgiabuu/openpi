@@ -1,5 +1,6 @@
 import type { Context } from '@earendil-works/chord'
 import type { Conversation, Harness } from '@earendil-works/pi-durable'
+import { conversationIdOf } from './ids'
 import { readHistory } from './history'
 import type { SessionFileHeader } from './sessionFile'
 import { BRANCH_KIND } from './sessionItems'
@@ -124,4 +125,33 @@ export async function navigate(
   branches.push(next)
   outcome.switched = true
   return outcome
+}
+
+/**
+ * The conversations a store already holds for a session, in the order they were given.
+ *
+ * The ids come from the session file, so one can name a conversation this store does not have.
+ * Opening the harness has already started its store and MCP servers by then, and nothing else holds
+ * a handle to close them, so a wrong id closes them here before it throws.
+ */
+export async function openBranches(
+  harness: Harness,
+  conversationIds: readonly number[] | undefined,
+  /** Extra resources the open created (the MCP bridge), released if an id turns out to be wrong. */
+  releaseExtras: (() => Promise<void>) | undefined,
+  context: Context
+): Promise<Conversation[]> {
+  const branches: Conversation[] = []
+  try {
+    for (const id of conversationIds ?? []) {
+      const branch = await harness.conversation(conversationIdOf(id), context)
+      if (!branch) throw new Error(`conversation ${id} not found in the store`)
+      branches.push(branch)
+    }
+    return branches
+  } catch (error) {
+    await releaseExtras?.().catch(() => undefined)
+    await harness.close(context).catch(() => undefined)
+    throw error
+  }
 }

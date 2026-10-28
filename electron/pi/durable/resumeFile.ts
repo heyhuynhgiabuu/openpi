@@ -21,10 +21,20 @@ export interface DurableHeader {
   conversationIds: number[]
 }
 
+/**
+ * A store id as `durableHost.ts` names its directory. Constrained because the id is joined into a
+ * path: anything else (a separator, `..`) would point a resume at another directory entirely.
+ */
+const STORE_ID = /^[A-Za-z0-9._-]+$/
+
 /** What the header holds: the request, plus what the export wrote, so a later resume can tell. */
 export const durableHeaderSchema = z
   .object({
-    storeId: z.string().min(1),
+    storeId: z
+      .string()
+      .min(1)
+      .regex(STORE_ID)
+      .refine((id) => id !== '.' && id !== '..'),
     /**
      * Conversations the session is made of, oldest branch first, the active one last. Never empty:
      * an empty list would fall back to the store's root and export that over the session's file.
