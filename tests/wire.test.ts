@@ -191,7 +191,8 @@ describe('other events', () => {
       willRetry: false,
       errorMessage: 'summarizer failed',
     })
-    expect(wire[2]).not.toHaveProperty('errorMessage')
+    // Ended with no failure and no summary entry: nothing was compacted, and it says so.
+    expect(wire[2]).toMatchObject({ errorMessage: 'Nothing to compact (session too small)' })
     expect(schemaFailures(wire)).toEqual([])
   })
 

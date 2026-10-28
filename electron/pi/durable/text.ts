@@ -18,3 +18,26 @@ export function messageText(message: Message | undefined): string | undefined {
     .map((part) => part.text)
     .join('')
 }
+
+const SUMMARY_OPEN = '<summary>'
+const SUMMARY_CLOSE = '</summary>'
+
+/** True for the user message pi-durable writes for a compaction: "…compacted into…\n\n<summary>…". */
+export function isSummaryWrapped(text: string | undefined): boolean {
+  return (
+    text !== undefined &&
+    text.startsWith('The conversation history before this point was compacted') &&
+    text.includes(SUMMARY_OPEN)
+  )
+}
+
+/**
+ * The raw summary inside pi-durable's wrapper `…<summary>\n{summary}\n</summary>`. Strips only the
+ * outer pair (first open, last close): the summary may itself quote either tag.
+ */
+export function unwrapSummary(text: string): string {
+  const open = text.indexOf(SUMMARY_OPEN)
+  const close = text.lastIndexOf(SUMMARY_CLOSE)
+  if (open === -1 || close < open) return text
+  return text.slice(open + SUMMARY_OPEN.length, close).trim()
+}

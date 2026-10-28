@@ -56,6 +56,8 @@ export async function setup(
     failResolve?: boolean
     /** Make persisting the default model/thinking level throw. */
     failPersist?: boolean
+    /** Lower the compaction threshold so a short conversation can be compacted. */
+    compaction?: { keepRecentTokens: number }
   } = {}
 ) {
   const sent: SidecarMessage[] = []
@@ -98,6 +100,7 @@ export async function setup(
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,
         policy: false,
+        compaction: options.compaction,
       })
       harnesses.push(harness)
       return {

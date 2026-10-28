@@ -7,7 +7,7 @@ import { CompactionEntry } from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { z } from 'zod'
 import { sessionNameOf } from './stats'
-import { messageText } from './text'
+import { messageText, unwrapSummary } from './text'
 
 /**
  * Phase 8.3e: export a durable conversation as a Pi JSONL v3 session file.
@@ -65,12 +65,7 @@ interface Item {
 /** The raw summary inside pi-durable's wrapper, which is not part of what the SDK stores. */
 function summaryOf(entry: EntryRecord): string {
   const text = messageText(entry.model?.[0]) ?? ''
-  // pi-durable wraps the summary as `…<summary>\n{summary}\n</summary>`. Strip only that outer
-  // pair (first open, last close): the summary may itself quote either tag.
-  const open = text.indexOf('<summary>')
-  const close = text.lastIndexOf('</summary>')
-  if (open === -1 || close < open) return text
-  return text.slice(open + '<summary>'.length, close).trim()
+  return unwrapSummary(text)
 }
 
 function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): Item[] {
