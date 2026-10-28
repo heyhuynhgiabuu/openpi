@@ -5,6 +5,7 @@ import { dirname } from 'node:path'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { z } from 'zod'
 import { renderSessionTree, resolveLine } from './sessionTree'
+import type { DurableHeader } from './resumeFile'
 
 /**
  * Phase 8.3e: export a durable conversation as a Pi JSONL v3 session file.
@@ -25,6 +26,8 @@ export interface SessionFileHeader {
   cwd: string
   /** ISO timestamp of the session start. */
   startedAt: string
+  /** Where the store behind the file is, so a restart can reopen it; see `resumeFile.ts`. */
+  durable?: DurableHeader
 }
 
 export interface SessionFileResult {

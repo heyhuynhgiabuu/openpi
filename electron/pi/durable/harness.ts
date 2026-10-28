@@ -57,7 +57,10 @@ const ctx: Context = BACKGROUND_CONTEXT
 
 export async function openDurableHarness(options: DurableHarnessOptions): Promise<DurableHarness> {
   const backend = options.backend ?? 'jsonl'
-  const storage = await openDurableStorage({ backend, directory: options.directory }, ctx)
+  const storage = await openDurableStorage(
+    { backend, directory: options.directory, requireStore: options.requireStore },
+    ctx
+  )
   const registryModels: MutableModels = createModels()
   options.registerProviders?.(registryModels)
   const models: Models = options.models ?? registryModels

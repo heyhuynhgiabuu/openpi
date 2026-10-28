@@ -50,6 +50,11 @@ export interface DurableHarnessOptions {
   /** Directory for the JSONL store; required for the `jsonl` backend, ignored for `memory`. */
   directory?: string
   backend?: DurableBackend
+  /**
+   * Reopening an existing session: fail when the store directory is missing instead of letting the
+   * backend create an empty one, which the next export would write over the session's history.
+   */
+  requireStore?: boolean
   /** Model the root conversation runs. */
   model: DurableModelRef
   /**

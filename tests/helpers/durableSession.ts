@@ -129,8 +129,10 @@ export async function setup(
       if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
-        // One store per session, as in production (`durableHost.ts`).
+        // One store per session, as in production (`durableHost.ts`), including the rule that a
+        // resume must not create the store it cannot find.
         directory: join(root, 'store', opening.storeId ?? opening.sessionId),
+        requireStore: opening.storeId !== undefined,
         conversationIds: opening.conversationIds,
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),

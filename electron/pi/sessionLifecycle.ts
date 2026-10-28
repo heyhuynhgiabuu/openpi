@@ -104,7 +104,7 @@ export async function startSession(
   await durableSessions.stop()
 
   // Cutover gate: the durable runtime may only serve a session when every capability it needs is
-  // wired, and only for a new session (resume/fork stay on the SDK path).
+  // wired; forking a session stays on the SDK path.
   const decision = decideCutover({
     stored: opts.runtimePreference,
     durableAvailable: DURABLE_ADAPTER_AVAILABLE,
@@ -114,12 +114,23 @@ export async function startSession(
   const reason = decision.reason ?? choice.reason
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
   if (choice.runtime === 'durable') {
-    await stopSdkSession('new')
-    await durableSessions.start(cwd, {
-      workspaceTrusted: opts.workspaceTrusted ?? false,
-      requestId: opts.requestId,
-    })
-    return
+    const trusted = opts.workspaceTrusted ?? false
+    await stopSdkSession(choice.start)
+    // A resumed file is only reopened when this runtime wrote it; a session it does not own (an
+    // SDK one) has no store here, so it is read by the SDK path below, as before.
+    if (choice.start === 'resume' && opts.sessionFile) {
+      const resumed = await durableSessions.resumeFrom(
+        cwd,
+        opts.sessionFile,
+        trusted,
+        opts.requestId
+      )
+      if (resumed) return
+      outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
+    } else {
+      await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+      return
+    }
   }
 
   // Validate fork identity before disposing the active session so malformed or

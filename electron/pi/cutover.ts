@@ -92,24 +92,30 @@ export function decideCutover(options: {
 
 export type SessionRuntimeChoice =
   | { runtime: 'sdk'; reason?: string }
-  | { runtime: 'durable'; reason?: undefined }
+  /**
+   * `start` says which way: a request that carries the file of an existing session is `resume`.
+   * The durable runtime reopens it only if that file says where its store is
+   * (`durable/resumeFile.ts`); a file it did not write, such as an SDK session's, is not its to
+   * reopen, so the sidecar falls back to the SDK path.
+   */
+  | { runtime: 'durable'; reason?: undefined; start: 'new' | 'resume' }
 
 /**
- * Per-session routing once the gate has said `durable`. The durable runtime only starts *new*
- * sessions: resuming or forking would re-import an SDK session, and exporting that back would
- * flatten its branch tree — a history loss the importer never has to risk. Those requests stay on
- * the SDK path, with the reason surfaced.
+ * Per-session routing once the gate has said `durable`. Forking stays on the SDK path: a fork of an
+ * SDK session would re-import it, and exporting that back would flatten its branch tree — a history
+ * loss the importer never has to risk. It would also be the wrong store: a fork belongs to the
+ * parent's store, which only the runtime that wrote the parent knows.
  */
 export function chooseSessionRuntime(
   decision: CutoverDecision,
   request: { sessionFile?: string; forkEntryId?: string }
 ): SessionRuntimeChoice {
   if (decision.runtime !== 'durable') return { runtime: 'sdk' }
-  if (request.sessionFile || request.forkEntryId) {
+  if (request.forkEntryId) {
     return {
       runtime: 'sdk',
-      reason: 'the durable runtime starts new sessions only; resume and fork use the SDK path',
+      reason: 'the durable runtime does not fork sessions; forking uses the SDK path',
     }
   }
-  return { runtime: 'durable' }
+  return { runtime: 'durable', start: request.sessionFile ? 'resume' : 'new' }
 }
