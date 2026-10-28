@@ -55,7 +55,7 @@ function messageTimestamp(message: Message, fallback: string): string {
 /** One line of the export, before ids are assigned. */
 interface Item {
   /** The pi-durable entry it came from, to resolve `head` references. */
-  source: number
+  source: EntryRecord['id']
   type: 'message' | 'session_info' | 'compaction'
   timestamp: string
   body: Record<string, unknown>
@@ -163,6 +163,28 @@ export function renderSessionJsonl(
     text: `${lines.join('\n')}\n`,
     messages: items.filter((item) => item.type === 'message').length,
   }
+}
+
+/**
+ * The pi-durable entry behind an exported line, from the id the sidebar and renderer know it by.
+ *
+ * Line ids are positional and deterministic, so re-rendering the same history yields the ids the
+ * file has. While a reply streams, the renderer only has synthetic ids (`u-{ms}` / `a-{ms}`, the
+ * message timestamp); those are matched against the exported messages' timestamps, as the SDK
+ * path does against its entries.
+ */
+export function resolveLineEntry(
+  header: SessionFileHeader,
+  entries: readonly EntryRecord[],
+  lineId: string
+): EntryRecord['id'] | undefined {
+  const items = toItems(header, entries)
+  const index = items.findIndex((_, position) => entryId(position + 1) === lineId)
+  if (index >= 0) return items[index]?.source
+  const synthetic = /^[ua]-(-?\d+)$/.exec(lineId)
+  if (!synthetic) return undefined
+  const at = Number(synthetic[1])
+  return items.find((item) => item.type === 'message' && Date.parse(item.timestamp) === at)?.source
 }
 
 /** Header id of an existing file, or undefined when it is empty or not a v3 session. */

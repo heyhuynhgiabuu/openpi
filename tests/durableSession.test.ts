@@ -128,10 +128,7 @@ describe('durable session prompt', () => {
 })
 
 describe('durable command routing', () => {
-  const unsupported: SidecarCommand[] = [
-    { type: 'fork_session', entryId: 'e', workspaceTrusted: false },
-    { type: 'navigate_tree', entryId: 'e', requestId: 'r' },
-  ]
+  const unsupported: SidecarCommand[] = [{ type: 'navigate_tree', entryId: 'e', requestId: 'r' }]
 
   it.each(unsupported)('refuses $type loudly while a durable session is active', async (cmd) => {
     const t = await setup()

@@ -6,6 +6,7 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { runCompact } from './durableCompact'
+import { forkSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
@@ -39,7 +40,6 @@ export type {
 
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
-  'fork_session',
   'navigate_tree',
 ] as const satisfies readonly SidecarCommand['type'][]
 
@@ -141,6 +141,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       closing: false,
     }
     active = session
+    // A reopened or forked session already has a history, and the renderer reads it from the file.
+    if (options.resume) await exportNow(session)
     deps.send({
       type: 'session_ready',
       requestId: options.requestId,
@@ -211,22 +213,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
-  /**
-   * `reload_session`: a full restart of the harness over the same store, file and header, so
-   * extensions, customizations and MCP servers are discovered afresh and the history is untouched.
-   * A run in flight is aborted first, as the SDK path's dispose does: merely closing the harness
-   * would leave the run pending in the store, and the next submit would start it again.
-   */
-  async function reload(session: ActiveSession, requestId: string): Promise<void> {
-    session.abortRequested = true
-    await session.harness.abort()
-    await exportNow(session)
-    await start(session.cwd, {
-      workspaceTrusted: session.workspaceTrusted,
-      requestId,
-      resume: { identity: session.identity, startedAt: session.startedAt },
-    })
-  }
+  const flow: FlowOps = { exportNow, start, newIdentity: deps.newIdentity, now: deps.now }
 
   const view = (session: ActiveSession): InfoSource => ({
     model: session.model,
@@ -265,8 +252,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       await exportNow(session)
       return true
     }
+    if (cmd.type === 'fork_session') {
+      await forkSession(active, cmd, flow)
+      return true
+    }
     if (cmd.type === 'reload_session') {
-      await reload(active, cmd.requestId)
+      await reloadSession(active, cmd.requestId, flow)
       return true
     }
     if (cmd.type === 'compact') {

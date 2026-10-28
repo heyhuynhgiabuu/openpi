@@ -68,6 +68,8 @@ export async function setup(
     failOpenAt?: number
     /** Make `stats()` reject on the harness the nth `open` returns (1-based). */
     breakStatsAt?: number
+    /** Called with every message the session sends, before it is recorded. */
+    onSend?: (message: SidecarMessage) => void
   } = {}
 ) {
   const sent: SidecarMessage[] = []
@@ -104,6 +106,7 @@ export async function setup(
   }
   const deps: DurableSessionDeps = {
     send: (message) => {
+      options.onSend?.(message)
       sent.push(message)
       const parsed = sidecarMessageSchema.safeParse(message)
       if (!parsed.success) {
@@ -125,7 +128,8 @@ export async function setup(
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
         // One store per session, as in production (`durableHost.ts`).
-        directory: join(root, 'store', opening.sessionId),
+        directory: join(root, 'store', opening.storeId ?? opening.sessionId),
+        conversationId: opening.conversationId,
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,

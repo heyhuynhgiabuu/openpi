@@ -70,6 +70,8 @@ export interface DurableHarnessOptions {
   tools?: boolean
   /** Compaction policy overrides, e.g. a small `keepRecentTokens` so a short conversation compacts (tests). */
   compaction?: { keepRecentTokens?: number }
+  /** Open this conversation of the store instead of its root: a forked session's own. */
+  conversationId?: number
   /** Read `.mcp.json` and bridge its servers (requires `projectTrusted` for the project file). */
   mcp?: boolean
   /** Whether the workspace is trusted, gating `.pi/mcp.json` and project extensions. */
@@ -96,6 +98,12 @@ export interface DurableHarness {
    * once the command ends; rejects when the shell cannot start.
    */
   executeBash(command: string, options?: { excludeFromContext?: boolean }): Promise<BashResult>
+  /**
+   * Fork the conversation after the exported entry `lineId` (the id the session file and the
+   * renderer use). The fork is a new conversation of the same store, with the history up to and
+   * including that entry; this conversation is unchanged. Returns the fork's conversation id.
+   */
+  fork(lineId: string, header: SessionFileHeader): Promise<number>
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
   stats(): Promise<DurableStats>
   /**
