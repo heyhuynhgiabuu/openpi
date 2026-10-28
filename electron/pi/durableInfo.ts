@@ -84,14 +84,20 @@ export function isInfoCommand(cmd: SidecarCommand): cmd is InfoCommand {
   )
 }
 
-/** Answer one of the read-only info commands from the harness's stats. */
+/**
+ * Answer one of the read-only info commands from the harness's stats.
+ *
+ * `source` is read *after* `stats()` resolves, not before: a settings command or an agent event can
+ * land while the stats are being read, and the reply must describe the session as it is then.
+ */
 export async function answerInfoCommand(
   cmd: InfoCommand,
-  source: InfoSource,
+  readSource: () => InfoSource,
   harness: Pick<DurableHarness, 'stats'>,
   send: (message: SidecarMessage) => void
 ): Promise<void> {
   const stats = await harness.stats()
+  const source = readSource()
   switch (cmd.type) {
     case 'get_stats':
       send(statsMessage(cmd.requestId, source, stats))

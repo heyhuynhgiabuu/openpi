@@ -250,7 +250,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       return true
     }
     if (isInfoCommand(cmd)) {
-      await answerInfoCommand(cmd, view(active), active.harness, deps.send)
+      const session = active
+      await answerInfoCommand(cmd, () => view(session), session.harness, deps.send)
       return true
     }
     if (cmd.type === 'compact') {
