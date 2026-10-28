@@ -23,7 +23,7 @@ afterEach(() => {
 })
 
 describe('opening a durable harness with ids a store does not have', () => {
-  it('closes the MCP bridge and the store before throwing', async () => {
+  it('closes the MCP bridge it started before throwing', async () => {
     const faux = fauxProvider()
     await expect(
       openDurableHarness({
