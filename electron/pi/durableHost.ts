@@ -46,6 +46,9 @@ async function open(
   const harness = await openDurableHarness({
     backend: 'jsonl',
     directory: join(agentDir, 'durable', identity.storeId ?? identity.sessionId),
+    // Resuming must fail loudly when the store is gone: the jsonl backend creates an empty
+    // directory, and the export after it would then replace the session's history with nothing.
+    requireStore: identity.storeId !== undefined,
     conversationIds: identity.conversationIds,
     model: { provider, modelId },
     // The SDK's model runtime implements `Models`: auth.json, models.json and OAuth are shared.

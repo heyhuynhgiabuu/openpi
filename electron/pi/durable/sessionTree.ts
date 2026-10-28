@@ -1,6 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { BRANCH_KIND, lineIdFor, toItems, type Item } from './sessionItems'
 import type { SessionFileHeader } from './sessionFile'
+import { DURABLE_HEADER_KEY } from './resumeFile'
 
 /**
  * Phase 8.3q: the branches of a session as one JSONL tree.
@@ -75,15 +76,16 @@ export function renderSessionTree(
   histories: readonly (readonly EntryRecord[])[]
 ): { text: string; messages: number } {
   const placed = placeTree(header, histories)
-  const lines: string[] = [
-    JSON.stringify({
-      type: 'session',
-      version: 3,
-      id: header.sessionId,
-      timestamp: header.startedAt,
-      cwd: header.cwd,
-    }),
-  ]
+  const first: Record<string, unknown> = {
+    type: 'session',
+    version: 3,
+    id: header.sessionId,
+    timestamp: header.startedAt,
+    cwd: header.cwd,
+  }
+  // Where the store is, so a restart can reopen the session; absent on a file the SDK wrote.
+  if (header.durable) first[DURABLE_HEADER_KEY] = header.durable
+  const lines: string[] = [JSON.stringify(first)]
   for (const node of placed) {
     const body = { ...node.item.body }
     if (node.keptLineId !== undefined) body.firstKeptEntryId = node.keptLineId

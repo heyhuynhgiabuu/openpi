@@ -6,6 +6,7 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { counted, countedUnlessAborted, newActivity } from './durableActivity'
+import { durableHeaderOf, resumeDurableFromFile } from './durableResume'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
@@ -49,6 +50,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       sessionId: session.identity.sessionId,
       cwd: session.cwd,
       startedAt: session.startedAt,
+      durable: durableHeaderOf(session.identity, session.harness.conversationIds()),
     })
     deps.send({ type: 'session_index_updated' })
   }
@@ -287,5 +289,9 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     return false
   }
 
-  return { isActive: () => active !== null, start, handleCommand, stop }
+  /** See `resumeFromFile`: only a file this runtime wrote can be reopened. */
+  const resumeFrom = (cwd: string, sessionFile: string, workspaceTrusted: boolean) =>
+    resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, start)
+
+  return { isActive: () => active !== null, start, resumeFrom, handleCommand, stop }
 }

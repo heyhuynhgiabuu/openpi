@@ -18,8 +18,8 @@ describe('cutover decision', () => {
   })
 
   it('never reports the durable runtime while the command set is incomplete', () => {
-    // This is the shipped state: every building block exists, but steer/follow-up/abort/model/
-    // thinking/compact/bash/fork/navigate do not, so the opt-in must not switch.
+    // The gate reads the capabilities the caller reports; commands exist now, so this asserts the
+    // gate itself: one missing capability is enough to keep the session on the SDK path.
     const decision = decideCutover({
       stored: 'durable',
       durableAvailable: true,
@@ -83,12 +83,19 @@ describe('per-session runtime choice', () => {
     expect(chooseSessionRuntime(durable, {})).toEqual({ runtime: 'durable' })
   })
 
-  it('keeps resume and fork on the SDK path so a branch tree is never flattened', () => {
-    const resumed = chooseSessionRuntime(durable, { sessionFile: '/s.jsonl' })
+  it('offers to resume an existing session, and lets the file say whether it can', () => {
+    // The choice is `resume`: only a file the runtime wrote names its store, so whether it can be
+    // reopened is decided by reading the file, not here.
+    expect(chooseSessionRuntime(durable, { sessionFile: '/s.jsonl' })).toEqual({
+      runtime: 'durable',
+      resume: true,
+    })
+  })
+
+  it('keeps fork on the SDK path: a fork of an SDK session must not be re-imported', () => {
     const forked = chooseSessionRuntime(durable, { sessionFile: '/s.jsonl', forkEntryId: 'abc' })
-    expect(resumed.runtime).toBe('sdk')
-    expect(resumed.reason).toContain('new sessions only')
     expect(forked.runtime).toBe('sdk')
+    expect(forked.reason).toContain('does not fork')
   })
 
   it('never upgrades a session the gate sent to the SDK', () => {
