@@ -1,6 +1,6 @@
 import type { DurableIdentity, ActiveSession, DurableStartOptions } from './durableTypes'
 import { errorText } from './durablePrompt'
-import type { SidecarCommand } from './sidecarTypes'
+import type { SidecarCommand, SidecarMessage } from './sidecarTypes'
 
 /**
  * Phase 8.3o: the commands that replace the running session with another over the same store:
@@ -13,6 +13,9 @@ export interface FlowOps {
   start: (cwd: string, options: DurableStartOptions) => Promise<void>
   newIdentity: (cwd: string) => DurableIdentity
   now: () => Date
+  send: (message: SidecarMessage) => void
+  /** Follow the harness's current conversation after it changed. */
+  reattachEvents: (session: ActiveSession) => Promise<void>
   log: (level: 'info' | 'warn' | 'error', text: string) => void
 }
 
@@ -56,7 +59,7 @@ export async function forkSession(
   const identity: DurableIdentity = {
     ...ops.newIdentity(session.cwd),
     storeId: session.identity.storeId ?? session.identity.sessionId,
-    conversationId,
+    conversationIds: [conversationId],
   }
   session.abortRequested = true
   await session.harness.abort()
@@ -80,4 +83,37 @@ export async function forkSession(
       )
     throw error
   }
+}
+
+/**
+ * `navigate_tree`: continue the session from an earlier line, in the same file. The conversation
+ * is forked there and the fork becomes the one the session runs on, so the abandoned branch stays
+ * in the export. Refused while a reply streams, as the SDK path does.
+ */
+export async function navigateSession(
+  session: ActiveSession,
+  cmd: Extract<SidecarCommand, { type: 'navigate_tree' }>,
+  ops: FlowOps
+): Promise<void> {
+  if (session.streaming) {
+    throw new Error('Wait for the current response to finish before navigating the session tree.')
+  }
+  const moved = await session.harness.navigate(cmd.entryId, {
+    sessionId: session.identity.sessionId,
+    cwd: session.cwd,
+    startedAt: session.startedAt,
+  })
+  if (moved.switched) {
+    // Reload and later forks must find every branch, and events now come from the new one.
+    session.identity = { ...session.identity, conversationIds: session.harness.conversationIds() }
+    await session.stopEvents()
+    await ops.reattachEvents(session)
+    await ops.exportNow(session)
+  }
+  const result: Extract<SidecarMessage, { type: 'navigate_tree_result' }>['result'] = {
+    cancelled: false,
+    leafId: moved.leafLineId,
+  }
+  if (moved.editorText !== undefined) result.editorText = moved.editorText
+  ops.send({ type: 'navigate_tree_result', requestId: cmd.requestId, result })
 }

@@ -2,7 +2,6 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
-import type { SidecarCommand } from '../electron/pi/sidecarTypes'
 import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
 
 /**
@@ -128,20 +127,6 @@ describe('durable session prompt', () => {
 })
 
 describe('durable command routing', () => {
-  const unsupported: SidecarCommand[] = [{ type: 'navigate_tree', entryId: 'e', requestId: 'r' }]
-
-  it.each(unsupported)('refuses $type loudly while a durable session is active', async (cmd) => {
-    const t = await setup()
-    await t.sessions.start('/work', { workspaceTrusted: false })
-    try {
-      await expect(t.sessions.handleCommand(cmd)).rejects.toThrow(
-        /not supported on the durable runtime/
-      )
-    } finally {
-      await t.sessions.stop()
-    }
-  })
-
   it('hands non-session commands back to the existing handlers', async () => {
     const t = await setup()
     await t.sessions.start('/work', { workspaceTrusted: false })

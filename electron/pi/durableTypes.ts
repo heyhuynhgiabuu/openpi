@@ -11,8 +11,11 @@ export interface DurableIdentity {
   sessionFile: string
   /** Which store holds the conversation; the session's own id unless it was forked from another. */
   storeId?: string
-  /** Which conversation of the store this session is; the store's root when absent. */
-  conversationId?: number
+  /**
+   * Which conversations of the store make up this session (oldest branch first, the active one
+   * last); the store's root alone when absent.
+   */
+  conversationIds?: number[]
 }
 
 export interface DurableOpenResult {

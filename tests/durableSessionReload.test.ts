@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ResolvedModel } from '../electron/pi/durableSettings'
 import type { SidecarMessage } from '../electron/pi/sidecarTypes'
 import { prompt, setup, useSessionRoot, waitFor } from './helpers/durableSession'
+import { readable } from './helpers/forkSession'
 
 /**
  * Phase 8.3o: `reload_session` on a durable session: a full restart over the same store, so the
@@ -142,7 +143,7 @@ describe('durable reload_session', () => {
     })
     const requests: string[] = []
     const held: FauxResponseStep = async (context, options) => {
-      requests.push(JSON.stringify(context.messages))
+      requests.push(readable(context.messages))
       enter()
       await new Promise<void>((resolve, reject) => {
         void released.then(resolve)
@@ -151,7 +152,7 @@ describe('durable reload_session', () => {
       return fauxAssistantMessage([fauxText('never shown')], { stopReason: 'stop' as const })
     }
     const next: FauxResponseStep = async (context) => {
-      requests.push(JSON.stringify(context.messages))
+      requests.push(readable(context.messages))
       return fauxAssistantMessage([fauxText('after reload')], { stopReason: 'stop' as const })
     }
     const t = await setup({ persistent: true, responses: [held, next] })
@@ -169,7 +170,7 @@ describe('durable reload_session', () => {
       release()
       // One call for the held run, one for the new prompt: the aborted run did not start again.
       expect(requests).toHaveLength(2)
-      expect(requests[1]).not.toContain('"assistant"')
+      expect(requests[1]).not.toContain('assistant:')
       expect(requests[1]).toContain('next')
     } finally {
       release()
