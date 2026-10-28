@@ -1,11 +1,9 @@
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { fauxAssistantMessage, fauxText, type FauxResponseStep } from '@earendil-works/pi-ai'
+import { type FauxResponseStep } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
-import type { SidecarMessage } from '../electron/pi/sidecarTypes'
 import { prompt, setup, useSessionRoot } from './helpers/durableSession'
+import { answer, fork, idOf, lines, mentions, readies, textOf } from './helpers/forkSession'
 
 /**
  * Phase 8.3o: `fork_session` on a durable session: a new session, with its own id and file, whose
@@ -13,39 +11,6 @@ import { prompt, setup, useSessionRoot } from './helpers/durableSession'
  */
 
 useSessionRoot()
-
-const lineSchema = z.object({
-  type: z.string(),
-  id: z.string(),
-  message: z.object({ role: z.string(), content: z.unknown(), timestamp: z.number() }).optional(),
-})
-type Line = z.infer<typeof lineSchema>
-
-async function lines(path: string): Promise<Line[]> {
-  const text = await readFile(path, 'utf8')
-  return text
-    .trim()
-    .split('\n')
-    .map((line) => lineSchema.parse(JSON.parse(line)))
-}
-
-const textOf = (line: Line) => JSON.stringify(line.message?.content ?? '')
-const mentions = (all: Line[], word: string) => all.some((line) => textOf(line).includes(word))
-const idOf = (all: Line[], word: string): string => {
-  const found = all.find((line) => line.type === 'message' && textOf(line).includes(word))
-  if (!found) throw new Error(`no line mentions ${word}`)
-  return found.id
-}
-
-type Ready = Extract<SidecarMessage, { type: 'session_ready' }>
-const readies = (sent: SidecarMessage[]) =>
-  sent.filter((m): m is Ready => m.type === 'session_ready')
-const answer = (text: string) =>
-  fauxAssistantMessage([fauxText(text)], { stopReason: 'stop' as const })
-
-function fork(entryId: string, requestId = 'f1') {
-  return { type: 'fork_session' as const, entryId, workspaceTrusted: false, requestId }
-}
 
 async function twoTurns(third?: string) {
   const requests: string[] = []

@@ -59,6 +59,8 @@ interface Item {
   type: 'message' | 'session_info' | 'compaction'
   timestamp: string
   body: Record<string, unknown>
+  /** For a message: its role, which a synthetic renderer id also names. */
+  role?: string
   /** For a compaction: the pi-durable entry its summary keeps from. */
   keepFrom?: number
 }
@@ -101,6 +103,7 @@ function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): It
         source: entry.id,
         type: 'message',
         timestamp: header.startedAt,
+        role: 'bashExecution',
         body: { message: { role: 'bashExecution', ...bash.data } },
       })
       continue
@@ -109,6 +112,7 @@ function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): It
       items.push({
         source: entry.id,
         type: 'message',
+        role: message.role,
         timestamp: messageTimestamp(message, header.startedAt),
         body: { message },
       })
@@ -169,9 +173,11 @@ export function renderSessionJsonl(
  * The pi-durable entry behind an exported line, from the id the sidebar and renderer know it by.
  *
  * Line ids are positional and deterministic, so re-rendering the same history yields the ids the
- * file has. While a reply streams, the renderer only has synthetic ids (`u-{ms}` / `a-{ms}`, the
- * message timestamp); those are matched against the exported messages' timestamps, as the SDK
- * path does against its entries.
+ * file has. The renderer only knows a message by a synthetic id (`u-{ms}` / `a-{ms}`: role and
+ * timestamp) until it next reads the file, which is every message of the current session; those
+ * are matched on role and timestamp. Two messages of one role can share a timestamp (pi-durable
+ * places a steer and a follow-up in one commit), and then the id does not say which is meant: that
+ * is an error, never a guess.
  */
 export function resolveLineEntry(
   header: SessionFileHeader,
@@ -184,7 +190,14 @@ export function resolveLineEntry(
   const synthetic = /^[ua]-(-?\d+)$/.exec(lineId)
   if (!synthetic) return undefined
   const at = Number(synthetic[1])
-  return items.find((item) => item.type === 'message' && Date.parse(item.timestamp) === at)?.source
+  const role = lineId.startsWith('u') ? 'user' : 'assistant'
+  const matches = items.filter((item) => item.role === role && Date.parse(item.timestamp) === at)
+  if (matches.length > 1) {
+    throw new Error(
+      `Cannot fork: ${lineId} is ambiguous, ${matches.length} ${role} messages were sent at the same moment`
+    )
+  }
+  return matches[0]?.source
 }
 
 /** Header id of an existing file, or undefined when it is empty or not a v3 session. */

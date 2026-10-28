@@ -8,6 +8,7 @@ import {
 import { runCompact } from './durableCompact'
 import { forkSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
+import { inspectOpened } from './durableOpen'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
   ActiveSession,
@@ -50,14 +51,20 @@ function isUnsupported(type: SidecarCommand['type']): boolean {
 export function createDurableSessions(deps: DurableSessionDeps): DurableSessions {
   let active: ActiveSession | null = null
 
+  /** Write the session file; throws when it cannot be written. */
+  async function exportStrict(session: ActiveSession): Promise<void> {
+    await session.harness.exportSession(session.identity.sessionFile, {
+      sessionId: session.identity.sessionId,
+      cwd: session.cwd,
+      startedAt: session.startedAt,
+    })
+    deps.send({ type: 'session_index_updated' })
+  }
+
+  /** Write the session file after a change; a failure is logged, since the session itself is fine. */
   async function exportNow(session: ActiveSession): Promise<void> {
     try {
-      await session.harness.exportSession(session.identity.sessionFile, {
-        sessionId: session.identity.sessionId,
-        cwd: session.cwd,
-        startedAt: session.startedAt,
-      })
-      deps.send({ type: 'session_index_updated' })
+      await exportStrict(session)
     } catch (error) {
       deps.log('error', `[durable] session export failed: ${errorText(error)}`)
     }
@@ -76,37 +83,6 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  /** What `session_ready` reports about a freshly opened harness. */
-  async function inspectOpened(opened: DurableOpenResult, options: DurableStartOptions) {
-    const { harness } = opened
-    const agent = await harness.agentState()
-    // A reopened session keeps the model it was using, which may not be today's default. A new
-    // one was opened with its model, so there is nothing to look up.
-    let { model, thinkingLevels } = opened
-    if (
-      options.resume &&
-      agent.model &&
-      (model?.provider !== agent.model.provider || model?.id !== agent.model.modelId)
-    ) {
-      const stored = await deps
-        .resolveModel(agent.model.provider, agent.model.modelId)
-        .catch((error) => {
-          deps.log('warn', `[durable] looking up the stored model failed: ${errorText(error)}`)
-          return undefined
-        })
-      if (stored) ({ info: model, thinkingLevels } = stored)
-      else {
-        deps.log(
-          'warn',
-          `[durable] stored model ${agent.model.provider}/${agent.model.modelId} is not available; ` +
-            `reporting ${model?.provider}/${model?.id}, though the session still uses the stored one`
-        )
-      }
-    }
-    const sessionName = options.resume ? (await harness.stats()).sessionName : null
-    return { agent, model, thinkingLevels, sessionName }
-  }
-
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
     const identity = options.resume?.identity ?? deps.newIdentity(cwd)
@@ -116,7 +92,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     // and MCP connections open with nothing able to close them.
     let ready: Awaited<ReturnType<typeof inspectOpened>>
     try {
-      ready = await inspectOpened(opened, options)
+      ready = await inspectOpened(deps, opened, options)
     } catch (error) {
       await harness.close().catch((closeError) => {
         deps.log('warn', `[durable] closing after a failed start: ${errorText(closeError)}`)
@@ -141,8 +117,16 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       closing: false,
     }
     active = session
-    // A reopened or forked session already has a history, and the renderer reads it from the file.
-    if (options.resume) await exportNow(session)
+    // A reopened or forked session already has a history, and the renderer reads it from the file:
+    // announcing the session without that file would show an empty conversation as a success.
+    if (options.resume) {
+      try {
+        await exportStrict(session)
+      } catch (error) {
+        await stop()
+        throw error
+      }
+    }
     deps.send({
       type: 'session_ready',
       requestId: options.requestId,
@@ -213,7 +197,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
-  const flow: FlowOps = { exportNow, start, newIdentity: deps.newIdentity, now: deps.now }
+  const flow: FlowOps = {
+    exportNow,
+    start,
+    newIdentity: deps.newIdentity,
+    now: deps.now,
+    log: deps.log,
+  }
 
   const view = (session: ActiveSession): InfoSource => ({
     model: session.model,

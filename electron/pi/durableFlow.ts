@@ -1,4 +1,5 @@
 import type { DurableIdentity, ActiveSession, DurableStartOptions } from './durableTypes'
+import { errorText } from './durablePrompt'
 import type { SidecarCommand } from './sidecarTypes'
 
 /**
@@ -12,6 +13,7 @@ export interface FlowOps {
   start: (cwd: string, options: DurableStartOptions) => Promise<void>
   newIdentity: (cwd: string) => DurableIdentity
   now: () => Date
+  log: (level: 'info' | 'warn' | 'error', text: string) => void
 }
 
 /**
@@ -59,9 +61,23 @@ export async function forkSession(
   session.abortRequested = true
   await session.harness.abort()
   await ops.exportNow(session)
-  await ops.start(session.cwd, {
-    workspaceTrusted: cmd.workspaceTrusted,
-    requestId: cmd.requestId,
-    resume: { identity, startedAt: ops.now().toISOString() },
-  })
+  try {
+    await ops.start(session.cwd, {
+      workspaceTrusted: cmd.workspaceTrusted,
+      requestId: cmd.requestId,
+      resume: { identity, startedAt: ops.now().toISOString() },
+    })
+  } catch (error) {
+    // The parent is stopped by now; without it the user is left with no session while the renderer
+    // shows the parent. No `requestId`: that request fails with this error, it is not answered.
+    await ops
+      .start(session.cwd, {
+        workspaceTrusted: session.workspaceTrusted,
+        resume: { identity: session.identity, startedAt: session.startedAt },
+      })
+      .catch((restoreError) =>
+        ops.log('error', `[durable] could not restore the parent: ${errorText(restoreError)}`)
+      )
+    throw error
+  }
 }
