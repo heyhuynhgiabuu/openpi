@@ -22,6 +22,14 @@ const stamp = { lines: 1, lastLineId: '00000008' }
 
 const line = (value: unknown) => `${JSON.stringify(value)}\n`
 
+/**
+ * A header plus the body line its stamp names, so a case fails for the reason it is about: without
+ * the body, every marker here would be refused for the missing line and no schema rule would be
+ * exercised at all.
+ */
+const stamped = (marker: unknown) =>
+  `${line({ type: 'session', version: 3, id: 'sess-1', timestamp: header.startedAt, [DURABLE_HEADER_KEY]: marker })}${line({ type: 'message', id: stamp.lastLineId, parentId: null })}`
+
 describe('durable session file header', () => {
   it('round-trips the store id and the conversations through the export', () => {
     const { text } = renderSessionTree({ ...header, durable }, [[message]])
@@ -48,7 +56,6 @@ describe('durable session file header', () => {
   })
 
   it('refuses a marker it cannot fully trust, rather than guessing at a store', () => {
-    const base = { type: 'session', version: 3, id: 'sess-1', timestamp: header.startedAt }
     for (const marker of [
       { storeId: '', conversationIds: [1], ...stamp },
       { storeId: 'store-1', ...stamp },
@@ -61,7 +68,7 @@ describe('durable session file header', () => {
       { storeId: 'store-1', conversationIds: [1] },
       'store-1',
     ]) {
-      expect(readResumeTarget(line({ ...base, [DURABLE_HEADER_KEY]: marker }))).toBeUndefined()
+      expect(readResumeTarget(stamped(marker))).toBeUndefined()
     }
   })
 
