@@ -10,7 +10,7 @@ import type { SessionReadyPayload, SidecarCommand } from './sidecarTypes'
  * unsupported thinking level is refused with a log line instead of being silently clamped.
  */
 
-export type ResolvedModel = {
+export interface ResolvedModel {
   info: NonNullable<SessionReadyPayload['model']>
   /** Levels this model supports, in pi-ai's order. */
   thinkingLevels: readonly ModelThinkingLevel[]
@@ -58,7 +58,30 @@ function persistQuietly(deps: SettingsDeps, what: string, save: () => void): voi
   }
 }
 
-export async function applySettingsCommand(
+/**
+ * The command queue lets these run concurrently, but they depend on each other: `set_thinking`
+ * validates against the supported levels of whatever model is current, and a `set_model` that is
+ * still resolving has not updated them yet. So one session's settings commands run in arrival order.
+ */
+const settingsQueues = new WeakMap<SettingsTarget, Promise<unknown>>()
+
+export function applySettingsCommand(
+  cmd: SettingsCommand,
+  session: SettingsTarget,
+  deps: SettingsDeps,
+  afterChange: () => Promise<void>
+): Promise<void> {
+  const previous = settingsQueues.get(session) ?? Promise.resolve()
+  const run = previous.then(() => applyNow(cmd, session, deps, afterChange))
+  // The stored tail swallows failures, so one rejected command does not block the next.
+  settingsQueues.set(
+    session,
+    run.catch(() => undefined)
+  )
+  return run
+}
+
+async function applyNow(
   cmd: SettingsCommand,
   session: SettingsTarget,
   deps: SettingsDeps,

@@ -136,6 +136,54 @@ describe('durable set_model', () => {
   })
 })
 
+describe('durable settings ordering', () => {
+  const DEEP: ResolvedModel = {
+    info: { id: 'deep', name: 'Deep', provider: 'faux', reasoning: true, contextWindow: 4000 },
+    thinkingLevels: ['off', 'low', 'high', 'xhigh'],
+  }
+
+  it('runs a thinking change after a model change that is still resolving', async () => {
+    let open = () => {}
+    const resolveGate = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    const t = await setup({ knownModels: { 'faux/deep': DEEP }, resolveGate })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      // The first model has no 'xhigh'; only the model being switched to does.
+      const switching = t.sessions.handleCommand({
+        type: 'set_model',
+        provider: 'faux',
+        modelId: 'deep',
+      })
+      const thinking = t.sessions.handleCommand({ type: 'set_thinking', level: 'xhigh' })
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      open()
+      await Promise.all([switching, thinking])
+
+      expect(t.logs.join('\n')).not.toContain('not supported')
+      expect((await t.harnesses[0]?.agentState())?.thinkingLevel).toBe('xhigh')
+      expect(t.persisted).toEqual(['model:faux/deep', 'thinking:xhigh'])
+    } finally {
+      await t.sessions.stop()
+    }
+  }, 30_000)
+
+  it('does not let a command that rejects block the next one', async () => {
+    const t = await setup({ failResolve: true })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      await expect(
+        t.sessions.handleCommand({ type: 'set_model', provider: 'faux', modelId: 'deep' })
+      ).rejects.toThrow(/registry offline/)
+      await t.sessions.handleCommand({ type: 'set_thinking', level: 'high' })
+      expect((await t.harnesses[0]?.agentState())?.thinkingLevel).toBe('high')
+    } finally {
+      await t.sessions.stop()
+    }
+  }, 30_000)
+})
+
 describe('durable set_session_name', () => {
   it('names the session for the sidebar and for get_session_info', async () => {
     const t = await setup({ answers: ['an answer'] })

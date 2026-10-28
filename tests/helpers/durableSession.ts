@@ -42,6 +42,10 @@ export async function setup(
     failOpen?: boolean
     /** Models `resolveModel` knows, by `provider/modelId`; the faux model is always known. */
     knownModels?: Record<string, ResolvedModel>
+    /** Hold every `resolveModel` call open until this resolves. */
+    resolveGate?: Promise<void>
+    /** Make `resolveModel` reject (the model registry is unavailable). */
+    failResolve?: boolean
     /** Make persisting the default model/thinking level throw. */
     failPersist?: boolean
   } = {}
@@ -66,7 +70,11 @@ export async function setup(
     log: (level, text) => logs.push(`${level}: ${text}`),
     newIdentity: () => identity,
     now: () => new Date('2026-10-27T00:00:00.000Z'),
-    resolveModel: async (provider, modelId) => options.knownModels?.[`${provider}/${modelId}`],
+    resolveModel: async (provider, modelId) => {
+      await options.resolveGate
+      if (options.failResolve) throw new Error('registry offline')
+      return options.knownModels?.[`${provider}/${modelId}`]
+    },
     open: async () => {
       if (options.failOpen) throw new Error('no default model')
       const harness = await openDurableHarness({
