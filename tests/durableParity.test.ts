@@ -130,7 +130,8 @@ describe('durable harness event feed', () => {
     })
     try {
       await harness.prompt('hello')
-      expect(seen[0]).toBe('snapshot')
+      // The snapshot only seeds the translator; the renderer is never sent it.
+      expect(seen).not.toContain('snapshot')
       // The adapter speaks the renderer's vocabulary, not pi-durable's.
       expect(seen).toContain('agent_start')
       expect(seen).toContain('message_end')
