@@ -5,8 +5,9 @@ import {
   type SettingsDeps,
   type SettingsPersist,
 } from './durableSettings'
+import { counted, countedUnlessAborted, newActivity } from './durableActivity'
 import { runCompact } from './durableCompact'
-import { forkSession, reloadSession, type FlowOps } from './durableFlow'
+import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
 import { inspectOpened } from './durableOpen'
 import type { SidecarCommand } from './sidecarTypes'
@@ -38,15 +39,6 @@ export type {
  * This factory takes its collaborators as parameters instead of importing the sidecar context, so
  * it is testable with a real harness and no parent process.
  */
-
-/** Commands that act on the live session and have no durable implementation yet. */
-const UNSUPPORTED_SESSION_COMMANDS = [
-  'navigate_tree',
-] as const satisfies readonly SidecarCommand['type'][]
-
-function isUnsupported(type: SidecarCommand['type']): boolean {
-  return (UNSUPPORTED_SESSION_COMMANDS as readonly string[]).includes(type)
-}
 
 export function createDurableSessions(deps: DurableSessionDeps): DurableSessions {
   let active: ActiveSession | null = null
@@ -83,6 +75,15 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
+  /** Follow the harness's current conversation; again after it moves to another branch. */
+  async function attachEvents(session: ActiveSession): Promise<void> {
+    session.stopEvents = await session.harness.watchEvents((event) => {
+      if (event.type === 'agent_start') session.streaming = true
+      if (event.type === 'agent_end') session.streaming = false
+      deps.send({ type: 'session_event', event })
+    })
+  }
+
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
     const identity = options.resume?.identity ?? deps.newIdentity(cwd)
@@ -115,6 +116,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       streaming: false,
       abortRequested: false,
       closing: false,
+      activity: newActivity(),
     }
     active = session
     // A reopened or forked session already has a history, and the renderer reads it from the file:
@@ -142,11 +144,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     // After `session_ready`: the renderer resets conversation state on ready, so the snapshot the
     // event feed opens with would be discarded if it arrived first.
     try {
-      session.stopEvents = await harness.watchEvents((event) => {
-        if (event.type === 'agent_start') session.streaming = true
-        if (event.type === 'agent_end') session.streaming = false
-        deps.send({ type: 'session_event', event })
-      })
+      await attachEvents(session)
     } catch (error) {
       await stop()
       throw error
@@ -169,7 +167,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!session) return
     const text = promptText(cmd)
     session.abortRequested = false
-    reportUnanswered(session, await session.harness.prompt(text))
+    const result = await countedUnlessAborted(session.activity, () => session.harness.prompt(text))
+    if (result) reportUnanswered(session, result)
     await exportNow(session)
   }
 
@@ -184,7 +183,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!session) return
     const text = promptText(cmd)
     session.abortRequested = false
-    const queued = await session.harness.queue(text, cmd.type === 'steer' ? 'steer' : 'followUp')
+    const mode = cmd.type === 'steer' ? 'steer' : 'followUp'
+    const queued = await countedUnlessAborted(session.activity, () =>
+      session.harness.queue(text, mode)
+    )
+    if (!queued) return
     void queued.settled
       .then(async (result) => {
         if (session.closing) return
@@ -203,6 +206,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     newIdentity: deps.newIdentity,
     now: deps.now,
     log: deps.log,
+    send: deps.send,
+    reattachEvents: attachEvents,
   }
 
   const view = (session: ActiveSession): InfoSource => ({
@@ -225,7 +230,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (isSettingsCommand(cmd)) {
       const session = active
-      await applySettingsCommand(cmd, session, deps, () => exportNow(session))
+      // Counted, and after any navigation in progress: a change made meanwhile must land on the
+      // branch the session ends up on, not the one it is leaving.
+      await counted(session.activity, 'replies', () =>
+        applySettingsCommand(cmd, session, deps, () => exportNow(session))
+      )
       return true
     }
     if (isInfoCommand(cmd)) {
@@ -235,15 +244,20 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (cmd.type === 'execute_bash') {
       const session = active
-      const result = await session.harness.executeBash(cmd.command, {
-        excludeFromContext: cmd.excludeFromContext,
-      })
+      // Counted, so a command is neither recorded on a branch being left nor overlapped by one.
+      const result = await counted(session.activity, 'replies', () =>
+        session.harness.executeBash(cmd.command, { excludeFromContext: cmd.excludeFromContext })
+      )
       deps.send({ type: 'bash_result', requestId: cmd.requestId, result })
       await exportNow(session)
       return true
     }
     if (cmd.type === 'fork_session') {
       await forkSession(active, cmd, flow)
+      return true
+    }
+    if (cmd.type === 'navigate_tree') {
+      await navigateSession(active, cmd, flow)
       return true
     }
     if (cmd.type === 'reload_session') {
@@ -254,20 +268,21 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       const session = active
       // A run the compaction cuts short is not a failure to report.
       session.abortRequested = true
-      if (await runCompact(session.harness, cmd, deps.send)) await exportNow(session)
+      const compacted = await counted(session.activity, 'maintenance', () =>
+        runCompact(session.harness, cmd, deps.send)
+      )
+      if (compacted) await exportNow(session)
       return true
     }
     if (cmd.type === 'abort') {
       active.abortRequested = true
+      active.activity.aborts += 1
       await active.harness.abort()
       return true
     }
     if (cmd.type === 'stop') {
       await stop()
       return false
-    }
-    if (isUnsupported(cmd.type)) {
-      throw new Error(`'${cmd.type}' is not supported on the durable runtime yet`)
     }
     return false
   }

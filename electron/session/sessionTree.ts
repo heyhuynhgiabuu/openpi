@@ -4,6 +4,7 @@
  */
 
 import type { TreeEntryNode, TreeEntryType } from '../../src/lib/ipc'
+import { BRANCH_MARKER_TYPE } from './branchMarker'
 import type { SessionEntry } from './sessionEntries'
 import { contentToText, isRecord, truncate } from './sessionEntryUtils'
 
@@ -108,6 +109,10 @@ export function displayHiddenEntryIds(entries: SessionEntry[]): Set<string> {
   const hidden = new Set<string>()
   for (const entry of entries) {
     if (entry.type === 'usage') {
+      hidden.add(entry.id)
+      continue
+    }
+    if (entry.type === 'custom' && entry.customType === BRANCH_MARKER_TYPE) {
       hidden.add(entry.id)
       continue
     }

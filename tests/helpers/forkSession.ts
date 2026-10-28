@@ -8,6 +8,7 @@ import type { SidecarMessage } from '../../electron/pi/sidecarTypes'
 const lineSchema = z.object({
   type: z.string(),
   id: z.string(),
+  parentId: z.string().nullable().optional(),
   message: z.object({ role: z.string(), content: z.unknown(), timestamp: z.number() }).optional(),
 })
 export type Line = z.infer<typeof lineSchema>
@@ -37,4 +38,28 @@ export const answer = (text: string) =>
 
 export function fork(entryId: string, requestId = 'f1') {
   return { type: 'fork_session' as const, entryId, workspaceTrusted: false, requestId }
+}
+
+const textPart = z.object({ type: z.literal('text'), text: z.string() })
+
+function partText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part: unknown) => {
+      const parsed = textPart.safeParse(part)
+      return parsed.success ? parsed.data.text : ''
+    })
+    .join('')
+}
+
+/**
+ * What the model could read in a request: each message's role and text, nothing else. Searching the
+ * raw JSON instead also scans random ids and timestamps, where a short word like `q2` turns up by
+ * chance now and then.
+ */
+export function readable(messages: readonly { role: string }[]): string {
+  return messages
+    .map((message) => `${message.role}: ${partText('content' in message ? message.content : '')}`)
+    .join('\n')
 }

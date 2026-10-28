@@ -15,10 +15,10 @@ import {
   defineExtension,
   hook,
 } from '@earendil-works/pi-durable'
-import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
+import type { Conversation, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
-import { bashEntryDraft, createBashRunner, type BashRecord, type BashResult } from './bash'
+import { createBashRunner, runAndRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
 import { answerText, toView } from './view'
 import { policyToolHooks } from './policy'
@@ -30,20 +30,17 @@ import { loadDurableMcpConfig } from './mcpConfig'
 import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { attachDurableEvents } from './events'
+import { busyWith } from './activity'
 import { runCompaction } from './compaction'
-import { readHistory } from './history'
+import { activeBranch, forkAtLine, navigate, readAll } from './branches'
 import { conversationIdOf } from './ids'
-import {
-  resolveLineEntry,
-  writeSessionFile,
-  type SessionFileHeader,
-  type SessionFileResult,
-} from './sessionFile'
+import { writeSessionTree, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {
   DurableHarness,
   DurableCompaction,
   DurableHarnessOptions,
+  DurableNavigation,
   DurableModelRef,
   DurableSubmitResult,
   DurableView,
@@ -121,12 +118,16 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   }
   const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
   if (options.workspacePath) agent.cwd = options.workspacePath
-  // A forked session lives in its own conversation of the same store; any other uses the root.
-  const root =
-    options.conversationId === undefined
-      ? await harness.root(ctx, { agent })
-      : await harness.conversation(conversationIdOf(options.conversationId), ctx)
-  if (!root) throw new Error(`conversation ${options.conversationId} not found in the store`)
+  // A forked or navigated session lives in its own conversations of the store; any other uses the root.
+  const branches: Conversation[] = []
+  for (const id of options.conversationIds ?? []) {
+    const branch = await harness.conversation(conversationIdOf(id), ctx)
+    if (!branch) throw new Error(`conversation ${id} not found in the store`)
+    branches.push(branch)
+  }
+  if (branches.length === 0) branches.push(await harness.root(ctx, { agent }))
+  // The active branch: the last. `navigate` moves it to a fork.
+  let root = activeBranch(branches)
 
   // `/template args` expands at invocation time, not in the prompt section.
   const expand = (text: string): string =>
@@ -253,33 +254,34 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     },
 
     async exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult> {
-      // The file is the archive of the conversation: its whole history, not the active context.
-      return writeSessionFile(path, header, await readHistory(root, ctx))
+      // The file is the archive of the session: every branch's whole history, not the active context.
+      return writeSessionTree(path, header, await readAll(branches, ctx))
     },
 
     async fork(lineId: string, header: SessionFileHeader): Promise<number> {
-      const at = resolveLineEntry(header, await readHistory(root, ctx), lineId)
-      if (at === undefined) throw new Error(`Cannot fork: entry not found (${lineId})`)
-      // The fork shares the entries up to and including `at` and leaves this conversation as it is.
-      const forked = await root.fork(at, { ownership: { kind: 'ownerless' } }, ctx)
-      return Number(forked.id)
+      return Number((await forkAtLine(branches, header, lineId, ctx)).id)
+    },
+
+    async navigate(lineId: string, header: SessionFileHeader): Promise<DurableNavigation> {
+      const outcome = await navigate(harness, branches, header, lineId, ctx)
+      root = activeBranch(branches)
+      return outcome
+    },
+
+    busy() {
+      return busyWith(harness, ctx)
+    },
+
+    conversationIds(): number[] {
+      return branches.map((branch) => Number(branch.id))
     },
 
     compact(instructions?: string): Promise<DurableCompaction> {
       return runCompaction(harness, root, instructions, ctx)
     },
 
-    async executeBash(
-      command: string,
-      bash?: { excludeFromContext?: boolean }
-    ): Promise<BashResult> {
-      const result = await bashRunner.run(command, workspace)
-      const record: BashRecord = { ...result, command, timestamp: Date.now() }
-      if (bash?.excludeFromContext !== undefined)
-        record.excludeFromContext = bash.excludeFromContext
-      const submission = await root.submit({ type: 'write', entry: bashEntryDraft(record) }, ctx)
-      await submission.wait(ctx)
-      return result
+    executeBash(command: string, bash?: { excludeFromContext?: boolean }): Promise<BashResult> {
+      return runAndRecord(bashRunner, root, ctx, command, workspace, bash?.excludeFromContext)
     },
 
     async close(): Promise<void> {

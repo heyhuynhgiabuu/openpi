@@ -4,6 +4,7 @@ import {
   buildTreeNodes,
   collectLeaves,
   countBranches,
+  displayHiddenEntryIds,
   entryToTreeNode,
   nearestVisibleAncestor,
   traceToRoot,
@@ -12,6 +13,7 @@ import {
 /** Fields the fixtures vary; the rest of an entry is fixed by `entry()`. */
 interface EntryFields {
   type?: string
+  customType?: string
   message?: { role: string; content: unknown }
   reason?: string
   result?: { tokensBefore?: number; summary?: string }
@@ -208,5 +210,27 @@ describe('entryToTreeNode', () => {
     const node = entryToTreeNode(entry('u', null, { type: 'bashExecution' }))
     expect(node.summary).toBeUndefined()
     expect(node.contentPreview).toBeUndefined()
+  })
+})
+
+describe('the durable runtime branch marker', () => {
+  const user = { role: 'user', content: 'hi' }
+  const entries = [
+    entry('q1', null, { message: user }),
+    entry('a1', 'q1', { message: { role: 'assistant', content: 'ok' } }),
+    entry('m', 'a1', { type: 'custom', customType: 'openpi.branch' }),
+    entry('q3', 'm', { message: user }),
+  ]
+
+  it('is hidden, so the map and trajectory pass through it', () => {
+    expect([...displayHiddenEntryIds(entries)]).toEqual(['m'])
+    expect(
+      nearestVisibleAncestor('m', new Map(entries.map((e) => [e.id, e])), new Set(['m']))
+    ).toBe('a1')
+  })
+
+  it('leaves other extension entries visible', () => {
+    const other = [entry('c', null, { type: 'custom', customType: 'something.else' })]
+    expect([...displayHiddenEntryIds(other)]).toEqual([])
   })
 })

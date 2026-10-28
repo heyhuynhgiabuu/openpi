@@ -70,12 +70,23 @@ export interface DurableHarnessOptions {
   tools?: boolean
   /** Compaction policy overrides, e.g. a small `keepRecentTokens` so a short conversation compacts (tests). */
   compaction?: { keepRecentTokens?: number }
-  /** Open this conversation of the store instead of its root: a forked session's own. */
-  conversationId?: number
+  /**
+   * Open these conversations of the store (oldest branch first, the active one last) instead of
+   * the root: a forked or navigated session's own.
+   */
+  conversationIds?: number[]
   /** Read `.mcp.json` and bridge its servers (requires `projectTrusted` for the project file). */
   mcp?: boolean
   /** Whether the workspace is trusted, gating `.pi/mcp.json` and project extensions. */
   projectTrusted?: boolean
+}
+
+/** What a `navigate_tree` did: the new leaf's line (null before the first message), and any text to edit. */
+export interface DurableNavigation {
+  /** False when the leaf was already there, so no branch was made. */
+  switched: boolean
+  leafLineId: string | null
+  editorText?: string
 }
 
 export interface DurableHarness {
@@ -104,6 +115,15 @@ export interface DurableHarness {
    * including that entry; this conversation is unchanged. Returns the fork's conversation id.
    */
   fork(lineId: string, header: SessionFileHeader): Promise<number>
+  /**
+   * Move the session's leaf to an exported line, as the SDK's `navigateTree`: the conversation
+   * continues from there in a new branch (a fork), and the abandoned one stays in the export.
+   */
+  navigate(lineId: string, header: SessionFileHeader): Promise<DurableNavigation>
+  /** What the store is doing now: a compaction, any other live work, or nothing. */
+  busy(): Promise<'compaction' | 'reply' | undefined>
+  /** The conversations of this session, oldest branch first, the active one last. */
+  conversationIds(): number[]
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
   stats(): Promise<DurableStats>
   /**

@@ -131,7 +131,7 @@ export async function setup(
         backend: options.persistent ? 'jsonl' : 'memory',
         // One store per session, as in production (`durableHost.ts`).
         directory: join(root, 'store', opening.storeId ?? opening.sessionId),
-        conversationId: opening.conversationId,
+        conversationIds: opening.conversationIds,
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,

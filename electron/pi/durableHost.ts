@@ -46,7 +46,7 @@ async function open(
   const harness = await openDurableHarness({
     backend: 'jsonl',
     directory: join(agentDir, 'durable', identity.storeId ?? identity.sessionId),
-    conversationId: identity.conversationId,
+    conversationIds: identity.conversationIds,
     model: { provider, modelId },
     // The SDK's model runtime implements `Models`: auth.json, models.json and OAuth are shared.
     models: modelRuntime,

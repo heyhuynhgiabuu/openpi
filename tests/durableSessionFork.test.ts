@@ -3,7 +3,16 @@ import { type FauxResponseStep } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { describe, expect, it } from 'vitest'
 import { prompt, setup, useSessionRoot } from './helpers/durableSession'
-import { answer, fork, idOf, lines, mentions, readies, textOf } from './helpers/forkSession'
+import {
+  answer,
+  fork,
+  idOf,
+  lines,
+  mentions,
+  readable,
+  readies,
+  textOf,
+} from './helpers/forkSession'
 
 /**
  * Phase 8.3o: `fork_session` on a durable session: a new session, with its own id and file, whose
@@ -17,7 +26,7 @@ async function twoTurns(third?: string) {
   const recording =
     (text: string): FauxResponseStep =>
     async (context) => {
-      requests.push(JSON.stringify(context.messages))
+      requests.push(readable(context.messages))
       return answer(text)
     }
   const t = await setup({
@@ -98,7 +107,7 @@ describe('durable fork_session', () => {
     try {
       await t.sessions.handleCommand(fork(idOf(await lines(t.identity.sessionFile), 'a1')))
       const file = readies(t.sent).at(-1)?.payload.sessionFile ?? ''
-      const context = JSON.stringify(
+      const context = readable(
         SessionManager.open(file, undefined, '/work').buildSessionContext().messages
       )
       expect(context).toContain('q1')
@@ -180,7 +189,7 @@ describe('durable fork_session', () => {
       return answer('never shown')
     }
     const next: FauxResponseStep = async (context) => {
-      requests.push(JSON.stringify(context.messages))
+      requests.push(readable(context.messages))
       return answer('after fork')
     }
     const t = await setup({ persistent: true, responses: [answer('a1'), held, next] })

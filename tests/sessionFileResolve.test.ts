@@ -1,6 +1,7 @@
 import type { AssistantMessage, UserMessage } from '@earendil-works/pi-ai'
 import { describe, expect, it } from 'vitest'
 import type { EntryRecord } from '../electron/pi/durable/wire'
+import { lineIdFor } from '../electron/pi/durable/sessionItems'
 import { resolveLineEntry } from '../electron/pi/durable/sessionFile'
 import { assistant, conversationId, entryId } from './helpers/wireEvents'
 
@@ -27,13 +28,13 @@ function reply(id: number, text: string, timestamp: number): EntryRecord {
 }
 
 describe('resolveLineEntry', () => {
-  // Entry ids are not dense in pi-durable, so a line's position is not its entry's id.
+  // Entry ids are not dense in pi-durable; a line's id comes from its entry, not its position.
   const entries = [user(7, 'q1', 1000), reply(10, 'a1', 2000), user(11, 'q2', 3000)]
 
-  it('resolves a positional line id to the entry behind that line', () => {
-    expect(resolveLineEntry(header, entries, '00000001')).toBe(7)
-    expect(resolveLineEntry(header, entries, '00000002')).toBe(10)
-    expect(resolveLineEntry(header, entries, '00000003')).toBe(11)
+  it('resolves a line id to the entry behind that line', () => {
+    expect(resolveLineEntry(header, entries, lineIdFor(entryId(7), 0))).toBe(7)
+    expect(resolveLineEntry(header, entries, lineIdFor(entryId(10), 0))).toBe(10)
+    expect(resolveLineEntry(header, entries, lineIdFor(entryId(11), 0))).toBe(11)
   })
 
   it('resolves a synthetic id by role and timestamp', () => {

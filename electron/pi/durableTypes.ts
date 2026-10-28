@@ -1,5 +1,6 @@
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { DurableHarness } from './durable/types'
+import type { Activity } from './durableActivity'
 import type { SettingsDeps, SettingsPersist } from './durableSettings'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
@@ -11,8 +12,11 @@ export interface DurableIdentity {
   sessionFile: string
   /** Which store holds the conversation; the session's own id unless it was forked from another. */
   storeId?: string
-  /** Which conversation of the store this session is; the store's root when absent. */
-  conversationId?: number
+  /**
+   * Which conversations of the store make up this session (oldest branch first, the active one
+   * last); the store's root alone when absent.
+   */
+  conversationIds?: number[]
 }
 
 export interface DurableOpenResult {
@@ -57,6 +61,8 @@ export interface ActiveSession {
   streaming: boolean
   /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
   abortRequested: boolean
+  /** What is in flight, so that a navigation can refuse to overlap it. */
+  activity: Activity
   /** Set before shutdown: queued messages still settling must not report or export afterwards. */
   closing: boolean
 }
