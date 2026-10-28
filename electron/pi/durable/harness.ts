@@ -18,7 +18,7 @@ import {
 import type { Conversation, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
-import { bashEntryDraft, createBashRunner, type BashRecord, type BashResult } from './bash'
+import { createBashRunner, runAndRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
 import { answerText, toView } from './view'
 import { policyToolHooks } from './policy'
@@ -30,6 +30,7 @@ import { loadDurableMcpConfig } from './mcpConfig'
 import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { attachDurableEvents } from './events'
+import { busyWith } from './activity'
 import { runCompaction } from './compaction'
 import { activeBranch, forkAtLine, navigate, readAll } from './branches'
 import { conversationIdOf } from './ids'
@@ -267,6 +268,10 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return outcome
     },
 
+    busy() {
+      return busyWith(harness, ctx)
+    },
+
     conversationIds(): number[] {
       return branches.map((branch) => Number(branch.id))
     },
@@ -275,17 +280,8 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return runCompaction(harness, root, instructions, ctx)
     },
 
-    async executeBash(
-      command: string,
-      bash?: { excludeFromContext?: boolean }
-    ): Promise<BashResult> {
-      const result = await bashRunner.run(command, workspace)
-      const record: BashRecord = { ...result, command, timestamp: Date.now() }
-      if (bash?.excludeFromContext !== undefined)
-        record.excludeFromContext = bash.excludeFromContext
-      const submission = await root.submit({ type: 'write', entry: bashEntryDraft(record) }, ctx)
-      await submission.wait(ctx)
-      return result
+    executeBash(command: string, bash?: { excludeFromContext?: boolean }): Promise<BashResult> {
+      return runAndRecord(bashRunner, root, ctx, command, workspace, bash?.excludeFromContext)
     },
 
     async close(): Promise<void> {

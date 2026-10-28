@@ -1,5 +1,6 @@
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { DurableHarness } from './durable/types'
+import type { Activity } from './durableActivity'
 import type { SettingsDeps, SettingsPersist } from './durableSettings'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
@@ -60,6 +61,8 @@ export interface ActiveSession {
   streaming: boolean
   /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
   abortRequested: boolean
+  /** What is in flight, so that a navigation can refuse to overlap it. */
+  activity: Activity
   /** Set before shutdown: queued messages still settling must not report or export afterwards. */
   closing: boolean
 }

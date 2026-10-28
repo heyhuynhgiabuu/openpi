@@ -12,6 +12,7 @@ import {
   readable,
   readies,
   textOf,
+  type Line,
 } from './helpers/forkSession'
 
 /**
@@ -49,6 +50,23 @@ async function twoTurns(more = 3) {
   return { t, requests }
 }
 
+const markerOf = (all: Line[]): Line => {
+  const marker = all.find((line) => line.type === 'custom')
+  if (!marker) throw new Error('no branch marker in the file')
+  return marker
+}
+
+/** Ids from a line's parent up to the root. */
+function ancestry(all: Line[], line: Line | undefined): string[] {
+  const ids: string[] = []
+  let cursor = line?.parentId ?? null
+  while (cursor !== null) {
+    ids.push(cursor)
+    cursor = all.find((candidate) => candidate.id === cursor)?.parentId ?? null
+  }
+  return ids
+}
+
 describe('durable navigate_tree', () => {
   it('continues from an earlier reply in the same file, as a branch', async () => {
     const { t, requests } = await twoTurns()
@@ -66,7 +84,9 @@ describe('durable navigate_tree', () => {
       // Nothing was lost and nothing is written twice; the new message hangs off the chosen line.
       expect(after.slice(0, before.length)).toEqual(before)
       const q3 = after.find((line) => textOf(line).includes('q3'))
-      expect(q3?.parentId).toBe(a1)
+      // The branch opens with a marker entry, which hangs off the chosen line.
+      expect(ancestry(after, q3).slice(0, 2)).toEqual([markerOf(after).id, a1])
+      expect(markerOf(after).type).toBe('custom')
       expect(after.filter((line) => textOf(line).includes('q1'))).toHaveLength(1)
       // The model saw the path to the chosen line, not the abandoned turn.
       const last = requests.at(-1) ?? ''
@@ -108,9 +128,8 @@ describe('durable navigate_tree', () => {
 
       await t.sessions.handleCommand(prompt('q2 reworded'))
       const after = await lines(t.identity.sessionFile)
-      expect(after.find((line) => textOf(line).includes('q2 reworded'))?.parentId).toBe(
-        idOf(file, 'a1')
-      )
+      const reworded = after.find((line) => textOf(line).includes('q2 reworded'))
+      expect(ancestry(after, reworded).slice(0, 2)).toEqual([markerOf(after).id, idOf(file, 'a1')])
     } finally {
       await t.sessions.stop()
     }
@@ -125,9 +144,11 @@ describe('durable navigate_tree', () => {
 
       await t.sessions.handleCommand(prompt('a different start'))
       const after = await lines(t.identity.sessionFile)
-      expect(after.find((line) => textOf(line).includes('a different start'))?.parentId).toBeNull()
+      const fresh = after.find((line) => textOf(line).includes('a different start'))
+      // A second root: its marker has no parent, and the message hangs off the marker.
+      expect(ancestry(after, fresh)).toEqual([markerOf(after).id])
       expect(
-        after.filter((line) => line.type === 'message' && line.parentId === null)
+        after.filter((line) => line.parentId === null && line.type !== 'session')
       ).toHaveLength(2)
       expect(requests.at(-1)).not.toContain('q1')
     } finally {

@@ -1,5 +1,5 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { entryId, toItems, type Item } from './sessionItems'
+import { BRANCH_KIND, lineIdFor, toItems, type Item } from './sessionItems'
 import type { SessionFileHeader } from './sessionFile'
 
 /**
@@ -12,8 +12,8 @@ import type { SessionFileHeader } from './sessionFile'
  * session branches in place, so the sidebar, the session map and the SDK read it as they would any
  * other session. With one conversation the tree is a chain.
  *
- * Line ids are positional in emission order, branches oldest first, so they stay put as a session
- * grows: new lines only ever come after the existing ones.
+ * Line ids come from the entries (`lineIdFor`), not from where a line falls in the file, so they
+ * stay put however the tree grows. Lines are written branches oldest first, the active one last.
  */
 
 export interface Placed {
@@ -46,7 +46,7 @@ export function placeTree(
       let node = byKey.get(key)
       if (!node) {
         node = {
-          lineId: entryId(placed.length + 1),
+          lineId: lineIdFor(item.source, ordinal),
           parent: chain.at(-1)?.lineId ?? null,
           item,
           histories: [],
@@ -143,7 +143,14 @@ export function resolveLine(
   return findLine(placeTree(header, histories), lineId)
 }
 
-/** The last line of one history's branch: where its next message would attach. */
+/**
+ * The last line of one history's branch that is a place to continue from: where its next message
+ * attaches. The marker that opens a navigated branch is not one.
+ */
 export function leafOf(placed: readonly Placed[], index: number): Placed | undefined {
-  return placed.filter((node) => node.histories.includes(index)).at(-1)
+  return placed.filter((node) => node.histories.includes(index) && !isBranchMarker(node)).at(-1)
+}
+
+export function isBranchMarker(node: Placed): boolean {
+  return node.item.type === 'custom' && node.item.body.customType === BRANCH_KIND
 }

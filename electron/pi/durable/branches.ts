@@ -2,7 +2,8 @@ import type { Context } from '@earendil-works/chord'
 import type { Conversation, Harness } from '@earendil-works/pi-durable'
 import { readHistory } from './history'
 import type { SessionFileHeader } from './sessionFile'
-import { findLine, leafOf, placeTree, type Placed } from './sessionTree'
+import { BRANCH_KIND } from './sessionItems'
+import { findLine, isBranchMarker, leafOf, placeTree, type Placed } from './sessionTree'
 import type { DurableNavigation } from './types'
 
 /**
@@ -67,6 +68,13 @@ export async function forkAtLine(
   )
 }
 
+/** The line itself, or the nearest one before it that is a place to continue from. */
+function placeAt(placed: readonly Placed[], line: Placed | undefined): Placed | undefined {
+  let node = line
+  while (node && isBranchMarker(node)) node = placed.find((other) => other.lineId === node?.parent)
+  return node
+}
+
 /**
  * Move the session's leaf to the line, as the SDK's `navigateTree` does.
  *
@@ -84,26 +92,35 @@ export async function navigate(
 ): Promise<DurableNavigation> {
   const { placed, target } = await locate(branches, header, lineId, 'navigate', context)
   const message = target.item.role === 'user' ? target : undefined
-  const leaf = message ? placed.find((node) => node.lineId === target.parent) : target
+  const leaf = placeAt(
+    placed,
+    message ? placed.find((node) => node.lineId === target.parent) : target
+  )
   const current = leafOf(placed, branches.length - 1)
   const outcome: DurableNavigation = { switched: false, leafLineId: leaf?.lineId ?? null }
   if (message?.item.text !== undefined) outcome.editorText = message.item.text
   if ((leaf?.lineId ?? null) === (current?.lineId ?? null)) return outcome
 
   const active = activeBranch(branches)
-  let next: Conversation
-  if (leaf) {
-    next = await branchHolding(branches, leaf).fork(
-      leaf.item.source,
-      { ownership: { kind: 'ownerless' } },
-      context
-    )
-  } else {
-    // Nothing before the first message: a conversation of its own, with the model in use.
-    next = await harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
-    const { model, thinkingLevel } = await active.agent(context)
-    await next.configure(model ? { model, thinkingLevel } : { thinkingLevel }, context)
-  }
+  const next = leaf
+    ? await branchHolding(branches, leaf).fork(
+        leaf.item.source,
+        { ownership: { kind: 'ownerless' } },
+        context
+      )
+    : // Nothing before the first message: a conversation of its own.
+      await harness.createConversation({ ownership: { kind: 'ownerless' } }, context)
+  // A fork carries the agent settings as they were at its fork point, but navigating leaves the
+  // model and thinking level alone, as the SDK does: keep what the session is using now.
+  const { model, thinkingLevel } = await active.agent(context)
+  await next.configure(model ? { model, thinkingLevel } : { thinkingLevel }, context)
+  // The branch's first entry: it puts the file's last line on this branch, so a reader that takes
+  // the last line as the leaf (a reload, the SDK) is where the session is, before any message.
+  const marker = await next.submit(
+    { type: 'write', entry: { kind: BRANCH_KIND, data: { at: leaf?.lineId ?? null } } },
+    context
+  )
+  await marker.wait(context)
   branches.push(next)
   outcome.switched = true
   return outcome

@@ -85,35 +85,61 @@ export async function forkSession(
   }
 }
 
+const WAIT_FOR_REPLY = 'Wait for the current response to finish before navigating the session tree.'
+const WAIT_FOR_MAINTENANCE =
+  'Wait for the current compaction or tree navigation to finish before navigating the session tree.'
+
 /**
  * `navigate_tree`: continue the session from an earlier line, in the same file. The conversation
  * is forked there and the fork becomes the one the session runs on, so the abandoned branch stays
- * in the export. Refused while a reply streams, as the SDK path does.
+ * in the export.
+ *
+ * Refused while anything is in flight, as the SDK path does: a reply, a compaction, another
+ * navigation. That is read from the counters (which move when a command is accepted, before the
+ * harness hears of it) and from the store. Overlapping would leave work on a branch the session
+ * has left, and its events and result on the wrong one.
  */
 export async function navigateSession(
   session: ActiveSession,
   cmd: Extract<SidecarCommand, { type: 'navigate_tree' }>,
   ops: FlowOps
 ): Promise<void> {
-  if (session.streaming) {
-    throw new Error('Wait for the current response to finish before navigating the session tree.')
+  const { activity } = session
+  if (activity.maintenance > 0) throw new Error(WAIT_FOR_MAINTENANCE)
+  if (session.streaming || activity.replies > 0) throw new Error(WAIT_FOR_REPLY)
+  // From here to the end this is a navigation; the check above and this count share one turn, so
+  // a second navigation cannot slip in between.
+  activity.maintenance += 1
+  const work = (async () => {
+    const busy = await session.harness.busy()
+    if (busy === 'compaction') throw new Error(WAIT_FOR_MAINTENANCE)
+    if (busy === 'reply') throw new Error(WAIT_FOR_REPLY)
+    const moved = await session.harness.navigate(cmd.entryId, {
+      sessionId: session.identity.sessionId,
+      cwd: session.cwd,
+      startedAt: session.startedAt,
+    })
+    if (moved.switched) {
+      // Reload and later forks must find every branch, and events now come from the new one.
+      session.identity = { ...session.identity, conversationIds: session.harness.conversationIds() }
+      await session.stopEvents()
+      await ops.reattachEvents(session)
+      await ops.exportNow(session)
+    }
+    return moved
+  })()
+  // Prompts and compactions that arrive meanwhile wait for the branch to be settled.
+  activity.navigation = work.catch(() => undefined)
+  try {
+    const moved = await work
+    const result: Extract<SidecarMessage, { type: 'navigate_tree_result' }>['result'] = {
+      cancelled: false,
+      leafId: moved.leafLineId,
+    }
+    if (moved.editorText !== undefined) result.editorText = moved.editorText
+    ops.send({ type: 'navigate_tree_result', requestId: cmd.requestId, result })
+  } finally {
+    activity.maintenance -= 1
+    activity.navigation = undefined
   }
-  const moved = await session.harness.navigate(cmd.entryId, {
-    sessionId: session.identity.sessionId,
-    cwd: session.cwd,
-    startedAt: session.startedAt,
-  })
-  if (moved.switched) {
-    // Reload and later forks must find every branch, and events now come from the new one.
-    session.identity = { ...session.identity, conversationIds: session.harness.conversationIds() }
-    await session.stopEvents()
-    await ops.reattachEvents(session)
-    await ops.exportNow(session)
-  }
-  const result: Extract<SidecarMessage, { type: 'navigate_tree_result' }>['result'] = {
-    cancelled: false,
-    leafId: moved.leafLineId,
-  }
-  if (moved.editorText !== undefined) result.editorText = moved.editorText
-  ops.send({ type: 'navigate_tree_result', requestId: cmd.requestId, result })
 }

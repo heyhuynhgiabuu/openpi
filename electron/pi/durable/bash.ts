@@ -1,7 +1,7 @@
 import type { Context } from '@earendil-works/chord'
 import { withCancel } from '@earendil-works/chord/context'
 import { OutputBuffer } from '@earendil-works/chord/output'
-import type { EntryDraft } from '@earendil-works/pi-durable'
+import type { Conversation, EntryDraft } from '@earendil-works/pi-durable'
 import type { ExecutionEnv } from '@earendil-works/pi-durable/env'
 import { z } from 'zod'
 import { createOutputCleaner } from './ansi'
@@ -136,4 +136,24 @@ export function createBashRunner(env: ExecutionEnv, ctx: Context): BashRunner {
       for (const cancel of [...running]) cancel()
     },
   }
+}
+
+/** Run the user's command and record it in the conversation; resolves with the result. */
+export async function runAndRecord(
+  runner: BashRunner,
+  conversation: Conversation,
+  context: Context,
+  command: string,
+  cwd: string,
+  excludeFromContext: boolean | undefined
+): Promise<BashResult> {
+  const result = await runner.run(command, cwd)
+  const record: BashRecord = { ...result, command, timestamp: Date.now() }
+  if (excludeFromContext !== undefined) record.excludeFromContext = excludeFromContext
+  const submission = await conversation.submit(
+    { type: 'write', entry: bashEntryDraft(record) },
+    context
+  )
+  await submission.wait(context)
+  return result
 }

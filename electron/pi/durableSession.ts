@@ -5,6 +5,7 @@ import {
   type SettingsDeps,
   type SettingsPersist,
 } from './durableSettings'
+import { counted, newActivity } from './durableActivity'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
@@ -115,6 +116,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       streaming: false,
       abortRequested: false,
       closing: false,
+      activity: newActivity(),
     }
     active = session
     // A reopened or forked session already has a history, and the renderer reads it from the file:
@@ -165,7 +167,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!session) return
     const text = promptText(cmd)
     session.abortRequested = false
-    reportUnanswered(session, await session.harness.prompt(text))
+    reportUnanswered(
+      session,
+      await counted(session.activity, 'replies', () => session.harness.prompt(text))
+    )
     await exportNow(session)
   }
 
@@ -180,7 +185,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!session) return
     const text = promptText(cmd)
     session.abortRequested = false
-    const queued = await session.harness.queue(text, cmd.type === 'steer' ? 'steer' : 'followUp')
+    const mode = cmd.type === 'steer' ? 'steer' : 'followUp'
+    const queued = await counted(session.activity, 'replies', () =>
+      session.harness.queue(text, mode)
+    )
     void queued.settled
       .then(async (result) => {
         if (session.closing) return
@@ -256,7 +264,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       const session = active
       // A run the compaction cuts short is not a failure to report.
       session.abortRequested = true
-      if (await runCompact(session.harness, cmd, deps.send)) await exportNow(session)
+      const compacted = await counted(session.activity, 'maintenance', () =>
+        runCompact(session.harness, cmd, deps.send)
+      )
+      if (compacted) await exportNow(session)
       return true
     }
     if (cmd.type === 'abort') {

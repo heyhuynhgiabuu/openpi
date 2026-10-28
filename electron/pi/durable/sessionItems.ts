@@ -1,6 +1,7 @@
 import type { Message } from '@earendil-works/pi-ai'
 import { CompactionEntry } from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
+import { BRANCH_MARKER_TYPE } from '../../session/branchMarker'
 import { BASH_KIND, bashRecordSchema } from './bash'
 import type { SessionFileHeader } from './sessionFile'
 import { sessionNameOf } from './stats'
@@ -8,9 +9,20 @@ import { messageText, unwrapSummary } from './text'
 
 /** What one pi-durable entry becomes in the exported file: zero, one or several lines. */
 
-/** 8-char hex ids, the shape Pi's own entries use. Deterministic from the transcript position. */
-export function entryId(position: number): string {
-  return position.toString(16).padStart(8, '0')
+/** Application entry written at the start of a navigated branch; the SDK ignores it as context. */
+export const BRANCH_KIND = BRANCH_MARKER_TYPE
+
+/** Lines one entry can become (a rename, a message, ...); the id keeps room for each. */
+const LINES_PER_ENTRY = 8
+
+/**
+ * 8-char hex ids, the shape Pi's own entries use, derived from the pi-durable entry (one store-wide
+ * counter) and the line's place within it, so an id never moves: not when a branch grows, not when
+ * another branch appears, not across a reload.
+ */
+export function lineIdFor(source: EntryRecord['id'], ordinal: number): string {
+  if (ordinal >= LINES_PER_ENTRY) throw new Error(`entry ${source} has too many lines to export`)
+  return (Number(source) * LINES_PER_ENTRY + ordinal).toString(16).padStart(8, '0')
 }
 
 function messageTimestamp(message: Message, fallback: string): string {
@@ -23,7 +35,7 @@ function messageTimestamp(message: Message, fallback: string): string {
 export interface Item {
   /** The pi-durable entry it came from, to resolve `head` references. */
   source: EntryRecord['id']
-  type: 'message' | 'session_info' | 'compaction'
+  type: 'message' | 'session_info' | 'compaction' | 'custom'
   timestamp: string
   body: Record<string, unknown>
   /** For a message: its role, which a synthetic renderer id also names. */
@@ -62,6 +74,17 @@ export function toItems(header: SessionFileHeader, entries: readonly EntryRecord
       }
       if (entry.head !== undefined) compaction.keepFrom = entry.head
       items.push(compaction)
+      continue
+    }
+    if (entry.kind === BRANCH_KIND) {
+      // Marks where a navigated branch starts, so the file's last line lies on the branch the
+      // session is on even before it has a message of its own.
+      items.push({
+        source: entry.id,
+        type: 'custom',
+        timestamp: header.startedAt,
+        body: { customType: BRANCH_KIND, data: entry.data ?? null },
+      })
       continue
     }
     const bash = bashRecordSchema.safeParse(entry.kind === BASH_KIND ? entry.data : undefined)

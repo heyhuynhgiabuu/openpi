@@ -120,6 +120,8 @@ export interface DurableHarness {
    * continues from there in a new branch (a fork), and the abandoned one stays in the export.
    */
   navigate(lineId: string, header: SessionFileHeader): Promise<DurableNavigation>
+  /** What the store is doing now: a compaction, any other live work, or nothing. */
+  busy(): Promise<'compaction' | 'reply' | undefined>
   /** The conversations of this session, oldest branch first, the active one last. */
   conversationIds(): number[]
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
