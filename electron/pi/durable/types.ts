@@ -1,6 +1,7 @@
 import type { Models, MutableModels } from '@earendil-works/pi-ai'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
+import type { DurableStats } from './stats'
 
 /** Provider/model the durable conversation runs with (resolved through pi-ai `Models`). */
 export interface DurableModelRef {
@@ -69,6 +70,8 @@ export interface DurableHarnessOptions {
 export interface DurableHarness {
   /** Submit one input and wait for the run to settle. */
   prompt(text: string): Promise<DurableSubmitResult>
+  /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
+  stats(): Promise<DurableStats>
   /**
    * Queue a message for a run in progress: `steer` is delivered after the current turn's tool calls
    * and before the next model call, `followUp` only once the run has fully stopped. Resolves once

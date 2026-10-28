@@ -12,6 +12,8 @@ import {
 } from '@earendil-works/pi-durable'
 import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
+import { computeStats, type DurableStats } from './stats'
+import { messageText } from './text'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { DurableCustomizations } from './customizations'
@@ -39,25 +41,6 @@ import type {
  */
 
 const ctx: Context = BACKGROUND_CONTEXT
-
-/** Content parts carry a `type`; only `text` parts contribute to the adapter's text snapshot. */
-function isTextPart(part: unknown): part is { type: 'text'; text: string } {
-  if (typeof part !== 'object' || part === null) return false
-  const candidate = part as { type?: unknown; text?: unknown }
-  return candidate.type === 'text' && typeof candidate.text === 'string'
-}
-
-/** Message content is either a plain string or an array of parts; anything else contributes no text. */
-function messageText(message: Message | undefined): string | undefined {
-  if (message === undefined) return undefined
-  const content: unknown = message.content
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return undefined
-  return content
-    .filter(isTextPart)
-    .map((part) => part.text)
-    .join('')
-}
 
 function entrySnapshot(record: EntryRecord): DurableEntrySnapshot {
   const snapshot: DurableEntrySnapshot = { id: record.id, kind: record.kind }
@@ -204,6 +187,11 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       const settled = submission.wait(ctx).then(resultOf)
       settled.then(forget, forget)
       return { settled }
+    },
+
+    async stats(): Promise<DurableStats> {
+      const [ledger, view] = await Promise.all([harness.usage(ctx), root.context(ctx)])
+      return computeStats(ledger, view.entries, view.messages.length)
     },
 
     async abort(): Promise<void> {

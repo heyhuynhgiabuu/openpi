@@ -1,4 +1,5 @@
 import type { DurableHarness } from './durable/types'
+import { sessionInfoMessage, statsMessage, type InfoSource } from './durableInfo'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
 /**
@@ -48,6 +49,9 @@ interface ActiveSession {
   identity: DurableIdentity
   startedAt: string
   stopEvents: () => Promise<void>
+  model: SessionReadyPayload['model']
+  /** True between `agent_start` and `agent_end`, for `get_stats`' `isStreaming`. */
+  streaming: boolean
   /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
   abortRequested: boolean
   /** Set before shutdown: queued messages still settling must not report or export afterwards. */
@@ -60,13 +64,10 @@ const UNSUPPORTED_SESSION_COMMANDS = [
   'set_model',
   'set_thinking',
   'set_session_name',
-  'get_session_info',
   'compact',
   'reload_session',
-  'copy_last_assistant_text',
   'fork_session',
   'navigate_tree',
-  'get_stats',
 ] as const satisfies readonly SidecarCommand['type'][]
 
 function isUnsupported(type: SidecarCommand['type']): boolean {
@@ -120,6 +121,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       identity,
       startedAt: deps.now().toISOString(),
       stopEvents: async () => undefined,
+      model,
+      streaming: false,
       abortRequested: false,
       closing: false,
     }
@@ -140,6 +143,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     // event feed opens with would be discarded if it arrived first.
     try {
       session.stopEvents = await harness.watchEvents((event) => {
+        if (event.type === 'agent_start') session.streaming = true
+        if (event.type === 'agent_end') session.streaming = false
         deps.send({ type: 'session_event', event })
       })
     } catch (error) {
@@ -202,6 +207,22 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
+  async function sendStats(session: ActiveSession, requestId: string): Promise<void> {
+    const stats = await session.harness.stats()
+    deps.send(statsMessage(requestId, view(session), stats))
+  }
+
+  async function sendSessionInfo(session: ActiveSession, requestId: string): Promise<void> {
+    const stats = await session.harness.stats()
+    deps.send(sessionInfoMessage(requestId, view(session), stats))
+  }
+
+  const view = (session: ActiveSession): InfoSource => ({
+    model: session.model,
+    identity: session.identity,
+    streaming: session.streaming,
+  })
+
   async function handleCommand(cmd: SidecarCommand): Promise<boolean> {
     if (!active) return false
     if (cmd.type === 'prompt') {
@@ -210,6 +231,23 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (cmd.type === 'steer' || cmd.type === 'follow_up') {
       await queue(cmd)
+      return true
+    }
+    if (cmd.type === 'get_stats') {
+      await sendStats(active, cmd.requestId)
+      return true
+    }
+    if (cmd.type === 'get_session_info') {
+      await sendSessionInfo(active, cmd.requestId)
+      return true
+    }
+    if (cmd.type === 'copy_last_assistant_text') {
+      const { lastAssistantText } = await active.harness.stats()
+      deps.send({
+        type: 'last_assistant_text_result',
+        requestId: cmd.requestId,
+        text: lastAssistantText,
+      })
       return true
     }
     if (cmd.type === 'abort') {

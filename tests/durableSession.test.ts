@@ -131,13 +131,10 @@ describe('durable command routing', () => {
     { type: 'set_model', provider: 'p', modelId: 'm' },
     { type: 'set_thinking', level: 'low' },
     { type: 'set_session_name', name: 'n' },
-    { type: 'get_session_info', requestId: 'r' },
     { type: 'compact', requestId: 'r' },
     { type: 'reload_session', requestId: 'r' },
-    { type: 'copy_last_assistant_text', requestId: 'r' },
     { type: 'fork_session', entryId: 'e', workspaceTrusted: false },
     { type: 'navigate_tree', entryId: 'e', requestId: 'r' },
-    { type: 'get_stats', requestId: 'r' },
   ]
 
   it.each(unsupported)('refuses $type loudly while a durable session is active', async (cmd) => {
