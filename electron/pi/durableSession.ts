@@ -1,4 +1,3 @@
-import type { DurableHarness } from './durable/types'
 import { answerInfoCommand, isInfoCommand, type InfoSource } from './durableInfo'
 import {
   applySettingsCommand,
@@ -7,8 +6,23 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { runCompact } from './durableCompact'
-import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
-import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
+import { errorText, promptText } from './durablePrompt'
+import type { SidecarCommand } from './sidecarTypes'
+import type {
+  ActiveSession,
+  DurableOpenResult,
+  DurableSessionDeps,
+  DurableSessions,
+  DurableStartOptions,
+} from './durableTypes'
+
+export type {
+  DurableIdentity,
+  DurableOpenResult,
+  DurableSessionDeps,
+  DurableSessions,
+  DurableStartOptions,
+} from './durableTypes'
 
 /**
  * Phase 8.3f: a durable-runtime session behind the sidecar's command protocol.
@@ -23,72 +37,14 @@ import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './side
  * it is testable with a real harness and no parent process.
  */
 
-export interface DurableIdentity {
-  sessionId: string
-  /** Where the JSONL v3 export lives; the sidebar reads it like any other session. */
-  sessionFile: string
-}
-
-export interface DurableOpenResult {
-  harness: DurableHarness
-  model: SessionReadyPayload['model']
-  /** Thinking levels the opened model supports. */
-  thinkingLevels: readonly ModelThinkingLevel[]
-  persist: SettingsPersist
-}
-
-export interface DurableSessionDeps extends SettingsDeps {
-  send: (message: SidecarMessage) => void
-  newIdentity: (cwd: string) => DurableIdentity
-  open: (
-    cwd: string,
-    workspaceTrusted: boolean,
-    identity: DurableIdentity
-  ) => Promise<DurableOpenResult>
-  now: () => Date
-}
-
-export interface DurableStartOptions {
-  workspaceTrusted: boolean
-  requestId?: string
-}
-
-interface ActiveSession {
-  harness: DurableHarness
-  cwd: string
-  identity: DurableIdentity
-  startedAt: string
-  stopEvents: () => Promise<void>
-  model: SessionReadyPayload['model']
-  thinkingLevel: string | null
-  thinkingLevels: readonly ModelThinkingLevel[]
-  sessionName: string | null
-  persist: SettingsPersist
-  /** True between `agent_start` and `agent_end`, for `get_stats`' `isStreaming`. */
-  streaming: boolean
-  /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
-  abortRequested: boolean
-  /** Set before shutdown: queued messages still settling must not report or export afterwards. */
-  closing: boolean
-}
-
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
-  'reload_session',
   'fork_session',
   'navigate_tree',
 ] as const satisfies readonly SidecarCommand['type'][]
 
 function isUnsupported(type: SidecarCommand['type']): boolean {
   return (UNSUPPORTED_SESSION_COMMANDS as readonly string[]).includes(type)
-}
-
-export interface DurableSessions {
-  isActive(): boolean
-  start(cwd: string, options: DurableStartOptions): Promise<void>
-  /** `true` when the command was fully handled here; `false` to fall through to the SDK handlers. */
-  handleCommand(cmd: SidecarCommand): Promise<boolean>
-  stop(): Promise<void>
 }
 
 export function createDurableSessions(deps: DurableSessionDeps): DurableSessions {
@@ -120,26 +76,66 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
+  /** What `session_ready` reports about a freshly opened harness. */
+  async function inspectOpened(opened: DurableOpenResult, options: DurableStartOptions) {
+    const { harness } = opened
+    const agent = await harness.agentState()
+    // A reopened session keeps the model it was using, which may not be today's default. A new
+    // one was opened with its model, so there is nothing to look up.
+    let { model, thinkingLevels } = opened
+    if (
+      options.resume &&
+      agent.model &&
+      (model?.provider !== agent.model.provider || model?.id !== agent.model.modelId)
+    ) {
+      const stored = await deps
+        .resolveModel(agent.model.provider, agent.model.modelId)
+        .catch((error) => {
+          deps.log('warn', `[durable] looking up the stored model failed: ${errorText(error)}`)
+          return undefined
+        })
+      if (stored) ({ info: model, thinkingLevels } = stored)
+      else {
+        deps.log(
+          'warn',
+          `[durable] stored model ${agent.model.provider}/${agent.model.modelId} is not available; ` +
+            `reporting ${model?.provider}/${model?.id}, though the session still uses the stored one`
+        )
+      }
+    }
+    const sessionName = options.resume ? (await harness.stats()).sessionName : null
+    return { agent, model, thinkingLevels, sessionName }
+  }
+
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
-    const identity = deps.newIdentity(cwd)
-    const { harness, model, thinkingLevels, persist } = await deps.open(
-      cwd,
-      options.workspaceTrusted,
-      identity
-    )
-    const agent = await harness.agentState()
+    const identity = options.resume?.identity ?? deps.newIdentity(cwd)
+    const opened = await deps.open(cwd, options.workspaceTrusted, identity)
+    const { harness, persist } = opened
+    // Anything that fails between opening the harness and registering it would leave its store
+    // and MCP connections open with nothing able to close them.
+    let ready: Awaited<ReturnType<typeof inspectOpened>>
+    try {
+      ready = await inspectOpened(opened, options)
+    } catch (error) {
+      await harness.close().catch((closeError) => {
+        deps.log('warn', `[durable] closing after a failed start: ${errorText(closeError)}`)
+      })
+      throw error
+    }
+    const { agent, model, thinkingLevels, sessionName } = ready
     const session: ActiveSession = {
       harness,
       cwd,
+      workspaceTrusted: options.workspaceTrusted,
       identity,
-      startedAt: deps.now().toISOString(),
+      startedAt: options.resume?.startedAt ?? deps.now().toISOString(),
       stopEvents: async () => undefined,
       model,
       thinkingLevel: agent.thinkingLevel,
       thinkingLevels,
       persist,
-      sessionName: null,
+      sessionName,
       streaming: false,
       abortRequested: false,
       closing: false,
@@ -152,7 +148,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
         cwd,
         sessionFile: identity.sessionFile,
         sessionId: identity.sessionId,
-        sessionName: null,
+        sessionName,
         model,
         thinkingLevel: agent.thinkingLevel,
       },
@@ -169,16 +165,6 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       await stop()
       throw error
     }
-  }
-
-  /** Slash commands are refused; the context prefix is applied the way the SDK path does. */
-  function promptText(cmd: { text: string; contextPrefix?: string }): string {
-    const text = cmd.text.trim()
-    if (text.startsWith('/')) {
-      throw new Error('slash commands are not supported on the durable runtime yet')
-    }
-    const prefix = cmd.contextPrefix?.trim()
-    return prefix ? `${prefix}\n\n${text}` : text
   }
 
   function reportUnanswered(
@@ -225,6 +211,23 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
+  /**
+   * `reload_session`: a full restart of the harness over the same store, file and header, so
+   * extensions, customizations and MCP servers are discovered afresh and the history is untouched.
+   * A run in flight is aborted first, as the SDK path's dispose does: merely closing the harness
+   * would leave the run pending in the store, and the next submit would start it again.
+   */
+  async function reload(session: ActiveSession, requestId: string): Promise<void> {
+    session.abortRequested = true
+    await session.harness.abort()
+    await exportNow(session)
+    await start(session.cwd, {
+      workspaceTrusted: session.workspaceTrusted,
+      requestId,
+      resume: { identity: session.identity, startedAt: session.startedAt },
+    })
+  }
+
   const view = (session: ActiveSession): InfoSource => ({
     model: session.model,
     identity: session.identity,
@@ -262,6 +265,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       await exportNow(session)
       return true
     }
+    if (cmd.type === 'reload_session') {
+      await reload(active, cmd.requestId)
+      return true
+    }
     if (cmd.type === 'compact') {
       const session = active
       // A run the compaction cuts short is not a failure to report.
@@ -285,8 +292,4 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   }
 
   return { isActive: () => active !== null, start, handleCommand, stop }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

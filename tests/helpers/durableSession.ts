@@ -60,12 +60,24 @@ export async function setup(
     compaction?: { keepRecentTokens: number }
     /** Directory user shell commands run in; defaults to the process cwd. */
     workspacePath?: string
+    /** Keep the store on disk, so reopening a session finds its history (reload). */
+    persistent?: boolean
+    /** Clock for the session's header time; a new one per call shows what is preserved. */
+    now?: () => Date
+    /** Make the nth `open` (1-based) fail. */
+    failOpenAt?: number
+    /** Make `stats()` reject on the harness the nth `open` returns (1-based). */
+    breakStatsAt?: number
   } = {}
 ) {
   const sent: SidecarMessage[] = []
+  const knownModels: Record<string, ResolvedModel> = { ...options.knownModels }
+  const resolver = { fail: options.failResolve === true }
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
+  const closed: DurableHarness[] = []
   const persisted: string[] = []
+  let opens = 0
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -73,9 +85,22 @@ export async function setup(
         fauxAssistantMessage([fauxText(text)], { stopReason: 'stop' as const })
       )
   )
+  // The model the harness is opened with is a known one, as in production, so a reload that looks
+  // it up finds it instead of warning.
+  knownModels[`faux/${faux.getModel().id}`] ??= { info: MODEL, thinkingLevels: FAUX_LEVELS }
   const identity = {
     sessionId: 'sess-1',
     sessionFile: options.sessionFile ?? join(root, 'sessions', 'sess-1.jsonl'),
+  }
+  // The first session is `identity`; a later fresh one (not a reload) gets its own id and file.
+  let identities = 0
+  const freshIdentity = () => {
+    identities += 1
+    if (identities === 1) return identity
+    return {
+      sessionId: `sess-${identities}`,
+      sessionFile: join(root, 'sessions', `sess-${identities}.jsonl`),
+    }
   }
   const deps: DurableSessionDeps = {
     send: (message) => {
@@ -87,17 +112,20 @@ export async function setup(
       }
     },
     log: (level, text) => logs.push(`${level}: ${text}`),
-    newIdentity: () => identity,
-    now: () => new Date('2026-10-27T00:00:00.000Z'),
+    newIdentity: freshIdentity,
+    now: options.now ?? (() => new Date('2026-10-27T00:00:00.000Z')),
     resolveModel: async (provider, modelId) => {
       await options.resolveGate
-      if (options.failResolve) throw new Error('registry offline')
-      return options.knownModels?.[`${provider}/${modelId}`]
+      if (resolver.fail) throw new Error('registry offline')
+      return knownModels[`${provider}/${modelId}`]
     },
-    open: async () => {
-      if (options.failOpen) throw new Error('no default model')
+    open: async (_cwd, _trusted, opening) => {
+      opens += 1
+      if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
-        backend: 'memory',
+        backend: options.persistent ? 'jsonl' : 'memory',
+        // One store per session, as in production (`durableHost.ts`).
+        directory: join(root, 'store', opening.sessionId),
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,
@@ -106,6 +134,16 @@ export async function setup(
         workspacePath: options.workspacePath,
       })
       harnesses.push(harness)
+      const close = harness.close.bind(harness)
+      harness.close = async () => {
+        closed.push(harness)
+        return close()
+      }
+      if (opens === options.breakStatsAt) {
+        harness.stats = async () => {
+          throw new Error('stats unavailable')
+        }
+      }
       return {
         harness,
         model: MODEL,
@@ -125,7 +163,18 @@ export async function setup(
   }
   const sessions = createDurableSessions(deps)
   const types = () => sent.map((m) => m.type)
-  return { sessions, sent, logs, identity, types, harnesses, persisted }
+  return {
+    sessions,
+    sent,
+    logs,
+    identity,
+    types,
+    harnesses,
+    closed,
+    persisted,
+    knownModels,
+    resolver,
+  }
 }
 
 export const prompt = (text: string, contextPrefix?: string): SidecarCommand => ({
