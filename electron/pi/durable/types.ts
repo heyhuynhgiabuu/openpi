@@ -34,6 +34,12 @@ export interface DurableSubmitResult {
 /** Storage backend for the durable store. SQLite arrives in a later slice behind a capability check. */
 export type DurableBackend = 'jsonl' | 'memory'
 
+/** Outcome of a manual compaction. `nothing` means the conversation was too small to summarize. */
+export type DurableCompaction =
+  | { status: 'compacted' }
+  | { status: 'nothing' }
+  | { status: 'failed'; message: string }
+
 /** A queued message: admission is done, `settled` resolves when its run finishes. */
 export interface DurableQueued {
   settled: Promise<DurableSubmitResult>
@@ -61,6 +67,8 @@ export interface DurableHarnessOptions {
   policy?: boolean
   /** Install pi-durable's built-in coding tools (read/write/edit/bash). Defaults to true. */
   tools?: boolean
+  /** Compaction policy overrides, e.g. a small `keepRecentTokens` so a short conversation compacts (tests). */
+  compaction?: { keepRecentTokens?: number }
   /** Read `.mcp.json` and bridge its servers (requires `projectTrusted` for the project file). */
   mcp?: boolean
   /** Whether the workspace is trusted, gating `.pi/mcp.json` and project extensions. */
@@ -76,6 +84,11 @@ export interface DurableHarness {
   configure(change: { model?: DurableModelRef; thinkingLevel?: ModelThinkingLevel }): Promise<void>
   /** Record the session's display name as a passive entry (appended at once, even mid-run). */
   setSessionName(name: string): Promise<void>
+  /**
+   * Summarize older context, waiting for the compaction task to finish. The summary replaces the
+   * older entries in the model's context; the full history stays in the store and the export.
+   */
+  compact(instructions?: string): Promise<DurableCompaction>
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
   stats(): Promise<DurableStats>
   /**

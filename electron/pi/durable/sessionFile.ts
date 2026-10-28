@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Message } from '@earendil-works/pi-ai'
+import { CompactionEntry } from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { z } from 'zod'
 import { sessionNameOf } from './stats'
+import { messageText } from './text'
 
 /**
  * Phase 8.3e: export a durable conversation as a Pi JSONL v3 session file.
@@ -49,11 +51,73 @@ function messageTimestamp(message: Message, fallback: string): string {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString()
 }
 
-/** Pure: render a transcript as JSONL v3 text (one header line, then linear message entries). */
+/** One line of the export, before ids are assigned. */
+interface Item {
+  /** The pi-durable entry it came from, to resolve `head` references. */
+  source: number
+  type: 'message' | 'session_info' | 'compaction'
+  timestamp: string
+  body: Record<string, unknown>
+  /** For a compaction: the pi-durable entry its summary keeps from. */
+  keepFrom?: number
+}
+
+/** The raw summary inside pi-durable's wrapper, which is not part of what the SDK stores. */
+function summaryOf(entry: EntryRecord): string {
+  const text = messageText(entry.model?.[0]) ?? ''
+  return /<summary>\s*([\s\S]*?)\s*<\/summary>/.exec(text)?.[1] ?? text
+}
+
+function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): Item[] {
+  const items: Item[] = []
+  for (const entry of entries) {
+    const name = sessionNameOf(entry)
+    if (name !== undefined) {
+      items.push({
+        source: entry.id,
+        type: 'session_info',
+        timestamp: header.startedAt,
+        body: { name },
+      })
+    }
+    if (CompactionEntry.is(entry)) {
+      // The summary lives in the `compaction` line, as in SDK files; it is not also a message.
+      const compaction: Item = {
+        source: entry.id,
+        type: 'compaction',
+        timestamp: header.startedAt,
+        body: { summary: summaryOf(entry), tokensBefore: 0 },
+      }
+      if (entry.head !== undefined) compaction.keepFrom = entry.head
+      items.push(compaction)
+      continue
+    }
+    for (const message of entry.model ?? []) {
+      items.push({
+        source: entry.id,
+        type: 'message',
+        timestamp: messageTimestamp(message, header.startedAt),
+        body: { message },
+      })
+    }
+  }
+  return items
+}
+
+/**
+ * Pure: render a transcript as JSONL v3 text (one header line, then a linear chain of entries).
+ *
+ * `entries` must be the conversation's **whole history**, not the active context: after a compaction
+ * the active context drops everything before the cut, and writing only that would erase it from the
+ * file. A compaction becomes an SDK-style `compaction` line, so a reader that rebuilds context
+ * (the SDK does) gets the same compacted context pi-durable has, while the history stays on disk.
+ */
 export function renderSessionJsonl(
   header: SessionFileHeader,
   entries: readonly EntryRecord[]
 ): { text: string; messages: number } {
+  const items = toItems(header, entries)
+  const ids = items.map((_, index) => entryId(index + 1))
   const lines: string[] = [
     JSON.stringify({
       type: 'session',
@@ -63,24 +127,29 @@ export function renderSessionJsonl(
       cwd: header.cwd,
     }),
   ]
-  let parentId: string | null = null
-  let messages = 0
-  let position = 0
-  const append = (type: string, timestamp: string, body: Record<string, unknown>): void => {
-    position += 1
-    const id = entryId(position)
-    lines.push(JSON.stringify({ type, id, parentId, timestamp, ...body }))
-    parentId = id
-  }
-  for (const entry of entries) {
-    const name = sessionNameOf(entry)
-    if (name !== undefined) append('session_info', header.startedAt, { name })
-    for (const message of entry.model ?? []) {
-      append('message', messageTimestamp(message, header.startedAt), { message })
-      messages += 1
+  items.forEach((item, index) => {
+    const id = ids[index] ?? entryId(index + 1)
+    const body = { ...item.body }
+    if (item.type === 'compaction') {
+      // The first kept entry's line; `head` may name an entry that wrote no line, so take the next
+      // one that did. With none, the compaction keeps nothing and names itself, as the SDK does.
+      const kept = items.findIndex((candidate) => candidate.source >= (item.keepFrom ?? Infinity))
+      body.firstKeptEntryId = kept === -1 ? id : (ids[kept] ?? id)
     }
+    lines.push(
+      JSON.stringify({
+        type: item.type,
+        id,
+        parentId: index === 0 ? null : (ids[index - 1] ?? null),
+        timestamp: item.timestamp,
+        ...body,
+      })
+    )
+  })
+  return {
+    text: `${lines.join('\n')}\n`,
+    messages: items.filter((item) => item.type === 'message').length,
   }
-  return { text: `${lines.join('\n')}\n`, messages }
 }
 
 /** Header id of an existing file, or undefined when it is empty or not a v3 session. */

@@ -2,7 +2,6 @@ import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import {
   createModels,
-  type Message,
   type ModelThinkingLevel,
   type Models,
   type MutableModels,
@@ -19,6 +18,7 @@ import {
 import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
+import { createQueuedTexts } from './queued'
 import { messageText } from './text'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
@@ -34,6 +34,7 @@ import { openDurableStorage } from './storage'
 import type {
   DurableEntrySnapshot,
   DurableHarness,
+  DurableCompaction,
   DurableHarnessOptions,
   DurableModelRef,
   DurableSubmitResult,
@@ -105,6 +106,8 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     {
       models,
       registry,
+      // An empty policy means pi-durable's defaults; a test overrides `keepRecentTokens` only.
+      settings: { compaction: options.compaction ?? {} },
       env: ({ cwd }) =>
         new NodeExecutionEnv({ cwd: cwd ?? options.workspacePath ?? process.cwd() }),
     },
@@ -137,20 +140,9 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   // `/template args` expands at invocation time, not in the prompt section.
   const expand = (text: string): string =>
     customizations ? expandInput(text, customizations) : text
-  // Pending messages by submission id: `inbox_update` carries ids, the renderer shows text.
-  const queuedText = new Map<number, string>()
-  // `inbox_update` fires *inside* `submit()`, before its id is known to us, so the text is
-  // registered first and the first unknown id claims the oldest one. Items arrive in id order.
-  const awaitingId: string[] = []
+  const queued = createQueuedTexts()
   // Read once at the end of a run, so `agent_settled` can say whether the user stopped it.
   let abortRequested = false
-  const textFor = (id: number): string | undefined => {
-    const known = queuedText.get(id)
-    if (known !== undefined) return known
-    const claimed = awaitingId.shift()
-    if (claimed !== undefined) queuedText.set(id, claimed)
-    return claimed
-  }
 
   /** The outcome of a settled input submission, with the answer text when the run answered. */
   const resultOf = async (settled: SettledSubmissionRecord): Promise<DurableSubmitResult> => {
@@ -172,7 +164,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     },
 
     async queue(text: string, mode: 'steer' | 'followUp'): Promise<DurableQueued> {
-      awaitingId.push(text)
+      queued.expect(text)
       let submission: Awaited<ReturnType<typeof root.submit>>
       try {
         submission = await root.submit(
@@ -180,19 +172,12 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
           ctx
         )
       } catch (error) {
-        const index = awaitingId.indexOf(text)
-        if (index >= 0) awaitingId.splice(index, 1)
+        queued.cancel(text)
         throw error
       }
       const id = Number(submission.id)
-      if (!queuedText.has(id)) {
-        // No event named this submission (it ran at once): drop its unclaimed registration.
-        const index = awaitingId.indexOf(text)
-        if (index >= 0) awaitingId.splice(index, 1)
-        queuedText.set(id, text)
-      }
-      // Once settled it can no longer appear in an `inbox_update`, so its text can go.
-      const forget = (): void => void queuedText.delete(id)
+      queued.bind(id, text)
+      const forget = (): void => queued.forget(id)
       const settled = submission.wait(ctx).then(resultOf)
       settled.then(forget, forget)
       return { settled }
@@ -264,7 +249,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       onEvent: (event: Record<string, unknown>) => void
     ): Promise<() => Promise<void>> {
       const handle = await attachDurableEvents(harness, root.id, ctx, onEvent, {
-        queuedText: textFor,
+        queuedText: queued.textFor,
         consumeAborted: () => {
           const aborted = abortRequested
           abortRequested = false
@@ -275,8 +260,29 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     },
 
     async exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult> {
-      const view = await root.context(ctx)
-      return writeSessionFile(path, header, view.entries)
+      // The whole history, not `root.context()`: after a compaction the active context no longer
+      // holds the entries before the cut, and the file is the archive of the conversation.
+      const history: EntryRecord[] = []
+      let cursor: Awaited<ReturnType<typeof root.entries>>['next']
+      do {
+        const page = await root.entries({ order: 'ascending' }, 200, cursor, ctx)
+        history.push(...page.items)
+        cursor = page.next
+      } while (cursor !== undefined)
+      return writeSessionFile(path, header, history)
+    },
+
+    async compact(instructions?: string): Promise<DurableCompaction> {
+      const settled = await harness.waitForTask(await root.compact(instructions, ctx), ctx)
+      const outcome = settled.state.outcome
+      if (outcome.status === 'completed') {
+        // pi-durable leaves both ids absent when there was nothing to summarize.
+        const compacted =
+          outcome.result.entryId !== undefined || outcome.result.submissionId !== undefined
+        return compacted ? { status: 'compacted' } : { status: 'nothing' }
+      }
+      const detail = outcome.status === 'failed' ? outcome.error.message : outcome.status
+      return { status: 'failed', message: `compaction ${detail}` }
     },
 
     async close(): Promise<void> {
