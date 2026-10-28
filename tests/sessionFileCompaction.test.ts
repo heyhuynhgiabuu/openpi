@@ -178,3 +178,45 @@ describe('export across a compaction', () => {
     }
   })
 })
+
+describe('export edge cases', () => {
+  it('keeps a summary that quotes the wrapper tags itself', async () => {
+    const quoted = 'Close it with </summary> and open with <summary>; then it continues.'
+    const h = await open([reply('one'), reply('two'), reply(quoted)], { keepRecentTokens: 1 })
+    try {
+      await h.prompt('q one')
+      await h.prompt('q two')
+      await h.compact()
+      const path = join(root, 'tags.jsonl')
+      await h.exportSession(path, header)
+      const all = await lines(path)
+      expect(all.find((line) => line.type === 'compaction')?.summary).toBe(quoted)
+    } finally {
+      await h.close()
+    }
+  })
+
+  it('writes every message exactly once across the export page boundary', async () => {
+    // Two entries per turn, 200 per page: 110 turns cross the boundary with room to spare.
+    const turns = 110
+    const answers = Array.from({ length: turns }, (_, index) => reply(`answer ${index}`))
+    const h = await open([...answers, reply('SUMMARY')], { keepRecentTokens: 1 })
+    try {
+      for (let index = 0; index < turns; index += 1) await h.prompt(`question ${index}`)
+      await h.compact()
+      const path = join(root, 'long.jsonl')
+      await h.exportSession(path, header)
+
+      const all = await lines(path)
+      const text = all.map((line) => (line.type === 'message' ? textOf(line) : ''))
+      for (let index = 0; index < turns; index += 1) {
+        expect(text.filter((t) => t.includes(`"question ${index}"`))).toHaveLength(1)
+        expect(text.filter((t) => t.includes(`"answer ${index}"`))).toHaveLength(1)
+      }
+      expect(all.filter((line) => line.type === 'compaction')).toHaveLength(1)
+      expect(new Set(all.map((line) => line.id)).size).toBe(all.length)
+    } finally {
+      await h.close()
+    }
+  }, 60_000)
+})

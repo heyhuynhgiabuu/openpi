@@ -65,7 +65,12 @@ interface Item {
 /** The raw summary inside pi-durable's wrapper, which is not part of what the SDK stores. */
 function summaryOf(entry: EntryRecord): string {
   const text = messageText(entry.model?.[0]) ?? ''
-  return /<summary>\s*([\s\S]*?)\s*<\/summary>/.exec(text)?.[1] ?? text
+  // pi-durable wraps the summary as `…<summary>\n{summary}\n</summary>`. Strip only that outer
+  // pair (first open, last close): the summary may itself quote either tag.
+  const open = text.indexOf('<summary>')
+  const close = text.lastIndexOf('</summary>')
+  if (open === -1 || close < open) return text
+  return text.slice(open + '<summary>'.length, close).trim()
 }
 
 function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): Item[] {
