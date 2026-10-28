@@ -252,9 +252,10 @@ describe('durable navigate_tree races and state', () => {
       })
       await Promise.all([moving, quick])
       const manager = SessionManager.open(t.identity.sessionFile, undefined, '/work')
-      const context = JSON.stringify(manager.buildSessionContext().messages)
-      expect(context).toContain('ONNEW')
-      expect(context).not.toContain('q2')
+      const messages = manager.buildSessionContext().messages
+      // `readable` leaves out shell output; the random ids only matter for the text search.
+      expect(JSON.stringify(messages)).toContain('ONNEW')
+      expect(readable(messages)).not.toContain('q2')
     } finally {
       await t.sessions.stop()
     }

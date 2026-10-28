@@ -12,10 +12,12 @@ export interface Activity {
   maintenance: number
   /** A tree navigation in progress: commands that act on the conversation wait for it. */
   navigation?: Promise<unknown>
+  /** Counts `abort` commands: a message that waited for a navigation is dropped if one arrived. */
+  aborts: number
 }
 
 export function newActivity(): Activity {
-  return { replies: 0, maintenance: 0 }
+  return { replies: 0, maintenance: 0, aborts: 0 }
 }
 
 /** Run `work` as counted activity, after any tree navigation that is in progress. */
@@ -31,4 +33,20 @@ export async function counted<T>(
   } finally {
     activity[kind] -= 1
   }
+}
+
+/**
+ * Like `counted`, for a message the user can still stop while it waits for a navigation: if an
+ * `abort` arrived meanwhile the message is dropped, as the SDK returns an abort's queue to the
+ * input, and `undefined` comes back.
+ */
+export async function countedUnlessAborted<T>(
+  activity: Activity,
+  work: () => Promise<T>
+): Promise<T | undefined> {
+  const aborts = activity.aborts
+  return counted(activity, 'replies', async () => {
+    if (activity.aborts !== aborts) return undefined
+    return work()
+  })
 }

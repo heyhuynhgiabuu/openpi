@@ -5,7 +5,7 @@ import {
   type SettingsDeps,
   type SettingsPersist,
 } from './durableSettings'
-import { counted, newActivity } from './durableActivity'
+import { counted, countedUnlessAborted, newActivity } from './durableActivity'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
@@ -167,10 +167,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (!session) return
     const text = promptText(cmd)
     session.abortRequested = false
-    reportUnanswered(
-      session,
-      await counted(session.activity, 'replies', () => session.harness.prompt(text))
-    )
+    const result = await countedUnlessAborted(session.activity, () => session.harness.prompt(text))
+    if (result) reportUnanswered(session, result)
     await exportNow(session)
   }
 
@@ -186,9 +184,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     const text = promptText(cmd)
     session.abortRequested = false
     const mode = cmd.type === 'steer' ? 'steer' : 'followUp'
-    const queued = await counted(session.activity, 'replies', () =>
+    const queued = await countedUnlessAborted(session.activity, () =>
       session.harness.queue(text, mode)
     )
+    if (!queued) return
     void queued.settled
       .then(async (result) => {
         if (session.closing) return
@@ -277,6 +276,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (cmd.type === 'abort') {
       active.abortRequested = true
+      active.activity.aborts += 1
       await active.harness.abort()
       return true
     }
