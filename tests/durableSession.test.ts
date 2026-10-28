@@ -13,7 +13,7 @@ import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/dur
 useSessionRoot()
 
 describe('durable session start', () => {
-  it('sends session_ready first, then the event feed, with the session identity', async () => {
+  it('sends session_ready first, and nothing before a run, with the session identity', async () => {
     const t = await setup()
     await t.sessions.start('/work', { workspaceTrusted: true, requestId: 'req-1' })
     try {
@@ -28,8 +28,10 @@ describe('durable session start', () => {
           model: MODEL,
         },
       })
-      // The renderer resets conversation state on ready, so the snapshot must come after it.
-      expect(t.sent[1]).toMatchObject({ type: 'session_event', event: { type: 'snapshot' } })
+      // The renderer resets conversation state on ready: nothing may be sent before it, and a
+      // freshly attached feed has nothing to say until a run starts (the snapshot only seeds the
+      // translator and is not forwarded).
+      expect(t.sent).toHaveLength(1)
       expect(t.sessions.isActive()).toBe(true)
     } finally {
       await t.sessions.stop()

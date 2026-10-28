@@ -142,6 +142,8 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   // `inbox_update` fires *inside* `submit()`, before its id is known to us, so the text is
   // registered first and the first unknown id claims the oldest one. Items arrive in id order.
   const awaitingId: string[] = []
+  // Read once at the end of a run, so `agent_settled` can say whether the user stopped it.
+  let abortRequested = false
   const textFor = (id: number): string | undefined => {
     const known = queuedText.get(id)
     if (known !== undefined) return known
@@ -224,6 +226,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     },
 
     async abort(): Promise<void> {
+      abortRequested = true
       await root.abort(ctx)
     },
 
@@ -260,7 +263,14 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     async watchEvents(
       onEvent: (event: Record<string, unknown>) => void
     ): Promise<() => Promise<void>> {
-      const handle = await attachDurableEvents(harness, root.id, ctx, onEvent, textFor)
+      const handle = await attachDurableEvents(harness, root.id, ctx, onEvent, {
+        queuedText: textFor,
+        consumeAborted: () => {
+          const aborted = abortRequested
+          abortRequested = false
+          return aborted
+        },
+      })
       return handle.stop
     },
 
