@@ -160,6 +160,8 @@ export function createWireTranslator(
           content: output ? [{ type: 'text', text: output }] : [],
           details: event.details,
         }
+        // The renderer and the task tracker read `details` from the event itself, not the result.
+        if (event.details !== undefined) update.details = event.details
         return [update]
       }
       case 'tool_execution_end': {
@@ -169,6 +171,7 @@ export function createWireTranslator(
         const message = entryMessage(event.entry)
         if (message?.role === 'toolResult') {
           end.result = { content: message.content, details: message.details }
+          if (message.details !== undefined) end.details = message.details
           end.isError = message.isError
         } else if (event.result) {
           const structured = event.result.structuredOutput
@@ -176,6 +179,7 @@ export function createWireTranslator(
             content: structured === undefined ? [] : [{ type: 'text', text: textOf(structured) }],
             details: event.result.details,
           }
+          if (event.result.details !== undefined) end.details = event.result.details
           end.isError = event.result.isError
         } else {
           // Faulted or orphaned: there is no result, but the card must still finish.

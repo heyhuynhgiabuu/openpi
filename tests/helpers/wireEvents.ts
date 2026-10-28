@@ -89,3 +89,27 @@ export function textDeltas(events: readonly WireEvent[]): string[] {
     return parsed.success ? [parsed.data.assistantMessageEvent.delta] : []
   })
 }
+
+/** A `tool_execution_end` whose entry carries a finished tool-result message with `details`. */
+export function toolEndWithDetails(
+  toolCallId: string,
+  details: Record<string, string>
+): AgentEvent {
+  const entry: EntryRecord = {
+    id: entryId(2),
+    conversationId: conversationId(1),
+    kind: 'pi.toolResult',
+    model: [
+      {
+        role: 'toolResult',
+        toolCallId,
+        toolName: 'task',
+        content: [{ type: 'text', text: 'finished' }],
+        details,
+        isError: false,
+        timestamp: 2_000,
+      },
+    ],
+  }
+  return { type: 'tool_execution_end', toolCallId, toolName: 'task', entry }
+}

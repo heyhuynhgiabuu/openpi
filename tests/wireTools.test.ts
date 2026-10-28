@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { applySessionEvent } from '../src/lib/sessionEvents'
 import { sessionEventSchema } from '../src/lib/ipc'
 import type { Message } from '../src/types/session'
-import { schemaFailures, taskId, translateAll } from './helpers/wireEvents'
+import {
+  assistant,
+  schemaFailures,
+  taskId,
+  toolEndWithDetails,
+  translateAll,
+} from './helpers/wireEvents'
 
 /**
  * Phase 8.3k: tool events through the translator (nested calls, streamed output, faulted tools).
@@ -61,5 +67,60 @@ describe('tool events', () => {
     ])
     expect(wire.at(-1)).toMatchObject({ isError: true, result: { content: [] } })
     expect(schemaFailures(wire)).toEqual([])
+  })
+
+  it('puts details on the event itself, where the renderer reads them', () => {
+    const wire = translateAll([
+      { type: 'tool_execution_start', args: {}, toolCallId: 'c3', toolName: 'task' },
+      {
+        type: 'tool_execution_update',
+        output: { set: 'working' },
+        details: { phase: 'running' },
+        toolCallId: 'c3',
+        toolName: 'task',
+      },
+      toolEndWithDetails('c3', { task_id: 'abc', phase: 'done' }),
+    ])
+    expect(wire[1]).toMatchObject({ details: { phase: 'running' } })
+    expect(wire[2]).toMatchObject({ details: { task_id: 'abc', phase: 'done' } })
+    // The SDK-shaped copy stays on the result.
+    expect(wire[2]).toMatchObject({ result: { details: { task_id: 'abc', phase: 'done' } } })
+    expect(schemaFailures(wire)).toEqual([])
+  })
+
+  it('shows the details on the rendered tool card', () => {
+    const wire = translateAll([
+      { type: 'message_start', message: assistant('') },
+      { type: 'tool_execution_start', args: {}, toolCallId: 'c4', toolName: 'task' },
+      {
+        type: 'tool_execution_update',
+        output: { set: 'working' },
+        details: { phase: 'running' },
+        toolCallId: 'c4',
+        toolName: 'task',
+      },
+      toolEndWithDetails('c4', { task_id: 'abc', phase: 'done' }),
+    ])
+    let messages: Message[] = []
+    for (const event of wire) {
+      const parsed = sessionEventSchema.safeParse(event)
+      if (parsed.success) messages = applySessionEvent(messages, parsed.data)
+    }
+    const cards = messages.flatMap((m) => ('toolCards' in m ? m.toolCards : []))
+    expect(cards).toHaveLength(1)
+    expect(cards[0]?.details).toMatchObject({ task_id: 'abc', phase: 'done' })
+  })
+
+  it("puts a nested call's details on the event too", () => {
+    const wire = translateAll([
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'p/1',
+        toolName: 'write',
+        parentToolCallId: 'p',
+        result: { taskId: taskId(9), isError: false, diagnostics: [], details: { phase: 'done' } },
+      },
+    ])
+    expect(wire[0]).toMatchObject({ parentToolCallId: 'p', details: { phase: 'done' } })
   })
 })
