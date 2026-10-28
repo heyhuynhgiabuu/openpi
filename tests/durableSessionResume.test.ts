@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises'
+import { appendFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
@@ -85,6 +85,29 @@ describe('durable session resume', () => {
     expect(after.logs.some((line) => line.includes('not written by the durable runtime'))).toBe(
       false
     )
+    await after.sessions.stop()
+  })
+
+  it('refuses a file another runtime appended to, so those turns are not dropped', async () => {
+    const before = await beforeRestart(['one', 'two'])
+    // What the SDK path does to a file it opens: it appends, keeping the header it was given.
+    await appendFile(
+      before.file,
+      `${JSON.stringify({
+        type: 'message',
+        id: 'ffff0001',
+        parentId: '00000000',
+        timestamp: new Date().toISOString(),
+        message: { role: 'user', content: 'SDK-TURN', timestamp: Date.now() },
+      })}\n`,
+      'utf8'
+    )
+    const after = await setup({ persistent: true, sessionFile: before.file })
+
+    expect(await after.sessions.resumeFrom('/work', before.file, false)).toBe(false)
+    expect(readies(after)).toHaveLength(0)
+    // And the turn the other runtime wrote is still there.
+    expect(await readFile(before.file, 'utf8')).toContain('SDK-TURN')
     await after.sessions.stop()
   })
 

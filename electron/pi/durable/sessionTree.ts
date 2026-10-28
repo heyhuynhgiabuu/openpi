@@ -83,8 +83,16 @@ export function renderSessionTree(
     timestamp: header.startedAt,
     cwd: header.cwd,
   }
-  // Where the store is, so a restart can reopen the session; absent on a file the SDK wrote.
-  if (header.durable) first[DURABLE_HEADER_KEY] = header.durable
+  // Where the store is, so a restart can reopen the session; absent on a file the SDK wrote. The
+  // line count and the last id are not passed in: they are what this export is about to write, and
+  // a resume compares them to tell whether the file was changed since (`resumeFile.ts`).
+  if (header.durable) {
+    first[DURABLE_HEADER_KEY] = {
+      ...header.durable,
+      lines: placed.length,
+      lastLineId: placed.at(-1)?.lineId ?? header.sessionId,
+    }
+  }
   const lines: string[] = [JSON.stringify(first)]
   for (const node of placed) {
     const body = { ...node.item.body }

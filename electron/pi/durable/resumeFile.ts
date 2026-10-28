@@ -14,6 +14,14 @@ import { z } from 'zod'
 
 export const DURABLE_HEADER_KEY = 'openpi.durable'
 
+/** What the export is asked for; the counts below are derived from the lines it writes. */
+export interface DurableHeader {
+  storeId: string
+  /** Conversations the session is made of, oldest branch first, the active one last. */
+  conversationIds: number[]
+}
+
+/** What the header holds: the request, plus what the export wrote, so a later resume can tell. */
 export const durableHeaderSchema = z
   .object({
     storeId: z.string().min(1),
@@ -22,10 +30,15 @@ export const durableHeaderSchema = z
      * an empty list would fall back to the store's root and export that over the session's file.
      */
     conversationIds: z.array(z.number().int().positive()).min(1),
+    /**
+     * What the export looked like when this runtime last wrote it: the number of lines after the
+     * header, and the id of the last one. A file that no longer matches was written by something
+     * else (the SDK path appends to a file it opens), and reopening it here would drop those turns.
+     */
+    lines: z.number().int().positive(),
+    lastLineId: z.string().min(1),
   })
   .strict()
-
-export type DurableHeader = z.infer<typeof durableHeaderSchema>
 
 const headerLine = z
   .object({
@@ -44,6 +57,8 @@ export interface ResumeTarget {
   startedAt: string
   storeId: string
   conversationIds: number[]
+  lines: number
+  lastLineId: string
 }
 
 /**
@@ -64,11 +79,30 @@ export function readResumeTarget(text: string): ResumeTarget | undefined {
   const durable = durableHeaderSchema.safeParse(header.data[DURABLE_HEADER_KEY])
   if (!durable.success) return undefined
   const { id, timestamp } = header.data
-  return {
+  const target: ResumeTarget = {
     sessionId: id,
     // Same fallback the export uses when a session has no header time.
     startedAt: timestamp ?? new Date(0).toISOString(),
     storeId: durable.data.storeId,
     conversationIds: [...durable.data.conversationIds],
+    lines: durable.data.lines,
+    lastLineId: durable.data.lastLineId,
+  }
+  return exportUnchanged(target, text) ? target : undefined
+}
+
+/** Whether the file still holds exactly the lines the last export of this runtime wrote. */
+function exportUnchanged(target: ResumeTarget, text: string): boolean {
+  const lines = text.split('\n').filter((line) => line.trim() !== '')
+  if (lines.length - 1 !== target.lines) return false
+  const last = lines.at(-1)
+  if (last === undefined) return false
+  try {
+    const parsed: unknown = JSON.parse(last)
+    return typeof parsed === 'object' && parsed !== null && 'id' in parsed
+      ? parsed.id === target.lastLineId
+      : false
+  } catch {
+    return false
   }
 }

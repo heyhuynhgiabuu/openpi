@@ -18,6 +18,14 @@ export function durableHeaderOf(
   return { storeId: identity.storeId ?? identity.sessionId, conversationIds }
 }
 
+/** `resumeFrom` for the session factory, which owns the `start` it resumes through. */
+export function createResumeFrom(
+  start: StartSession
+): (cwd: string, sessionFile: string, trusted: boolean, requestId?: string) => Promise<boolean> {
+  return (cwd, sessionFile, workspaceTrusted, requestId) =>
+    resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, requestId, start)
+}
+
 /**
  * Resume the session an exported file belongs to. `false` when the file says nothing about a store
  * — an SDK session, or one written before this slice — so the caller can use the SDK path.
@@ -26,14 +34,6 @@ export function durableHeaderOf(
  * session's store: the file is the one the user opened.
  */
 type StartSession = (cwd: string, options: DurableStartOptions) => Promise<void>
-
-/** `resumeFrom` for the session factory, which owns the `start` it resumes through. */
-export function createResumeFrom(
-  start: StartSession
-): (cwd: string, sessionFile: string, trusted: boolean, requestId?: string) => Promise<boolean> {
-  return (cwd, sessionFile, workspaceTrusted, requestId) =>
-    resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, requestId, start)
-}
 
 export async function resumeDurableFromFile(
   cwd: string,

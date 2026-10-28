@@ -126,7 +126,7 @@ export async function startSession(
         opts.requestId
       )
       if (resumed) return
-      outputLine('warn', `[runtime] ${opts.sessionFile} was not written by the durable runtime`)
+      outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
     } else {
       await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
       return
