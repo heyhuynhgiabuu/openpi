@@ -71,6 +71,7 @@ export async function setup(
   } = {}
 ) {
   const sent: SidecarMessage[] = []
+  const knownModels: Record<string, ResolvedModel> = { ...options.knownModels }
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
   const closed: DurableHarness[] = []
@@ -112,14 +113,15 @@ export async function setup(
     resolveModel: async (provider, modelId) => {
       await options.resolveGate
       if (options.failResolve) throw new Error('registry offline')
-      return options.knownModels?.[`${provider}/${modelId}`]
+      return knownModels[`${provider}/${modelId}`]
     },
-    open: async () => {
+    open: async (_cwd, _trusted, opening) => {
       opens += 1
       if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
-        directory: join(root, 'store'),
+        // One store per session, as in production (`durableHost.ts`).
+        directory: join(root, 'store', opening.sessionId),
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,
@@ -157,7 +159,7 @@ export async function setup(
   }
   const sessions = createDurableSessions(deps)
   const types = () => sent.map((m) => m.type)
-  return { sessions, sent, logs, identity, types, harnesses, closed, persisted }
+  return { sessions, sent, logs, identity, types, harnesses, closed, persisted, knownModels }
 }
 
 export const prompt = (text: string, contextPrefix?: string): SidecarCommand => ({

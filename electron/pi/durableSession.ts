@@ -6,6 +6,7 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { runCompact } from './durableCompact'
+import { errorText, promptText } from './durablePrompt'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
   ActiveSession,
@@ -87,8 +88,20 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       agent.model &&
       (model?.provider !== agent.model.provider || model?.id !== agent.model.modelId)
     ) {
-      const stored = await deps.resolveModel(agent.model.provider, agent.model.modelId)
+      const stored = await deps
+        .resolveModel(agent.model.provider, agent.model.modelId)
+        .catch((error) => {
+          deps.log('warn', `[durable] looking up the stored model failed: ${errorText(error)}`)
+          return undefined
+        })
       if (stored) ({ info: model, thinkingLevels } = stored)
+      else {
+        deps.log(
+          'warn',
+          `[durable] stored model ${agent.model.provider}/${agent.model.modelId} is not available; ` +
+            `reporting ${model?.provider}/${model?.id}, though the session still uses the stored one`
+        )
+      }
     }
     const sessionName = options.resume ? (await harness.stats()).sessionName : null
     return { agent, model, thinkingLevels, sessionName }
@@ -154,16 +167,6 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  /** Slash commands are refused; the context prefix is applied the way the SDK path does. */
-  function promptText(cmd: { text: string; contextPrefix?: string }): string {
-    const text = cmd.text.trim()
-    if (text.startsWith('/')) {
-      throw new Error('slash commands are not supported on the durable runtime yet')
-    }
-    const prefix = cmd.contextPrefix?.trim()
-    return prefix ? `${prefix}\n\n${text}` : text
-  }
-
   function reportUnanswered(
     session: ActiveSession,
     result: { status: string; reason?: string }
@@ -211,10 +214,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   /**
    * `reload_session`: a full restart of the harness over the same store, file and header, so
    * extensions, customizations and MCP servers are discovered afresh and the history is untouched.
-   * A run in flight is cut short, as the SDK path's dispose does.
+   * A run in flight is aborted first, as the SDK path's dispose does: merely closing the harness
+   * would leave the run pending in the store, and the next submit would start it again.
    */
   async function reload(session: ActiveSession, requestId: string): Promise<void> {
     session.abortRequested = true
+    await session.harness.abort()
     await exportNow(session)
     await start(session.cwd, {
       workspaceTrusted: session.workspaceTrusted,
@@ -287,8 +292,4 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   }
 
   return { isActive: () => active !== null, start, handleCommand, stop }
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { fauxAssistantMessage, fauxText, type FauxResponseStep } from '@earendil-works/pi-ai'
 import { describe, expect, it } from 'vitest'
 import type { ResolvedModel } from '../electron/pi/durableSettings'
 import type { SidecarMessage } from '../electron/pi/sidecarTypes'
@@ -128,5 +129,80 @@ describe('durable reload_session', () => {
     expect(t.harnesses).toHaveLength(2)
     expect(t.closed).toEqual(t.harnesses)
     expect(t.sessions.isActive()).toBe(false)
+  })
+
+  it('aborts a reply in progress instead of leaving it to resume on the next prompt', async () => {
+    let release = () => {}
+    let enter = () => {}
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve
+    })
+    const requests: string[] = []
+    const held: FauxResponseStep = async (context, options) => {
+      requests.push(JSON.stringify(context.messages))
+      enter()
+      await new Promise<void>((resolve, reject) => {
+        void released.then(resolve)
+        options?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+      return fauxAssistantMessage([fauxText('never shown')], { stopReason: 'stop' as const })
+    }
+    const next: FauxResponseStep = async (context) => {
+      requests.push(JSON.stringify(context.messages))
+      return fauxAssistantMessage([fauxText('after reload')], { stopReason: 'stop' as const })
+    }
+    const t = await setup({ persistent: true, responses: [held, next] })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      const running = t.sessions.handleCommand(prompt('start the task'))
+      await entered
+      await t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+      // The cut-short prompt ends quietly: no thrown error, no error message, no logged failure.
+      await expect(running).resolves.toBe(true)
+      expect(t.sent.filter((m) => m.type === 'error')).toEqual([])
+      expect(t.logs.filter((l) => l.startsWith('error'))).toEqual([])
+
+      await t.sessions.handleCommand(prompt('next'))
+      release()
+      // One call for the held run, one for the new prompt: the aborted run did not start again.
+      expect(requests).toHaveLength(2)
+      expect(requests[1]).not.toContain('"assistant"')
+      expect(requests[1]).toContain('next')
+    } finally {
+      release()
+      await t.sessions.stop()
+    }
+  })
+
+  it('does not share a store between sessions', async () => {
+    const t = await setup({ persistent: true, answers: ['one'] })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      await t.sessions.handleCommand(prompt('first'))
+      await t.sessions.start('/work', { workspaceTrusted: false })
+      expect(readies(t.sent).at(-1)?.payload.sessionId).not.toBe(
+        readies(t.sent)[0]?.payload.sessionId
+      )
+      expect(await messageCount(t)).toBe(0)
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('says so when the stored model can no longer be found', async () => {
+    const t = await setup({ persistent: true, knownModels: { 'faux/other': OTHER } })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      await t.sessions.handleCommand({ type: 'set_model', provider: 'faux', modelId: 'other' })
+      delete t.knownModels['faux/other']
+      await t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+      expect(t.logs.join('\n')).toContain('stored model faux/other is not available')
+      expect(readies(t.sent).at(-1)?.payload.model).toMatchObject({ id: 'm' })
+    } finally {
+      await t.sessions.stop()
+    }
   })
 })
