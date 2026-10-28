@@ -8,6 +8,7 @@ import { openDurableHarness } from '../../electron/pi/durable/harness'
 import type { DurableHarness } from '../../electron/pi/durable/types'
 import { createDurableSessions, type DurableSessionDeps } from '../../electron/pi/durableSession'
 import type { ResolvedModel } from '../../electron/pi/durableSettings'
+import { sidecarMessageSchema } from '../../electron/pi/sidecarContracts'
 import type { SidecarCommand, SidecarMessage } from '../../electron/pi/sidecarTypes'
 
 /**
@@ -16,6 +17,8 @@ import type { SidecarCommand, SidecarMessage } from '../../electron/pi/sidecarTy
  */
 
 let root = ''
+// Messages the main process would reject (`sidecarMessageSchema`), collected across a test.
+const contractViolations: string[] = []
 
 /** Call at the top of a test file: gives every test a fresh temp directory. */
 export function useSessionRoot(): void {
@@ -24,6 +27,11 @@ export function useSessionRoot(): void {
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
+    // Every message a durable session sent must satisfy the contract the main process enforces.
+    const violations = contractViolations.splice(0)
+    if (violations.length > 0) {
+      throw new Error(`sidecar messages violate the contract:\n${violations.join('\n')}`)
+    }
   })
 }
 
@@ -66,7 +74,14 @@ export async function setup(
     sessionFile: options.sessionFile ?? join(root, 'sessions', 'sess-1.jsonl'),
   }
   const deps: DurableSessionDeps = {
-    send: (message) => sent.push(message),
+    send: (message) => {
+      sent.push(message)
+      const parsed = sidecarMessageSchema.safeParse(message)
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0]
+        contractViolations.push(`${message.type}: ${issue?.path.join('.')} ${issue?.message}`)
+      }
+    },
     log: (level, text) => logs.push(`${level}: ${text}`),
     newIdentity: () => identity,
     now: () => new Date('2026-10-27T00:00:00.000Z'),
