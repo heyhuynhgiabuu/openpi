@@ -1,6 +1,12 @@
 import type { Context } from '@earendil-works/chord'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
-import { createModels, type Message, type Models, type MutableModels } from '@earendil-works/pi-ai'
+import {
+  createModels,
+  type Message,
+  type ModelThinkingLevel,
+  type Models,
+  type MutableModels,
+} from '@earendil-works/pi-ai'
 import {
   AssistantEntry,
   Harness,
@@ -12,7 +18,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
-import { computeStats, type DurableStats } from './stats'
+import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
 import { messageText } from './text'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
@@ -29,6 +35,7 @@ import type {
   DurableEntrySnapshot,
   DurableHarness,
   DurableHarnessOptions,
+  DurableModelRef,
   DurableSubmitResult,
   DurableView,
   DurableQueued,
@@ -187,6 +194,28 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       const settled = submission.wait(ctx).then(resultOf)
       settled.then(forget, forget)
       return { settled }
+    },
+
+    async agentState(): Promise<{ model?: DurableModelRef; thinkingLevel: ModelThinkingLevel }> {
+      const agent = await root.agent(ctx)
+      return agent.model
+        ? { model: agent.model, thinkingLevel: agent.thinkingLevel }
+        : { thinkingLevel: agent.thinkingLevel }
+    },
+
+    async configure(change: {
+      model?: DurableModelRef
+      thinkingLevel?: ModelThinkingLevel
+    }): Promise<void> {
+      await root.configure(change, ctx)
+    },
+
+    async setSessionName(name: string): Promise<void> {
+      const submission = await root.submit(
+        { type: 'write', entry: { kind: SESSION_NAME_KIND, data: { name } } },
+        ctx
+      )
+      await submission.wait(ctx)
     },
 
     async stats(): Promise<DurableStats> {

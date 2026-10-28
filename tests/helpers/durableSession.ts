@@ -1,12 +1,13 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { FauxResponseStep } from '@earendil-works/pi-ai'
+import type { FauxResponseStep, ModelThinkingLevel } from '@earendil-works/pi-ai'
 import { fauxAssistantMessage, fauxProvider, fauxText } from '@earendil-works/pi-ai'
 import { afterEach, beforeEach } from 'vitest'
 import { openDurableHarness } from '../../electron/pi/durable/harness'
 import type { DurableHarness } from '../../electron/pi/durable/types'
 import { createDurableSessions, type DurableSessionDeps } from '../../electron/pi/durableSession'
+import type { ResolvedModel } from '../../electron/pi/durableSettings'
 import type { SidecarCommand, SidecarMessage } from '../../electron/pi/sidecarTypes'
 
 /**
@@ -28,6 +29,9 @@ export function useSessionRoot(): void {
 
 export const sessionRoot = (): string => root
 
+/** Levels the test model claims to support (pi-durable accepts any of them). */
+export const FAUX_LEVELS: readonly ModelThinkingLevel[] = ['off', 'low', 'high']
+
 export const MODEL = { id: 'm', name: 'M', provider: 'faux', reasoning: false, contextWindow: 1000 }
 
 export async function setup(
@@ -36,11 +40,16 @@ export async function setup(
     responses?: FauxResponseStep[]
     sessionFile?: string
     failOpen?: boolean
+    /** Models `resolveModel` knows, by `provider/modelId`; the faux model is always known. */
+    knownModels?: Record<string, ResolvedModel>
+    /** Make persisting the default model/thinking level throw. */
+    failPersist?: boolean
   } = {}
 ) {
   const sent: SidecarMessage[] = []
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
+  const persisted: string[] = []
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -57,6 +66,7 @@ export async function setup(
     log: (level, text) => logs.push(`${level}: ${text}`),
     newIdentity: () => identity,
     now: () => new Date('2026-10-27T00:00:00.000Z'),
+    resolveModel: async (provider, modelId) => options.knownModels?.[`${provider}/${modelId}`],
     open: async () => {
       if (options.failOpen) throw new Error('no default model')
       const harness = await openDurableHarness({
@@ -67,12 +77,26 @@ export async function setup(
         policy: false,
       })
       harnesses.push(harness)
-      return { harness, model: MODEL }
+      return {
+        harness,
+        model: MODEL,
+        thinkingLevels: FAUX_LEVELS,
+        persist: {
+          model: (provider, modelId) => {
+            if (options.failPersist) throw new Error('disk full')
+            persisted.push(`model:${provider}/${modelId}`)
+          },
+          thinking: (level) => {
+            if (options.failPersist) throw new Error('disk full')
+            persisted.push(`thinking:${level}`)
+          },
+        },
+      }
     },
   }
   const sessions = createDurableSessions(deps)
   const types = () => sent.map((m) => m.type)
-  return { sessions, sent, logs, identity, types, harnesses }
+  return { sessions, sent, logs, identity, types, harnesses, persisted }
 }
 
 export const prompt = (text: string, contextPrefix?: string): SidecarCommand => ({

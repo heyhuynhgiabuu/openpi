@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { getSupportedThinkingLevels, type Api, type Model } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { openDurableHarness } from './durable/harness'
 import {
@@ -6,7 +7,9 @@ import {
   type DurableIdentity,
   type DurableOpenResult,
 } from './durableSession'
+import type { ResolvedModel } from './durableSettings'
 import { createSessionSettingsManager } from './sessionSettings'
+import type { SessionReadyPayload } from './sidecarTypes'
 import { getAgentDir, getModelRuntime, outputLine, send } from './sidecarContext'
 
 /**
@@ -53,13 +56,28 @@ async function open(
   })
   return {
     harness,
-    model: {
-      id: model.id,
-      name: model.name,
-      provider: model.provider,
-      reasoning: model.reasoning ?? false,
-      contextWindow: model.contextWindow ?? 0,
+    model: modelInfo(model),
+    thinkingLevels: getSupportedThinkingLevels(model),
+    persist: {
+      model: (p, m) => settings.setDefaultModelAndProvider(p, m),
+      thinking: (level) => settings.setDefaultThinkingLevel(level),
     },
+  }
+}
+
+async function resolveModel(provider: string, modelId: string): Promise<ResolvedModel | undefined> {
+  const model = (await getModelRuntime()).getModel(provider, modelId)
+  if (!model) return undefined
+  return { info: modelInfo(model), thinkingLevels: getSupportedThinkingLevels(model) }
+}
+
+function modelInfo(model: Model<Api>): NonNullable<SessionReadyPayload['model']> {
+  return {
+    id: model.id,
+    name: model.name,
+    provider: model.provider,
+    reasoning: model.reasoning ?? false,
+    contextWindow: model.contextWindow ?? 0,
   }
 }
 
@@ -68,5 +86,6 @@ export const durableSessions = createDurableSessions({
   log: outputLine,
   newIdentity,
   open,
+  resolveModel,
   now: () => new Date(),
 })

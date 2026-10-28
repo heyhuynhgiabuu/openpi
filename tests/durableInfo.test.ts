@@ -17,6 +17,7 @@ const stats = {
   messageCount: 6,
   lastAssistantText: null,
   contextTokens: 250,
+  sessionName: null,
 }
 
 describe('contextFill', () => {
@@ -42,7 +43,13 @@ describe('contextFill', () => {
 })
 
 describe('payloads', () => {
-  const source = { model, identity, streaming: true }
+  const source = {
+    model,
+    identity,
+    streaming: true,
+    sessionName: 'My session',
+    thinkingLevel: 'low',
+  }
 
   it('shapes get_stats like the SDK path, including streaming state', () => {
     expect(statsMessage('r1', source, stats)).toEqual({
@@ -64,7 +71,7 @@ describe('payloads', () => {
     })
   })
 
-  it('shapes get_session_info with the unsupported fields explicitly null', () => {
+  it('shapes get_session_info with the session name and thinking level', () => {
     const message = sessionInfoMessage('r2', source, stats)
     expect(message.info).toMatchObject({
       sessionFile: '/s.jsonl',
@@ -72,8 +79,8 @@ describe('payloads', () => {
       model,
       messageCount: 6,
       contextUsagePercent: 25,
-      sessionName: null,
-      thinkingLevel: null,
+      sessionName: 'My session',
+      thinkingLevel: 'low',
     })
   })
 })

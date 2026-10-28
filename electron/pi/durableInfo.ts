@@ -11,6 +11,8 @@ export interface InfoSource {
   identity: { sessionId: string; sessionFile: string }
   /** True between `agent_start` and `agent_end`. */
   streaming: boolean
+  sessionName: string | null
+  thinkingLevel: string | null
 }
 
 /** Context fill the way the SDK path reports it: all `null` until a response has been seen. */
@@ -59,9 +61,9 @@ export function sessionInfoMessage(
     info: {
       sessionFile: source.identity.sessionFile,
       sessionId: source.identity.sessionId,
-      sessionName: null,
+      sessionName: source.sessionName,
       model: source.model,
-      thinkingLevel: null,
+      thinkingLevel: source.thinkingLevel,
       messageCount: stats.messageCount,
       ...contextFill(source.model, stats.contextTokens),
     },

@@ -5,6 +5,7 @@ import { dirname } from 'node:path'
 import type { Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { z } from 'zod'
+import { sessionNameOf } from './stats'
 
 /**
  * Phase 8.3e: export a durable conversation as a Pi JSONL v3 session file.
@@ -63,24 +64,23 @@ export function renderSessionJsonl(
     }),
   ]
   let parentId: string | null = null
+  let messages = 0
   let position = 0
+  const append = (type: string, timestamp: string, body: Record<string, unknown>): void => {
+    position += 1
+    const id = entryId(position)
+    lines.push(JSON.stringify({ type, id, parentId, timestamp, ...body }))
+    parentId = id
+  }
   for (const entry of entries) {
+    const name = sessionNameOf(entry)
+    if (name !== undefined) append('session_info', header.startedAt, { name })
     for (const message of entry.model ?? []) {
-      position += 1
-      const id = entryId(position)
-      lines.push(
-        JSON.stringify({
-          type: 'message',
-          id,
-          parentId,
-          timestamp: messageTimestamp(message, header.startedAt),
-          message,
-        })
-      )
-      parentId = id
+      append('message', messageTimestamp(message, header.startedAt), { message })
+      messages += 1
     }
   }
-  return { text: `${lines.join('\n')}\n`, messages: position }
+  return { text: `${lines.join('\n')}\n`, messages }
 }
 
 /** Header id of an existing file, or undefined when it is empty or not a v3 session. */
