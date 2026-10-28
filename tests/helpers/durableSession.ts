@@ -66,11 +66,14 @@ export async function setup(
     now?: () => Date
     /** Make the nth `open` (1-based) fail. */
     failOpenAt?: number
+    /** Make `stats()` reject on the harness the nth `open` returns (1-based). */
+    breakStatsAt?: number
   } = {}
 ) {
   const sent: SidecarMessage[] = []
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
+  const closed: DurableHarness[] = []
   const persisted: string[] = []
   let opens = 0
   const faux = fauxProvider()
@@ -125,6 +128,16 @@ export async function setup(
         workspacePath: options.workspacePath,
       })
       harnesses.push(harness)
+      const close = harness.close.bind(harness)
+      harness.close = async () => {
+        closed.push(harness)
+        return close()
+      }
+      if (opens === options.breakStatsAt) {
+        harness.stats = async () => {
+          throw new Error('stats unavailable')
+        }
+      }
       return {
         harness,
         model: MODEL,
@@ -144,7 +157,7 @@ export async function setup(
   }
   const sessions = createDurableSessions(deps)
   const types = () => sent.map((m) => m.type)
-  return { sessions, sent, logs, identity, types, harnesses, persisted }
+  return { sessions, sent, logs, identity, types, harnesses, closed, persisted }
 }
 
 export const prompt = (text: string, contextPrefix?: string): SidecarCommand => ({

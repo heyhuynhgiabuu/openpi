@@ -117,4 +117,16 @@ describe('durable reload_session', () => {
     ).rejects.toThrow('no default model')
     expect(t.sessions.isActive()).toBe(false)
   })
+
+  it('closes the harness it opened when setting up the reloaded session fails', async () => {
+    const t = await setup({ persistent: true, breakStatsAt: 2 })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    await expect(
+      t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+    ).rejects.toThrow('stats unavailable')
+    // The first harness closed for the reload, the second because its setup failed.
+    expect(t.harnesses).toHaveLength(2)
+    expect(t.closed).toEqual(t.harnesses)
+    expect(t.sessions.isActive()).toBe(false)
+  })
 })

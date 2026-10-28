@@ -9,6 +9,7 @@ import { runCompact } from './durableCompact'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
   ActiveSession,
+  DurableOpenResult,
   DurableSessionDeps,
   DurableSessions,
   DurableStartOptions,
@@ -74,11 +75,9 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  async function start(cwd: string, options: DurableStartOptions): Promise<void> {
-    await stop()
-    const identity = options.resume?.identity ?? deps.newIdentity(cwd)
-    const opened = await deps.open(cwd, options.workspaceTrusted, identity)
-    const { harness, persist } = opened
+  /** What `session_ready` reports about a freshly opened harness. */
+  async function inspectOpened(opened: DurableOpenResult, options: DurableStartOptions) {
+    const { harness } = opened
     const agent = await harness.agentState()
     // A reopened session keeps the model it was using, which may not be today's default. A new
     // one was opened with its model, so there is nothing to look up.
@@ -92,6 +91,26 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       if (stored) ({ info: model, thinkingLevels } = stored)
     }
     const sessionName = options.resume ? (await harness.stats()).sessionName : null
+    return { agent, model, thinkingLevels, sessionName }
+  }
+
+  async function start(cwd: string, options: DurableStartOptions): Promise<void> {
+    await stop()
+    const identity = options.resume?.identity ?? deps.newIdentity(cwd)
+    const opened = await deps.open(cwd, options.workspaceTrusted, identity)
+    const { harness, persist } = opened
+    // Anything that fails between opening the harness and registering it would leave its store
+    // and MCP connections open with nothing able to close them.
+    let ready: Awaited<ReturnType<typeof inspectOpened>>
+    try {
+      ready = await inspectOpened(opened, options)
+    } catch (error) {
+      await harness.close().catch((closeError) => {
+        deps.log('warn', `[durable] closing after a failed start: ${errorText(closeError)}`)
+      })
+      throw error
+    }
+    const { agent, model, thinkingLevels, sessionName } = ready
     const session: ActiveSession = {
       harness,
       cwd,
