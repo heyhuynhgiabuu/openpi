@@ -35,17 +35,21 @@ describe('openBranches', () => {
     expect(close).toHaveBeenCalledTimes(1)
   })
 
-  it('still throws when closing itself fails', async () => {
+  it('still closes both when a close itself fails, and rethrows the original error', async () => {
     const { harness } = harnessWith({})
-    harness.close = vi.fn(async () => {
-      throw new Error('close failed')
+    const close = vi.fn(async () => {
+      throw new Error('store close failed')
     })
+    harness.close = close
     const releaseExtras = vi.fn(async () => {
       throw new Error('mcp close failed')
     })
     await expect(openBranches(harness, [99], releaseExtras, BACKGROUND_CONTEXT)).rejects.toThrow(
       'conversation 99 not found'
     )
+    // A failing MCP close must not stop the store from closing, and vice versa.
+    expect(releaseExtras).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledTimes(1)
   })
 
   it('has nothing to open when the session uses the store root', async () => {
