@@ -93,11 +93,12 @@ export function decideCutover(options: {
 export type SessionRuntimeChoice =
   | { runtime: 'sdk'; reason?: string }
   /**
-   * `resume`: the request carries the file of an existing session. The durable runtime reopens it
-   * only if that file says where its store is (`durable/resumeFile.ts`); a file it did not write,
-   * such as an SDK session's, is not its to reopen, so the sidecar falls back to the SDK path.
+   * `start` says which way: a request that carries the file of an existing session is `resume`.
+   * The durable runtime reopens it only if that file says where its store is
+   * (`durable/resumeFile.ts`); a file it did not write, such as an SDK session's, is not its to
+   * reopen, so the sidecar falls back to the SDK path.
    */
-  | { runtime: 'durable'; reason?: undefined; resume?: boolean }
+  | { runtime: 'durable'; reason?: undefined; start: 'new' | 'resume' }
 
 /**
  * Per-session routing once the gate has said `durable`. Forking stays on the SDK path: a fork of an
@@ -116,5 +117,5 @@ export function chooseSessionRuntime(
       reason: 'the durable runtime does not fork sessions; forking uses the SDK path',
     }
   }
-  return request.sessionFile ? { runtime: 'durable', resume: true } : { runtime: 'durable' }
+  return { runtime: 'durable', start: request.sessionFile ? 'resume' : 'new' }
 }

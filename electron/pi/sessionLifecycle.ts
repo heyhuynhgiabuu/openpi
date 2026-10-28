@@ -115,10 +115,10 @@ export async function startSession(
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
   if (choice.runtime === 'durable') {
     const trusted = opts.workspaceTrusted ?? false
-    await stopSdkSession(opts.sessionFile ? 'resume' : 'new')
+    await stopSdkSession(choice.start)
     // A resumed file is only reopened when this runtime wrote it; a session it does not own (an
     // SDK one) has no store here, so it is read by the SDK path below, as before.
-    if (opts.sessionFile) {
+    if (choice.start === 'resume' && opts.sessionFile) {
       const resumed = await durableSessions.resumeFrom(
         cwd,
         opts.sessionFile,

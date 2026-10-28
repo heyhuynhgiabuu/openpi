@@ -80,7 +80,7 @@ describe('per-session runtime choice', () => {
   const sdk = decideCutover({ stored: null, durableAvailable: true, capabilities: [] })
 
   it('starts a new session on the durable runtime when the gate allows it', () => {
-    expect(chooseSessionRuntime(durable, {})).toEqual({ runtime: 'durable' })
+    expect(chooseSessionRuntime(durable, {})).toEqual({ runtime: 'durable', start: 'new' })
   })
 
   it('offers to resume an existing session, and lets the file say whether it can', () => {
@@ -88,7 +88,7 @@ describe('per-session runtime choice', () => {
     // reopened is decided by reading the file, not here.
     expect(chooseSessionRuntime(durable, { sessionFile: '/s.jsonl' })).toEqual({
       runtime: 'durable',
-      resume: true,
+      start: 'resume',
     })
   })
 
