@@ -1,5 +1,12 @@
 import type { DurableHarness } from './durable/types'
 import { sessionInfoMessage, statsMessage, type InfoSource } from './durableInfo'
+import {
+  applySettingsCommand,
+  isSettingsCommand,
+  type SettingsDeps,
+  type SettingsPersist,
+} from './durableSettings'
+import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
 /**
@@ -24,11 +31,13 @@ export interface DurableIdentity {
 export interface DurableOpenResult {
   harness: DurableHarness
   model: SessionReadyPayload['model']
+  /** Thinking levels the opened model supports. */
+  thinkingLevels: readonly ModelThinkingLevel[]
+  persist: SettingsPersist
 }
 
-export interface DurableSessionDeps {
+export interface DurableSessionDeps extends SettingsDeps {
   send: (message: SidecarMessage) => void
-  log: (level: 'info' | 'warn' | 'error', text: string) => void
   newIdentity: (cwd: string) => DurableIdentity
   open: (
     cwd: string,
@@ -50,6 +59,10 @@ interface ActiveSession {
   startedAt: string
   stopEvents: () => Promise<void>
   model: SessionReadyPayload['model']
+  thinkingLevel: string | null
+  thinkingLevels: readonly ModelThinkingLevel[]
+  sessionName: string | null
+  persist: SettingsPersist
   /** True between `agent_start` and `agent_end`, for `get_stats`' `isStreaming`. */
   streaming: boolean
   /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
@@ -61,9 +74,6 @@ interface ActiveSession {
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
   'execute_bash',
-  'set_model',
-  'set_thinking',
-  'set_session_name',
   'compact',
   'reload_session',
   'fork_session',
@@ -114,7 +124,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
     const identity = deps.newIdentity(cwd)
-    const { harness, model } = await deps.open(cwd, options.workspaceTrusted, identity)
+    const { harness, model, thinkingLevels, persist } = await deps.open(
+      cwd,
+      options.workspaceTrusted,
+      identity
+    )
+    const agent = await harness.agentState()
     const session: ActiveSession = {
       harness,
       cwd,
@@ -122,6 +137,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       startedAt: deps.now().toISOString(),
       stopEvents: async () => undefined,
       model,
+      thinkingLevel: agent.thinkingLevel,
+      thinkingLevels,
+      persist,
+      sessionName: null,
       streaming: false,
       abortRequested: false,
       closing: false,
@@ -136,7 +155,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
         sessionId: identity.sessionId,
         sessionName: null,
         model,
-        thinkingLevel: null,
+        thinkingLevel: agent.thinkingLevel,
       },
     })
     // After `session_ready`: the renderer resets conversation state on ready, so the snapshot the
@@ -221,6 +240,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     model: session.model,
     identity: session.identity,
     streaming: session.streaming,
+    sessionName: session.sessionName,
+    thinkingLevel: session.thinkingLevel,
   })
 
   async function handleCommand(cmd: SidecarCommand): Promise<boolean> {
@@ -231,6 +252,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (cmd.type === 'steer' || cmd.type === 'follow_up') {
       await queue(cmd)
+      return true
+    }
+    if (isSettingsCommand(cmd)) {
+      const session = active
+      await applySettingsCommand(cmd, session, deps, () => exportNow(session))
       return true
     }
     if (cmd.type === 'get_stats') {

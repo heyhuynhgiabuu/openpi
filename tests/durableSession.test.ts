@@ -128,9 +128,6 @@ describe('durable session prompt', () => {
 describe('durable command routing', () => {
   const unsupported: SidecarCommand[] = [
     { type: 'execute_bash', requestId: 'r', command: 'ls' },
-    { type: 'set_model', provider: 'p', modelId: 'm' },
-    { type: 'set_thinking', level: 'low' },
-    { type: 'set_session_name', name: 'n' },
     { type: 'compact', requestId: 'r' },
     { type: 'reload_session', requestId: 'r' },
     { type: 'fork_session', entryId: 'e', workspaceTrusted: false },

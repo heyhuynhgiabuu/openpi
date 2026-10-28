@@ -1,4 +1,4 @@
-import type { Models, MutableModels } from '@earendil-works/pi-ai'
+import type { ModelThinkingLevel, Models, MutableModels } from '@earendil-works/pi-ai'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 import type { DurableStats } from './stats'
@@ -70,6 +70,12 @@ export interface DurableHarnessOptions {
 export interface DurableHarness {
   /** Submit one input and wait for the run to settle. */
   prompt(text: string): Promise<DurableSubmitResult>
+  /** The agent's stored choices, resolved: the thinking level in force, and the model when set. */
+  agentState(): Promise<{ model?: DurableModelRef; thinkingLevel: ModelThinkingLevel }>
+  /** Change the model and/or thinking level for the next request; a given field replaces the stored one. */
+  configure(change: { model?: DurableModelRef; thinkingLevel?: ModelThinkingLevel }): Promise<void>
+  /** Record the session's display name as a passive entry (appended at once, even mid-run). */
+  setSessionName(name: string): Promise<void>
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
   stats(): Promise<DurableStats>
   /**

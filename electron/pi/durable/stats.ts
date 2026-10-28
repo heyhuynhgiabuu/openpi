@@ -21,6 +21,8 @@ export interface DurableStats {
   lastAssistantText: string | null
   /** Tokens the last model response saw; `null` until there has been one. */
   contextTokens: number | null
+  /** The latest non-empty name recorded with `setSessionName`, or `null`. */
+  sessionName: string | null
 }
 
 /** The part of pi-ai's `Usage` we sum; unknown or missing counters count as zero. */
@@ -94,6 +96,28 @@ function lastAssistantText(entries: readonly EntryRecord[]): string | null {
   return null
 }
 
+/** Entry kind of a session-name write; the exporter turns it into a JSONL v3 `session_info` line. */
+export const SESSION_NAME_KIND = 'openpi.session_name'
+
+const sessionNameData = z.object({ name: z.string() })
+
+/** The name carried by a session-name entry, trimmed; `undefined` for any other entry or an empty name. */
+export function sessionNameOf(entry: EntryRecord): string | undefined {
+  if (entry.kind !== SESSION_NAME_KIND) return undefined
+  const data = sessionNameData.safeParse(entry.data)
+  const name = data.success ? data.data.name.trim() : ''
+  return name === '' ? undefined : name
+}
+
+function latestSessionName(entries: readonly EntryRecord[]): string | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    const name = entry ? sessionNameOf(entry) : undefined
+    if (name !== undefined) return name
+  }
+  return null
+}
+
 export function computeStats(
   ledger: unknown,
   entries: readonly EntryRecord[],
@@ -109,5 +133,6 @@ export function computeStats(
     messageCount,
     lastAssistantText: lastAssistantText(entries),
     contextTokens: lastContextTokens(entries),
+    sessionName: latestSessionName(entries),
   }
 }
