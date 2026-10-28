@@ -80,6 +80,7 @@ export async function setup(
   const closed: DurableHarness[] = []
   const persisted: string[] = []
   let opens = 0
+  const trusts: boolean[] = []
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -122,8 +123,9 @@ export async function setup(
       if (resolver.fail) throw new Error('registry offline')
       return knownModels[`${provider}/${modelId}`]
     },
-    open: async (_cwd, _trusted, opening) => {
+    open: async (_cwd, trusted, opening) => {
       opens += 1
+      trusts.push(trusted)
       if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
@@ -178,6 +180,7 @@ export async function setup(
     persisted,
     knownModels,
     resolver,
+    trusts,
   }
 }
 

@@ -1,5 +1,5 @@
 import { type FauxResponseStep } from '@earendil-works/pi-ai'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { answer, fork, idOf, lines, mentions, readies, textOf } from './helpers/forkSession'
@@ -145,5 +145,38 @@ describe('durable fork_session edge cases', () => {
     } finally {
       await t.sessions.stop()
     }
+  })
+
+  it('restores the parent with the trust it had, not the trust the fork request carried', async () => {
+    const t = await setup({ persistent: true, answers: ['a1'] })
+    await t.sessions.start('/work', { workspaceTrusted: true })
+    try {
+      await t.sessions.handleCommand(prompt('q1'))
+      await mkdir(join(sessionRoot(), 'sessions', 'sess-2.jsonl'), { recursive: true })
+      const request = {
+        ...fork(idOf(await lines(t.identity.sessionFile), 'a1')),
+        workspaceTrusted: false,
+      }
+      await expect(t.sessions.handleCommand(request)).rejects.toThrow()
+      // start (trusted), fork (as requested), restored parent (trusted again).
+      expect(t.trusts).toEqual([true, false, true])
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('leaves no session behind when a reload cannot write its file', async () => {
+    const t = await setup({ persistent: true, answers: ['a1'] })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    await t.sessions.handleCommand(prompt('q1'))
+    // The file is replaced by a directory, so the first export of the reloaded session fails.
+    await rm(t.identity.sessionFile, { force: true })
+    await mkdir(t.identity.sessionFile, { recursive: true })
+    await expect(
+      t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+    ).rejects.toThrow()
+    expect(t.sessions.isActive()).toBe(false)
+    // Only the original announcement: the failed reload announced nothing.
+    expect(readies(t.sent)).toHaveLength(1)
   })
 })
