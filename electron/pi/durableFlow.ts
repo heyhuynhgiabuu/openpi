@@ -30,6 +30,8 @@ export async function reloadSession(
   requestId: string,
   ops: FlowOps
 ): Promise<void> {
+  // A navigation in progress changes the session's conversations; restart from what it leaves.
+  await session.activity.navigation
   session.abortRequested = true
   await session.harness.abort()
   await ops.exportNow(session)

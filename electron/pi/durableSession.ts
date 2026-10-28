@@ -231,7 +231,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (isSettingsCommand(cmd)) {
       const session = active
-      await applySettingsCommand(cmd, session, deps, () => exportNow(session))
+      // Counted, and after any navigation in progress: a change made meanwhile must land on the
+      // branch the session ends up on, not the one it is leaving.
+      await counted(session.activity, 'replies', () =>
+        applySettingsCommand(cmd, session, deps, () => exportNow(session))
+      )
       return true
     }
     if (isInfoCommand(cmd)) {
@@ -241,9 +245,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     if (cmd.type === 'execute_bash') {
       const session = active
-      const result = await session.harness.executeBash(cmd.command, {
-        excludeFromContext: cmd.excludeFromContext,
-      })
+      // Counted, so a command is neither recorded on a branch being left nor overlapped by one.
+      const result = await counted(session.activity, 'replies', () =>
+        session.harness.executeBash(cmd.command, { excludeFromContext: cmd.excludeFromContext })
+      )
       deps.send({ type: 'bash_result', requestId: cmd.requestId, result })
       await exportNow(session)
       return true

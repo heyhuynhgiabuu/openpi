@@ -231,4 +231,69 @@ describe('durable navigate_tree races and state', () => {
       await t.sessions.stop()
     }
   })
+
+  it("refuses while the user's own shell command runs, and records one sent mid-navigation on the new branch", async () => {
+    const t = await twoTurns([])
+    try {
+      const a1 = idOf(await lines(t.identity.sessionFile), 'a1')
+      const running = t.sessions.handleCommand({
+        type: 'execute_bash',
+        requestId: 'b1',
+        command: 'sleep 0.3; echo SLOW',
+      })
+      await expect(t.sessions.handleCommand(nav(a1))).rejects.toThrow(REPLY)
+      await running
+
+      const moving = t.sessions.handleCommand(nav(a1, 'n2'))
+      const quick = t.sessions.handleCommand({
+        type: 'execute_bash',
+        requestId: 'b2',
+        command: 'echo ONNEW',
+      })
+      await Promise.all([moving, quick])
+      const manager = SessionManager.open(t.identity.sessionFile, undefined, '/work')
+      const context = JSON.stringify(manager.buildSessionContext().messages)
+      expect(context).toContain('ONNEW')
+      expect(context).not.toContain('q2')
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('applies a model change and a rename sent during a navigation to the branch it ends on', async () => {
+    const t = await twoTurns([], { knownModels: { 'faux/other': OTHER } })
+    try {
+      const a1 = idOf(await lines(t.identity.sessionFile), 'a1')
+      const moving = t.sessions.handleCommand(nav(a1))
+      const model = t.sessions.handleCommand({
+        type: 'set_model',
+        provider: 'faux',
+        modelId: 'other',
+      })
+      const name = t.sessions.handleCommand({ type: 'set_session_name', name: 'Renamed' })
+      await Promise.all([moving, model, name])
+      expect((await t.harnesses[0]?.agentState())?.model?.modelId).toBe('other')
+      expect((await t.harnesses[0]?.stats())?.sessionName).toBe('Renamed')
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('makes a reload sent during a navigation resume with the branch the navigation made', async () => {
+    const requests: string[] = []
+    const t = await twoTurns([recording(requests, 'b1')])
+    try {
+      const a1 = idOf(await lines(t.identity.sessionFile), 'a1')
+      const moving = t.sessions.handleCommand(nav(a1))
+      const reloading = t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+      await Promise.all([moving, reloading])
+      await t.sessions.handleCommand(prompt('q3'))
+      expect(requests[0]).toContain('q3')
+      expect(requests[0]).not.toContain('q2')
+      // Both branches survive the reload: the old branch is still in the file.
+      expect(JSON.stringify(await lines(t.identity.sessionFile))).toContain('q2')
+    } finally {
+      await t.sessions.stop()
+    }
+  })
 })
