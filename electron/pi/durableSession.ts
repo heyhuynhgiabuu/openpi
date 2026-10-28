@@ -74,7 +74,6 @@ interface ActiveSession {
 
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
-  'execute_bash',
   'reload_session',
   'fork_session',
   'navigate_tree',
@@ -252,6 +251,15 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     if (isInfoCommand(cmd)) {
       const session = active
       await answerInfoCommand(cmd, () => view(session), session.harness, deps.send)
+      return true
+    }
+    if (cmd.type === 'execute_bash') {
+      const session = active
+      const result = await session.harness.executeBash(cmd.command, {
+        excludeFromContext: cmd.excludeFromContext,
+      })
+      deps.send({ type: 'bash_result', requestId: cmd.requestId, result })
+      await exportNow(session)
       return true
     }
     if (cmd.type === 'compact') {

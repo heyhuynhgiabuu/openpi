@@ -1,6 +1,7 @@
 import type { ModelThinkingLevel, Models, MutableModels } from '@earendil-works/pi-ai'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
+import type { BashResult } from './bash'
 import type { DurableStats } from './stats'
 
 /** Provider/model the durable conversation runs with (resolved through pi-ai `Models`). */
@@ -89,6 +90,12 @@ export interface DurableHarness {
    * older entries in the model's context; the full history stays in the store and the export.
    */
   compact(instructions?: string): Promise<DurableCompaction>
+  /**
+   * Run one of the user's own shell commands in the workspace and record it in the conversation.
+   * The model sees it on its next request unless `excludeFromContext`. Resolves with the result
+   * once the command ends; rejects when the shell cannot start.
+   */
+  executeBash(command: string, options?: { excludeFromContext?: boolean }): Promise<BashResult>
   /** Usage totals, message count, last answer and context fill, from pi-durable's own ledger. */
   stats(): Promise<DurableStats>
   /**

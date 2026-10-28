@@ -18,8 +18,9 @@ import {
 import type { EntryRecord, SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
+import { bashEntryDraft, createBashRunner, type BashRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
-import { messageText } from './text'
+import { answerText, toView } from './view'
 import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { DurableCustomizations } from './customizations'
@@ -32,7 +33,6 @@ import { attachDurableEvents } from './events'
 import { writeSessionFile, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {
-  DurableEntrySnapshot,
   DurableHarness,
   DurableCompaction,
   DurableHarnessOptions,
@@ -49,28 +49,6 @@ import type {
  */
 
 const ctx: Context = BACKGROUND_CONTEXT
-
-function entrySnapshot(record: EntryRecord): DurableEntrySnapshot {
-  const snapshot: DurableEntrySnapshot = { id: record.id, kind: record.kind }
-  const text = messageText(record.model?.[0])
-  if (text !== undefined && text !== '') snapshot.text = text
-  return snapshot
-}
-
-function toView(conversationId: number, records: readonly EntryRecord[]): DurableView {
-  return { conversationId, entries: records.map(entrySnapshot) }
-}
-
-/** Text of the final assistant answer, resolved from the settled submission's answer entry ID. */
-function answerText(
-  records: readonly EntryRecord[],
-  answerId: number | undefined
-): string | undefined {
-  if (answerId === undefined) return undefined
-  const record = records.find((candidate) => candidate.id === answerId)
-  if (!record || !AssistantEntry.is(record)) return undefined
-  return messageText(record.model?.[0])
-}
 
 export async function openDurableHarness(options: DurableHarnessOptions): Promise<DurableHarness> {
   const backend = options.backend ?? 'jsonl'
@@ -140,6 +118,8 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   // `/template args` expands at invocation time, not in the prompt section.
   const expand = (text: string): string =>
     customizations ? expandInput(text, customizations) : text
+  const workspace = options.workspacePath ?? process.cwd()
+  const bashRunner = createBashRunner(new NodeExecutionEnv({ cwd: workspace }), ctx)
   const queued = createQueuedTexts()
   // Read once at the end of a run, so `agent_settled` can say whether the user stopped it.
   let abortRequested = false
@@ -285,7 +265,21 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return { status: 'failed', message: `compaction ${detail}` }
     },
 
+    async executeBash(
+      command: string,
+      bash?: { excludeFromContext?: boolean }
+    ): Promise<BashResult> {
+      const result = await bashRunner.run(command, workspace)
+      const record: BashRecord = { ...result, command, timestamp: Date.now() }
+      if (bash?.excludeFromContext !== undefined)
+        record.excludeFromContext = bash.excludeFromContext
+      const submission = await root.submit({ type: 'write', entry: bashEntryDraft(record) }, ctx)
+      await submission.wait(ctx)
+      return result
+    },
+
     async close(): Promise<void> {
+      bashRunner.cancelAll()
       await closeMcp?.()
       return harness.close(ctx)
     },

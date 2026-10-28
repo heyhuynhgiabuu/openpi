@@ -6,6 +6,7 @@ import type { Message } from '@earendil-works/pi-ai'
 import { CompactionEntry } from '@earendil-works/pi-durable'
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { z } from 'zod'
+import { BASH_KIND, bashRecordSchema } from './bash'
 import { sessionNameOf } from './stats'
 import { messageText, unwrapSummary } from './text'
 
@@ -90,6 +91,18 @@ function toItems(header: SessionFileHeader, entries: readonly EntryRecord[]): It
       }
       if (entry.head !== undefined) compaction.keepFrom = entry.head
       items.push(compaction)
+      continue
+    }
+    const bash = bashRecordSchema.safeParse(entry.kind === BASH_KIND ? entry.data : undefined)
+    if (bash.success) {
+      // The SDK's own `bashExecution` message, so readers that know it (the sidebar, the SDK)
+      // show the command; the model-visible copy on the entry is not also written.
+      items.push({
+        source: entry.id,
+        type: 'message',
+        timestamp: header.startedAt,
+        body: { message: { role: 'bashExecution', ...bash.data } },
+      })
       continue
     }
     for (const message of entry.model ?? []) {

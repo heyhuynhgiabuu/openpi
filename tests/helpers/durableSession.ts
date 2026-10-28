@@ -58,6 +58,8 @@ export async function setup(
     failPersist?: boolean
     /** Lower the compaction threshold so a short conversation can be compacted. */
     compaction?: { keepRecentTokens: number }
+    /** Directory user shell commands run in; defaults to the process cwd. */
+    workspacePath?: string
   } = {}
 ) {
   const sent: SidecarMessage[] = []
@@ -101,6 +103,7 @@ export async function setup(
         tools: false,
         policy: false,
         compaction: options.compaction,
+        workspacePath: options.workspacePath,
       })
       harnesses.push(harness)
       return {
