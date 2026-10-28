@@ -1,11 +1,12 @@
 import type { DurableHarness } from './durable/types'
-import { sessionInfoMessage, statsMessage, type InfoSource } from './durableInfo'
+import { answerInfoCommand, isInfoCommand, type InfoSource } from './durableInfo'
 import {
   applySettingsCommand,
   isSettingsCommand,
   type SettingsDeps,
   type SettingsPersist,
 } from './durableSettings'
+import { runCompact } from './durableCompact'
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
@@ -74,7 +75,6 @@ interface ActiveSession {
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
   'execute_bash',
-  'compact',
   'reload_session',
   'fork_session',
   'navigate_tree',
@@ -226,16 +226,6 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
-  async function sendStats(session: ActiveSession, requestId: string): Promise<void> {
-    const stats = await session.harness.stats()
-    deps.send(statsMessage(requestId, view(session), stats))
-  }
-
-  async function sendSessionInfo(session: ActiveSession, requestId: string): Promise<void> {
-    const stats = await session.harness.stats()
-    deps.send(sessionInfoMessage(requestId, view(session), stats))
-  }
-
   const view = (session: ActiveSession): InfoSource => ({
     model: session.model,
     identity: session.identity,
@@ -259,21 +249,16 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       await applySettingsCommand(cmd, session, deps, () => exportNow(session))
       return true
     }
-    if (cmd.type === 'get_stats') {
-      await sendStats(active, cmd.requestId)
+    if (isInfoCommand(cmd)) {
+      const session = active
+      await answerInfoCommand(cmd, () => view(session), session.harness, deps.send)
       return true
     }
-    if (cmd.type === 'get_session_info') {
-      await sendSessionInfo(active, cmd.requestId)
-      return true
-    }
-    if (cmd.type === 'copy_last_assistant_text') {
-      const { lastAssistantText } = await active.harness.stats()
-      deps.send({
-        type: 'last_assistant_text_result',
-        requestId: cmd.requestId,
-        text: lastAssistantText,
-      })
+    if (cmd.type === 'compact') {
+      const session = active
+      // A run the compaction cuts short is not a failure to report.
+      session.abortRequested = true
+      if (await runCompact(session.harness, cmd, deps.send)) await exportNow(session)
       return true
     }
     if (cmd.type === 'abort') {

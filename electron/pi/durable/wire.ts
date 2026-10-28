@@ -5,6 +5,7 @@ import type {
   ToolResultMessage,
 } from '@earendil-works/pi-ai'
 import type { AgentEvent, EntryRecord } from '@earendil-works/pi-durable'
+import { createCompactionTracker } from './wireCompaction'
 import { applyChange } from './wireMessage'
 
 /**
@@ -72,6 +73,7 @@ export function createWireTranslator(
   const toolArgs = new Map<string, unknown>()
   const toolOutput = new Map<string, string>()
   let inboxPending = 0
+  const compaction = createCompactionTracker()
 
   const remember = (message: Message): void => {
     runMessages.push(message)
@@ -106,6 +108,7 @@ export function createWireTranslator(
           ? [{ type: 'turn_end', message: turnAssistant, toolResults: turnResults }]
           : []
       case 'message_start':
+        if (compaction.swallowStart(event.message)) return []
         if (event.message.role === 'assistant') emittedText = ''
         partial = event.message.role === 'assistant' ? event.message : partial
         return [{ type: 'message_start', message: event.message }]
@@ -127,6 +130,7 @@ export function createWireTranslator(
         return out
       }
       case 'message_end': {
+        if (compaction.swallowEnd(event.entry)) return []
         const message = entryMessage(event.entry)
         if (!message) return []
         remember(message)
@@ -205,18 +209,10 @@ export function createWireTranslator(
       case 'auto_retry_end':
         return [{ type: 'auto_retry_end', success: true, attempt: event.attempt }]
       case 'compaction_start':
+        compaction.begin()
         return [{ type: 'compaction_start', reason: event.reason }]
-      case 'compaction_end': {
-        // pi-durable reports only `error`; the renderer also needs `aborted` and `willRetry`.
-        const end: WireEvent = {
-          type: 'compaction_end',
-          reason: event.reason,
-          aborted: false,
-          willRetry: false,
-        }
-        if (event.error !== undefined) end.errorMessage = event.error
-        return [end]
-      }
+      case 'compaction_end':
+        return [compaction.end(event.reason, event.error)]
       case 'entry_appended':
         return [{ type: 'entry_appended', entry: event.entry }]
       case 'task_failed':

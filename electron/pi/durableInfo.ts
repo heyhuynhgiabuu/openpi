@@ -1,5 +1,6 @@
 import type { DurableStats } from './durable/stats'
-import type { SessionReadyPayload, SidecarMessage } from './sidecarTypes'
+import type { DurableHarness } from './durable/types'
+import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
 /**
  * Phase 8.3i: the sidecar payloads for `get_stats` and `get_session_info` on a durable session,
@@ -67,5 +68,53 @@ export function sessionInfoMessage(
       messageCount: stats.messageCount,
       ...contextFill(source.model, stats.contextTokens),
     },
+  }
+}
+
+export type InfoCommand = Extract<
+  SidecarCommand,
+  { type: 'get_stats' | 'get_session_info' | 'copy_last_assistant_text' }
+>
+
+export function isInfoCommand(cmd: SidecarCommand): cmd is InfoCommand {
+  return (
+    cmd.type === 'get_stats' ||
+    cmd.type === 'get_session_info' ||
+    cmd.type === 'copy_last_assistant_text'
+  )
+}
+
+/**
+ * Answer one of the read-only info commands from the harness's stats.
+ *
+ * `source` is read *after* `stats()` resolves, not before: a settings command or an agent event can
+ * land while the stats are being read, and the reply must describe the session as it is then.
+ */
+export async function answerInfoCommand(
+  cmd: InfoCommand,
+  readSource: () => InfoSource,
+  harness: Pick<DurableHarness, 'stats'>,
+  send: (message: SidecarMessage) => void
+): Promise<void> {
+  const stats = await harness.stats()
+  const source = readSource()
+  switch (cmd.type) {
+    case 'get_stats':
+      send(statsMessage(cmd.requestId, source, stats))
+      return
+    case 'get_session_info':
+      send(sessionInfoMessage(cmd.requestId, source, stats))
+      return
+    case 'copy_last_assistant_text':
+      send({
+        type: 'last_assistant_text_result',
+        requestId: cmd.requestId,
+        text: stats.lastAssistantText,
+      })
+      return
+    default: {
+      const unreachable: never = cmd
+      return unreachable
+    }
   }
 }
