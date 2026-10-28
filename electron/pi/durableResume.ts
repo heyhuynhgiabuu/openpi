@@ -25,11 +25,22 @@ export function durableHeaderOf(
  * The identity is taken from the file, not from the request, so a resume cannot point at another
  * session's store: the file is the one the user opened.
  */
+type StartSession = (cwd: string, options: DurableStartOptions) => Promise<void>
+
+/** `resumeFrom` for the session factory, which owns the `start` it resumes through. */
+export function createResumeFrom(
+  start: StartSession
+): (cwd: string, sessionFile: string, trusted: boolean, requestId?: string) => Promise<boolean> {
+  return (cwd, sessionFile, workspaceTrusted, requestId) =>
+    resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, requestId, start)
+}
+
 export async function resumeDurableFromFile(
   cwd: string,
   sessionFile: string,
   workspaceTrusted: boolean,
-  start: (cwd: string, options: DurableStartOptions) => Promise<void>
+  requestId: string | undefined,
+  start: StartSession
 ): Promise<boolean> {
   const text = await readFile(sessionFile, 'utf8').catch(() => undefined)
   const target = text === undefined ? undefined : readResumeTarget(text)
@@ -41,6 +52,9 @@ export async function resumeDurableFromFile(
     conversationIds: target.conversationIds,
   }
   await start(cwd, {
+    // The reply `session_ready` must carry this, or the open request that asked for the session
+    // waits for an answer that never names it.
+    requestId,
     workspaceTrusted,
     resume: { identity, startedAt: target.startedAt },
   })

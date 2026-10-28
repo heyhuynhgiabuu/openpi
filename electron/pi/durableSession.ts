@@ -6,7 +6,7 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { counted, countedUnlessAborted, newActivity } from './durableActivity'
-import { durableHeaderOf, resumeDurableFromFile } from './durableResume'
+import { createResumeFrom, durableHeaderOf } from './durableResume'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
@@ -289,9 +289,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     return false
   }
 
-  /** See `resumeFromFile`: only a file this runtime wrote can be reopened. */
-  const resumeFrom = (cwd: string, sessionFile: string, workspaceTrusted: boolean) =>
-    resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, start)
+  const resumeFrom = createResumeFrom(start)
 
   return { isActive: () => active !== null, start, resumeFrom, handleCommand, stop }
 }

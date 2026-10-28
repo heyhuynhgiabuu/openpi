@@ -17,8 +17,11 @@ export const DURABLE_HEADER_KEY = 'openpi.durable'
 export const durableHeaderSchema = z
   .object({
     storeId: z.string().min(1),
-    /** Conversations the session is made of, oldest branch first, the active one last. */
-    conversationIds: z.array(z.number().int().positive()),
+    /**
+     * Conversations the session is made of, oldest branch first, the active one last. Never empty:
+     * an empty list would fall back to the store's root and export that over the session's file.
+     */
+    conversationIds: z.array(z.number().int().positive()).min(1),
   })
   .strict()
 

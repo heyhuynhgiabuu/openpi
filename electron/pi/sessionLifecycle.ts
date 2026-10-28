@@ -119,7 +119,12 @@ export async function startSession(
     // A resumed file is only reopened when this runtime wrote it; a session it does not own (an
     // SDK one) has no store here, so it is read by the SDK path below, as before.
     if (opts.sessionFile) {
-      const resumed = await durableSessions.resumeFrom(cwd, opts.sessionFile, trusted)
+      const resumed = await durableSessions.resumeFrom(
+        cwd,
+        opts.sessionFile,
+        trusted,
+        opts.requestId
+      )
       if (resumed) return
       outputLine('warn', `[runtime] ${opts.sessionFile} was not written by the durable runtime`)
     } else {

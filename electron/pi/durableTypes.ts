@@ -74,7 +74,12 @@ export interface DurableSessions {
    * Reopen the durable session an exported file belongs to. `false` when the file is not one this
    * runtime wrote (no store to reopen), so the caller can use the SDK path instead.
    */
-  resumeFrom(cwd: string, sessionFile: string, workspaceTrusted: boolean): Promise<boolean>
+  resumeFrom(
+    cwd: string,
+    sessionFile: string,
+    workspaceTrusted: boolean,
+    requestId?: string
+  ): Promise<boolean>
   /** `true` when the command was fully handled here; `false` to fall through to the SDK handlers. */
   handleCommand(cmd: SidecarCommand): Promise<boolean>
   stop(): Promise<void>

@@ -45,8 +45,10 @@ describe('durable session resume', () => {
     // The same file path and store, opened by a runtime that never saw the first session.
     const after = await setup({ persistent: true, answers: ['three'], sessionFile: before.file })
 
-    expect(await after.sessions.resumeFrom('/work', before.file, false)).toBe(true)
+    expect(await after.sessions.resumeFrom('/work', before.file, false, 'open-1')).toBe(true)
     const [ready] = readies(after)
+    // The request that asked to open this session gets its answer, or it waits for a timeout.
+    expect(ready?.requestId).toBe('open-1')
     expect(ready?.payload).toMatchObject({
       sessionId: before.sessionId,
       sessionFile: before.file,

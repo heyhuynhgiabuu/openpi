@@ -43,6 +43,8 @@ describe('durable session file header', () => {
       { storeId: 'store-1' },
       { storeId: 'store-1', conversationIds: [1, 0] },
       { storeId: 'store-1', conversationIds: ['1'] },
+      // An empty list would fall back to the store's root and export that over the file.
+      { storeId: 'store-1', conversationIds: [] },
       { storeId: 'store-1', conversationIds: [1], extra: true },
       'store-1',
     ]) {
