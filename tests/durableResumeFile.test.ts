@@ -72,6 +72,10 @@ describe('durable session file header', () => {
       { storeId: 'a/b', conversationIds: [1], ...stamp },
       { storeId: '..', conversationIds: [1], ...stamp },
       { storeId: '.', conversationIds: [1], ...stamp },
+      // Windows trims a trailing dot or space, so `a.` would open `a`; these must not parse either.
+      { storeId: 'a.', conversationIds: [1], ...stamp },
+      { storeId: 'a ', conversationIds: [1], ...stamp },
+      { storeId: '-rf', conversationIds: [1], ...stamp },
       'store-1',
     ]) {
       expect(readResumeTarget(stamped(marker))).toBeUndefined()

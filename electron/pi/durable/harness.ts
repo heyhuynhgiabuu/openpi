@@ -15,7 +15,7 @@ import {
   defineExtension,
   hook,
 } from '@earendil-works/pi-durable'
-import type { Conversation, SettledSubmissionRecord } from '@earendil-works/pi-durable'
+import type { SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
 import { createBashRunner, runAndRecord, type BashResult } from './bash'
@@ -32,8 +32,7 @@ import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { attachDurableEvents } from './events'
 import { busyWith } from './activity'
 import { runCompaction } from './compaction'
-import { activeBranch, forkAtLine, navigate, readAll } from './branches'
-import { openBranches } from './branches'
+import { activeBranch, forkAtLine, navigate, openBranches, readAll } from './branches'
 import { writeSessionTree, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {

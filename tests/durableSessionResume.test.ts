@@ -1,4 +1,4 @@
-import { appendFile, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
