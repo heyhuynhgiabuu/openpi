@@ -68,6 +68,8 @@ export async function setup(
     failOpenAt?: number
     /** Make `stats()` reject on the harness the nth `open` returns (1-based). */
     breakStatsAt?: number
+    /** Called with every message the session sends, before it is recorded. */
+    onSend?: (message: SidecarMessage) => void
   } = {}
 ) {
   const sent: SidecarMessage[] = []
@@ -78,6 +80,7 @@ export async function setup(
   const closed: DurableHarness[] = []
   const persisted: string[] = []
   let opens = 0
+  const trusts: boolean[] = []
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -104,6 +107,7 @@ export async function setup(
   }
   const deps: DurableSessionDeps = {
     send: (message) => {
+      options.onSend?.(message)
       sent.push(message)
       const parsed = sidecarMessageSchema.safeParse(message)
       if (!parsed.success) {
@@ -119,13 +123,15 @@ export async function setup(
       if (resolver.fail) throw new Error('registry offline')
       return knownModels[`${provider}/${modelId}`]
     },
-    open: async (_cwd, _trusted, opening) => {
+    open: async (_cwd, trusted, opening) => {
       opens += 1
+      trusts.push(trusted)
       if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
         // One store per session, as in production (`durableHost.ts`).
-        directory: join(root, 'store', opening.sessionId),
+        directory: join(root, 'store', opening.storeId ?? opening.sessionId),
+        conversationId: opening.conversationId,
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,
@@ -174,6 +180,7 @@ export async function setup(
     persisted,
     knownModels,
     resolver,
+    trusts,
   }
 }
 

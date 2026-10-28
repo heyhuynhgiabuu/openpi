@@ -9,6 +9,10 @@ export interface DurableIdentity {
   sessionId: string
   /** Where the JSONL v3 export lives; the sidebar reads it like any other session. */
   sessionFile: string
+  /** Which store holds the conversation; the session's own id unless it was forked from another. */
+  storeId?: string
+  /** Which conversation of the store this session is; the store's root when absent. */
+  conversationId?: number
 }
 
 export interface DurableOpenResult {

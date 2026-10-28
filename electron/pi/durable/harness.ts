@@ -30,7 +30,15 @@ import { loadDurableMcpConfig } from './mcpConfig'
 import { loadMcpExtension } from './mcp'
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
 import { attachDurableEvents } from './events'
-import { writeSessionFile, type SessionFileHeader, type SessionFileResult } from './sessionFile'
+import { runCompaction } from './compaction'
+import { readHistory } from './history'
+import { conversationIdOf } from './ids'
+import {
+  resolveLineEntry,
+  writeSessionFile,
+  type SessionFileHeader,
+  type SessionFileResult,
+} from './sessionFile'
 import { openDurableStorage } from './storage'
 import type {
   DurableHarness,
@@ -113,7 +121,12 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   }
   const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
   if (options.workspacePath) agent.cwd = options.workspacePath
-  const root = await harness.root(ctx, { agent })
+  // A forked session lives in its own conversation of the same store; any other uses the root.
+  const root =
+    options.conversationId === undefined
+      ? await harness.root(ctx, { agent })
+      : await harness.conversation(conversationIdOf(options.conversationId), ctx)
+  if (!root) throw new Error(`conversation ${options.conversationId} not found in the store`)
 
   // `/template args` expands at invocation time, not in the prompt section.
   const expand = (text: string): string =>
@@ -240,29 +253,20 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     },
 
     async exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult> {
-      // The whole history, not `root.context()`: after a compaction the active context no longer
-      // holds the entries before the cut, and the file is the archive of the conversation.
-      const history: EntryRecord[] = []
-      let cursor: Awaited<ReturnType<typeof root.entries>>['next']
-      do {
-        const page = await root.entries({ order: 'ascending' }, 200, cursor, ctx)
-        history.push(...page.items)
-        cursor = page.next
-      } while (cursor !== undefined)
-      return writeSessionFile(path, header, history)
+      // The file is the archive of the conversation: its whole history, not the active context.
+      return writeSessionFile(path, header, await readHistory(root, ctx))
     },
 
-    async compact(instructions?: string): Promise<DurableCompaction> {
-      const settled = await harness.waitForTask(await root.compact(instructions, ctx), ctx)
-      const outcome = settled.state.outcome
-      if (outcome.status === 'completed') {
-        // pi-durable leaves both ids absent when there was nothing to summarize.
-        const compacted =
-          outcome.result.entryId !== undefined || outcome.result.submissionId !== undefined
-        return compacted ? { status: 'compacted' } : { status: 'nothing' }
-      }
-      const detail = outcome.status === 'failed' ? outcome.error.message : outcome.status
-      return { status: 'failed', message: `compaction ${detail}` }
+    async fork(lineId: string, header: SessionFileHeader): Promise<number> {
+      const at = resolveLineEntry(header, await readHistory(root, ctx), lineId)
+      if (at === undefined) throw new Error(`Cannot fork: entry not found (${lineId})`)
+      // The fork shares the entries up to and including `at` and leaves this conversation as it is.
+      const forked = await root.fork(at, { ownership: { kind: 'ownerless' } }, ctx)
+      return Number(forked.id)
+    },
+
+    compact(instructions?: string): Promise<DurableCompaction> {
+      return runCompaction(harness, root, instructions, ctx)
     },
 
     async executeBash(
