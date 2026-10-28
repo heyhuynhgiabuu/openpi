@@ -205,4 +205,30 @@ describe('durable reload_session', () => {
       await t.sessions.stop()
     }
   })
+
+  it('still reloads when looking up the stored model throws', async () => {
+    const t = await setup({ persistent: true, knownModels: { 'faux/other': OTHER } })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      await t.sessions.handleCommand({ type: 'set_model', provider: 'faux', modelId: 'other' })
+      t.resolver.fail = true
+      await t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+      expect(t.logs.join('\n')).toContain('looking up the stored model failed: registry offline')
+      expect(t.sessions.isActive()).toBe(true)
+      expect(readies(t.sent).at(-1)?.payload.model).toMatchObject({ id: 'm' })
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('reloads without any warning when the stored model is still known', async () => {
+    const t = await setup({ persistent: true })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      await t.sessions.handleCommand({ type: 'reload_session', requestId: 'r' })
+      expect(t.logs.filter((l) => l.startsWith('warn'))).toEqual([])
+    } finally {
+      await t.sessions.stop()
+    }
+  })
 })

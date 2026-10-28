@@ -72,6 +72,7 @@ export async function setup(
 ) {
   const sent: SidecarMessage[] = []
   const knownModels: Record<string, ResolvedModel> = { ...options.knownModels }
+  const resolver = { fail: options.failResolve === true }
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
   const closed: DurableHarness[] = []
@@ -84,6 +85,9 @@ export async function setup(
         fauxAssistantMessage([fauxText(text)], { stopReason: 'stop' as const })
       )
   )
+  // The model the harness is opened with is a known one, as in production, so a reload that looks
+  // it up finds it instead of warning.
+  knownModels[`faux/${faux.getModel().id}`] ??= { info: MODEL, thinkingLevels: FAUX_LEVELS }
   const identity = {
     sessionId: 'sess-1',
     sessionFile: options.sessionFile ?? join(root, 'sessions', 'sess-1.jsonl'),
@@ -112,7 +116,7 @@ export async function setup(
     now: options.now ?? (() => new Date('2026-10-27T00:00:00.000Z')),
     resolveModel: async (provider, modelId) => {
       await options.resolveGate
-      if (options.failResolve) throw new Error('registry offline')
+      if (resolver.fail) throw new Error('registry offline')
       return knownModels[`${provider}/${modelId}`]
     },
     open: async (_cwd, _trusted, opening) => {
@@ -159,7 +163,18 @@ export async function setup(
   }
   const sessions = createDurableSessions(deps)
   const types = () => sent.map((m) => m.type)
-  return { sessions, sent, logs, identity, types, harnesses, closed, persisted, knownModels }
+  return {
+    sessions,
+    sent,
+    logs,
+    identity,
+    types,
+    harnesses,
+    closed,
+    persisted,
+    knownModels,
+    resolver,
+  }
 }
 
 export const prompt = (text: string, contextPrefix?: string): SidecarCommand => ({
