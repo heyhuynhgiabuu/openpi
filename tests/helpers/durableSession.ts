@@ -60,12 +60,19 @@ export async function setup(
     compaction?: { keepRecentTokens: number }
     /** Directory user shell commands run in; defaults to the process cwd. */
     workspacePath?: string
+    /** Keep the store on disk, so reopening a session finds its history (reload). */
+    persistent?: boolean
+    /** Clock for the session's header time; a new one per call shows what is preserved. */
+    now?: () => Date
+    /** Make the nth `open` (1-based) fail. */
+    failOpenAt?: number
   } = {}
 ) {
   const sent: SidecarMessage[] = []
   const logs: string[] = []
   const harnesses: DurableHarness[] = []
   const persisted: string[] = []
+  let opens = 0
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -77,6 +84,16 @@ export async function setup(
     sessionId: 'sess-1',
     sessionFile: options.sessionFile ?? join(root, 'sessions', 'sess-1.jsonl'),
   }
+  // The first session is `identity`; a later fresh one (not a reload) gets its own id and file.
+  let identities = 0
+  const freshIdentity = () => {
+    identities += 1
+    if (identities === 1) return identity
+    return {
+      sessionId: `sess-${identities}`,
+      sessionFile: join(root, 'sessions', `sess-${identities}.jsonl`),
+    }
+  }
   const deps: DurableSessionDeps = {
     send: (message) => {
       sent.push(message)
@@ -87,17 +104,19 @@ export async function setup(
       }
     },
     log: (level, text) => logs.push(`${level}: ${text}`),
-    newIdentity: () => identity,
-    now: () => new Date('2026-10-27T00:00:00.000Z'),
+    newIdentity: freshIdentity,
+    now: options.now ?? (() => new Date('2026-10-27T00:00:00.000Z')),
     resolveModel: async (provider, modelId) => {
       await options.resolveGate
       if (options.failResolve) throw new Error('registry offline')
       return options.knownModels?.[`${provider}/${modelId}`]
     },
     open: async () => {
-      if (options.failOpen) throw new Error('no default model')
+      opens += 1
+      if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
-        backend: 'memory',
+        backend: options.persistent ? 'jsonl' : 'memory',
+        directory: join(root, 'store'),
         model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
         registerProviders: (models) => models.setProvider(faux.provider),
         tools: false,

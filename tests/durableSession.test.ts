@@ -129,7 +129,6 @@ describe('durable session prompt', () => {
 
 describe('durable command routing', () => {
   const unsupported: SidecarCommand[] = [
-    { type: 'reload_session', requestId: 'r' },
     { type: 'fork_session', entryId: 'e', workspaceTrusted: false },
     { type: 'navigate_tree', entryId: 'e', requestId: 'r' },
   ]

@@ -1,4 +1,3 @@
-import type { DurableHarness } from './durable/types'
 import { answerInfoCommand, isInfoCommand, type InfoSource } from './durableInfo'
 import {
   applySettingsCommand,
@@ -7,8 +6,21 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { runCompact } from './durableCompact'
-import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
-import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
+import type { SidecarCommand } from './sidecarTypes'
+import type {
+  ActiveSession,
+  DurableSessionDeps,
+  DurableSessions,
+  DurableStartOptions,
+} from './durableTypes'
+
+export type {
+  DurableIdentity,
+  DurableOpenResult,
+  DurableSessionDeps,
+  DurableSessions,
+  DurableStartOptions,
+} from './durableTypes'
 
 /**
  * Phase 8.3f: a durable-runtime session behind the sidecar's command protocol.
@@ -23,72 +35,14 @@ import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './side
  * it is testable with a real harness and no parent process.
  */
 
-export interface DurableIdentity {
-  sessionId: string
-  /** Where the JSONL v3 export lives; the sidebar reads it like any other session. */
-  sessionFile: string
-}
-
-export interface DurableOpenResult {
-  harness: DurableHarness
-  model: SessionReadyPayload['model']
-  /** Thinking levels the opened model supports. */
-  thinkingLevels: readonly ModelThinkingLevel[]
-  persist: SettingsPersist
-}
-
-export interface DurableSessionDeps extends SettingsDeps {
-  send: (message: SidecarMessage) => void
-  newIdentity: (cwd: string) => DurableIdentity
-  open: (
-    cwd: string,
-    workspaceTrusted: boolean,
-    identity: DurableIdentity
-  ) => Promise<DurableOpenResult>
-  now: () => Date
-}
-
-export interface DurableStartOptions {
-  workspaceTrusted: boolean
-  requestId?: string
-}
-
-interface ActiveSession {
-  harness: DurableHarness
-  cwd: string
-  identity: DurableIdentity
-  startedAt: string
-  stopEvents: () => Promise<void>
-  model: SessionReadyPayload['model']
-  thinkingLevel: string | null
-  thinkingLevels: readonly ModelThinkingLevel[]
-  sessionName: string | null
-  persist: SettingsPersist
-  /** True between `agent_start` and `agent_end`, for `get_stats`' `isStreaming`. */
-  streaming: boolean
-  /** Set by `abort`, so a run the user cancelled is not reported as a failure. */
-  abortRequested: boolean
-  /** Set before shutdown: queued messages still settling must not report or export afterwards. */
-  closing: boolean
-}
-
 /** Commands that act on the live session and have no durable implementation yet. */
 const UNSUPPORTED_SESSION_COMMANDS = [
-  'reload_session',
   'fork_session',
   'navigate_tree',
 ] as const satisfies readonly SidecarCommand['type'][]
 
 function isUnsupported(type: SidecarCommand['type']): boolean {
   return (UNSUPPORTED_SESSION_COMMANDS as readonly string[]).includes(type)
-}
-
-export interface DurableSessions {
-  isActive(): boolean
-  start(cwd: string, options: DurableStartOptions): Promise<void>
-  /** `true` when the command was fully handled here; `false` to fall through to the SDK handlers. */
-  handleCommand(cmd: SidecarCommand): Promise<boolean>
-  stop(): Promise<void>
 }
 
 export function createDurableSessions(deps: DurableSessionDeps): DurableSessions {
@@ -122,24 +76,34 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
 
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
-    const identity = deps.newIdentity(cwd)
-    const { harness, model, thinkingLevels, persist } = await deps.open(
-      cwd,
-      options.workspaceTrusted,
-      identity
-    )
+    const identity = options.resume?.identity ?? deps.newIdentity(cwd)
+    const opened = await deps.open(cwd, options.workspaceTrusted, identity)
+    const { harness, persist } = opened
     const agent = await harness.agentState()
+    // A reopened session keeps the model it was using, which may not be today's default. A new
+    // one was opened with its model, so there is nothing to look up.
+    let { model, thinkingLevels } = opened
+    if (
+      options.resume &&
+      agent.model &&
+      (model?.provider !== agent.model.provider || model?.id !== agent.model.modelId)
+    ) {
+      const stored = await deps.resolveModel(agent.model.provider, agent.model.modelId)
+      if (stored) ({ info: model, thinkingLevels } = stored)
+    }
+    const sessionName = options.resume ? (await harness.stats()).sessionName : null
     const session: ActiveSession = {
       harness,
       cwd,
+      workspaceTrusted: options.workspaceTrusted,
       identity,
-      startedAt: deps.now().toISOString(),
+      startedAt: options.resume?.startedAt ?? deps.now().toISOString(),
       stopEvents: async () => undefined,
       model,
       thinkingLevel: agent.thinkingLevel,
       thinkingLevels,
       persist,
-      sessionName: null,
+      sessionName,
       streaming: false,
       abortRequested: false,
       closing: false,
@@ -152,7 +116,7 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
         cwd,
         sessionFile: identity.sessionFile,
         sessionId: identity.sessionId,
-        sessionName: null,
+        sessionName,
         model,
         thinkingLevel: agent.thinkingLevel,
       },
@@ -225,6 +189,21 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
   }
 
+  /**
+   * `reload_session`: a full restart of the harness over the same store, file and header, so
+   * extensions, customizations and MCP servers are discovered afresh and the history is untouched.
+   * A run in flight is cut short, as the SDK path's dispose does.
+   */
+  async function reload(session: ActiveSession, requestId: string): Promise<void> {
+    session.abortRequested = true
+    await exportNow(session)
+    await start(session.cwd, {
+      workspaceTrusted: session.workspaceTrusted,
+      requestId,
+      resume: { identity: session.identity, startedAt: session.startedAt },
+    })
+  }
+
   const view = (session: ActiveSession): InfoSource => ({
     model: session.model,
     identity: session.identity,
@@ -260,6 +239,10 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
       })
       deps.send({ type: 'bash_result', requestId: cmd.requestId, result })
       await exportNow(session)
+      return true
+    }
+    if (cmd.type === 'reload_session') {
+      await reload(active, cmd.requestId)
       return true
     }
     if (cmd.type === 'compact') {
