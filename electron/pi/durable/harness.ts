@@ -199,7 +199,11 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
         if (index >= 0) awaitingId.splice(index, 1)
         queuedText.set(id, text)
       }
-      return { settled: submission.wait(ctx).then(resultOf) }
+      // Once settled it can no longer appear in an `inbox_update`, so its text can go.
+      const forget = (): void => void queuedText.delete(id)
+      const settled = submission.wait(ctx).then(resultOf)
+      settled.then(forget, forget)
+      return { settled }
     },
 
     async abort(): Promise<void> {
