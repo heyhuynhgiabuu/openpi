@@ -136,3 +136,53 @@ describe('durable event translation', () => {
     expect(toWireEvent({ type: 42 })).toBeUndefined()
   })
 })
+
+describe('durable queue translation', () => {
+  const texts = new Map([
+    [1, 'steer me'],
+    [2, 'then follow up'],
+  ])
+  const lookup = (id: number) => texts.get(id)
+
+  it('turns inbox_update into the renderer queue_update with message text', () => {
+    const wire = toWireEvent(
+      {
+        type: 'inbox_update',
+        items: [
+          { id: 1, mode: 'steer' },
+          { id: 2, mode: 'followUp' },
+        ],
+      },
+      lookup
+    )
+    expect(wire).toEqual({
+      type: 'queue_update',
+      steering: ['steer me'],
+      followUp: ['then follow up'],
+    })
+  })
+
+  it('clears both lists when the inbox empties', () => {
+    expect(toWireEvent({ type: 'inbox_update', items: [] }, lookup)).toEqual({
+      type: 'queue_update',
+      steering: [],
+      followUp: [],
+    })
+  })
+
+  it('labels a message whose text is unknown instead of dropping it', () => {
+    const wire = toWireEvent({ type: 'inbox_update', items: [{ id: 99, mode: 'steer' }] }, lookup)
+    expect(wire).toMatchObject({ steering: ['(queued message)'], followUp: [] })
+  })
+
+  it('does not show passive writes as pending messages', () => {
+    const wire = toWireEvent({ type: 'inbox_update', items: [{ id: 3, mode: 'write' }] }, lookup)
+    expect(wire).toMatchObject({ steering: [], followUp: [] })
+  })
+
+  it('leaves a malformed inbox_update to the generic path rather than crashing', () => {
+    expect(toWireEvent({ type: 'inbox_update', items: 'nope' }, lookup)).toMatchObject({
+      type: 'inbox_update',
+    })
+  })
+})

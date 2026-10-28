@@ -33,6 +33,11 @@ export interface DurableSubmitResult {
 /** Storage backend for the durable store. SQLite arrives in a later slice behind a capability check. */
 export type DurableBackend = 'jsonl' | 'memory'
 
+/** A queued message: admission is done, `settled` resolves when its run finishes. */
+export interface DurableQueued {
+  settled: Promise<DurableSubmitResult>
+}
+
 export interface DurableHarnessOptions {
   /** Directory for the JSONL store; required for the `jsonl` backend, ignored for `memory`. */
   directory?: string
@@ -64,6 +69,13 @@ export interface DurableHarnessOptions {
 export interface DurableHarness {
   /** Submit one input and wait for the run to settle. */
   prompt(text: string): Promise<DurableSubmitResult>
+  /**
+   * Queue a message for a run in progress: `steer` is delivered after the current turn's tool calls
+   * and before the next model call, `followUp` only once the run has fully stopped. Resolves once
+   * admitted, not once answered (like the SDK's `steer()`); `settled` tracks the outcome. With no
+   * run in progress the message starts one.
+   */
+  queue(text: string, mode: 'steer' | 'followUp'): Promise<DurableQueued>
   /**
    * Abort the root conversation: withdraw queued inputs, signal the live run, and resolve once it
    * is idle. A `prompt()` still awaiting the aborted run settles `unanswered`. Idempotent.
