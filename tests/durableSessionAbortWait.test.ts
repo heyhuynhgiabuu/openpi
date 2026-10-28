@@ -46,7 +46,9 @@ describe('a message waiting for a navigation', () => {
       const waiting = t.sessions.handleCommand({ type: 'follow_up', text: 'q3' })
       await t.sessions.handleCommand({ type: 'abort' })
       await Promise.all([moving, waiting])
-      // A queued message runs in the background after it is admitted; give it the time to start.
+      // A queued message is admitted before its run starts: a submitted one is visible as busy here.
+      expect(await t.harnesses[0]?.busy()).toBeUndefined()
+      // ...and it runs in the background, so give it the time to reach the model.
       await new Promise((resolve) => setTimeout(resolve, 100))
       expect(requests).toEqual([])
     } finally {

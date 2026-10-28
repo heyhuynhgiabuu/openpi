@@ -37,8 +37,9 @@ export async function counted<T>(
 
 /**
  * Like `counted`, for a message the user can still stop while it waits for a navigation: if an
- * `abort` arrived meanwhile the message is dropped, as the SDK returns an abort's queue to the
- * input, and `undefined` comes back.
+ * `abort` arrived meanwhile the message is dropped and `undefined` comes back, so it can be sent
+ * again. The text is not returned to the input - a durable abort withdraws queued inputs without
+ * restoring them, and this keeps that behaviour.
  */
 export async function countedUnlessAborted<T>(
   activity: Activity,
