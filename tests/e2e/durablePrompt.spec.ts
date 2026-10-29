@@ -98,8 +98,9 @@ const modelsFile = z.object({
       baseUrl: z.string().optional(),
       api: z.string().optional(),
       apiKey: z.string().optional(),
-      // Model entries are passed through: only `id`/`name` and sampling fields matter here, but
-      // their `headers` (if any) must be dropped, so keep only the scalar shape the app needs.
+      // Model entries are stripped to these fields. `thinkingLevelMap` is kept so the sandbox sends
+      // the same request production does (it decides `reasoning_effort`); `headers` is deliberately
+      // not admitted, so it cannot reach the sandbox at either level.
       models: z
         .array(
           z.object({
@@ -109,6 +110,7 @@ const modelsFile = z.object({
             input: z.array(z.string()).optional(),
             contextWindow: z.number().optional(),
             maxTokens: z.number().optional(),
+            thinkingLevelMap: z.record(z.string().nullable()).optional(),
           })
         )
         .optional(),
