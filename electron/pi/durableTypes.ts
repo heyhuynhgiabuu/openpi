@@ -74,6 +74,9 @@ export interface DurableSessions {
    * Reopen the durable session an exported file belongs to. `false` when the file is not one this
    * runtime wrote (no store to reopen), so the caller can use the SDK path instead.
    */
+  /** Whether this runtime can reopen the file, without opening its store or touching the session. */
+  canResume(sessionFile: string): Promise<boolean>
+  /** Reopen the file's session. Only meaningful after `canResume` said yes. */
   resumeFrom(
     cwd: string,
     sessionFile: string,

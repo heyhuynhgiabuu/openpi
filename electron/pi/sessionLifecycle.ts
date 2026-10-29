@@ -25,9 +25,9 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime. Everything a session needs except the
- * command set: prompt works, but steer/follow-up/abort/model/thinking/compact/bash/fork/navigate do
- * not, so `sessionCommands` stays missing and an opt-in still lands on the SDK path.
+ * Capabilities this build has wired for the durable runtime: everything a session needs, including
+ * the command set (prompt, steer/follow-up, abort, model/thinking/name, compact, shell commands,
+ * reload, fork and tree navigation). An opt-in now lands on the durable runtime.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -37,6 +37,7 @@ const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
+  'sessionCommands',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
 import { teardownSession } from './sessionTeardown'
@@ -113,25 +114,25 @@ export async function startSession(
   const choice = chooseSessionRuntime(decision, opts)
   const reason = decision.reason ?? choice.reason
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
-  if (choice.runtime === 'durable') {
-    const trusted = opts.workspaceTrusted ?? false
+  const trusted = opts.workspaceTrusted ?? false
+  // A resumed file is only reopened when this runtime wrote it and the file is still the one it
+  // wrote; anything else is read by the SDK path below, as before. The check comes before the
+  // running session is disposed, so a file it declines does not cost the user their session.
+  const resumable =
+    choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile
+      ? await durableSessions.canResume(opts.sessionFile)
+      : false
+  if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
     await stopSdkSession(choice.start)
-    // A resumed file is only reopened when this runtime wrote it; a session it does not own (an
-    // SDK one) has no store here, so it is read by the SDK path below, as before.
-    if (choice.start === 'resume' && opts.sessionFile) {
-      const resumed = await durableSessions.resumeFrom(
-        cwd,
-        opts.sessionFile,
-        trusted,
-        opts.requestId
-      )
-      if (resumed) return
-      outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
-    } else {
-      await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+    if (opts.sessionFile && choice.start === 'resume') {
+      await durableSessions.resumeFrom(cwd, opts.sessionFile, trusted, opts.requestId)
       return
     }
+    await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+    return
   }
+  if (choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile)
+    outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
 
   // Validate fork identity before disposing the active session so malformed or
   // stale renderer entry IDs cannot leave the sidecar without a session.

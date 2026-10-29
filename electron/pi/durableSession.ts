@@ -6,7 +6,7 @@ import {
   type SettingsPersist,
 } from './durableSettings'
 import { counted, countedUnlessAborted, newActivity } from './durableActivity'
-import { createResumeFrom, durableHeaderOf } from './durableResume'
+import { canResumeFile, createResumeFrom, durableHeaderOf } from './durableResume'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
@@ -291,5 +291,6 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
 
   const resumeFrom = createResumeFrom(start)
 
-  return { isActive: () => active !== null, start, resumeFrom, handleCommand, stop }
+  const canResume = canResumeFile
+  return { isActive: () => active !== null, start, canResume, resumeFrom, handleCommand, stop }
 }
