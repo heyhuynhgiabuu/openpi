@@ -121,6 +121,10 @@ describe('tool events', () => {
         result: { taskId: taskId(9), isError: false, diagnostics: [], details: { phase: 'done' } },
       },
     ])
-    expect(wire[0]).toMatchObject({ parentToolCallId: 'p', details: { phase: 'done' } })
+    // A call that never started — a hook-blocked or nested one — now gets a start synthesized from
+    // its end, so the renderer can show a card instead of silently dropping the call.
+    expect(wire.map((e) => e.type)).toEqual(['tool_execution_start', 'tool_execution_end'])
+    expect(wire[0]).toMatchObject({ parentToolCallId: 'p', toolName: 'write' })
+    expect(wire[1]).toMatchObject({ parentToolCallId: 'p', details: { phase: 'done' } })
   })
 })
