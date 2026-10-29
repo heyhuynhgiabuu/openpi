@@ -54,7 +54,12 @@ describe('choosing the durable model', () => {
 
   it('falls back to the first available model when nothing is stored', () => {
     // The case the renderer drive hit: the app runs a model on the SDK path while nothing is stored.
-    const models = runtime([{ provider: 'deepseek', id: 'deepseek-v4-pro' }])
+    // Two entries, so "first" is pinned: the SDK takes the first too, and `.at(-1)` would be a
+    // different model rather than the same one by luck.
+    const models = runtime([
+      { provider: 'deepseek', id: 'deepseek-v4-pro' },
+      { provider: 'anthropic', id: 'claude-opus-4-8' },
+    ])
     expect(chooseDurableModel(settings(), models)).toEqual({
       provider: 'deepseek',
       modelId: 'deepseek-v4-pro',

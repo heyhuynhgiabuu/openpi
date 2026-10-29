@@ -36,8 +36,8 @@ async function open(
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
   const settings = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
-  // The SDK path resolves a model itself (stored default, else the first with credentials); the
-  // harness takes one explicitly, so the same choice is made here rather than refusing to start.
+  // The harness takes an explicit model, so one is chosen here instead of refusing to start. This
+  // approximates the SDK's own choice rather than reproducing it; see `durableModel.ts`.
   const choice = chooseDurableModel(settings, modelRuntime)
   if (!choice) throw new Error('no model has credentials; sign in to one in settings')
   const { provider, modelId } = choice
@@ -45,7 +45,7 @@ async function open(
   // default: `persist.model` is wired to `set_model` only, so choosing one explicitly is what makes
   // both runtimes agree.
   if (choice.fallback)
-    outputLine('info', `[durable] no default model; running ${provider}/${modelId}`)
+    outputLine('info', `[durable] no usable default model; running ${provider}/${modelId}`)
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)
 

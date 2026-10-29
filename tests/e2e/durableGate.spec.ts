@@ -7,9 +7,13 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * The gate condition Phase 8 has been waiting on: a real session, driven through the real renderer,
  * on the durable runtime.
  *
- * Everything here is shipped code — Electron main, the sidecar child, Pi's agent loop, pi-durable's
+ * Everything here is shipped code — Electron main, the sidecar child, pi-durable's harness, its
  * store, the JSONL export — and the assertions are on what the user sees plus what was written to
  * disk. No model is called: the turn is a shell command, which runs without one.
+ *
+ * What that covers: preference routing, the cutover decision, harness open, session start, the
+ * command path and the export. What it does not: a prompt turn through the model, which is where
+ * the agent loop actually runs. That gap is why the gate's own debt list still stands.
  *
  * Two things this pins that unit tests could not:
  *
@@ -23,8 +27,9 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * passes with `sessionCommands` wired. That is deliberate: it is the evidence for opening it.
  *
  * The run sandboxes `HOME`, so it seeds one dummy provider key of its own: the shell turn never
- * calls a model, but a session cannot start without one that could. Nothing about the developer's
- * own credentials is required or read.
+ * calls a model, but a session cannot start without one that could. The developer's environment is
+ * inherited (its keys and `OPENPI_AGENT_DIR` come along), which is why the seeded key makes the
+ * result the same everywhere rather than relying on it.
  */
 
 /**
@@ -89,8 +94,9 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
       await window.openpi.pickWorkspace()
     })
 
-    // The composer renders without a session behind it, so this only shows the workspace opened; a
-    // session that failed to start surfaces later (as a missing marker), not here.
+    // The composer renders without a session behind it, so this only shows the workspace opened.
+    // A session that failed to start surfaces later, as a missing marker — measured: with the
+    // fallback reverted, this assertion is where it fails.
     const composer = page.locator('textarea').first()
     await expect(composer).toBeVisible({ timeout: 30_000 })
 

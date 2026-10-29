@@ -14,13 +14,14 @@ import type { SettingsManager } from '@earendil-works/pi-coding-agent'
  *
  * `findInitialModel` orders its choice in three steps: the stored default (with credentials), then
  * a per-provider default model from its `defaultModelPerProvider` table, then the first available
- * model. That table is not exported from `@earendil-works/pi-coding-agent`, and it changes with SDK
- * versions (45+ providers). Reproducing it here would mean a hand-maintained copy that silently
- * picks a different model after an SDK upgrade — worse than an honest gap, because nothing would
- * fail.
+ * model. That table is not exported from `@earendil-works/pi-coding-agent`, and it tracks SDK
+ * versions. Reproducing it here would mean a hand-maintained copy that silently picks a different
+ * model after an SDK upgrade — worse than an honest gap, because nothing would fail.
  *
- * So steps one and three are implemented, and step two is not. The divergence is narrow — it only
- * applies when no default is stored — and it does not persist itself: `persist.model` is wired to
+ * So steps one and three are implemented, and step two is not. The divergence applies whenever the
+ * stored default is missing or unusable — absent, removed, or without credentials — and in those
+ * cases the SDK may pick a provider default where this picks the first available model. It does not
+ * persist itself: `persist.model` is wired to
  * `set_model` only, so an SDK session started afterwards may pick a different model again. The
  * fallback is therefore logged (`durableHost.ts`) so the choice is visible rather than implicit, and
  * picking a model explicitly is what makes both runtimes agree.

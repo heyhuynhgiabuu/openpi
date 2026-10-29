@@ -38,8 +38,9 @@ import {
  *   transcript, as the SDK reports it) instead of being refused or sent as literal text.
  *
  * It stays closed anyway, and the reason is no longer "untested": `tests/e2e/durableGate.spec.ts`
- * now drives a real Electron session — real sidecar, real agent loop, real store, real export — on
- * this runtime, and it fails here because `sessionCommands` is missing. That drive found the last
+ * now drives a real Electron session on this runtime — real sidecar, harness, store and export, with
+ * a shell turn so no model is called. It fails here because `sessionCommands` is missing. What it
+ * does not cover is a prompt turn through the model. That drive found the last
  * parity defect (the durable runtime refused to start with no stored default model, where the SDK
  * path falls back; see `durableModel.ts`), so it is worth keeping as the gate's own witness.
  *
