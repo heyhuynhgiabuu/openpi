@@ -259,9 +259,11 @@ describe('durable mcp bridge cleanup', () => {
     const started = await readFile(marker, 'utf-8').catch(() => '')
     const pid = Number(started.match(/started (\d+)/)?.[1])
     expect(pid).toBeGreaterThan(0)
-    // ...and it is gone once the bridge closed, rather than living on with no way to reach it.
+    // ...and it is gone. It died inside `connectServer`, when the failing listing closed the client:
+    // this session was never tracked, so `bridge.close()` above could not have reached it.
     await expect.poll(() => processAlive(pid), { timeout: 5_000 }).toBe(false)
-    // Spawning the fixture and failing the listing takes longer than the default 5s budget.
+    // A 30s budget, not the default 5s: with the fix removed this poll runs its full 5s first, and a
+    // default timeout would report a timeout instead of the assertion that actually failed.
   }, 30_000)
 })
 
