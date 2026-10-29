@@ -23,7 +23,8 @@ vi.mock('../electron/pi/durableHost', () => ({
 }))
 vi.mock('@earendil-works/pi-coding-agent', () => ({ SettingsManager: settings }))
 
-const { handleGetDefaultProjectTrustCommand } = await import('../electron/pi/providerCommands')
+const { handleGetDefaultProjectTrustCommand, handleSetDefaultProjectTrustCommand } =
+  await import('../electron/pi/providerCommands')
 
 describe('commands that need the workspace', () => {
   it('reads the trust setting of the durable workspace, not "ask"', async () => {
@@ -32,6 +33,16 @@ describe('commands that need the workspace', () => {
     await handleGetDefaultProjectTrustCommand({
       type: 'get_default_project_trust',
       requestId: 'r1',
+    })
+    expect(settings.create).toHaveBeenCalledWith('/durable-workspace', '/agent')
+  })
+
+  it('writes the trust setting of the durable workspace, not nothing', async () => {
+    settings.create.mockClear()
+    workspace.cwd = '/durable-workspace'
+    await handleSetDefaultProjectTrustCommand({
+      type: 'set_default_project_trust',
+      defaultProjectTrust: 'never',
     })
     expect(settings.create).toHaveBeenCalledWith('/durable-workspace', '/agent')
   })

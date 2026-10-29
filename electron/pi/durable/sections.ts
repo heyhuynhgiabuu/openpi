@@ -14,7 +14,9 @@ import type { DurableCustomizations } from './customizations'
  */
 
 /** Render the model-invocable skills as one section; `undefined` when there are none. */
-export function skillsSection(skills: DurableCustomizations['skills']): PromptSection {
+export function skillsSection(all: DurableCustomizations['skills']): PromptSection {
+  // `disableModelInvocation` skills are offered only by `/skill:name`, never in the prompt.
+  const skills = all.filter((skill) => !skill.slashOnly)
   return section('skills', () => {
     if (skills.length === 0) return undefined
     // The base directory matters: a skill may reference bundled files relative to it.
@@ -59,10 +61,25 @@ export async function loadCustomizationsExtension(
 }
 
 /**
- * Expand a `/template args` input into its body with arguments substituted. Input that is not a
- * known template is returned unchanged.
+ * Expand a `/template args` or `/skill:name` input into its body. Input that is neither is returned
+ * unchanged, so an unknown `/name` reaches the model as typed, as on the SDK path.
  */
 export function expandInput(text: string, found: DurableCustomizations): string {
+  const skill = skillInvocation(text, found)
+  if (skill !== undefined) return skill
   const templates = found.prompts.map((prompt) => ({ name: prompt.name, content: prompt.body }))
   return expandPromptTemplateText(text, templates).text
+}
+
+/** `/skill:name args` → the skill's instructions, with any arguments appended. */
+function skillInvocation(text: string, found: DurableCustomizations): string | undefined {
+  if (!text.startsWith('/skill:')) return undefined
+  const rest = text.slice('/skill:'.length)
+  const space = rest.indexOf(' ')
+  const name = space === -1 ? rest : rest.slice(0, space)
+  const args = space === -1 ? '' : rest.slice(space + 1).trim()
+  const skill = found.skills.find((candidate) => candidate.name === name)
+  if (!skill) return undefined
+  const body = `# ${skill.name}\n\n${skill.body}\n\nBase directory: ${skill.baseDir}`
+  return args ? `${body}\n\n${args}` : body
 }

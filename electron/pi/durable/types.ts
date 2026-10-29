@@ -144,6 +144,10 @@ export interface DurableHarness {
    */
   abort(): Promise<void>
   /** Subscribe to structural views; returns the unsubscribe function. */
+  /** Expand a `/template args` input the way `prompt`/`queue` will, for callers that join text. */
+  renderInput(text: string): string
+  /** The prompt templates this session discovered, for the slash picker. */
+  promptCommands(): Array<{ name: string; description: string; argHint?: string }>
   watch(onView: (view: DurableView) => void): () => void
   /** Current structural view of the root conversation. */
   snapshot(): Promise<DurableView>

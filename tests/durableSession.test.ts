@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
 import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
-import { answer } from './helpers/forkSession'
 
 /**
  * Phase 8.3f: the durable session behind the sidecar protocol. Real harness, faux provider, real
@@ -98,22 +97,12 @@ describe('durable session prompt', () => {
     }
   })
 
-  it('sends a slash prompt on, so a template can be expanded before the model reads it', async () => {
-    let request = ''
-    const t = await setup({
-      responses: [
-        async (context) => {
-          request = JSON.stringify(context.messages.map((message) => message.content))
-          return answer('done')
-        },
-      ],
-    })
+  it('refuses a command nothing answers, rather than sending it to the model', async () => {
+    const t = await setup()
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      // Unknown templates reach the model unchanged, as on the SDK path; the harness expands the
-      // known ones first. Refusing here would drop what the user typed.
-      await t.sessions.handleCommand(prompt('/compact'))
-      expect(request).toContain('/compact')
+      // The SDK path refuses an unknown `/name`; sending it as text would do nothing silently.
+      await expect(t.sessions.handleCommand(prompt('/compact'))).rejects.toThrow(/unknown command/)
     } finally {
       await t.sessions.stop()
     }

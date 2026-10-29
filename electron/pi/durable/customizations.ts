@@ -21,6 +21,8 @@ export interface DurableSkill {
   /** Directory bundled files resolve against; skills reference them relatively. */
   baseDir: string
   body: string
+  /** Only reachable as `/skill:name`; the prompt section must not offer it to the model. */
+  slashOnly: boolean
 }
 
 /** One prompt template offered to the durable runtime. */
@@ -104,16 +106,16 @@ export async function discoverCustomizations(
 
   const skillInventory = loader.getSkills()
   diagnostics.push(...skillInventory.diagnostics.map(toDiagnostic))
-  // `disableModelInvocation` skills are slash-command only; a prompt section would offer them.
-  const skills = skillInventory.skills
-    .filter((skill) => !skill.disableModelInvocation)
-    .map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      filePath: skill.filePath,
-      baseDir: skill.baseDir,
-      body: readBody(skill.filePath),
-    }))
+  // Every skill is kept: `disableModelInvocation` ones are offered only by `/skill:name`, and the
+  // prompt section filters them out (`sections.ts`), so an explicit invocation still works.
+  const skills = skillInventory.skills.map((skill) => ({
+    name: skill.name,
+    description: skill.description,
+    filePath: skill.filePath,
+    baseDir: skill.baseDir,
+    body: readBody(skill.filePath),
+    slashOnly: skill.disableModelInvocation === true,
+  }))
 
   const promptInventory = loader.getPrompts()
   diagnostics.push(...promptInventory.diagnostics.map(toDiagnostic))

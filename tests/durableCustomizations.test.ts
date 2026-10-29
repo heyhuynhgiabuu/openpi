@@ -100,10 +100,15 @@ describe('durable customizations discovery', () => {
     expect(shared[0].filePath).toContain(join('.pi', 'skills'))
   })
 
-  it('keeps slash-command-only skills out of the model-facing list', async () => {
+  it('keeps a slash-command-only skill, marked so the model is not offered it', async () => {
     await writeSkill(join(agentDir, 'skills'), 'manual', 'disable-model-invocation: true\n')
     const found = await discoverCustomizations({ userAgentDir: agentDir, workspacePath })
-    expect(found.skills.map((skill) => skill.name)).not.toContain('manual')
+    // Kept for `/skill:manual`; `skillsSection` filters it out of the prompt.
+    expect(found.skills.find((skill) => skill.name === 'manual')?.slashOnly).toBe(true)
+    // ...and an ordinary skill stays model-invocable.
+    await writeSkill(join(agentDir, 'skills'), 'plain')
+    const again = await discoverCustomizations({ userAgentDir: agentDir, workspacePath })
+    expect(again.skills.find((skill) => skill.name === 'plain')?.slashOnly).toBe(false)
   })
 
   it('does not throw for a missing agent dir', async () => {

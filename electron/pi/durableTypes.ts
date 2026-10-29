@@ -75,6 +75,13 @@ export interface DurableSessions {
    * null while a durable session is active.
    */
   cwd(): string | undefined
+  /**
+   * The running session in the shape `startSession` needs to reopen it, or `undefined` when none is
+   * being served. Replacing a session disposes this one first, so it has to be taken before that.
+   */
+  reopenable(): { sessionId: string; sessionFile: string; startedAt: string } | undefined
+  /** What the slash picker offers: the prompt templates this runtime discovered. */
+  promptCommands(): Array<{ name: string; description: string; argHint?: string }>
   start(cwd: string, options: DurableStartOptions): Promise<void>
   /** Whether this runtime can reopen the file, without opening its store or touching the session. */
   canResume(sessionFile: string): Promise<boolean>

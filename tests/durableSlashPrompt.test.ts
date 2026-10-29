@@ -7,11 +7,20 @@ import { promptText } from '../electron/pi/durablePrompt'
  */
 
 describe('a slash prompt on the durable runtime', () => {
-  it('is passed through so the harness can expand it', () => {
-    expect(promptText({ text: '/review the diff' })).toBe('/review the diff')
+  it('is passed through once the expander has answered it', () => {
+    expect(promptText({ text: '/review the diff' }, () => 'REVIEW BODY the diff')).toBe(
+      'REVIEW BODY the diff'
+    )
   })
 
-  it('keeps the context prefix in front of it', () => {
-    expect(promptText({ text: '/review', contextPrefix: 'context' })).toBe('context\n\n/review')
+  it('refuses a command nothing answers, as the SDK path does', () => {
+    expect(() => promptText({ text: '/nope' })).toThrow(/unknown command: \/nope/)
+  })
+
+  it('expands before joining the context prefix', () => {
+    // The expander only looks at the start of the text, so a prefix joined first would stop it.
+    expect(promptText({ text: '/ship now', contextPrefix: 'ctx' }, () => 'Ship now.')).toBe(
+      'ctx\n\nShip now.'
+    )
   })
 })

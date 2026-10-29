@@ -17,6 +17,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
+import { slashCommandsOf } from './commands'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
 import { createBashRunner, runAndRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
@@ -207,6 +208,12 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       await root.abort(ctx)
     },
 
+    renderInput(text: string) {
+      return expand(text)
+    },
+
+    promptCommands: () => slashCommandsOf(customizations),
+
     watch(onView: (view: DurableView) => void): () => void {
       let stopped = false
       let stopHandle: (() => void) | undefined
@@ -233,9 +240,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return toView(root.id, view.entries)
     },
 
-    diagnostics(): readonly CustomizationDiagnostic[] {
-      return diagnostics
-    },
+    diagnostics: (): readonly CustomizationDiagnostic[] => diagnostics,
 
     async watchEvents(
       onEvent: (event: Record<string, unknown>) => void

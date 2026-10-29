@@ -5,32 +5,30 @@ import {
   decideCutover,
   type DurableCapability,
 } from '../electron/pi/cutover'
+import { WIRED_DURABLE_CAPABILITIES } from '../electron/pi/sessionLifecycle'
 
 /**
- * The shipped gate. Opening it is a one-line edit to a constant that no other test observes, so this
- * is the tripwire: it fails if `sessionCommands` is wired, forcing whoever opens the gate to say so
- * on purpose and to re-run the parity checks that the gate stands for.
+ * The shipped gate, read from the constant itself so this test moves with the gate and fails if
+ * either direction changes without the test being updated next to it. Opening or closing the gate is
+ * therefore a deliberate act rather than a line nothing observes.
  */
 
-/** Mirror of `WIRED_DURABLE_CAPABILITIES`; the two must move together. */
-const SHIPPED: readonly DurableCapability[] = [
-  'adapter',
-  'customizations',
-  'policy',
-  'mcp',
-  'sessionIndex',
-  'eventBridge',
-  'sessionFiles',
-  'sessionCommands',
-]
+const SHIPPED: readonly DurableCapability[] = WIRED_DURABLE_CAPABILITIES
+
+function decide(capabilities: readonly DurableCapability[]) {
+  return decideCutover({ stored: 'durable', durableAvailable: true, capabilities })
+}
 
 describe('the durable cutover gate as shipped', () => {
-  it('admits an opt-in session, with resume offered and fork left to the SDK', () => {
-    const decision = decideCutover({
-      stored: 'durable',
-      durableAvailable: true,
-      capabilities: SHIPPED,
-    })
+  it('is closed: an opt-in session still runs on the Pi SDK path', () => {
+    // Closed until a real session has been driven through the renderer; see ROADMAP Phase 8.
+    expect(decide(SHIPPED).runtime).toBe('sdk')
+    expect(decide(SHIPPED).missing).toEqual(['sessionCommands'])
+    expect(chooseSessionRuntime(decide(SHIPPED), {})).toEqual({ runtime: 'sdk' })
+  })
+
+  it('admits an opt-in session once every required capability is wired', () => {
+    const decision = decide(REQUIRED_CAPABILITIES)
     expect(decision.missing).toEqual([])
     expect(chooseSessionRuntime(decision, {})).toEqual({ runtime: 'durable', start: 'new' })
     expect(chooseSessionRuntime(decision, { sessionFile: '/s.jsonl' })).toEqual({
@@ -41,18 +39,10 @@ describe('the durable cutover gate as shipped', () => {
     expect(chooseSessionRuntime(decision, { forkEntryId: 'abc' }).runtime).toBe('sdk')
   })
 
-  it('still refuses to serve anything when one capability is missing', () => {
-    const decision = decideCutover({
-      stored: 'durable',
-      durableAvailable: true,
-      capabilities: SHIPPED.filter((capability) => capability !== 'sessionCommands'),
-    })
-    expect(decision.runtime).toBe('sdk')
-    expect(decision.missing).toEqual(['sessionCommands'])
-  })
-
-  it('needs every required capability, and the command set is one of them', () => {
-    expect(REQUIRED_CAPABILITIES).toContain('sessionCommands')
-    expect([...SHIPPED].sort()).toEqual([...REQUIRED_CAPABILITIES].sort())
+  it('wires nothing the gate does not require', () => {
+    // A capability wired but not required would be untested surface: the gate's own list is the
+    // contract, so anything beyond it is either a typo or a required capability left out.
+    for (const capability of SHIPPED) expect(REQUIRED_CAPABILITIES).toContain(capability)
+    expect(SHIPPED).not.toContain('sessionCommands')
   })
 })
