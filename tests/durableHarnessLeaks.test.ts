@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fauxProvider } from '@earendil-works/pi-ai'
+import { JsonlStorage } from '@earendil-works/pi-durable/storage/jsonl/node'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDurableHarness } from '../electron/pi/durable/harness'
 
@@ -97,9 +98,10 @@ async function readOnlyStore(): Promise<string> {
 }
 
 describe('openDurableHarness releases what it opened when the open fails', () => {
-  it('closes the MCP bridge when installing its extension throws', async () => {
+  it('closes the MCP bridge and the store when installing its extension throws', async () => {
     mocks.duplicateTools = true
     const faux = fauxProvider()
+    const close = vi.spyOn(JsonlStorage.prototype, 'close')
     await expect(openDurableHarness(options(join(root, 'store'), faux))).rejects.toThrow(
       /two tools named mcp__a_b__echo/
     )
@@ -107,11 +109,19 @@ describe('openDurableHarness releases what it opened when the open fails', () =>
     // The servers were spawned before the install rejected; nothing else held the closer.
     expect(mocks.bridge).toHaveBeenCalledTimes(1)
     expect(mocks.closeMcp).toHaveBeenCalledTimes(1)
+    // On this path no commit has failed, so pi-durable has closed nothing itself: releasing the
+    // harness (and the store behind it) is this code's job alone.
+    expect(close).toHaveBeenCalled()
+    close.mockRestore()
   })
 
   it('closes the MCP bridge when root creation throws', async () => {
     const faux = fauxProvider()
-    await expect(openDurableHarness(options(await readOnlyStore(), faux))).rejects.toThrow()
+    // Match the error rather than any throw: the setup relies on the store rejecting the write, and
+    // a silent change there must fail loudly instead of passing on some unrelated error.
+    await expect(openDurableHarness(options(await readOnlyStore(), faux))).rejects.toThrow(
+      /poison|EACCES|EPERM|permission/i
+    )
 
     expect(mocks.bridge).toHaveBeenCalledTimes(1)
     expect(mocks.closeMcp).toHaveBeenCalledTimes(1)

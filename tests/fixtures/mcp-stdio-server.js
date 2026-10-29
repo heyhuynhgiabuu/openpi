@@ -48,6 +48,12 @@ function handle(message) {
     })
     return
   }
+  // `MCP_FAIL_TOOLS_LIST` makes the handshake succeed and listing fail: the window where a client
+  // is connected but was never tracked, so only the server's own cleanup can end the process.
+  if (method === 'tools/list' && process.env.MCP_FAIL_TOOLS_LIST) {
+    error(id, -32601, 'Method not found: tools/list')
+    return
+  }
   if (method === 'tools/list') {
     reply(id, {
       tools: [

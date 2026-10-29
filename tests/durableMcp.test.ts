@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -229,3 +229,48 @@ describe('durable mcp exposure through tool_search', () => {
     }
   })
 })
+
+describe('durable mcp bridge cleanup', () => {
+  it('kills the server process when listing its tools fails', async () => {
+    const marker = join(root, 'started.log')
+    const bridge = await loadMcpExtension(
+      [
+        {
+          name: 'broken',
+          command: process.execPath,
+          args: [FIXTURE],
+          // The handshake succeeds and `tools/list` fails, so the client is connected but the
+          // server never becomes a tracked session: only its own cleanup can end the process.
+          env: { MCP_MARKER_FILE: marker, MCP_FAIL_TOOLS_LIST: '1' },
+          enabled: true,
+          exposure: 'codemode',
+          timeoutMs: 60_000,
+        },
+      ],
+      workspacePath
+    )
+
+    // The failure is reported as a warning, which is the documented behaviour.
+    expect(bridge.errors.join(' ')).toMatch(/Method not found/)
+    expect(bridge.extension).toBeUndefined()
+    await bridge.close()
+
+    // The server did start, so the assertion below is about a process that existed.
+    const started = await readFile(marker, 'utf-8').catch(() => '')
+    const pid = Number(started.match(/started (\d+)/)?.[1])
+    expect(pid).toBeGreaterThan(0)
+    // ...and it is gone once the bridge closed, rather than living on with no way to reach it.
+    await expect.poll(() => processAlive(pid), { timeout: 5_000 }).toBe(false)
+    // Spawning the fixture and failing the listing takes longer than the default 5s budget.
+  }, 30_000)
+})
+
+/** Whether a pid is still running (`process.kill` with signal 0 only probes). */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}

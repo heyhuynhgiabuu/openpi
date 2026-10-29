@@ -52,14 +52,21 @@ async function connectServer(
   const transport = new StdioTransport(transportOptions)
   const client = new McpClient({ name: 'openpi', version: '1.0.0' })
   await client.connect(transport)
-  const listed = await client.listTools()
-  const tools: ServerTool[] = listed.map((tool) => ({
-    serverName: tool.name,
-    exposedName: mcpToolName(server.name, tool.name),
-    description: tool.description ?? `${server.name} MCP tool: ${tool.name}`,
-    inputSchema: tool.inputSchema,
-  }))
-  return { client, tools, timeoutMs: server.timeoutMs }
+  try {
+    const listed = await client.listTools()
+    const tools: ServerTool[] = listed.map((tool) => ({
+      serverName: tool.name,
+      exposedName: mcpToolName(server.name, tool.name),
+      description: tool.description ?? `${server.name} MCP tool: ${tool.name}`,
+      inputSchema: tool.inputSchema,
+    }))
+    return { client, tools, timeoutMs: server.timeoutMs }
+  } catch (error) {
+    // `connect` already spawned the process, and this session is never tracked by the caller, so a
+    // failing listing must end it here: `bridge.close()` cannot reach it.
+    await client.close().catch(() => undefined)
+    throw error
+  }
 }
 
 /**
