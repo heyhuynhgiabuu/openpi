@@ -1,4 +1,5 @@
 import type { ModelThinkingLevel, Models, MutableModels } from '@earendil-works/pi-ai'
+import type { ReportInfo } from '@earendil-works/pi-durable'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 import type { BashResult } from './bash'
@@ -49,6 +50,11 @@ export interface DurableQueued {
 export interface DurableHarnessOptions {
   /** Directory for the JSONL store; required for the `jsonl` backend, ignored for `memory`. */
   directory?: string
+  /**
+   * Reports that a task faulted or was parked at the restart limit. Forwarded from pi-durable
+   * because a parked task is otherwise invisible: the prompt simply stops answering.
+   */
+  onReport?: (error: unknown, info: ReportInfo) => void
   backend?: DurableBackend
   /**
    * Reopening an existing session: fail when the store directory is missing instead of letting the
@@ -167,5 +173,15 @@ export interface DurableHarness {
    * file carrying the same id is overwritten, any other session's file is refused.
    */
   exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult>
+  /**
+   * Run whatever the store still had in flight when the previous process died.
+   *
+   * pi-durable keeps an unsettled task and turns it back into a pending one on open, but it does not
+   * dispatch until this is called: without it the prompt is not resumed by the restart, and instead
+   * runs later, silently, behind whatever command happens to enable scheduling next.
+   */
+  resumeInterrupted(): Promise<void>
+  /** Settle once nothing in this session can still run; used to export a resumed run's answer. */
+  waitIdle(): Promise<void>
   close(): Promise<void>
 }

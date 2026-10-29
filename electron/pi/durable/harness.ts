@@ -73,6 +73,9 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       settings: { compaction: options.compaction ?? {} },
       env: ({ cwd }) =>
         new NodeExecutionEnv({ cwd: cwd ?? options.workspacePath ?? process.cwd() }),
+      // Without this, a task pi-durable parks (restart limit reached) or faults is dropped in
+      // silence: the user sees a prompt that never answers and no reason for it.
+      onReport: (error, info) => options.onReport?.(error, info),
     },
     ctx
   )
@@ -272,6 +275,15 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
 
     executeBash(command: string, bash?: { excludeFromContext?: boolean }): Promise<BashResult> {
       return runAndRecord(bashRunner, root, ctx, command, workspace, bash?.excludeFromContext)
+    },
+
+    async resumeInterrupted(): Promise<void> {
+      // `Harness.resume()` is synchronous: it enables scheduling, so the pending work runs on its own.
+      harness.resume()
+    },
+
+    async waitIdle(): Promise<void> {
+      await harness.waitForIdle(ctx)
     },
 
     async close(): Promise<void> {

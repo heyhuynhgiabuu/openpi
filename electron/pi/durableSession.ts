@@ -57,6 +57,16 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     deps.send({ type: 'session_index_updated' })
   }
 
+  /**
+   * Wait for a resumed run to settle, then write its answer out. `exportNow` alone would run before
+   * the resumed turn had produced anything, leaving a prompt in the file with no reply.
+   */
+  async function exportWhenIdle(session: ActiveSession): Promise<void> {
+    await session.harness.waitIdle()
+    if (session.closing) return
+    await exportNow(session)
+  }
+
   /** Write the session file after a change; a failure is logged, since the session itself is fine. */
   async function exportNow(session: ActiveSession): Promise<void> {
     try {
@@ -167,6 +177,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     } catch (error) {
       await stop()
       throw error
+    }
+    // A reopened session may still owe an answer: pi-durable kept the unsettled task but does not
+    // dispatch it until scheduling is enabled. Resume without waiting, and export when it settles,
+    // so the answer lands in the file the renderer reads rather than being run by a later command.
+    if (options.resume) {
+      session.harness.resumeInterrupted()
+      void exportWhenIdle(session).catch(() => undefined)
     }
   }
 

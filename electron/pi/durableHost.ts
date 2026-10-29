@@ -65,6 +65,14 @@ async function open(
     workspacePath: cwd,
     projectTrusted: workspaceTrusted,
     mcp: true,
+    // A task that faulted or hit the restart limit must say so: the prompt would otherwise just
+    // stop answering, with nothing in the transcript to explain why.
+    onReport: (error, info) => {
+      outputLine(
+        info.type === 'task_parked' ? 'warn' : 'error',
+        `[durable] ${info.type}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    },
   })
   return {
     harness,
