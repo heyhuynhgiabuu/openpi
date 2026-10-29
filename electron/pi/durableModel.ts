@@ -19,10 +19,11 @@ import type { SettingsManager } from '@earendil-works/pi-coding-agent'
  * picks a different model after an SDK upgrade — worse than an honest gap, because nothing would
  * fail.
  *
- * So steps one and three are implemented, and step two is not. The divergence is narrow and
- * self-correcting: it only applies when no default is stored, and whatever this picks is persisted
- * as the default (`durableHost.ts` `persist.model`), so the next session on either runtime uses the
- * same model. When the fallback is taken it is logged, so the choice is visible rather than implicit.
+ * So steps one and three are implemented, and step two is not. The divergence is narrow — it only
+ * applies when no default is stored — and it does not persist itself: `persist.model` is wired to
+ * `set_model` only, so an SDK session started afterwards may pick a different model again. The
+ * fallback is therefore logged (`durableHost.ts`) so the choice is visible rather than implicit, and
+ * picking a model explicitly is what makes both runtimes agree.
  */
 
 /** The part of the model runtime this needs; `ModelRuntime` satisfies it structurally. */

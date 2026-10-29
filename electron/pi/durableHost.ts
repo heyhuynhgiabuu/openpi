@@ -41,8 +41,9 @@ async function open(
   const choice = chooseDurableModel(settings, modelRuntime)
   if (!choice) throw new Error('no model has credentials; sign in to one in settings')
   const { provider, modelId } = choice
-  // Say so rather than silently running a model the user never chose. `persist.model` then makes it
-  // the default, so the next session on either runtime starts on the same one.
+  // Say so rather than silently running a model the user never chose. This does not become the
+  // default: `persist.model` is wired to `set_model` only, so choosing one explicitly is what makes
+  // both runtimes agree.
   if (choice.fallback)
     outputLine('info', `[durable] no default model; running ${provider}/${modelId}`)
   const model = modelRuntime.getModel(provider, modelId)
