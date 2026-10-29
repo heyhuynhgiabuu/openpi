@@ -101,7 +101,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   async function start(cwd: string, options: DurableStartOptions): Promise<void> {
     await stop()
     const identity = options.resume?.identity ?? deps.newIdentity(cwd)
-    const opened = await deps.open(cwd, options.workspaceTrusted, identity)
+    const opened = await deps.open(
+      cwd,
+      options.workspaceTrusted,
+      identity,
+      options.resume !== undefined
+    )
     const { harness, persist } = opened
     // Anything that fails between opening the harness and registering it would leave its store
     // and MCP connections open with nothing able to close them.

@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { getSupportedThinkingLevels, type Api, type Model } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { openDurableHarness } from './durable/harness'
+import { chooseDurableModel } from './durableModel'
 import {
   createDurableSessions,
   type DurableIdentity,
@@ -30,16 +31,23 @@ function newIdentity(cwd: string): DurableIdentity {
 async function open(
   cwd: string,
   workspaceTrusted: boolean,
-  identity: DurableIdentity
+  identity: DurableIdentity,
+  resuming: boolean
 ): Promise<DurableOpenResult> {
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
   const settings = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
-  const provider = settings.getDefaultProvider()
-  const modelId = settings.getDefaultModel()
-  if (!provider || !modelId) {
-    throw new Error('the durable runtime needs a default model; choose one in settings')
-  }
+  // The harness takes an explicit model, so one is chosen here instead of refusing to start. This
+  // approximates the SDK's own choice rather than reproducing it; see `durableModel.ts`.
+  const choice = chooseDurableModel(settings, modelRuntime)
+  if (!choice) throw new Error('no model has credentials; sign in to one in settings')
+  const { provider, modelId } = choice
+  // Say so rather than silently running a model the user never chose. Only for a fresh session: a
+  // reopened one keeps the model it was using (`durableOpen.ts`), so naming this one there would
+  // report a model that is not running. This does not become the default either — `persist.model`
+  // is wired to `set_model` only — so choosing one explicitly is what makes both runtimes agree.
+  if (choice.fallback && !resuming)
+    outputLine('info', `[durable] no usable default model; using ${provider}/${modelId}`)
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)
 
