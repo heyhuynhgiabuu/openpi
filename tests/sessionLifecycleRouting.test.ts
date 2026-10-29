@@ -64,18 +64,35 @@ describe('startSession routing', () => {
     expect(durable.start).not.toHaveBeenCalled()
   })
 
-  it('checks before disposing the running session, and leaves it alone for a file it declines', async () => {
-    durable.canResume.mockResolvedValue(false)
-    // The SDK path from here needs a session manager; the point is that it is reached, and that
-    // nothing was torn down for a file the durable runtime cannot reopen.
+  it('reads the file before it disposes the session it is running', async () => {
+    const order: string[] = []
+    durable.canResume.mockImplementation(async () => {
+      order.push('canResume')
+      return false
+    })
+    // The SDK path from here needs a session manager; what matters is the order of the reads.
     await startSession('/work', {
       runtimePreference: 'durable',
       sessionFile: '/s.jsonl',
       requestId: 'r3',
     }).catch(() => undefined)
+    // A declined file is never reopened or started over, and the check came first.
     expect(durable.resumeFrom).not.toHaveBeenCalled()
     expect(durable.start).not.toHaveBeenCalled()
-    expect(durable.stop).toHaveBeenCalled() // the previous durable session, not the SDK one
+    expect(order).toEqual(['canResume'])
+  })
+
+  it('answers the open request when the file changes between the check and the resume', async () => {
+    // `canResume` yes, `resumeFrom` no: another writer touched the file in between. The session is
+    // already disposed by then, so the only correct answer is an error naming the request.
+    durable.resumeFrom.mockResolvedValueOnce(false)
+    await expect(
+      startSession('/work', {
+        runtimePreference: 'durable',
+        sessionFile: '/s.jsonl',
+        requestId: 'r5',
+      })
+    ).rejects.toThrow(/changed while it was being opened/)
   })
 
   it('keeps a fork on the SDK path even under an opt-in', async () => {

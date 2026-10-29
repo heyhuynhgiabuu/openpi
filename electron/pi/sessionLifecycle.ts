@@ -125,7 +125,20 @@ export async function startSession(
   if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
     await stopSdkSession(choice.start)
     if (opts.sessionFile && choice.start === 'resume') {
-      await durableSessions.resumeFrom(cwd, opts.sessionFile, trusted, opts.requestId)
+      // `canResume` said yes, but the file can change between the two reads. If the resume then
+      // declines, the session is already disposed: say so, rather than leave the open request
+      // unanswered while the sidecar runs nothing at all.
+      const resumed = await durableSessions.resumeFrom(
+        cwd,
+        opts.sessionFile,
+        trusted,
+        opts.requestId
+      )
+      if (!resumed) {
+        throw new Error(
+          `${opts.sessionFile} changed while it was being opened; open it again to continue`
+        )
+      }
       return
     }
     await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
