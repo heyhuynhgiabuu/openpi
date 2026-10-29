@@ -6,25 +6,15 @@ import {
   type Models,
   type MutableModels,
 } from '@earendil-works/pi-ai'
-import {
-  AssistantEntry,
-  Harness,
-  ToolTask,
-  UserEntry,
-  createRegistry,
-  defineExtension,
-  hook,
-} from '@earendil-works/pi-durable'
+import { AssistantEntry, Harness, UserEntry, createRegistry } from '@earendil-works/pi-durable'
 import type { SettledSubmissionRecord } from '@earendil-works/pi-durable'
-import { expandInput, loadCustomizationsExtension } from './sections'
+import { expandInput } from './sections'
 import { slashCommandsOf } from './commands'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
 import { createBashRunner, runAndRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
 import { answerText, toView } from './view'
-import { policyToolHooks } from './policy'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
-import type { DurableCustomizations } from './customizations'
 import { CodingTools } from '@earendil-works/pi-durable/tools'
 import { createToolSearchExtension } from '@earendil-works/pi-durable/tool-search'
 import { loadDurableMcpConfig } from './mcpConfig'
@@ -36,6 +26,8 @@ import { runCompaction } from './compaction'
 import { activeBranch, forkAtLine, navigate, openBranches, readAll } from './branches'
 import { writeSessionTree, type SessionFileHeader, type SessionFileResult } from './sessionFile'
 import { openDurableStorage } from './storage'
+import { releaseOnFailure } from './release'
+import { prepareRegistry } from './registry'
 import type {
   DurableHarness,
   DurableCompaction,
@@ -65,27 +57,12 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
   options.registerProviders?.(registryModels)
   const models: Models = options.models ?? registryModels
   const registry = createRegistry()
-  // Parity extensions: customizations render as prompt sections; the policy gate mirrors the
-  // desktop protected-path and high-risk gates the SDK path applies in Electron main.
-  const diagnostics: CustomizationDiagnostic[] = []
-  let customizations: DurableCustomizations | undefined
-  if (options.userAgentDir) {
-    const loaded = await loadCustomizationsExtension({
-      userAgentDir: options.userAgentDir,
-      workspacePath: options.workspacePath,
-    })
-    registry.install(loaded.extension)
-    customizations = loaded.found
-    diagnostics.push(...loaded.found.diagnostics)
-  }
-  if (options.policy !== false) {
-    registry.install(
-      defineExtension({
-        name: 'openpi.policy',
-        hooks: [hook(ToolTask, policyToolHooks({ workspacePath: options.workspacePath }))],
-      })
-    )
-  }
+  const prepared = await prepareRegistry(registry, {
+    userAgentDir: options.userAgentDir,
+    workspacePath: options.workspacePath,
+    policy: options.policy,
+  })
+  const { customizations, diagnostics } = prepared
   // The built-in coding tools need an execution environment; without it every tool call would fail.
   const harness = await Harness.open(
     storage,
@@ -113,18 +90,31 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     diagnostics.push(...config.errors.map((message) => ({ type: 'warning' as const, message })))
     const bridge = await loadMcpExtension(config.servers, options.workspacePath)
     diagnostics.push(...bridge.errors.map((message) => ({ type: 'warning' as const, message })))
-    if (bridge.extension) {
-      registry.install(bridge.extension)
-      registry.install(createToolSearchExtension())
-    }
     closeMcp = bridge.close
+    if (bridge.extension) {
+      try {
+        registry.install(bridge.extension)
+        registry.install(createToolSearchExtension())
+      } catch (error) {
+        // The install validates the extension and can throw (two servers can sanitize to the same
+        // tool name), and the bridge's servers are already spawned by now.
+        await releaseOnFailure({ closeMcp: bridge.close, harness, storage }, ctx, error)
+      }
+    }
   }
   const agent: { model: typeof options.model; cwd?: string } = { model: options.model }
   if (options.workspacePath) agent.cwd = options.workspacePath
   // A forked or navigated session lives in its own conversations of the store; any other uses the
   // root. Ids come from a session file now, so a wrong one closes what this open created.
   const branches = await openBranches(harness, options.conversationIds, closeMcp, ctx)
-  if (branches.length === 0) branches.push(await harness.root(ctx, { agent }))
+  if (branches.length === 0) {
+    try {
+      branches.push(await harness.root(ctx, { agent }))
+    } catch (error) {
+      // Nothing holds a handle to what this open started, so release it on the way out.
+      await releaseOnFailure({ closeMcp, harness, storage }, ctx, error)
+    }
+  }
   // The active branch: the last. `navigate` moves it to a fork.
   let root = activeBranch(branches)
 
