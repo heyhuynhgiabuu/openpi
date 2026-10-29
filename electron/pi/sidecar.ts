@@ -22,8 +22,9 @@
 import { createSidecarCommandQueue } from './sidecarCommandQueue'
 import { sidecarCommandSchema } from './sidecarContracts'
 import { handleResourceCommand, isResourceCommand } from './resourceCommands'
+import { resourceCommandDeps } from './resourceDeps'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
-import { getResourceLoader, getState, onParentMessage, send } from './sidecarContext'
+import { onParentMessage, send } from './sidecarContext'
 import { handleAbortCommand } from './conversationCommands'
 import { durableSessions } from './durableHost'
 import {
@@ -75,14 +76,7 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
   if (await durableSessions.handleCommand(cmd)) return
 
   if (isResourceCommand(cmd)) {
-    await handleResourceCommand(cmd, {
-      // A durable session has no SDK state; its workspace is what these commands need.
-      getCwd: () => getState()?.cwd ?? durableSessions.cwd() ?? null,
-      getDurableCommands: () => durableSessions.promptCommands(),
-      getSession: () => getState()?.session ?? null,
-      getResourceLoader,
-      send,
-    })
+    await handleResourceCommand(cmd, resourceCommandDeps)
     return
   }
 

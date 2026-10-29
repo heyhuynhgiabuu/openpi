@@ -148,3 +148,25 @@ describe('wiring between the durable session and its harness', () => {
     }
   })
 })
+
+describe('the picker pipeline, end to end', () => {
+  it('lists a discovered template through the real harness, not just a stub', async () => {
+    // Three pieces in a row: discovery → harness.promptCommands → factory.promptCommands, which is
+    // what `sidecar.ts` asks. Testing any one of them alone leaves the other two free to break.
+    const agentDir = join(sessionRoot(), 'agent')
+    await mkdir(join(agentDir, 'prompts'), { recursive: true })
+    await writeFile(
+      join(agentDir, 'prompts', 'audit.md'),
+      '---\ndescription: Audit it\n---\nAUDIT\n'
+    )
+    const t = await setup({ userAgentDir: agentDir, workspacePath: sessionRoot(), answers: ['ok'] })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      expect(t.sessions.promptCommands()).toEqual([
+        { name: 'audit', description: 'Audit it', argHint: undefined },
+      ])
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+})
