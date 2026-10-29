@@ -523,6 +523,17 @@ Acceptance criteria:
 
 **Acceptance:** same user-visible features on both runtimes (session sidebar, tool cards, steer/follow-up/abort, customizations, MCP/codemode, pre-apply gate, Git review flow); no session history lost across the import; pin + adapter test suite runs on every pi-durable bump.
 
+**Cutover gate — conditions to open it** (tracked here so it is readable in the repo; the code constant is `WIRED_DURABLE_CAPABILITIES` in `electron/pi/sessionLifecycle.ts`, and `sessionCommands` is the one capability still withheld):
+
+1. **Done:** the five blockers that blocked the first gate attempt are closed — replacing a durable session aborts its run before closing the harness; a failed start puts the previous session back (durable included, read before the teardown, reopened with its own workspace and trust); `/`-prompts reach the harness expander instead of being refused; `list_slash_commands` and the trust commands read the serving runtime's workspace; a template is expanded exactly once.
+2. **Done:** a real session is driven through the renderer on this runtime — `tests/e2e/durableGate.spec.ts` (needs `OPENPI_E2E_DURABLE=1` and `sessionCommands` wired). It covers preference routing, the cutover decision, harness open, session start, the shell command path and the export; it does **not** cover a prompt turn through the model.
+3. **Open:** a prompt turn through the model must be driven the same way, with a scripted provider, before the default flips.
+4. **Open:** harness-open leaks (`loadCustomizationsExtension`, `loadMcpExtension`, `harness.root` throwing) leave the store and MCP bridge open.
+5. **Open:** a restart during a run does not resume the in-flight prompt.
+6. **Known, accepted for opt-in only:** Windows reserved device names (`CON`, `NUL`) parse but fail at store open.
+7. **Known divergence:** the durable runtime approximates the SDK's model choice — it implements the stored-default and first-available rules but not the SDK's private per-provider default table (`electron/pi/durableModel.ts`). Visible in the log; not persisted.
+8. **Open:** CI must actually run the gate spec before the default flips; today the e2e job is manual and the spec skips without the flag.
+
 ## Phase 9 — Remote Surfaces (SSH + Mobile)
 
 **Goal:** let an owner monitor and gate OpenPi from their phone. The desktop is the **host** and stays the single authority; the phone is an **untrusted renderer** with the same main-process policy as the desktop renderer. Security requirements from `2026-09-13-remote-access-deferred.md` apply in full, plus the termux-audit negative checklist: **no tokens in query strings, no wildcard-interface binds, no static shared secrets; per-device pairing, revocable.**

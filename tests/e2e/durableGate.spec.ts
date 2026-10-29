@@ -94,9 +94,9 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
       await window.openpi.pickWorkspace()
     })
 
-    // The composer renders without a session behind it, so this only shows the workspace opened.
-    // A session that failed to start surfaces later, as a missing marker — measured: with the
-    // fallback reverted, this assertion is where it fails.
+    // Measured: with the model fallback reverted, the spec fails right here — the composer never
+    // appears because a failed start tears the workspace down. It is not proof on its own, though:
+    // the composer can render without a session behind it, so the marker below is the real check.
     const composer = page.locator('textarea').first()
     await expect(composer).toBeVisible({ timeout: 30_000 })
 
