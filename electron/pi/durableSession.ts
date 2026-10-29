@@ -71,7 +71,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     active = null
     if (!session) return
     session.closing = true
-    // The run is being cancelled on purpose; `reportUnanswered` must not warn about it.
+    // A queued message that settles after this shutdown is the run we just aborted, not a run that
+    // failed to answer; say nothing about it.
     session.abortRequested = true
     try {
       await session.stopEvents()
