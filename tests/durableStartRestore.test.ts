@@ -167,4 +167,33 @@ describe('a previous session that was itself durable', () => {
     // request that failed.
     expect(durable.resumeFrom).toHaveBeenCalledWith('/durable', '/durable/s.jsonl', true, undefined)
   })
+
+  it('does not hand an untrusted workspace back the trust of a trusted request', async () => {
+    // The escalation direction: the serving session is untrusted, the failed request is trusted.
+    // Reopening with the request's trust would start its project MCP servers without consent.
+    spied.live = {
+      sessionId: 'durable-2',
+      sessionFile: '/durable/u.jsonl',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      workspaceTrusted: false,
+    }
+    spied.servingCwd = '/untrusted'
+    state.current = null
+    durable.start.mockImplementationOnce(async () => {
+      throw new Error('the default model is not available')
+    })
+    await expect(
+      startSession('/trusted', {
+        runtimePreference: 'durable',
+        workspaceTrusted: true,
+        requestId: 'r10',
+      })
+    ).rejects.toThrow('the default model is not available')
+    expect(durable.resumeFrom).toHaveBeenCalledWith(
+      '/untrusted',
+      '/durable/u.jsonl',
+      false,
+      undefined
+    )
+  })
 })

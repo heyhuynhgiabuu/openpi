@@ -1,16 +1,8 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
-import { answer, readable } from './helpers/forkSession'
-import {
-  MODEL,
-  prompt,
-  sessionRoot,
-  setup,
-  useSessionRoot,
-  waitFor,
-} from './helpers/durableSession'
+import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
 
 /**
  * Phase 8.3f: the durable session behind the sidecar protocol. Real harness, faux provider, real

@@ -138,6 +138,11 @@ describe('wiring between the durable session and its harness', () => {
         startedAt: '2026-10-27T00:00:00.000Z',
         workspaceTrusted: true,
       })
+      // Both directions matter: an untrusted workspace must not come back trusted, which is the
+      // escalation the fix is about. A test that only ever sees `true` cannot tell a real read
+      // from a hardcoded one.
+      await t.sessions.start('/work', { workspaceTrusted: false })
+      expect(t.sessions.reopenable()?.workspaceTrusted).toBe(false)
     } finally {
       await t.sessions.stop()
     }
