@@ -70,7 +70,8 @@ export type { SessionReadyPayload, SidecarCommand, SidecarMessage }
 // Supply-chain hardening runs via the sidecarEnv import inside sidecarContext
 // (evaluated before every other sidecar module side effect).
 
-async function handleCommand(cmd: SidecarCommand): Promise<void> {
+/** Exported so the resource hand-off can be tested without booting the sidecar port. */
+export async function handleCommand(cmd: SidecarCommand): Promise<void> {
   // A durable session (opt-in, new sessions only) is served first; anything it does not handle
   // falls through to the SDK handlers below.
   if (await durableSessions.handleCommand(cmd)) return
