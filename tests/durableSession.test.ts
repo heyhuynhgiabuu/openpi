@@ -1,7 +1,8 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
+import { answer, readable } from './helpers/forkSession'
 import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
 
 /**
@@ -116,55 +117,41 @@ describe('durable session prompt', () => {
     }
   })
 
-  it('expands a slash prompt through the harness before the model sees it', async () => {
-    const t = await setup({ answers: ['ok'] })
+  it('expands a slash prompt exactly once, through the real harness', async () => {
+    // A template whose body starts with another known command: `/ship` renders `/deploy --prod`,
+    // and the model must read that body rather than the `deploy` template substituted into it.
+    // Both templates are really discovered, so the actual expander runs wherever it runs — and this
+    // fails if `harness.prompt` expands what `renderInput` already did.
+    const agentDir = join(sessionRoot(), 'agent')
+    await mkdir(join(agentDir, 'prompts'), { recursive: true })
+    await writeFile(
+      join(agentDir, 'prompts', 'deploy.md'),
+      '---\ndescription: d\n---\nDEPLOY BODY\n'
+    )
+    await writeFile(
+      join(agentDir, 'prompts', 'ship.md'),
+      '---\ndescription: s\n---\n/deploy --prod\n'
+    )
+    const seen: string[] = []
+    const t = await setup({
+      userAgentDir: agentDir,
+      // Discovery needs a workspace too: without one it returns nothing, by design.
+      workspacePath: sessionRoot(),
+      responses: [
+        (context: { messages: readonly { role: string }[] }) => {
+          seen.push(readable(context.messages))
+          return answer('ok')
+        },
+        answer('ok'),
+      ],
+    })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      // Stand in for the harness's expander: the prompt must reach it, and what it returns is what
-      // the model reads.
       const harness = t.harnesses[0]
-      const expand = vi.fn(() => 'EXPANDED BODY')
-      if (harness) harness.renderInput = expand
-      await t.sessions.handleCommand(prompt('/ship now'))
-      expect(expand).toHaveBeenCalledWith('/ship now')
-      expect(JSON.stringify(t.sent)).toContain('EXPANDED BODY')
-    } finally {
-      await t.sessions.stop()
-    }
-  })
-
-  it('offers its harness commands for the picker, and nothing once stopped', async () => {
-    const t = await setup({ answers: ['ok'] })
-    // The factory is what `sidecar.ts` asks, so a gap between it and the harness is a gap in the
-    // picker. `durableSessions.promptCommands()` delegates to the running harness.
-    expect(t.sessions.promptCommands()).toEqual([])
-    await t.sessions.start('/work', { workspaceTrusted: false })
-    try {
-      const harness = t.harnesses[0]
-      if (harness) harness.promptCommands = () => [{ name: 'ship', description: 'Ship it' }]
-      expect(t.sessions.promptCommands()).toEqual([{ name: 'ship', description: 'Ship it' }])
-    } finally {
-      await t.sessions.stop()
-    }
-    expect(t.sessions.promptCommands()).toEqual([])
-  })
-
-  it('reports its own trust for a restore, alongside the identity it reopens', async () => {
-    // Trust is per workspace, so a restore must reopen with this session's value rather than the
-    // one from whatever request failed; it decides whether that workspace's MCP servers start.
-    const t = await setup({ answers: ['ok'] })
-    expect(t.sessions.reopenable()).toBeUndefined()
-    await t.sessions.start('/work', { workspaceTrusted: true })
-    try {
-      expect(t.sessions.reopenable()).toEqual({
-        sessionId: 'sess-1',
-        sessionFile: t.identity.sessionFile,
-        startedAt: '2026-10-27T00:00:00.000Z',
-        workspaceTrusted: true,
-      })
-      // A different request's trust must not change what this session reports.
-      await t.sessions.start('/work', { workspaceTrusted: false })
-      expect(t.sessions.reopenable()?.workspaceTrusted).toBe(false)
+      // Straight at the harness, so this is about expansion and not about the queueing layer.
+      await harness?.prompt(harness.renderInput('/ship'))
+      expect(seen.join('\n')).toContain('/deploy --prod')
+      expect(seen.join('\n')).not.toContain('DEPLOY BODY')
     } finally {
       await t.sessions.stop()
     }

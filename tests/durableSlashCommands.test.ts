@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { slashCommandsOf } from '../electron/pi/durable/commands'
 import { handleResourceCommand } from '../electron/pi/resourceCommands'
+import type { DurableCustomizations } from '../electron/pi/durable/customizations'
 import type { SidecarMessage } from '../electron/pi/sidecarTypes'
 
 /**
@@ -9,7 +10,6 @@ import type { SidecarMessage } from '../electron/pi/sidecarTypes'
  */
 
 function deps(options: {
-  session?: unknown
   durable?: Array<{ name: string; description: string; argHint?: string }>
 }): {
   sent: SidecarMessage[]
@@ -18,7 +18,8 @@ function deps(options: {
   const sent: SidecarMessage[] = []
   const resourceDeps = {
     getCwd: () => '/work',
-    getSession: () => (options.session ?? null) as never,
+    // No SDK session: a durable one is what is serving.
+    getSession: () => null,
     getResourceLoader: () => Promise.reject(new Error('not used here')),
     send: (message: SidecarMessage) => sent.push(message),
     getDurableCommands: options.durable ? () => options.durable : undefined,
@@ -63,18 +64,30 @@ describe('the slash picker with a durable session serving', () => {
 
 describe('what the durable harness offers as slash commands', () => {
   it('lists prompt templates and the slash-only skills, and only those skills', () => {
+    const skill = (name: string, slashOnly: boolean): DurableCustomizations['skills'][number] => ({
+      name,
+      description: `${name} skill`,
+      filePath: `/skills/${name}/SKILL.md`,
+      baseDir: `/skills/${name}`,
+      body: `${name} body`,
+      slashOnly,
+    })
     const commands = slashCommandsOf({
-      skills: [
-        { name: 'manual', description: 'typed only', slashOnly: true },
-        { name: 'review', description: 'model-invocable', slashOnly: false },
+      skills: [skill('manual', true), skill('review', false)],
+      prompts: [
+        {
+          name: 'audit',
+          description: 'Audit it',
+          argumentHint: '<path>',
+          filePath: '/prompts/audit.md',
+          body: 'Audit $ARGUMENTS.',
+        },
       ],
-      prompts: [{ name: 'audit', description: 'Audit it', argumentHint: '<path>' }],
-      extensions: [],
       diagnostics: [],
-    } as unknown as Parameters<typeof slashCommandsOf>[0])
+    })
     expect(commands).toEqual([
       { name: 'audit', description: 'Audit it', argHint: '<path>' },
-      { name: 'skill:manual', description: 'typed only' },
+      { name: 'skill:manual', description: 'manual skill' },
     ])
   })
 

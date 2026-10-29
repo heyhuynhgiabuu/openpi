@@ -55,3 +55,19 @@ describe('expanding a slash prompt', () => {
     )
   })
 })
+
+describe('expansion happens once', () => {
+  it('does not expand a template body that starts with another command', () => {
+    // `/ship` renders `/deploy --prod`; the model must read that body, not the `deploy` template
+    // substituted into it. Expansion lives in `renderInput` only, and `harness.prompt` submits what
+    // it is given.
+    const nested: DurableCustomizations = {
+      ...found,
+      prompts: [
+        { ...found.prompts[0], name: 'ship', body: '/deploy --prod' },
+        { ...found.prompts[0], name: 'deploy', body: 'DEPLOY BODY' },
+      ],
+    }
+    expect(expandInput('/ship', nested)).toBe('/deploy --prod')
+  })
+})

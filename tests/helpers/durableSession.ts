@@ -70,6 +70,8 @@ export async function setup(
     breakStatsAt?: number
     /** Called with every message the session sends, before it is recorded. */
     onSend?: (message: SidecarMessage) => void
+    /** Discover user resources here, as production does, so `/template` really expands. */
+    userAgentDir?: string
   } = {}
 ) {
   const sent: SidecarMessage[] = []
@@ -140,6 +142,7 @@ export async function setup(
         policy: false,
         compaction: options.compaction,
         workspacePath: options.workspacePath,
+        userAgentDir: options.userAgentDir,
       })
       harnesses.push(harness)
       const close = harness.close.bind(harness)

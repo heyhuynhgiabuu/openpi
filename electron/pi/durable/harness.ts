@@ -152,7 +152,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
 
   return {
     async prompt(text: string): Promise<DurableSubmitResult> {
-      const submission = await root.submit({ type: 'input', content: expand(text) }, ctx)
+      const submission = await root.submit({ type: 'input', content: text }, ctx)
       return resultOf(await submission.wait(ctx))
     },
 
@@ -160,10 +160,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       queued.expect(text)
       let submission: Awaited<ReturnType<typeof root.submit>>
       try {
-        submission = await root.submit(
-          { type: 'input', content: expand(text), whenBusy: mode },
-          ctx
-        )
+        submission = await root.submit({ type: 'input', content: text, whenBusy: mode }, ctx)
       } catch (error) {
         queued.cancel(text)
         throw error
