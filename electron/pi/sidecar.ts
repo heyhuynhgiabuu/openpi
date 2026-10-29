@@ -76,7 +76,8 @@ async function handleCommand(cmd: SidecarCommand): Promise<void> {
 
   if (isResourceCommand(cmd)) {
     await handleResourceCommand(cmd, {
-      getCwd: () => getState()?.cwd ?? null,
+      // A durable session has no SDK state; its workspace is what these commands need.
+      getCwd: () => getState()?.cwd ?? durableSessions.cwd() ?? null,
       getSession: () => getState()?.session ?? null,
       getResourceLoader,
       send,

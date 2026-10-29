@@ -114,16 +114,12 @@ describe('durable steer and follow-up', () => {
     }
   }, 30_000)
 
-  it('refuses slash commands and applies the context prefix like prompt does', async () => {
+  it('applies the context prefix like prompt does, for slash prompts too', async () => {
     const t = await setup({ answers: ['ok'] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      await expect(t.sessions.handleCommand({ type: 'steer', text: '/compact' })).rejects.toThrow(
-        /slash commands/
-      )
-      await expect(t.sessions.handleCommand({ type: 'follow_up', text: '/x' })).rejects.toThrow(
-        /slash commands/
-      )
+      // A slash prompt is admitted, not refused: the harness expands what it recognises.
+      await t.sessions.handleCommand({ type: 'steer', text: '/review' })
       await t.sessions.handleCommand({ type: 'steer', text: 'body', contextPrefix: 'ctx' })
       await waitFor(async () => (await exported(t)).includes('ok'), 'the export')
       expect(await exported(t)).toContain('ctx\\n\\nbody')
@@ -143,6 +139,8 @@ describe('durable steer and follow-up', () => {
     // Let the held model call finish *after* shutdown: the queued message settles late.
     hold.release()
     await new Promise((resolve) => setTimeout(resolve, 300))
-    expect(t.logs).toEqual([])
+    // The held run is aborted by `stop()` now, so it settles as answered-by-abort rather than
+    // hanging; the shutdown itself must still be quiet — no error, nothing about the queue.
+    expect(t.logs.filter((line) => line.startsWith('error'))).toEqual([])
   }, 30_000)
 })

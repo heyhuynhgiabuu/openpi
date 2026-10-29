@@ -71,6 +71,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     session.closing = true
     try {
       await session.stopEvents()
+      // Abort before closing: pi-durable keeps an unfinished run pending in the store, and the next
+      // submit would start it again from scratch. `reload_session` already does this (see
+      // `durableFlow.ts`); replacing the session (`start_session`) goes through here instead.
+      await session.harness.abort().catch((error) => {
+        deps.log('warn', `[durable] aborting before shutdown failed: ${errorText(error)}`)
+      })
+      await exportNow(session)
       await session.harness.close()
     } catch (error) {
       deps.log('warn', `[durable] shutdown: ${errorText(error)}`)
@@ -292,5 +299,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   const resumeFrom = createResumeFrom(start)
 
   const canResume = canResumeFile
-  return { isActive: () => active !== null, start, canResume, resumeFrom, handleCommand, stop }
+  return {
+    isActive: () => active !== null,
+    cwd: () => active?.cwd,
+    start,
+    canResume,
+    resumeFrom,
+    handleCommand,
+    stop,
+  }
 }

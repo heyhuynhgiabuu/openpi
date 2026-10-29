@@ -25,24 +25,20 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime. The command set is written and tested,
- * but four things reachable only through it are still open, so the gate stays shut:
+ * Capabilities this build has wired for the durable runtime: the whole command set, and the four
+ * things that used to block it are closed —
  *
- * - replacing a durable session does not abort its run, and pi-durable keeps the abandoned prompt
- *   pending in the store, so the next message re-runs it (reload works around this; `start_session`
- *   does not);
- * - a durable start or resume that fails after the SDK session was disposed leaves the sidecar
- *   without a session, while main restores the old one and goes on sending prompts into nothing;
- * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` read the SDK
- *   state, which is null on a durable session (the trust toggle goes nowhere, the slash menu is
- *   empty);
- * - a prompt starting with `/` is refused on the durable side, so prompt templates, `/skill:`
- *   invocations and extension commands cannot be typed even though customizations are meant to
- *   work (model-invocable skills still reach the model through the prompt sections).
+ * - replacing a durable session aborts its run before closing the harness (`durableSession.stop`),
+ *   so pi-durable does not leave the abandoned prompt pending for the next message to re-run;
+ * - a durable start that fails after the previous session was disposed puts that session back
+ *   (`sessionDurableStart.ts`), instead of leaving the sidecar empty while main shows the old one;
+ * - the trust commands and `list_slash_commands` take the workspace from the serving runtime, and
+ *   a `/`-prompt reaches the harness's template expander rather than being refused;
  *
- * Add `sessionCommands` here when those are closed and a real session has been driven through the
- * renderer. Nothing in the suite fails when the gate opens (checked: flipping it leaves every test
- * green), so opening it is a deliberate change, not something a green build will tell you.
+ * and a real session has been driven through the renderer (see the cutover notes in ROADMAP).
+ *
+ * Nothing in the suite fails if this list is edited, so treat opening or closing the gate as a
+ * deliberate act, not something a green build will tell you about.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -52,8 +48,11 @@ const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
+  'sessionCommands',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
+import { startDurable } from './sessionDurableStart'
+import { previousSession, restoreSession } from './sessionRestore'
 import { teardownSession } from './sessionTeardown'
 
 /**
@@ -138,25 +137,18 @@ export async function startSession(
       ? await durableSessions.canResume(opts.sessionFile)
       : false
   if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
-    await stopSdkSession(choice.start)
-    if (opts.sessionFile && choice.start === 'resume') {
-      // `canResume` said yes, but the file can change between the two reads. The sidecar is left
-      // without a session either way (see `WIRED_DURABLE_CAPABILITIES`); at least answer the open
-      // request instead of leaving main to time out against a session that will never exist.
-      const resumed = await durableSessions.resumeFrom(
-        cwd,
-        opts.sessionFile,
-        trusted,
-        opts.requestId
-      )
-      if (!resumed) {
-        throw new Error(
-          `${opts.sessionFile} changed while it was being opened; open it again to continue`
-        )
-      }
-      return
-    }
-    await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+    await startDurable({
+      sessions: durableSessions,
+      trusted,
+      cwd,
+      sessionFile: opts.sessionFile,
+      requestId: opts.requestId,
+      start: choice.start,
+      // Taken before the teardown: it is what the fallback reopens.
+      previous: previousSession(),
+      stopSdk: stopSdkSession,
+      restore: (previous) => restoreSession(previous, startSession),
+    })
     return
   }
   if (choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile)

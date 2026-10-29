@@ -69,6 +69,12 @@ export interface ActiveSession {
 
 export interface DurableSessions {
   isActive(): boolean
+  /**
+   * The workspace of the running durable session, or `undefined` when it serves none. Commands that
+   * read per-workspace settings ask this before falling back to the SDK session state, which is
+   * null while a durable session is active.
+   */
+  cwd(): string | undefined
   start(cwd: string, options: DurableStartOptions): Promise<void>
   /** Whether this runtime can reopen the file, without opening its store or touching the session. */
   canResume(sessionFile: string): Promise<boolean>
