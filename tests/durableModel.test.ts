@@ -1,3 +1,4 @@
+import type { Api, Model } from '@earendil-works/pi-ai'
 import { describe, expect, it, vi } from 'vitest'
 import { chooseDurableModel } from '../electron/pi/durableModel'
 
@@ -8,14 +9,19 @@ import { chooseDurableModel } from '../electron/pi/durableModel'
  * mirrors Pi's own `findInitialModel` ordering rather than inventing a simpler one.
  */
 
-type Entry = { provider: string; id: string }
+interface Entry {
+  provider: string
+  id: string
+}
 
 /**
  * `installed` is what the registry knows; `available` is what it reports as usable (authenticated),
  * which is the only thing the real `getAvailableSnapshot()` returns.
  */
 function runtime(installed: Entry[], available = installed) {
-  const asModel = (entry: Entry) => entry as never
+  // SAFETY: the code under test only reads `provider` and `id`; a full `Model` needs an api,
+  // context window, cost table and capabilities that would say nothing about model selection.
+  const asModel = (entry: Entry): Model<Api> => entry as unknown as Model<Api>
   return {
     getModel: vi.fn((provider: string, id: string) => {
       const found = installed.find((entry) => entry.provider === provider && entry.id === id)
