@@ -54,8 +54,9 @@ describe('choosing the durable model', () => {
 
   it('falls back to the first available model when nothing is stored', () => {
     // The case the renderer drive hit: the app runs a model on the SDK path while nothing is stored.
-    // Two entries, so "first" is pinned: the SDK takes the first too, and `.at(-1)` would be a
-    // different model rather than the same one by luck.
+    // Two entries, so "first" is pinned: `.at(-1)` would be a different model rather than the same
+    // one by luck. That the SDK would pick differently here (its per-provider table would choose the
+    // anthropic entry) is documented divergence #7 in ROADMAP, not a claim this test makes.
     const models = runtime([
       { provider: 'deepseek', id: 'deepseek-v4-pro' },
       { provider: 'anthropic', id: 'claude-opus-4-8' },

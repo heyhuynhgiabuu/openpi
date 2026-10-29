@@ -47,8 +47,8 @@ import {
  *
  * Opening the gate is therefore a deliberate, separate change: add `sessionCommands` here, run that
  * spec with `OPENPI_E2E_DURABLE=1`, and update `tests/durableGate.test.ts`. Do it only once the
- * "Cutover gate — conditions to open it" list in ROADMAP Phase 8 is satisfied; today that means
- * conditions 3-5 and 8, which are marked open there.
+ * conditions in the "Cutover gate" list in ROADMAP Phase 8 are satisfied: items 4 and 5 block
+ * opening, and items 3 and 8 also block flipping the default.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
