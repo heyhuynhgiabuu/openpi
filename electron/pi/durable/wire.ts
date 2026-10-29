@@ -93,8 +93,12 @@ export function createWireTranslator(
    * would be missing again for a different reason.
    */
   const callArgsOf = (toolCallId: string): Record<string, unknown> => {
-    for (const message of runMessages) {
-      if (message.role !== 'assistant') continue
+    // Newest first: an id can repeat across turns (a provider that sends no id gives every call
+    // `""`), and the call that just ended is the later one. Oldest-first was observed returning the
+    // *previous* turn's arguments, so a refused `rm -rf` would display a harmless earlier command.
+    for (let index = runMessages.length - 1; index >= 0; index -= 1) {
+      const message = runMessages[index]
+      if (message?.role !== 'assistant') continue
       for (const part of message.content) {
         if (part.type === 'toolCall' && part.id === toolCallId) return part.arguments
       }

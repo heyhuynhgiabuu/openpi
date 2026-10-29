@@ -188,3 +188,49 @@ describe('nested tool events (codemode)', () => {
     }
   })
 })
+
+/**
+ * A call can already have a card when its start arrives: history builds one for every call in the
+ * last assistant message, and on a reopen a call that was still running ends without ever having
+ * been started in the new feed. Appending blindly showed the same call twice — the bug a reviewer
+ * found by driving that path, which no unit test reached before.
+ */
+describe('a tool start for a call that already has a card', () => {
+  const fold = (events: SessionEvent[], from: Message[] = []): Message[] =>
+    events.reduce<Message[]>((messages, event) => applySessionEvent(messages, event), from)
+  const cardsOf = (messages: Message[]): ToolCard[] =>
+    messages.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+  /** The state after a history load that already rendered the call, per `sessionHistory.ts`. */
+  const loaded = (): Message[] =>
+    fold(
+      parseEvents([{ type: 'message_start', message: { role: 'assistant', timestamp: 1 } }])
+    ).map((message) =>
+      'toolCards' in message
+        ? {
+            ...message,
+            toolCards: [
+              {
+                toolCallId: 'call-1',
+                toolName: 'bash',
+                args: { command: 'sleep 5' },
+                output: '',
+                isError: false,
+                streaming: true,
+                startedAt: 1,
+              },
+            ],
+          }
+        : message
+    )
+
+  it('keeps one card and does not append a second for the same call', () => {
+    const [start] = parseEvents([
+      { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'bash', args: {} },
+    ])
+    const cards = cardsOf(fold([start], loaded()))
+    expect(cards).toHaveLength(1)
+    // The history card keeps its real arguments; the synthetic start must not blank them.
+    expect(cards[0]).toMatchObject({ toolCallId: 'call-1', args: { command: 'sleep 5' } })
+  })
+})
