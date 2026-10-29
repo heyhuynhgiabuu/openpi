@@ -32,8 +32,8 @@ import { z } from 'zod'
  * is asked to *assemble* the token from two pieces that never appear joined, and the export is
  * checked structurally: an assistant entry that stopped cleanly and contains the joined token.
  *
- * Guarded by `OPENPI_E2E_DURABLE=1` like the shell-turn spec: the gate is closed in this build, so a
- * run without it would only measure the SDK path.
+ * Guarded by `OPENPI_E2E_DURABLE=1` like the shell-turn spec, because it drives a real renderer and
+ * calls a real model, so it is a manual run and never part of CI.
  */
 
 const provider = 'hive'

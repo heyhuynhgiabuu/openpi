@@ -12,8 +12,8 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * disk. No model is called: the turn is a shell command, which runs without one.
  *
  * What that covers: preference routing, the cutover decision, harness open, session start, the
- * command path and the export. What it does not: a prompt turn through the model, which is where
- * the agent loop actually runs. That gap is why the gate's own debt list still stands.
+ * command path and the export. A prompt turn through the model, where the agent loop actually runs,
+ * is the sibling `durablePrompt.spec.ts`.
  *
  * Two things this pins that unit tests could not:
  *
@@ -23,8 +23,8 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * - the durable store is created and the session is exported in the SDK's JSONL shape with the
  *   `openpi.durable` stamp, so the sidebar can reopen it.
  *
- * The gate itself is closed in this build (see `WIRED_DURABLE_CAPABILITIES`), so this test only
- * passes with `sessionCommands` wired. That is deliberate: it is the evidence for opening it.
+ * The gate is open (see `WIRED_DURABLE_CAPABILITIES`), so this spec is the witness that an opted-in
+ * session really runs on this runtime end to end. It is skipped unless `OPENPI_E2E_DURABLE=1`.
  *
  * The run sandboxes `HOME`, so it seeds one dummy provider key of its own: the shell turn never
  * calls a model, but a session cannot start without one that could. The developer's environment is

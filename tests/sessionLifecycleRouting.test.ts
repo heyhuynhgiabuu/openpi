@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The call site that acts on the cutover choice. The gate is closed in this build, so these tests
- * force it open (see the `cutover` mock) to take the routing as it will run the day it opens: this
- * is the only coverage of that path, and `requestId` is optional, so a dropped argument here is
- * invisible to the type checker and to every durable test.
+ * The call site that acts on the cutover choice. The gate is open in this build; the `cutover` mock
+ * still supplies every required capability so this routing stays tested on its own terms rather
+ * than following the shipped constant. This is the only coverage of that path, and `requestId` is
+ * optional, so a dropped argument here is invisible to the type checker and to every durable test.
  */
 
 const durable = vi.hoisted(() => ({
@@ -55,8 +55,8 @@ vi.mock('../electron/pi/durableHost', () => ({
 
 vi.mock('../electron/pi/cutover', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../electron/pi/cutover')>()
-  // The gate is closed in this build (see `WIRED_DURABLE_CAPABILITIES`), so these tests take the
-  // routing the day it opens: every capability present, as the gate would see it then.
+  // Every required capability present, so this routing is tested independently of what the shipped
+  // constant happens to wire.
   return {
     ...actual,
     decideCutover: (options: Parameters<typeof actual.decideCutover>[0]) =>

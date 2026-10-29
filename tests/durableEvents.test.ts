@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FauxResponseStep } from '@earendil-works/pi-ai'
@@ -28,7 +28,7 @@ afterEach(async () => {
 
 const stop = { stopReason: 'stop' as const }
 
-async function open(responses: FauxResponseStep[], tools = false) {
+async function open(responses: FauxResponseStep[], tools = false, policy = false) {
   const faux = fauxProvider()
   faux.setResponses(responses)
   const harness = await openDurableHarness({
@@ -36,7 +36,7 @@ async function open(responses: FauxResponseStep[], tools = false) {
     model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
     registerProviders: (models) => models.setProvider(faux.provider),
     tools,
-    policy: false,
+    policy,
     workspacePath: workspace,
   })
   const events: Record<string, unknown>[] = []
@@ -115,6 +115,62 @@ describe('a tool call', () => {
     expect(cards).toHaveLength(1)
     expect(cards[0]).toMatchObject({ toolName: 'read', isError: false, streaming: false })
     expect(cards[0]?.output).toContain('hello file')
+  })
+
+  it('actually writes a file the model asks for', async () => {
+    // `read` was the only tool ever exercised here, so the write path — the one the pre-apply review
+    // gate exists to guard, and which durable does not load — had no end-to-end proof at all.
+    const target = join(workspace, 'written.txt')
+    const h = await open(
+      [
+        fauxAssistantMessage(
+          [fauxToolCall('write', { path: target, content: 'written by the model' })],
+          { stopReason: 'toolUse' as const }
+        ),
+        fauxAssistantMessage([fauxText('done')], stop),
+      ],
+      true
+    )
+    // `policy: false` in `open` is what this file uses for every case; the policy gate has its own
+    // test in `durableParity.test.ts`. Here the question is whether the tool itself runs.
+    await h.harness.prompt('write it')
+    await finish(h)
+
+    expect(schemaFailures(h.events)).toEqual([])
+    expect(await readFile(target, 'utf-8')).toBe('written by the model')
+    const cards = render(h.events).flatMap((m) => ('toolCards' in m ? m.toolCards : []))
+    expect(cards.find((card) => card.toolName === 'write')).toMatchObject({
+      isError: false,
+      streaming: false,
+    })
+  })
+
+  it('blocks a high-risk shell command through the desktop policy gate', async () => {
+    // The gate is the only thing standing in for the pre-apply review extension on this runtime, so
+    // it needs proof that it actually stops a command rather than merely being registered.
+    const victim = join(workspace, 'must-survive')
+    await mkdir(victim, { recursive: true })
+    const h = await open(
+      [
+        fauxAssistantMessage([fauxToolCall('bash', { command: `rm -rf ${victim}` })], {
+          stopReason: 'toolUse' as const,
+        }),
+        fauxAssistantMessage([fauxText('blocked, I will not do that')], stop),
+      ],
+      true,
+      true
+    )
+    await h.harness.prompt('delete it')
+    await finish(h)
+
+    expect(schemaFailures(h.events)).toEqual([])
+    // The directory is still there: the command never ran.
+    expect(await readdir(victim)).toEqual([])
+    // The block is reported as a failed tool result, in the model's own transcript.
+    const ends = h.events.filter((e) => e.type === 'tool_execution_end')
+    expect(ends).toHaveLength(1)
+    expect(ends[0]).toMatchObject({ toolName: 'bash', isError: true })
+    expect(JSON.stringify(ends[0]?.result)).toContain('Blocked by desktop policy')
   })
 })
 
