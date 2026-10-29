@@ -37,9 +37,16 @@ import {
  *   serving, and a `/`-prompt expands through the harness (an unanswered one is reported in the
  *   transcript, as the SDK reports it) instead of being refused or sent as literal text.
  *
- * It stays closed anyway: no session has been driven through the renderer yet, and that is the
- * last gate condition (see the cutover notes in ROADMAP). Opening it is a one-line edit whose only
- * witness is `tests/durableGate.test.ts`, so do it in its own change, after that drive.
+ * It stays closed anyway, and the reason is no longer "untested": `tests/e2e/durableGate.spec.ts`
+ * now drives a real Electron session — real sidecar, real agent loop, real store, real export — on
+ * this runtime, and it fails here because `sessionCommands` is missing. That drive found the last
+ * parity defect (the durable runtime refused to start with no stored default model, where the SDK
+ * path falls back; see `durableModel.ts`), so it is worth keeping as the gate's own witness.
+ *
+ * Opening the gate is therefore a deliberate, separate change: add `sessionCommands` here, run that
+ * spec with `OPENPI_E2E_DURABLE=1`, and update `tests/durableGate.test.ts`. Do it only after the
+ * remaining debt in `.pi/artifacts/pi14-issues-journal.md` (harness-open leaks, restart during a
+ * run, Windows device names) is either closed or accepted in writing.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',

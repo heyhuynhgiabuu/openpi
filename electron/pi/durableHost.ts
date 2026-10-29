@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { getSupportedThinkingLevels, type Api, type Model } from '@earendil-works/pi-ai'
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { openDurableHarness } from './durable/harness'
+import { chooseDurableModel } from './durableModel'
 import {
   createDurableSessions,
   type DurableIdentity,
@@ -35,11 +36,11 @@ async function open(
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
   const settings = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
-  const provider = settings.getDefaultProvider()
-  const modelId = settings.getDefaultModel()
-  if (!provider || !modelId) {
-    throw new Error('the durable runtime needs a default model; choose one in settings')
-  }
+  // The SDK path resolves a model itself (stored default, else the first with credentials); the
+  // harness takes one explicitly, so the same choice is made here rather than refusing to start.
+  const choice = chooseDurableModel(settings, modelRuntime)
+  if (!choice) throw new Error('no model has credentials; sign in to one in settings')
+  const { provider, modelId } = choice
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)
 
