@@ -149,7 +149,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     active = session
     // A reopened or forked session already has a history, and the renderer reads it from the file:
-    // announcing the session without that file would show an empty conversation as a success.
+    // announcing the session without that file would show an empty conversation as a success. It is
+    // written before the announcement for that reason.
+    //
+    // A *new* session deliberately writes nothing here (a start sends `session_ready` and no more,
+    // which the session tests pin), so a crash during its very first prompt has no file to reopen.
+    // That is a stated limit of gate condition 5, not an oversight; see ROADMAP Phase 8.
     if (options.resume) {
       try {
         await exportStrict(session)

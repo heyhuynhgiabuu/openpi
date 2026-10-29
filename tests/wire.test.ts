@@ -292,6 +292,16 @@ describe('a snapshot that carries a live run', () => {
     expect(translate(snapshot(false))).toEqual([])
   })
 
+  it('does not announce twice when a normal run then gets an overflow snapshot', () => {
+    const translate = createWireTranslator()
+    // The common case: the run announced itself with `run_start`, and only then does an overflow
+    // snapshot arrive carrying the same run. `run_start` must set the flag, or this re-announces.
+    expect(translate({ type: 'run_start', inputs: [submissionId(1)] }).map((e) => e.type)).toEqual([
+      'agent_start',
+    ])
+    expect(translate(snapshot(true))).toEqual([])
+  })
+
   it('does not announce twice when an overflow snapshot arrives mid-run', () => {
     const translate = createWireTranslator()
     translate(snapshot(true))
