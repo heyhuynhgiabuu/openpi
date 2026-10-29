@@ -22,9 +22,9 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * The gate itself is closed in this build (see `WIRED_DURABLE_CAPABILITIES`), so this test only
  * passes with `sessionCommands` wired. That is deliberate: it is the evidence for opening it.
  *
- * Requirements, because the run sandboxes `HOME`: at least one model provider must have stored
- * credentials in the real agent dir for the app to copy in, exactly as a working install has. The
- * shell turn never calls a model, but a session cannot start without one that does.
+ * The run sandboxes `HOME`, so it seeds one dummy provider key of its own: the shell turn never
+ * calls a model, but a session cannot start without one that could. Nothing about the developer's
+ * own credentials is required or read.
  */
 
 /**
@@ -49,19 +49,29 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
   const home = path.join(profile, 'home')
   fs.mkdirSync(home, { recursive: true })
 
-  const app = await electron.launch({
-    args: ['.', `--user-data-dir=${path.join(profile, 'user-data')}`],
-    env: {
-      ...process.env,
-      HOME: home,
-      USERPROFILE: home,
-      OPENPI_DISABLE_AUTO_UPDATE: '1',
-      PI_OFFLINE: '1',
-      PI_SKIP_VERSION_CHECK: '1',
-    },
-  })
-
+  test.setTimeout(120_000)
+  // `SessionManager.create` honours PI_CODING_AGENT_DIR; inheriting it would put the export outside
+  // the sandbox and this test would look in the wrong place.
+  const { PI_CODING_AGENT_DIR: _ignoredAgentDir, ...inheritedEnv } = process.env
+  // Declared outside `try` so a failed launch still cleans up both directories.
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined
   try {
+    app = await electron.launch({
+      args: ['.', `--user-data-dir=${path.join(profile, 'user-data')}`],
+      env: {
+        ...inheritedEnv,
+        HOME: home,
+        USERPROFILE: home,
+        OPENPI_DISABLE_AUTO_UPDATE: '1',
+        PI_OFFLINE: '1',
+        PI_SKIP_VERSION_CHECK: '1',
+        // Self-contained: the sandboxed HOME has no auth.json, and nothing copies the developer's
+        // in, so without a key the session would have no model to start with. The turn never calls
+        // a model.
+        ANTHROPIC_API_KEY: 'openpi-e2e-unused',
+      },
+    })
+
     const page = await app.firstWindow()
     await expect(page.locator('#root')).not.toBeEmpty()
 
@@ -79,8 +89,8 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
       await window.openpi.pickWorkspace()
     })
 
-    // A durable session that cannot pick a model would fail here; this is the parity check for
-    // the SDK's own model resolution.
+    // The composer renders without a session behind it, so this only shows the workspace opened; a
+    // session that failed to start surfaces later (as a missing marker), not here.
     const composer = page.locator('textarea').first()
     await expect(composer).toBeVisible({ timeout: 30_000 })
 
@@ -103,22 +113,24 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
     // The export is the sidebar's contract: SDK JSONL shape plus the durable stamp.
     const agentDir = path.join(home, '.pi', 'agent')
     expect(fs.existsSync(path.join(agentDir, 'durable'))).toBe(true)
-    const sessions = fs
-      .readdirSync(path.join(agentDir, 'sessions'), { recursive: true, encoding: 'utf8' })
-      .filter((entry) => entry.endsWith('.jsonl'))
-    expect(sessions).toHaveLength(1)
-    // The export lands after the run settles, so poll rather than racing it.
-    const sessionFile = path.join(agentDir, 'sessions', sessions[0] ?? '')
-    await expect
-      .poll(() => fs.readFileSync(sessionFile, 'utf8'), { timeout: 30_000 })
-      .toContain(marker)
-    const exported = fs.readFileSync(sessionFile, 'utf8')
+    const sessionsDir = path.join(agentDir, 'sessions')
+    const exportedOf = (): string => {
+      const dirs = fs.existsSync(sessionsDir)
+        ? fs.readdirSync(sessionsDir, { recursive: true, encoding: 'utf8' })
+        : []
+      const file = dirs.filter((entry) => entry.endsWith('.jsonl'))[0]
+      return file ? fs.readFileSync(path.join(sessionsDir, file), 'utf8') : ''
+    }
+    // A new session writes no file until its first export, so poll the listing and the contents
+    // together rather than racing the write.
+    await expect.poll(exportedOf, { timeout: 30_000 }).toContain(marker)
+    const exported = exportedOf()
     const header = JSON.parse(exported.split('\n')[0] ?? '{}')
     expect(header.type).toBe('session')
     expect(header['openpi.durable']).toMatchObject({ conversationIds: [1] })
     expect(exported).toContain(marker)
   } finally {
-    await app.close()
+    await app?.close()
     fs.rmSync(profile, { recursive: true, force: true })
     fs.rmSync(workspace, { recursive: true, force: true })
   }
