@@ -56,9 +56,10 @@ describe('the sidecar resource hand-off', () => {
     expect(handed.deps).toBe(resourceCommandDeps)
   })
 
-  it('reads both runtimes when building the deps, and finds neither here', () => {
-    // With no SDK session and no durable session, both fallbacks come back empty; the two tests
-    // below are what make each one actually matter.
+  it('finds nothing to offer when no runtime is serving', () => {
+    // With no SDK session and no durable session both deps come back empty. The cwd fallbacks are
+    // pinned by the next two tests; the command catalog is pinned in `durableSlashCommands.test.ts`,
+    // which drives the real factory rather than this file's empty stub.
     expect(resourceCommandDeps.getDurableCommands()).toEqual([])
     expect(resourceCommandDeps.getCwd()).toBeNull()
   })
