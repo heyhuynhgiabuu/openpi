@@ -263,3 +263,53 @@ describe('queue updates', () => {
     })
   })
 })
+
+describe('a snapshot that carries a live run', () => {
+  /** The minimal snapshot shape the translator reads; the run is what a reopen hands back. */
+  const snapshot = (withRun: boolean): AgentEvent => {
+    const base: AgentEvent = {
+      type: 'snapshot',
+      entries: [],
+      inbox: [],
+      tools: [],
+      nestedTools: [],
+      compactions: [],
+      agent: {},
+      usage: { models: {}, tools: {} },
+    }
+    // The field is omitted rather than undefined so the shape matches an idle snapshot exactly.
+    if (withRun) return { ...base, run: { inputs: [] } }
+    return base
+  }
+
+  it('announces the run once, so a resumed run gets a Stop button', () => {
+    const translate = createWireTranslator()
+    expect(translate(snapshot(true)).map((e) => e.type)).toEqual(['agent_start'])
+  })
+
+  it('does not announce an idle snapshot', () => {
+    const translate = createWireTranslator()
+    expect(translate(snapshot(false))).toEqual([])
+  })
+
+  it('does not announce twice when a normal run then gets an overflow snapshot', () => {
+    const translate = createWireTranslator()
+    // The common case: the run announced itself with `run_start`, and only then does an overflow
+    // snapshot arrive carrying the same run. `run_start` must set the flag, or this re-announces.
+    expect(translate({ type: 'run_start', inputs: [submissionId(1)] }).map((e) => e.type)).toEqual([
+      'agent_start',
+    ])
+    expect(translate(snapshot(true))).toEqual([])
+  })
+
+  it('does not announce twice when an overflow snapshot arrives mid-run', () => {
+    const translate = createWireTranslator()
+    translate(snapshot(true))
+    // An overflow while the run is live re-sends the run. Re-announcing would clear the messages
+    // collected so far and drop an abort the user pressed during the run.
+    expect(translate(snapshot(true))).toEqual([])
+    // After the run ends, the next fresh run is announced again.
+    translate({ type: 'run_end', inputs: [] })
+    expect(translate(snapshot(true)).map((e) => e.type)).toEqual(['agent_start'])
+  })
+})

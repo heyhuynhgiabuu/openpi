@@ -57,6 +57,16 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     deps.send({ type: 'session_index_updated' })
   }
 
+  /**
+   * Wait for a resumed run to settle, then write its answer out. `exportNow` alone would run before
+   * the resumed turn had produced anything, leaving a prompt in the file with no reply.
+   */
+  async function exportWhenIdle(session: ActiveSession): Promise<void> {
+    await session.harness.waitIdle()
+    if (session.closing) return
+    await exportNow(session)
+  }
+
   /** Write the session file after a change; a failure is logged, since the session itself is fine. */
   async function exportNow(session: ActiveSession): Promise<void> {
     try {
@@ -139,7 +149,12 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
     active = session
     // A reopened or forked session already has a history, and the renderer reads it from the file:
-    // announcing the session without that file would show an empty conversation as a success.
+    // announcing the session without that file would show an empty conversation as a success. It is
+    // written before the announcement for that reason.
+    //
+    // A *new* session deliberately writes nothing here (a start sends `session_ready` and no more,
+    // which the session tests pin), so a crash during its very first prompt has no file to reopen.
+    // That is a stated limit of gate condition 5, not an oversight; see ROADMAP Phase 8.
     if (options.resume) {
       try {
         await exportStrict(session)
@@ -167,6 +182,18 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     } catch (error) {
       await stop()
       throw error
+    }
+    // A reopened session may still owe an answer: pi-durable kept the unsettled task but does not
+    // dispatch it until scheduling is enabled. Resume without waiting, and export when it settles,
+    // so the answer lands in the file the renderer reads rather than being run by a later command.
+    if (options.resume) {
+      // Not awaited: a reopened session must be usable at once. The wait both resumes whatever the
+      // previous process left in flight and settles with it, then the answer is exported. A failure
+      // here (the store could not be read, or the session closed under it) must not surface as an
+      // unhandled rejection in a utility process that has no handler for one.
+      void exportWhenIdle(session).catch((error: unknown) => {
+        deps.log('warn', `[durable] resuming the interrupted run failed: ${errorText(error)}`)
+      })
     }
   }
 

@@ -1,4 +1,5 @@
 import type { ModelThinkingLevel, Models, MutableModels } from '@earendil-works/pi-ai'
+import type { ReportInfo } from '@earendil-works/pi-durable'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 import type { BashResult } from './bash'
@@ -49,6 +50,11 @@ export interface DurableQueued {
 export interface DurableHarnessOptions {
   /** Directory for the JSONL store; required for the `jsonl` backend, ignored for `memory`. */
   directory?: string
+  /**
+   * Reports that a task faulted or was parked at the restart limit. Forwarded from pi-durable
+   * because a parked task is otherwise invisible: the prompt simply stops answering.
+   */
+  onReport?: (error: unknown, info: ReportInfo) => void
   backend?: DurableBackend
   /**
    * Reopening an existing session: fail when the store directory is missing instead of letting the
@@ -167,5 +173,14 @@ export interface DurableHarness {
    * file carrying the same id is overwritten, any other session's file is refused.
    */
   exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult>
+  /**
+   * Settle once nothing in this session can still run.
+   *
+   * This is what resumes an interrupted run: pi-durable keeps an unsettled task and re-pends it on
+   * open, but dispatch waits for scheduling to be enabled, and `harness.waitForIdle()` enables it
+   * before waiting. Calling it on reopen is therefore both the resume and the wait — a separate
+   * `resume()` call would be redundant, which is why there is not one here.
+   */
+  waitIdle(): Promise<void>
   close(): Promise<void>
 }
