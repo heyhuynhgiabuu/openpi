@@ -36,8 +36,9 @@ import {
  * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` read the SDK
  *   state, which is null on a durable session (the trust toggle goes nowhere, the slash menu is
  *   empty);
- * - a prompt starting with `/` is refused on the durable side, so prompt templates, skills and
- *   extension commands are unavailable even though customizations are supposed to work.
+ * - a prompt starting with `/` is refused on the durable side, so prompt templates, `/skill:`
+ *   invocations and extension commands cannot be typed even though customizations are meant to
+ *   work (model-invocable skills still reach the model through the prompt sections).
  *
  * Add `sessionCommands` here when those are closed and a real session has been driven through the
  * renderer. Nothing in the suite fails when the gate opens (checked: flipping it leaves every test
