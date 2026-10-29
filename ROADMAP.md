@@ -523,7 +523,7 @@ Acceptance criteria:
 
 **Acceptance:** same user-visible features on both runtimes (session sidebar, tool cards, steer/follow-up/abort, customizations, MCP/codemode, pre-apply gate, Git review flow); no session history lost across the import; pin + adapter test suite runs on every pi-durable bump.
 
-**Cutover gate — two separate events, two separate bars.** *Opening the gate* means an opted-in session may run on the durable runtime (`sessionCommands` added to `WIRED_DURABLE_CAPABILITIES` in `electron/pi/sessionLifecycle.ts`). *Flipping the default* means new sessions use it without opting in. Items 4 and 5 block **opening**. Items 3, 6, 7, 8 and 9 additionally block **flipping the default**.
+**Cutover gate — two separate events, two separate bars.** *Opening the gate* means an opted-in session may run on the durable runtime (`sessionCommands` added to `WIRED_DURABLE_CAPABILITIES` in `electron/pi/sessionLifecycle.ts`). *Flipping the default* means new sessions use it without opting in. Items 4 and 5 block **opening**. Items 6, 7, 8 and 9 additionally block **flipping the default** (item 3's spec stays a manual pre-release check until item 8 is done).
 
 **Status: the gate is OPEN (2026-10-29).** Every condition that blocked opening is done and pinned by tests, and both e2e witnesses pass with the gate open and locally fail with it closed: `tests/e2e/durableGate.spec.ts` (a real session through the renderer, shell turn) and `tests/e2e/durablePrompt.spec.ts` (a prompt turn through a real model). The **default is unchanged** — a session runs on durable only when `agent.runtime` is set to `durable`, and there is still no settings UI for that preference, so opting in means `window.openpi.setPref('agent.runtime', 'durable')`.
 
