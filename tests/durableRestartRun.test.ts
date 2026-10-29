@@ -90,7 +90,9 @@ describe('a restart during a run', () => {
       const eventTypes = after.sent.flatMap((m) =>
         m.type === 'session_event' ? [String(m.event.type)] : []
       )
-      expect(eventTypes).toContain('agent_start')
+      // Exactly once: the resumed run must be announced, and a later `run_start` for the same run
+      // (or an overflow snapshot mid-run) must not announce it a second time.
+      expect(eventTypes.filter((type) => type === 'agent_start')).toHaveLength(1)
     } finally {
       await after.sessions.stop()
     }

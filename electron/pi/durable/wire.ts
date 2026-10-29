@@ -73,6 +73,9 @@ export function createWireTranslator(
   const toolArgs = new Map<string, unknown>()
   const toolOutput = new Map<string, string>()
   let inboxPending = 0
+  // Whether a run has already been announced to this feed, so a second snapshot cannot announce it
+  // again (see the `snapshot` case).
+  let announcing = false
   const compaction = createCompactionTracker()
 
   const remember = (message: Message): void => {
@@ -90,12 +93,18 @@ export function createWireTranslator(
         // it back this way, and pi-durable only sends `run_start` when a run *changes*. Without
         // `agent_start` the app would show a run it never sees start, with no Stop button for work
         // that may already be touching the workspace.
-        if (event.run === undefined) return []
+        //
+        // Only when this feed has not announced a run yet: an overflow snapshot mid-run also carries
+        // the run, and re-announcing would clear the messages collected so far and swallow an abort
+        // the user pressed while it was running.
+        if (event.run === undefined || announcing) return []
+        announcing = true
         runMessages = []
         options.consumeAborted?.()
         return [{ type: 'agent_start' }]
       }
       case 'run_start':
+        announcing = true
         runMessages = []
         // An abort requested while idle must not mark the next run as aborted.
         options.consumeAborted?.()
@@ -103,6 +112,7 @@ export function createWireTranslator(
       case 'run_end': {
         const end: WireEvent = { type: 'agent_end', messages: runMessages, willRetry: false }
         runMessages = []
+        announcing = false
         // Settled = nothing queued behind this run; a queued follow-up starts the next one.
         if (inboxPending > 0) return [end]
         return [end, { type: 'agent_settled', aborted: options.consumeAborted?.() ?? false }]
