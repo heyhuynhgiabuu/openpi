@@ -34,7 +34,9 @@ export interface DurableSessionDeps extends SettingsDeps {
   open: (
     cwd: string,
     workspaceTrusted: boolean,
-    identity: DurableIdentity
+    identity: DurableIdentity,
+    /** True when an existing session is being reopened, so its own model is what will run. */
+    resuming: boolean
   ) => Promise<DurableOpenResult>
   now: () => Date
 }

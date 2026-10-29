@@ -31,7 +31,8 @@ function newIdentity(cwd: string): DurableIdentity {
 async function open(
   cwd: string,
   workspaceTrusted: boolean,
-  identity: DurableIdentity
+  identity: DurableIdentity,
+  resuming: boolean
 ): Promise<DurableOpenResult> {
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
@@ -41,11 +42,11 @@ async function open(
   const choice = chooseDurableModel(settings, modelRuntime)
   if (!choice) throw new Error('no model has credentials; sign in to one in settings')
   const { provider, modelId } = choice
-  // Say so rather than silently running a model the user never chose. Only for a new session: a
-  // resumed one keeps the model it was using (`durableOpen.ts`), so naming this one there would
+  // Say so rather than silently running a model the user never chose. Only for a fresh session: a
+  // reopened one keeps the model it was using (`durableOpen.ts`), so naming this one there would
   // report a model that is not running. This does not become the default either — `persist.model`
   // is wired to `set_model` only — so choosing one explicitly is what makes both runtimes agree.
-  if (choice.fallback && identity.storeId === undefined)
+  if (choice.fallback && !resuming)
     outputLine('info', `[durable] no usable default model; using ${provider}/${modelId}`)
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)

@@ -39,16 +39,16 @@ import {
  *
  * It stays closed anyway, and the reason is no longer "untested": `tests/e2e/durableGate.spec.ts`
  * now drives a real Electron session on this runtime — real sidecar, harness, store and export, with
- * a shell turn so no model is called. It fails here because `sessionCommands` is missing. What it
- * does not cover is a prompt turn through the model. That drive found the last
- * parity defect (the durable runtime refused to start with no stored default model, where the SDK
- * path falls back; see `durableModel.ts`), so it is worth keeping as the gate's own witness. It
- * covers the shell command path, not a prompt turn through the model.
+ * a shell turn so no model is called. It fails here because `sessionCommands` is missing. It covers
+ * preference routing, harness open, the command path and the export; it does not cover a prompt turn
+ * through the model. That drive found a parity defect (the durable runtime refused to start with no
+ * stored default model, where the SDK path falls back; see `durableModel.ts`), so it is worth
+ * keeping as the gate's own witness.
  *
  * Opening the gate is therefore a deliberate, separate change: add `sessionCommands` here, run that
- * spec with `OPENPI_E2E_DURABLE=1`, and update `tests/durableGate.test.ts`. Do it only after the
- * conditions listed under "Cutover gate — conditions to open it" in ROADMAP Phase 8: a prompt turn
- * driven through the model, the harness-open leaks, restart during a run, and an e2e job in CI.
+ * spec with `OPENPI_E2E_DURABLE=1`, and update `tests/durableGate.test.ts`. Do it only once the
+ * "Cutover gate — conditions to open it" list in ROADMAP Phase 8 is satisfied; today that means
+ * conditions 3-5 and 8, which are marked open there.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',

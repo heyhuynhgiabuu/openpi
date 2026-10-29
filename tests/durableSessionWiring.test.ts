@@ -170,3 +170,24 @@ describe('the picker pipeline, end to end', () => {
     }
   })
 })
+
+describe('a fresh session versus a reopened one', () => {
+  it('tells the open path which it is, so a resume is not reported as a new model choice', async () => {
+    // `open()` only logs the model fallback for a fresh session: a reopened one keeps the model it
+    // was using, so logging there would name a model that is not running. The flag is the whole
+    // condition, and nothing else observes it.
+    const t = await setup({ answers: ['ok'], persistent: true })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      expect(t.resumeFlags).toEqual([false])
+      const identity = t.identity
+      await t.sessions.start('/work', {
+        workspaceTrusted: false,
+        resume: { identity, startedAt: '2026-10-27T00:00:00.000Z' },
+      })
+      expect(t.resumeFlags).toEqual([false, true])
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+})

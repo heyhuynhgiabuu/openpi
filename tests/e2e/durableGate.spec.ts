@@ -98,7 +98,9 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
     // appears because a failed start tears the workspace down. It is not proof on its own, though:
     // the composer can render without a session behind it, so the marker below is the real check.
     const composer = page.locator('textarea').first()
-    await expect(composer).toBeVisible({ timeout: 30_000 })
+    // Generous first wait: a cold Electron launch plus sidecar spawn on CI takes far longer than a
+    // warm machine, and one local run failed here before the app was ready.
+    await expect(composer).toBeVisible({ timeout: 60_000 })
 
     // Nothing may have fallen back to the SDK path.
     const output = await page.evaluate(() => window.openpi.getOutputBuffer())

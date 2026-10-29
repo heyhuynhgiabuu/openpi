@@ -83,6 +83,8 @@ export async function setup(
   const persisted: string[] = []
   let opens = 0
   const trusts: boolean[] = []
+  /** Whether each `open` was a reopen, in order: the same flag `open()` uses to decide logging. */
+  const resumeFlags: boolean[] = []
   const faux = fauxProvider()
   faux.setResponses(
     options.responses ??
@@ -125,9 +127,10 @@ export async function setup(
       if (resolver.fail) throw new Error('registry offline')
       return knownModels[`${provider}/${modelId}`]
     },
-    open: async (_cwd, trusted, opening) => {
+    open: async (_cwd, trusted, opening, resuming) => {
       opens += 1
       trusts.push(trusted)
+      resumeFlags.push(resuming)
       if (options.failOpen || opens === options.failOpenAt) throw new Error('no default model')
       const harness = await openDurableHarness({
         backend: options.persistent ? 'jsonl' : 'memory',
@@ -183,6 +186,7 @@ export async function setup(
     harnesses,
     closed,
     persisted,
+    resumeFlags,
     knownModels,
     resolver,
     trusts,
