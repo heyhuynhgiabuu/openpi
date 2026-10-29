@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Phase 8.5: the call site that acts on the cutover choice. It is only reachable now that the gate
- * reports the command set as wired, and nothing else tests it: `requestId` is optional, so a
- * dropped argument here is invisible to the type checker and to every durable test.
+ * The call site that acts on the cutover choice. The gate is closed in this build, so these tests
+ * force it open (see the `cutover` mock) to take the routing as it will run the day it opens: this
+ * is the only coverage of that path, and `requestId` is optional, so a dropped argument here is
+ * invisible to the type checker and to every durable test.
  */
 
 const durable = vi.hoisted(() => ({

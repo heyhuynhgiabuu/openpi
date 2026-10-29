@@ -26,18 +26,22 @@ import {
 
 /**
  * Capabilities this build has wired for the durable runtime. The command set is written and tested,
- * but three things reachable only through it are still open, so the gate stays shut:
+ * but four things reachable only through it are still open, so the gate stays shut:
  *
  * - replacing a durable session does not abort its run, and pi-durable keeps the abandoned prompt
  *   pending in the store, so the next message re-runs it (reload works around this; `start_session`
  *   does not);
- * - a durable start that fails after the SDK session was disposed leaves the sidecar without a
- *   session while main restores the old one;
- * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` still read
- *   the SDK state, which is null on a durable session.
+ * - a durable start or resume that fails after the SDK session was disposed leaves the sidecar
+ *   without a session, while main restores the old one and goes on sending prompts into nothing;
+ * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` read the SDK
+ *   state, which is null on a durable session (the trust toggle goes nowhere, the slash menu is
+ *   empty);
+ * - a prompt starting with `/` is refused on the durable side, so prompt templates, skills and
+ *   extension commands are unavailable even though customizations are supposed to work.
  *
  * Add `sessionCommands` here when those are closed and a real session has been driven through the
- * renderer.
+ * renderer. Nothing in the suite fails when the gate opens (checked: flipping it leaves every test
+ * green), so opening it is a deliberate change, not something a green build will tell you.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -135,9 +139,9 @@ export async function startSession(
   if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
     await stopSdkSession(choice.start)
     if (opts.sessionFile && choice.start === 'resume') {
-      // `canResume` said yes, but the file can change between the two reads. If the resume then
-      // declines, the session is already disposed: say so, rather than leave the open request
-      // unanswered while the sidecar runs nothing at all.
+      // `canResume` said yes, but the file can change between the two reads. The sidecar is left
+      // without a session either way (see `WIRED_DURABLE_CAPABILITIES`); at least answer the open
+      // request instead of leaving main to time out against a session that will never exist.
       const resumed = await durableSessions.resumeFrom(
         cwd,
         opts.sessionFile,

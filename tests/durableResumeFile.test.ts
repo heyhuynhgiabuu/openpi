@@ -128,7 +128,7 @@ describe('an export with no messages yet', () => {
   it('stamps the header line itself, and can still be resumed', () => {
     const { text } = renderSessionTree({ ...header, durable }, [[]])
     const marker = JSON.parse(text.split('\n')[0])[DURABLE_HEADER_KEY]
-    // The header is the last line of its own file; the stamp says so rather than 0 lines.
+    // The header is the last line of its own file, so the stamp names it and counts no body lines.
     expect(marker).toMatchObject({ lines: 0, lastLineId: header.sessionId })
     expect(readResumeTarget(text)).toBeDefined()
   })
