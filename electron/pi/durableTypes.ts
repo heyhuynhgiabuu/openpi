@@ -1,6 +1,7 @@
 import type { ModelThinkingLevel } from '@earendil-works/pi-ai'
 import type { DurableHarness } from './durable/types'
 import type { Activity } from './durableActivity'
+import type { Reopenable } from './durableSessionView'
 import type { SettingsDeps, SettingsPersist } from './durableSettings'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
 
@@ -79,7 +80,7 @@ export interface DurableSessions {
    * The running session in the shape `startSession` needs to reopen it, or `undefined` when none is
    * being served. Replacing a session disposes this one first, so it has to be taken before that.
    */
-  reopenable(): { sessionId: string; sessionFile: string; startedAt: string } | undefined
+  reopenable(): Reopenable | undefined
   /** What the slash picker offers: the prompt templates this runtime discovered. */
   promptCommands(): Array<{ name: string; description: string; argHint?: string }>
   start(cwd: string, options: DurableStartOptions): Promise<void>

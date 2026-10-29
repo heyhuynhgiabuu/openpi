@@ -1,5 +1,6 @@
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { getState, outputLine } from './sidecarContext'
+import type { Reopenable } from './durableSessionView'
 
 /**
  * Putting back the session a replacement disposed before its successor failed to start.
@@ -13,7 +14,7 @@ export interface PreviousSession {
   sessionFile?: string
   workspaceTrusted: boolean
   /** The same session in the durable runtime's terms, when that is what was running. */
-  durable?: { sessionId: string; sessionFile: string; startedAt: string }
+  durable?: Reopenable
   /**
    * The runtime preference the session was started under. Without it the gate sees no preference
    * and reopens the session on the SDK path, which is not the runtime it came from.
@@ -28,10 +29,9 @@ export interface PreviousSession {
  */
 export interface ServingDurable {
   cwd: string
-  workspaceTrusted: boolean
   /** The preference the durable session is running under, so the restore reopens on it. */
   runtimePreference?: string
-  reopenable?: () => PreviousSession['durable']
+  reopenable?: () => Reopenable | undefined
 }
 
 /**
@@ -54,7 +54,9 @@ export function previousSession(durable?: ServingDurable): PreviousSession | und
   if (durable && reopenable) {
     const previous: PreviousSession = {
       cwd: durable.cwd,
-      workspaceTrusted: durable.workspaceTrusted,
+      // The session's own trust, not the failed request's: trust is per workspace and decides
+      // whether that workspace's MCP servers start.
+      workspaceTrusted: reopenable.workspaceTrusted,
       sessionFile: reopenable.sessionFile,
       durable: reopenable,
     }

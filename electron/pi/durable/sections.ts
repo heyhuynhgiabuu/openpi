@@ -62,7 +62,8 @@ export async function loadCustomizationsExtension(
 
 /**
  * Expand a `/template args` or `/skill:name` input into its body. Input that is neither is returned
- * unchanged, so an unknown `/name` reaches the model as typed, as on the SDK path.
+ * unchanged — the caller decides whether an unchanged `/name` is an error (`prompt`) or fine
+ * (`steer`/`follow_up`), which is what the SDK path does.
  */
 export function expandInput(text: string, found: DurableCustomizations): string {
   const skill = skillInvocation(text, found)

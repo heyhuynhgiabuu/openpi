@@ -132,6 +132,18 @@ describe('stripFrontmatter', () => {
 })
 
 describe('durable customizations sections', () => {
+  it('keeps a typed-only skill out of the model-facing section', async () => {
+    // `disableModelInvocation` means the model must not be offered this skill, only `/skill:name`.
+    // Hiding it at discovery would be enough, but it has to stay discoverable, so the filter lives
+    // in the section and this is what catches its removal.
+    await writeSkill(join(agentDir, 'skills'), 'manual', 'disable-model-invocation: true\n')
+    await writeSkill(join(agentDir, 'skills'), 'review')
+    const { found } = await loadCustomizationsExtension({ userAgentDir: agentDir, workspacePath })
+    const rendered = await skillsSection(found.skills).render(PROMPT_INPUT, BACKGROUND)
+    expect(rendered).toContain('review body')
+    expect(rendered).not.toContain('manual body')
+  })
+
   it('renders discovered skills and prompts into sections', async () => {
     await writeSkill(join(agentDir, 'skills'), 'review')
     await writePrompt(join(agentDir, 'prompts'), 'audit')

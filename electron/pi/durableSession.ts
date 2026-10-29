@@ -11,7 +11,7 @@ import { reopenableOf } from './durableSessionView'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
-import { promptOnce, queueOnce } from './durableSend'
+import { promptOnce, queueOnce, refuseCommand } from './durableSend'
 import { inspectOpened } from './durableOpen'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
@@ -168,14 +168,22 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   /** Hand a message to the harness; `renderInput` expands a `/template` or `/skill:` first. */
   const send = (session: ActiveSession) => {
     const hooks = { log: deps.log, exportNow: () => exportNow(session) }
-    const text = (input: string): string => session.harness.renderInput(input)
+    const expand = (input: string): string => session.harness.renderInput(input)
     return {
-      prompt: (cmd: Extract<SidecarCommand, { type: 'prompt' }>) =>
-        promptOnce(session, promptText(cmd, text), hooks),
+      prompt: async (cmd: Extract<SidecarCommand, { type: 'prompt' }>) => {
+        const parsed = promptText(cmd, expand)
+        // Refused the way the SDK refuses it — a visible warning, not a thrown error: the composer
+        // has already cleared, so an error would leave the user with a blank box and no reason.
+        if (parsed.unknownCommand) {
+          refuseCommand(session, parsed.unknownCommand, deps.send)
+          return
+        }
+        await promptOnce(session, parsed.text, hooks)
+      },
       queue: (cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>) =>
         queueOnce(
           session,
-          promptText(cmd, text),
+          promptText(cmd, expand, 'queue').text,
           cmd.type === 'steer' ? 'steer' : 'followUp',
           hooks
         ),

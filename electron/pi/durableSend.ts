@@ -1,3 +1,4 @@
+import type { SidecarMessage } from './sidecarTypes'
 import type { ActiveSession } from './durableTypes'
 import { countedUnlessAborted } from './durableActivity'
 import { errorText } from './durablePrompt'
@@ -7,6 +8,30 @@ import { errorText } from './durablePrompt'
  * stays inside the file-size rule. Both take text already expanded by the harness, so a `/template`
  * is substituted before the model reads it.
  */
+
+/**
+ * Say that a `/name` is not available, in the transcript rather than as an error: the SDK path does
+ * the same, and the composer has already cleared the input.
+ */
+export function refuseCommand(
+  session: ActiveSession,
+  name: string,
+  send: (message: SidecarMessage) => void
+): void {
+  if (session.closing) return
+  send({
+    type: 'session_event',
+    event: {
+      type: 'message_start',
+      message: {
+        role: 'custom',
+        content: `${name} is not available on this runtime. Prompt templates and /skill:name are supported.`,
+        details: { level: 'warn' },
+        timestamp: Date.now(),
+      },
+    },
+  })
+}
 
 interface SendHooks {
   log: (level: 'warn' | 'error', message: string) => void

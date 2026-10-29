@@ -49,7 +49,9 @@ describe('expanding a slash prompt', () => {
   })
 
   it('expands before joining the context prefix', () => {
-    const text = promptText({ text: '/ship now', contextPrefix: 'ctx' }, expand)
-    expect(text).toBe('ctx\n\nShip now now.')
+    // The prefix joined first would stop the expander, which only looks at the start of the text.
+    expect(promptText({ text: '/ship now', contextPrefix: 'ctx' }, expand).text).toBe(
+      'ctx\n\nShip now now.'
+    )
   })
 })

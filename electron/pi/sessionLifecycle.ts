@@ -26,15 +26,16 @@ import {
 /**
  * Capabilities this build has wired for the durable runtime.
  *
- * Every blocker that kept `sessionCommands` out is now closed, and each has a test that fails
- * without its fix:
+ * Every blocker that kept `sessionCommands` out is closed, and the fixes are tested:
  *
  * - replacing a durable session aborts its run before closing the harness (`durableSession.stop`),
  *   so pi-durable does not leave the abandoned prompt pending for the next message to re-run;
  * - a start that fails after the previous session was disposed puts that session back
- *   (`sessionDurableStart.ts`), including a durable one, read before the teardown;
+ *   (`sessionDurableStart.ts`), including a durable one — read before the teardown, and reopened
+ *   with its own workspace and trust rather than the failed request's;
  * - the trust commands and `list_slash_commands` take the workspace from whichever runtime is
- *   serving, and a `/`-prompt reaches the harness's template expander instead of being refused.
+ *   serving, and a `/`-prompt expands through the harness (an unanswered one is reported in the
+ *   transcript, as the SDK reports it) instead of being refused or sent as literal text.
  *
  * It stays closed anyway: no session has been driven through the renderer yet, and that is the
  * last gate condition (see the cutover notes in ROADMAP). Opening it is a one-line edit whose only
@@ -115,10 +116,10 @@ async function stopSdkSession(reason: 'new' | 'resume' | 'fork'): Promise<void> 
 function restoreCandidate(cwd: string, opts: StartOptions): PreviousSession | undefined {
   if (opts.restoring) return undefined
   return previousSession({
-    // A durable session is reopened in the workspace it was serving, not the one this request
-    // named; that is where its conversations and its file live.
+    // A durable session is reopened in the workspace and with the trust it was serving, not the
+    // ones this request named: that is where its conversations live, and trust decides whether
+    // that workspace's MCP servers start.
     cwd: durableSessions.cwd() ?? cwd,
-    workspaceTrusted: opts.workspaceTrusted ?? false,
     runtimePreference: opts.runtimePreference,
     reopenable: () => durableSessions.reopenable(),
   })

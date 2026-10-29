@@ -143,11 +143,11 @@ export interface DurableHarness {
    * is idle. A `prompt()` still awaiting the aborted run settles `unanswered`. Idempotent.
    */
   abort(): Promise<void>
-  /** Subscribe to structural views; returns the unsubscribe function. */
-  /** Expand a `/template args` input the way `prompt`/`queue` will, for callers that join text. */
+  /** Expand a `/template args` or `/skill:name` input the way `prompt`/`queue` will. */
   renderInput(text: string): string
-  /** The prompt templates this session discovered, for the slash picker. */
+  /** Templates and slash-only skills discovered here, for the slash picker. */
   promptCommands(): Array<{ name: string; description: string; argHint?: string }>
+  /** Subscribe to structural views; returns the unsubscribe function. */
   watch(onView: (view: DurableView) => void): () => void
   /** Current structural view of the root conversation. */
   snapshot(): Promise<DurableView>

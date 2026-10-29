@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
 import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
 
@@ -97,12 +97,74 @@ describe('durable session prompt', () => {
     }
   })
 
-  it('refuses a command nothing answers, rather than sending it to the model', async () => {
-    const t = await setup()
+  it('reports a command nothing answers instead of sending it to the model', async () => {
+    const t = await setup({ answers: ['should not be asked'] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      // The SDK path refuses an unknown `/name`; sending it as text would do nothing silently.
-      await expect(t.sessions.handleCommand(prompt('/compact'))).rejects.toThrow(/unknown command/)
+      await t.sessions.handleCommand(prompt('/compact'))
+      // Reported in the transcript, as the SDK path does, and the model never sees it.
+      const warning = t.sent.find(
+        (m) => m.type === 'session_event' && m.event.type === 'message_start'
+      )
+      expect(JSON.stringify(warning)).toContain('/compact is not available')
+      // No run started, so the text was never sent to the model as a literal prompt.
+      expect(t.sent.some((m) => m.type === 'session_event' && m.event.type === 'agent_start')).toBe(
+        false
+      )
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('expands a slash prompt through the harness before the model sees it', async () => {
+    const t = await setup({ answers: ['ok'] })
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      // Stand in for the harness's expander: the prompt must reach it, and what it returns is what
+      // the model reads.
+      const harness = t.harnesses[0]
+      const expand = vi.fn(() => 'EXPANDED BODY')
+      if (harness) harness.renderInput = expand
+      await t.sessions.handleCommand(prompt('/ship now'))
+      expect(expand).toHaveBeenCalledWith('/ship now')
+      expect(JSON.stringify(t.sent)).toContain('EXPANDED BODY')
+    } finally {
+      await t.sessions.stop()
+    }
+  })
+
+  it('offers its harness commands for the picker, and nothing once stopped', async () => {
+    const t = await setup({ answers: ['ok'] })
+    // The factory is what `sidecar.ts` asks, so a gap between it and the harness is a gap in the
+    // picker. `durableSessions.promptCommands()` delegates to the running harness.
+    expect(t.sessions.promptCommands()).toEqual([])
+    await t.sessions.start('/work', { workspaceTrusted: false })
+    try {
+      const harness = t.harnesses[0]
+      if (harness) harness.promptCommands = () => [{ name: 'ship', description: 'Ship it' }]
+      expect(t.sessions.promptCommands()).toEqual([{ name: 'ship', description: 'Ship it' }])
+    } finally {
+      await t.sessions.stop()
+    }
+    expect(t.sessions.promptCommands()).toEqual([])
+  })
+
+  it('reports its own trust for a restore, alongside the identity it reopens', async () => {
+    // Trust is per workspace, so a restore must reopen with this session's value rather than the
+    // one from whatever request failed; it decides whether that workspace's MCP servers start.
+    const t = await setup({ answers: ['ok'] })
+    expect(t.sessions.reopenable()).toBeUndefined()
+    await t.sessions.start('/work', { workspaceTrusted: true })
+    try {
+      expect(t.sessions.reopenable()).toEqual({
+        sessionId: 'sess-1',
+        sessionFile: t.identity.sessionFile,
+        startedAt: '2026-10-27T00:00:00.000Z',
+        workspaceTrusted: true,
+      })
+      // A different request's trust must not change what this session reports.
+      await t.sessions.start('/work', { workspaceTrusted: false })
+      expect(t.sessions.reopenable()?.workspaceTrusted).toBe(false)
     } finally {
       await t.sessions.stop()
     }

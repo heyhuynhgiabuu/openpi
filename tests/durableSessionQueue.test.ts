@@ -118,10 +118,8 @@ describe('durable steer and follow-up', () => {
     const t = await setup({ answers: ['ok'] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      // A `/name` nothing answers is refused here too, before anything is queued.
-      await expect(t.sessions.handleCommand({ type: 'steer', text: '/nope' })).rejects.toThrow(
-        /unknown command/
-      )
+      // A steer is passed through unmapped on both runtimes, so a `/…` path is not refused here.
+      await t.sessions.handleCommand({ type: 'steer', text: '/nope' })
       await t.sessions.handleCommand({ type: 'steer', text: 'body', contextPrefix: 'ctx' })
       await waitFor(async () => (await exported(t)).includes('ok'), 'the export')
       expect(await exported(t)).toContain('ctx\\n\\nbody')

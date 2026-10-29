@@ -9,14 +9,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Test state, not a mock: the identity is only readable while the session is running, which is what
 // makes "capture it before the teardown" observable instead of a comment.
 const spied = vi.hoisted(() => ({
-  live: null as null | { sessionId: string; sessionFile: string; startedAt: string },
+  live: null as null | {
+    sessionId: string
+    sessionFile: string
+    startedAt: string
+    workspaceTrusted: boolean
+  },
   servingCwd: undefined as string | undefined,
 }))
 const durable = vi.hoisted(() => ({
   canResume: vi.fn(async () => true),
   reopenable: vi.fn(
-    (): { sessionId: string; sessionFile: string; startedAt: string } | undefined =>
-      spied.live ?? undefined
+    ():
+      | { sessionId: string; sessionFile: string; startedAt: string; workspaceTrusted: boolean }
+      | undefined => spied.live ?? undefined
   ),
   cwd: vi.fn((): string | undefined => spied.servingCwd),
   resumeFrom: vi.fn(async () => true),
@@ -142,6 +148,9 @@ describe('a previous session that was itself durable', () => {
       sessionId: 'durable-1',
       sessionFile: '/durable/s.jsonl',
       startedAt: '2026-01-01T00:00:00.000Z',
+      // Trust is per workspace: restoring with the failed request's value would start (or skip)
+      // that workspace's MCP servers under the wrong setting.
+      workspaceTrusted: true,
     }
     spied.servingCwd = '/durable'
     state.current = null
@@ -154,12 +163,8 @@ describe('a previous session that was itself durable', () => {
     await expect(
       startSession('/work', { runtimePreference: 'durable', requestId: 'r9' })
     ).rejects.toThrow('the default model is not available')
-    // Reopened in the workspace it was serving, not the one the failed request named.
-    expect(durable.resumeFrom).toHaveBeenCalledWith(
-      '/durable',
-      '/durable/s.jsonl',
-      false,
-      undefined
-    )
+    // Reopened in the workspace it was serving, with its own trust — neither taken from the
+    // request that failed.
+    expect(durable.resumeFrom).toHaveBeenCalledWith('/durable', '/durable/s.jsonl', true, undefined)
   })
 })
