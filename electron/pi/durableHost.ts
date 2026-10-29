@@ -48,6 +48,17 @@ async function open(
   // is wired to `set_model` only — so choosing one explicitly is what makes both runtimes agree.
   if (choice.fallback && !resuming)
     outputLine('info', `[durable] no usable default model; using ${provider}/${modelId}`)
+  // The durable runtime loads no extensions (`durable/customizations.ts` sets `noExtensions`), so a
+  // safety gate the user turned on is simply absent here. Saying so is the least this can do while
+  // opting in is a preference nobody is shown: silently applying edits with no review is exactly the
+  // failure that gate exists to prevent.
+  // The host passes the app-level policy into this process as environment (`sidecarPolicyEnv` at
+  // spawn), which is the only place it is readable here.
+  if (!resuming && process.env.OPENPI_PREAPPLY_REVIEW === '1')
+    outputLine(
+      'warn',
+      '[durable] pre-apply review is enabled, but the durable runtime loads no extensions: edits will apply without review'
+    )
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)
 

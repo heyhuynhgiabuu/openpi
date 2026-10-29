@@ -20,11 +20,14 @@ function decide(capabilities: readonly DurableCapability[]) {
 }
 
 describe('the durable cutover gate as shipped', () => {
-  it('is closed: an opt-in session still runs on the Pi SDK path', () => {
-    // Closed until a real session has been driven through the renderer; see ROADMAP Phase 8.
-    expect(decide(SHIPPED).runtime).toBe('sdk')
-    expect(decide(SHIPPED).missing).toEqual(['sessionCommands'])
-    expect(chooseSessionRuntime(decide(SHIPPED), {})).toEqual({ runtime: 'sdk' })
+  it('is open: an opt-in session runs on the durable runtime', () => {
+    // Opened once the conditions blocking it were done and tested; see ROADMAP Phase 8 items 4 and 5.
+    expect(decide(SHIPPED).missing).toEqual([])
+    expect(chooseSessionRuntime(decide(SHIPPED), {})).toEqual({ runtime: 'durable', start: 'new' })
+    // The default is untouched: without the preference stored, a session stays on the SDK path.
+    expect(
+      decideCutover({ stored: undefined, durableAvailable: true, capabilities: SHIPPED }).runtime
+    ).toBe('sdk')
   })
 
   it('admits an opt-in session once every required capability is wired', () => {
@@ -39,10 +42,12 @@ describe('the durable cutover gate as shipped', () => {
     expect(chooseSessionRuntime(decision, { forkEntryId: 'abc' }).runtime).toBe('sdk')
   })
 
-  it('wires nothing the gate does not require', () => {
+  it('wires exactly what the gate requires, and nothing else', () => {
     // A capability wired but not required would be untested surface: the gate's own list is the
     // contract, so anything beyond it is either a typo or a required capability left out.
     for (const capability of SHIPPED) expect(REQUIRED_CAPABILITIES).toContain(capability)
-    expect(SHIPPED).not.toContain('sessionCommands')
+    // Every required capability being wired is what "open" means; if one is added to the list above
+    // this fails until it is genuinely wired, rather than silently gating a feature behind nothing.
+    expect([...SHIPPED].sort()).toEqual([...REQUIRED_CAPABILITIES].sort())
   })
 })

@@ -32,8 +32,8 @@ import { z } from 'zod'
  * is asked to *assemble* the token from two pieces that never appear joined, and the export is
  * checked structurally: an assistant entry that stopped cleanly and contains the joined token.
  *
- * Guarded by `OPENPI_E2E_DURABLE=1` like the shell-turn spec: the gate is closed in this build, so a
- * run without it would only measure the SDK path.
+ * Guarded by `OPENPI_E2E_DURABLE=1` like the shell-turn spec, because it drives a real renderer and
+ * calls a real model, so it is a manual run and never part of CI.
  */
 
 const provider = 'hive'
@@ -121,7 +121,7 @@ const modelsFile = z.object({
 test('runs a prompt turn through the model on the durable runtime', async () => {
   test.skip(
     process.env.OPENPI_E2E_DURABLE !== '1',
-    'needs the durable gate open (sessionCommands wired); set OPENPI_E2E_DURABLE=1 to run'
+    'manual run: set OPENPI_E2E_DURABLE=1 (this drives a real renderer session)'
   )
   // A real model round-trip on a cold Electron launch.
   test.setTimeout(180_000)

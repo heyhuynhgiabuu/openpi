@@ -37,18 +37,23 @@ import {
  *   serving, and a `/`-prompt expands through the harness (an unanswered one is reported in the
  *   transcript, as the SDK reports it) instead of being refused or sent as literal text.
  *
- * It stays closed anyway, and the reason is no longer "untested": `tests/e2e/durableGate.spec.ts`
- * now drives a real Electron session on this runtime — real sidecar, harness, store and export, with
- * a shell turn so no model is called. It fails here because `sessionCommands` is missing. It covers
- * preference routing, harness open, the command path and the export; it does not cover a prompt turn
- * through the model. That drive found a parity defect (the durable runtime refused to start with no
- * stored default model, where the SDK path falls back; see `durableModel.ts`), so it is worth
- * keeping as the gate's own witness.
+ * The gate is OPEN: an opted-in session runs on this runtime. The two conditions that blocked opening
+ * are done and tested — a failed harness open releases what it started (`durable/release.ts`,
+ * `connectServer` closing its client when a tool listing fails), and a restart during a run resumes
+ * the in-flight prompt (a reopen waits for idle, which also enables scheduling, then exports).
  *
- * Opening the gate is therefore a deliberate, separate change: add `sessionCommands` here, run that
- * spec with `OPENPI_E2E_DURABLE=1`, and update `tests/durableGate.test.ts`. Do it only once the
- * conditions in the "Cutover gate" list in ROADMAP Phase 8 are satisfied: items 4 and 5 block
- * opening, and items 3, 6, 7 and 8 also block flipping the default.
+ * Two e2e specs are the witnesses, and both must be run by hand with `OPENPI_E2E_DURABLE=1`:
+ * `durableGate.spec.ts` drives a real session through the renderer (a shell turn, so no model), and
+ * `durablePrompt.spec.ts` drives a prompt turn through a real model and asserts its answer on screen
+ * and in the exported tree. Those drives are what found the model-choice and no-default-model defects;
+ * keeping them is why opening the gate was worth delaying.
+ *
+ * This does NOT flip the default: the runtime still needs the preference set to `durable`, and
+ * anything without one keeps running on the SDK path. Flipping needs the remaining ROADMAP Phase 8
+ * conditions — items 6 and 7 must be resolved or explicitly accepted, item 8 (CI running those
+ * specs automatically, because a green CI currently says nothing about them), and item 9: this
+ * runtime loads no extensions at all, so the pre-apply review gate and extension-provided model
+ * providers are missing.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -58,6 +63,7 @@ export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
+  'sessionCommands',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
 import { startDurable } from './sessionDurableStart'

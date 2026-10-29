@@ -41,8 +41,8 @@ import type {
 
 /**
  * The ONLY module allowed to drive @earendil-works/pi-durable (Phase 8 confinement rule, AGENTS.md).
- * Phase 8.1: opens a Harness, runs the root conversation end-to-end, exposes structural views.
- * No IPC and no renderer wiring yet — the pi-coding-agent SDK path stays the shipped runtime.
+ * Opens a Harness, runs conversations end-to-end, exposes structural views. Reached from the sidecar
+ * when a session opts in to `agent.runtime=durable`; the SDK path is still the default.
  */
 
 const ctx: Context = BACKGROUND_CONTEXT
