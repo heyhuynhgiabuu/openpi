@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The hand-off from the sidecar to the resource commands. Everything downstream is tested; this is
@@ -6,8 +6,15 @@ import { describe, expect, it, vi } from 'vitest'
  * with the whole suite green.
  */
 
-const handed = vi.hoisted(() => ({ deps: undefined as unknown }))
-const state = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }))
+const handed = vi.hoisted(() => ({ deps: null as ResourceDeps | null }))
+const state = vi.hoisted(() => ({ current: null as SidecarState | null }))
+
+/** What the deps see; only these two fields are read. */
+interface SidecarState {
+  cwd: string
+  session: { extensionRunner: unknown; promptTemplates: unknown }
+}
+type ResourceDeps = (typeof import('../electron/pi/resourceDeps'))['resourceCommandDeps']
 const durable = vi.hoisted(() => ({
   handleCommand: vi.fn(async () => false),
 }))
@@ -16,7 +23,7 @@ vi.mock('../electron/pi/resourceCommands', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../electron/pi/resourceCommands')>()
   return {
     ...actual,
-    handleResourceCommand: async (_command: unknown, deps: unknown) => {
+    handleResourceCommand: async (_command: unknown, deps: ResourceDeps) => {
       handed.deps = deps
     },
   }
@@ -37,6 +44,11 @@ vi.mock('../electron/pi/durableHost', () => ({
 const { handleCommand } = await import('../electron/pi/sidecar')
 const { resourceCommandDeps } = await import('../electron/pi/resourceDeps')
 
+beforeEach(() => {
+  // Each test starts with no runtime serving, so nothing depends on the order they run in.
+  state.current = null
+})
+
 describe('the sidecar resource hand-off', () => {
   it('passes the deps built for whichever runtime is serving', async () => {
     await handleCommand({ type: 'list_slash_commands', requestId: 'r1' })
@@ -44,9 +56,10 @@ describe('the sidecar resource hand-off', () => {
     expect(handed.deps).toBe(resourceCommandDeps)
   })
 
-  it('builds those deps with the durable fallbacks the picker needs', () => {
+  it('reads both runtimes when building the deps, and finds neither here', () => {
+    // With no SDK session and no durable session, both fallbacks come back empty; the two tests
+    // below are what make each one actually matter.
     expect(resourceCommandDeps.getDurableCommands()).toEqual([])
-    // No SDK session either, so the cwd falls through both.
     expect(resourceCommandDeps.getCwd()).toBeNull()
   })
 
@@ -67,8 +80,7 @@ describe('the deps the SDK path needs', () => {
     // Every user runs this path. A null here empties the slash picker for all of them, and it was
     // untested before because the deps were built inline in a function nothing could import.
     const session = { extensionRunner: { getRegisteredCommands: () => [] }, promptTemplates: [] }
-    // SAFETY: the deps only read `cwd` and `session` off the sidecar state.
-    state.current = { cwd: '/sdk-workspace', session } as unknown as Record<string, unknown>
+    state.current = { cwd: '/sdk-workspace', session }
     const { resourceCommandDeps } = await import('../electron/pi/resourceDeps')
     expect(resourceCommandDeps.getSession()).toBe(session)
     expect(resourceCommandDeps.getCwd()).toBe('/sdk-workspace')
