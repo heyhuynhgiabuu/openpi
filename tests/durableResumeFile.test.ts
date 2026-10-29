@@ -66,6 +66,16 @@ describe('durable session file header', () => {
       { storeId: 'store-1', conversationIds: [1], ...stamp, extra: true },
       // No stamp: there is no telling what the file holds now.
       { storeId: 'store-1', conversationIds: [1] },
+      // The store id is joined into a path, so it must not be able to leave the durable root.
+      { storeId: '../../../../tmp/evil', conversationIds: [1], ...stamp },
+      { storeId: '/etc', conversationIds: [1], ...stamp },
+      { storeId: 'a/b', conversationIds: [1], ...stamp },
+      { storeId: '..', conversationIds: [1], ...stamp },
+      { storeId: '.', conversationIds: [1], ...stamp },
+      // Windows trims a trailing dot or space, so `a.` would open `a`; these must not parse either.
+      { storeId: 'a.', conversationIds: [1], ...stamp },
+      { storeId: 'a ', conversationIds: [1], ...stamp },
+      { storeId: '-rf', conversationIds: [1], ...stamp },
       'store-1',
     ]) {
       expect(readResumeTarget(stamped(marker))).toBeUndefined()
