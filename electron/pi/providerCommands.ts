@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { SettingsManager } from '@earendil-works/pi-coding-agent'
 import { findLegacyCredentialId } from '../../src/lib/providers'
+import { durableSessions } from './durableHost'
 import { fulfillExtensionUiPending } from './extensionUiPending'
 import { answerApiKeyPrompt, providerLoginFailureEvent } from './providerAuth'
 import type { SidecarCommand } from './sidecarTypes'
@@ -71,8 +72,10 @@ export async function handleSaveSettingsCommand(
 export async function handleGetDefaultProjectTrustCommand(
   cmd: Extract<SidecarCommand, { type: 'get_default_project_trust' }>
 ): Promise<void> {
-  const state = getState()
-  if (!state) {
+  // The SDK state is null while a durable session is active, but the setting is per workspace and
+  // the durable session knows its own.
+  const cwd = getState()?.cwd ?? durableSessions.cwd()
+  if (!cwd) {
     send({
       type: 'default_project_trust_result',
       requestId: cmd.requestId,
@@ -81,7 +84,7 @@ export async function handleGetDefaultProjectTrustCommand(
     return
   }
   const agentDir = getAgentDir()
-  const settingsManager = SettingsManager.create(state.cwd, agentDir)
+  const settingsManager = SettingsManager.create(cwd, agentDir)
   const value = settingsManager.getDefaultProjectTrust()
   send({
     type: 'default_project_trust_result',
@@ -93,10 +96,10 @@ export async function handleGetDefaultProjectTrustCommand(
 export async function handleSetDefaultProjectTrustCommand(
   cmd: Extract<SidecarCommand, { type: 'set_default_project_trust' }>
 ): Promise<void> {
-  const state = getState()
-  if (!state) return
+  const cwd = getState()?.cwd ?? durableSessions.cwd()
+  if (!cwd) return
   const agentDir = getAgentDir()
-  const settingsManager = SettingsManager.create(state.cwd, agentDir)
+  const settingsManager = SettingsManager.create(cwd, agentDir)
   settingsManager.setDefaultProjectTrust(cmd.defaultProjectTrust)
 }
 

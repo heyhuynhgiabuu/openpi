@@ -7,9 +7,11 @@ import {
 } from './durableSettings'
 import { counted, countedUnlessAborted, newActivity } from './durableActivity'
 import { canResumeFile, createResumeFrom, durableHeaderOf } from './durableResume'
+import { reopenableOf } from './durableSessionView'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
+import { promptOnce, queueOnce, refuseCommand } from './durableSend'
 import { inspectOpened } from './durableOpen'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
@@ -69,8 +71,18 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     active = null
     if (!session) return
     session.closing = true
+    // A queued message that settles after this shutdown is the run we just aborted, not a run that
+    // failed to answer; say nothing about it.
+    session.abortRequested = true
     try {
       await session.stopEvents()
+      // Abort before closing: pi-durable keeps an unfinished run pending in the store, and the next
+      // submit would start it again from scratch. `reload_session` already does this (see
+      // `durableFlow.ts`); replacing the session (`start_session`) goes through here instead.
+      await session.harness.abort().catch((error) => {
+        deps.log('warn', `[durable] aborting before shutdown failed: ${errorText(error)}`)
+      })
+      await exportNow(session)
       await session.harness.close()
     } catch (error) {
       deps.log('warn', `[durable] shutdown: ${errorText(error)}`)
@@ -153,53 +165,29 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  function reportUnanswered(
-    session: ActiveSession,
-    result: { status: string; reason?: string }
-  ): void {
-    if (result.status !== 'unanswered' || session.abortRequested) return
-    deps.log(
-      'warn',
-      `[durable] run ended without an answer${result.reason ? `: ${result.reason}` : ''}`
-    )
-  }
-
-  async function prompt(cmd: Extract<SidecarCommand, { type: 'prompt' }>): Promise<void> {
-    const session = active
-    if (!session) return
-    const text = promptText(cmd)
-    session.abortRequested = false
-    const result = await countedUnlessAborted(session.activity, () => session.harness.prompt(text))
-    if (result) reportUnanswered(session, result)
-    await exportNow(session)
-  }
-
-  /**
-   * Steer / follow-up: returns once the message is admitted, like the SDK's `steer()`. The run it
-   * joins (or starts, when idle) is tracked in the background so its outcome is still exported.
-   */
-  async function queue(
-    cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>
-  ): Promise<void> {
-    const session = active
-    if (!session) return
-    const text = promptText(cmd)
-    session.abortRequested = false
-    const mode = cmd.type === 'steer' ? 'steer' : 'followUp'
-    const queued = await countedUnlessAborted(session.activity, () =>
-      session.harness.queue(text, mode)
-    )
-    if (!queued) return
-    void queued.settled
-      .then(async (result) => {
-        if (session.closing) return
-        reportUnanswered(session, result)
-        await exportNow(session)
-      })
-      .catch((error) => {
-        if (!session.closing)
-          deps.log('error', `[durable] queued message failed: ${errorText(error)}`)
-      })
+  /** Hand a message to the harness; `renderInput` expands a `/template` or `/skill:` first. */
+  const send = (session: ActiveSession) => {
+    const hooks = { log: deps.log, exportNow: () => exportNow(session) }
+    const expand = (input: string): string => session.harness.renderInput(input)
+    return {
+      prompt: async (cmd: Extract<SidecarCommand, { type: 'prompt' }>) => {
+        const parsed = promptText(cmd, expand)
+        // Refused the way the SDK refuses it — a visible warning, not a thrown error: the composer
+        // has already cleared, so an error would leave the user with a blank box and no reason.
+        if (parsed.unknownCommand) {
+          refuseCommand(session, parsed.unknownCommand, deps.send)
+          return
+        }
+        await promptOnce(session, parsed.text, hooks)
+      },
+      queue: (cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>) =>
+        queueOnce(
+          session,
+          promptText(cmd, expand, 'queue').text,
+          cmd.type === 'steer' ? 'steer' : 'followUp',
+          hooks
+        ),
+    }
   }
 
   const flow: FlowOps = {
@@ -223,11 +211,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   async function handleCommand(cmd: SidecarCommand): Promise<boolean> {
     if (!active) return false
     if (cmd.type === 'prompt') {
-      await prompt(cmd)
+      await send(active).prompt(cmd)
       return true
     }
     if (cmd.type === 'steer' || cmd.type === 'follow_up') {
-      await queue(cmd)
+      await send(active).queue(cmd)
       return true
     }
     if (isSettingsCommand(cmd)) {
@@ -291,6 +279,15 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
 
   const resumeFrom = createResumeFrom(start)
 
-  const canResume = canResumeFile
-  return { isActive: () => active !== null, start, canResume, resumeFrom, handleCommand, stop }
+  return {
+    isActive: () => active !== null,
+    cwd: () => active?.cwd,
+    reopenable: () => reopenableOf(active),
+    promptCommands: () => active?.harness.promptCommands() ?? [],
+    start,
+    canResume: canResumeFile,
+    resumeFrom,
+    handleCommand,
+    stop,
+  }
 }

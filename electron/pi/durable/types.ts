@@ -95,7 +95,11 @@ export interface DurableNavigation {
 }
 
 export interface DurableHarness {
-  /** Submit one input and wait for the run to settle. */
+  /**
+   * Submit one input and wait for the run to settle. `text` must already be through `renderInput`:
+   * expansion happens once, at the call site, so a template body that starts with another `/name`
+   * is not expanded a second time.
+   */
   prompt(text: string): Promise<DurableSubmitResult>
   /** The agent's stored choices, resolved: the thinking level in force, and the model when set. */
   agentState(): Promise<{ model?: DurableModelRef; thinkingLevel: ModelThinkingLevel }>
@@ -135,7 +139,7 @@ export interface DurableHarness {
    * Queue a message for a run in progress: `steer` is delivered after the current turn's tool calls
    * and before the next model call, `followUp` only once the run has fully stopped. Resolves once
    * admitted, not once answered (like the SDK's `steer()`); `settled` tracks the outcome. With no
-   * run in progress the message starts one.
+   * run in progress the message starts one. `text` must already be through `renderInput`.
    */
   queue(text: string, mode: 'steer' | 'followUp'): Promise<DurableQueued>
   /**
@@ -143,6 +147,10 @@ export interface DurableHarness {
    * is idle. A `prompt()` still awaiting the aborted run settles `unanswered`. Idempotent.
    */
   abort(): Promise<void>
+  /** Expand a `/template args` or `/skill:name` input the way `prompt`/`queue` will. */
+  renderInput(text: string): string
+  /** Templates and slash-only skills discovered here, for the slash picker. */
+  promptCommands(): Array<{ name: string; description: string; argHint?: string }>
   /** Subscribe to structural views; returns the unsubscribe function. */
   watch(onView: (view: DurableView) => void): () => void
   /** Current structural view of the root conversation. */

@@ -22,8 +22,9 @@
 import { createSidecarCommandQueue } from './sidecarCommandQueue'
 import { sidecarCommandSchema } from './sidecarContracts'
 import { handleResourceCommand, isResourceCommand } from './resourceCommands'
+import { resourceCommandDeps } from './resourceDeps'
 import type { SessionReadyPayload, SidecarCommand, SidecarMessage } from './sidecarTypes'
-import { getResourceLoader, getState, onParentMessage, send } from './sidecarContext'
+import { onParentMessage, send } from './sidecarContext'
 import { handleAbortCommand } from './conversationCommands'
 import { durableSessions } from './durableHost'
 import {
@@ -69,18 +70,14 @@ export type { SessionReadyPayload, SidecarCommand, SidecarMessage }
 // Supply-chain hardening runs via the sidecarEnv import inside sidecarContext
 // (evaluated before every other sidecar module side effect).
 
-async function handleCommand(cmd: SidecarCommand): Promise<void> {
+/** Exported so the resource hand-off can be tested without booting the sidecar port. */
+export async function handleCommand(cmd: SidecarCommand): Promise<void> {
   // A durable session (opt-in, new sessions only) is served first; anything it does not handle
   // falls through to the SDK handlers below.
   if (await durableSessions.handleCommand(cmd)) return
 
   if (isResourceCommand(cmd)) {
-    await handleResourceCommand(cmd, {
-      getCwd: () => getState()?.cwd ?? null,
-      getSession: () => getState()?.session ?? null,
-      getResourceLoader,
-      send,
-    })
+    await handleResourceCommand(cmd, resourceCommandDeps)
     return
   }
 

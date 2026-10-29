@@ -6,13 +6,12 @@
 
 import type { SessionReadyPayload } from './sidecarTypes'
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent'
-import { createOpenPiExtensionUIContext } from './extensionUiContext'
 import { rejectAllExtensionUiPending } from './extensionUiPending'
 import { forwardSessionEvents } from './eventBridge'
+import { bindSessionExtensions } from './sessionExtensions'
 import { createSessionSettingsManager } from './sessionSettings'
 import { chooseSessionRuntime, decideCutover, type DurableCapability } from './cutover'
 import { durableSessions } from './durableHost'
-import { isStaleExtensionCtxMessage } from './staleCtx'
 import {
   clearResourceLoaderCache,
   getAgentDir,
@@ -25,26 +24,24 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime. The command set is written and tested,
- * but four things reachable only through it are still open, so the gate stays shut:
+ * Capabilities this build has wired for the durable runtime.
  *
- * - replacing a durable session does not abort its run, and pi-durable keeps the abandoned prompt
- *   pending in the store, so the next message re-runs it (reload works around this; `start_session`
- *   does not);
- * - a durable start or resume that fails after the SDK session was disposed leaves the sidecar
- *   without a session, while main restores the old one and goes on sending prompts into nothing;
- * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` read the SDK
- *   state, which is null on a durable session (the trust toggle goes nowhere, the slash menu is
- *   empty);
- * - a prompt starting with `/` is refused on the durable side, so prompt templates, `/skill:`
- *   invocations and extension commands cannot be typed even though customizations are meant to
- *   work (model-invocable skills still reach the model through the prompt sections).
+ * Every blocker that kept `sessionCommands` out is closed, and the fixes are tested:
  *
- * Add `sessionCommands` here when those are closed and a real session has been driven through the
- * renderer. Nothing in the suite fails when the gate opens (checked: flipping it leaves every test
- * green), so opening it is a deliberate change, not something a green build will tell you.
+ * - replacing a durable session aborts its run before closing the harness (`durableSession.stop`),
+ *   so pi-durable does not leave the abandoned prompt pending for the next message to re-run;
+ * - a start that fails after the previous session was disposed puts that session back
+ *   (`sessionDurableStart.ts`), including a durable one — read before the teardown, and reopened
+ *   with its own workspace and trust rather than the failed request's;
+ * - the trust commands and `list_slash_commands` take the workspace from whichever runtime is
+ *   serving, and a `/`-prompt expands through the harness (an unanswered one is reported in the
+ *   transcript, as the SDK reports it) instead of being refused or sent as literal text.
+ *
+ * It stays closed anyway: no session has been driven through the renderer yet, and that is the
+ * last gate condition (see the cutover notes in ROADMAP). Opening it is a one-line edit whose only
+ * witness is `tests/durableGate.test.ts`, so do it in its own change, after that drive.
  */
-const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
+export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
   'customizations',
   'policy',
@@ -54,6 +51,13 @@ const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'sessionFiles',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
+import { startDurable } from './sessionDurableStart'
+import {
+  prepareFork,
+  previousSession,
+  restoreSession,
+  type PreviousSession,
+} from './sessionRestore'
 import { teardownSession } from './sessionTeardown'
 
 /**
@@ -104,17 +108,41 @@ async function stopSdkSession(reason: 'new' | 'resume' | 'fork'): Promise<void> 
   await stopSession(previous.session, reason)
 }
 
-export async function startSession(
-  cwd: string,
-  opts: {
-    sessionFile?: string
-    forkEntryId?: string
-    requestId?: string
-    workspaceTrusted?: boolean
-    /** Stored runtime preference from Electron main; the cutover gate decides what actually runs. */
-    runtimePreference?: string
-  } = {}
-): Promise<void> {
+/**
+ * The session running now, in the shape a restore needs — read before the teardown: a durable
+ * session lives only in the durable factory, so asking after `stop()` finds nothing and a failed
+ * replacement would leave the sidecar empty while main still shows the old session.
+ */
+function restoreCandidate(cwd: string, opts: StartOptions): PreviousSession | undefined {
+  if (opts.restoring) return undefined
+  return previousSession({
+    // A durable session is reopened in the workspace and with the trust it was serving, not the
+    // ones this request named: that is where its conversations live, and trust decides whether
+    // that workspace's MCP servers start.
+    cwd: durableSessions.cwd() ?? cwd,
+    runtimePreference: opts.runtimePreference,
+    reopenable: () => durableSessions.reopenable(),
+  })
+}
+
+interface StartOptions {
+  sessionFile?: string
+  forkEntryId?: string
+  requestId?: string
+  workspaceTrusted?: boolean
+  /**
+   * Set while putting back a session a failed replacement disposed. A restore that fails must not
+   * try to restore again, or a broken workspace would recurse instead of reporting once.
+   */
+  restoring?: boolean
+  /** Stored runtime preference from Electron main; the cutover gate decides what actually runs. */
+  runtimePreference?: string
+}
+
+export async function startSession(cwd: string, opts: StartOptions = {}): Promise<void> {
+  // What a failed replacement falls back to, captured before anything is stopped.
+  const previous = restoreCandidate(cwd, opts)
+
   // A durable session from a previous start must not outlive this one.
   await durableSessions.stop()
 
@@ -130,46 +158,29 @@ export async function startSession(
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
   const trusted = opts.workspaceTrusted ?? false
   // A resumed file is only reopened when this runtime wrote it and the file is still the one it
-  // wrote; anything else is read by the SDK path below, as before. Reading it here rather than
-  // after the teardown keeps the two reads and the disposal in one readable order, and means a
-  // declined file never reaches the durable start at all.
+  // wrote; anything else is read by the SDK path below, as before.
   const resumable =
     choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile
       ? await durableSessions.canResume(opts.sessionFile)
       : false
   if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
-    await stopSdkSession(choice.start)
-    if (opts.sessionFile && choice.start === 'resume') {
-      // `canResume` said yes, but the file can change between the two reads. The sidecar is left
-      // without a session either way (see `WIRED_DURABLE_CAPABILITIES`); at least answer the open
-      // request instead of leaving main to time out against a session that will never exist.
-      const resumed = await durableSessions.resumeFrom(
-        cwd,
-        opts.sessionFile,
-        trusted,
-        opts.requestId
-      )
-      if (!resumed) {
-        throw new Error(
-          `${opts.sessionFile} changed while it was being opened; open it again to continue`
-        )
-      }
-      return
-    }
-    await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+    await startDurable({
+      sessions: durableSessions,
+      trusted,
+      cwd,
+      sessionFile: opts.sessionFile,
+      requestId: opts.requestId,
+      start: choice.start,
+      previous,
+      stopSdk: stopSdkSession,
+      restore: (session) => restoreSession(session, startSession),
+    })
     return
   }
   if (choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile)
     outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
 
-  // Validate fork identity before disposing the active session so malformed or
-  // stale renderer entry IDs cannot leave the sidecar without a session.
-  let preparedForkFile: string | undefined
-  if (opts.sessionFile && opts.forkEntryId) {
-    const preflightManager = SessionManager.open(opts.sessionFile, undefined, cwd)
-    preparedForkFile = preflightManager.createBranchedSession(opts.forkEntryId) ?? undefined
-    if (!preparedForkFile) throw new Error(`Cannot fork: entry not found (${opts.forkEntryId})`)
-  }
+  const preparedForkFile = prepareFork(opts, cwd)
 
   // Dispose previous session — emit session_shutdown first so extensions
   // (e.g. pi-task polling) clear timers and drop captured `pi` before ctx invalidates.
@@ -198,51 +209,7 @@ export async function startSession(
     resourceLoader,
   })
 
-  const extensionUiSinks = {
-    sessionEvent: (event: Record<string, unknown>) => {
-      send({ type: 'session_event', event })
-    },
-    postExtensionUiRequest: (
-      request: import('../../src/lib/extensionUiTypes').ExtensionUiRequest
-    ) => {
-      send({ type: 'extension_ui_request', request })
-    },
-  }
-
-  try {
-    await session.bindExtensions({
-      uiContext: createOpenPiExtensionUIContext(extensionUiSinks),
-      mode: 'rpc',
-      commandContextActions: {
-        waitForIdle: () => session.agent.waitForIdle(),
-        newSession: async () => ({ cancelled: true }),
-        fork: async () => ({ cancelled: true }),
-        navigateTree: async () => ({ cancelled: true }),
-        switchSession: async () => ({ cancelled: true }),
-        reload: async () => {
-          await session.reload()
-        },
-      },
-      onError: (err) => {
-        // Suppress the benign "stale extension ctx" errors from pi-task.
-        // pi-task's background polling captures `pi` (ExtensionAPI); when
-        // our reload path does a full session replacement, in-flight async
-        // work briefly calls `pi.sendMessage` on the now-stale ctx. The
-        // SDK throws messages starting with "This extension ctx is stale
-        // after session replacement or reload..." which surface as noisy
-        // extension_error events. They are harmless — the new session is
-        // already running. Filter them so the user only sees real errors.
-        const msg = err.error
-        if (isStaleExtensionCtxMessage(msg)) return
-        outputLine('error', `[extension] ${err.extensionPath} (${err.event}): ${msg}`)
-      },
-    })
-  } catch (err) {
-    outputLine(
-      'error',
-      `[openpi] bindExtensions failed: ${err instanceof Error ? err.message : String(err)}`
-    )
-  }
+  await bindSessionExtensions(session)
 
   const unsubscribe = forwardSessionEvents(session, () => send({ type: 'session_index_updated' }))
 

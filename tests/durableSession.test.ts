@@ -97,11 +97,20 @@ describe('durable session prompt', () => {
     }
   })
 
-  it('refuses slash commands instead of sending them to the model', async () => {
-    const t = await setup()
+  it('reports a command nothing answers instead of sending it to the model', async () => {
+    const t = await setup({ answers: ['should not be asked'] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      await expect(t.sessions.handleCommand(prompt('/compact'))).rejects.toThrow(/slash commands/)
+      await t.sessions.handleCommand(prompt('/compact'))
+      // Reported in the transcript, as the SDK path does, and the model never sees it.
+      const warning = t.sent.find(
+        (m) => m.type === 'session_event' && m.event.type === 'message_start'
+      )
+      expect(JSON.stringify(warning)).toContain('/compact is not available')
+      // No run started, so the text was never sent to the model as a literal prompt.
+      expect(t.sent.some((m) => m.type === 'session_event' && m.event.type === 'agent_start')).toBe(
+        false
+      )
     } finally {
       await t.sessions.stop()
     }

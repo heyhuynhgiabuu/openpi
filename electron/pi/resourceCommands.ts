@@ -36,6 +36,10 @@ interface ResourceSessionView {
 
 interface ResourceCommandDeps {
   getCwd: () => string | null
+  /** Prompt templates of the durable session, when that runtime is the one serving. */
+  getDurableCommands?: () =>
+    | Array<{ name: string; description: string; argHint?: string }>
+    | undefined
   getSession: () => ResourceSessionView | null
   getResourceLoader: (cwd: string, workspaceTrusted: boolean) => Promise<ResourceLoaderView>
   send: (message: SidecarMessage) => void
@@ -71,7 +75,19 @@ export async function handleResourceCommand(
     case 'list_slash_commands': {
       const session = deps.getSession()
       if (!session) {
-        deps.send({ type: 'slash_commands_result', requestId: command.requestId, commands: [] })
+        // A durable session has no SDK state: the prompt templates and slash-only skills its
+        // harness discovered are what the picker offers.
+        const commands = (deps.getDurableCommands?.() ?? []).map((entry) => {
+          const command: {
+            name: string
+            description: string
+            source: 'prompt'
+            argHint?: string
+          } = { name: entry.name, description: entry.description, source: 'prompt' }
+          if (entry.argHint) command.argHint = entry.argHint
+          return command
+        })
+        deps.send({ type: 'slash_commands_result', requestId: command.requestId, commands })
         return
       }
       const commands: Array<{

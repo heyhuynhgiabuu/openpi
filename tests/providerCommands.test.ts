@@ -32,8 +32,13 @@ vi.mock('../electron/pi/sidecarContext', () => ({
   getModelRuntime: async () => runtime,
   getState: vi.fn(),
   invalidateModelRuntime: vi.fn(),
+  outputLine: vi.fn(),
   providerAuthBridge: {},
   send: (message: SidecarMessage) => sent.push(message),
+}))
+// The trust commands read the workspace from whichever runtime is serving; no durable session here.
+vi.mock('../electron/pi/durableHost', () => ({
+  durableSessions: { cwd: () => undefined },
 }))
 
 const { handleGetProvidersCommand } = await import('../electron/pi/providerCommands')

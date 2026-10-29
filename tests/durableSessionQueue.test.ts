@@ -114,16 +114,12 @@ describe('durable steer and follow-up', () => {
     }
   }, 30_000)
 
-  it('refuses slash commands and applies the context prefix like prompt does', async () => {
+  it('applies the context prefix like prompt does, for slash prompts too', async () => {
     const t = await setup({ answers: ['ok'] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
-      await expect(t.sessions.handleCommand({ type: 'steer', text: '/compact' })).rejects.toThrow(
-        /slash commands/
-      )
-      await expect(t.sessions.handleCommand({ type: 'follow_up', text: '/x' })).rejects.toThrow(
-        /slash commands/
-      )
+      // A steer is passed through unmapped on both runtimes, so a `/…` path is not refused here.
+      await t.sessions.handleCommand({ type: 'steer', text: '/nope' })
       await t.sessions.handleCommand({ type: 'steer', text: 'body', contextPrefix: 'ctx' })
       await waitFor(async () => (await exported(t)).includes('ok'), 'the export')
       expect(await exported(t)).toContain('ctx\\n\\nbody')
@@ -143,6 +139,8 @@ describe('durable steer and follow-up', () => {
     // Let the held model call finish *after* shutdown: the queued message settles late.
     hold.release()
     await new Promise((resolve) => setTimeout(resolve, 300))
+    // `stop()` aborts the run on purpose, so no "run ended without an answer" warning and nothing
+    // about the queue: the shutdown is quiet.
     expect(t.logs).toEqual([])
   }, 30_000)
 })

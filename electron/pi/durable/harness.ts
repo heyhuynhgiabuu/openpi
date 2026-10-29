@@ -17,6 +17,7 @@ import {
 } from '@earendil-works/pi-durable'
 import type { SettledSubmissionRecord } from '@earendil-works/pi-durable'
 import { expandInput, loadCustomizationsExtension } from './sections'
+import { slashCommandsOf } from './commands'
 import { computeStats, SESSION_NAME_KIND, type DurableStats } from './stats'
 import { createBashRunner, runAndRecord, type BashResult } from './bash'
 import { createQueuedTexts } from './queued'
@@ -151,7 +152,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
 
   return {
     async prompt(text: string): Promise<DurableSubmitResult> {
-      const submission = await root.submit({ type: 'input', content: expand(text) }, ctx)
+      const submission = await root.submit({ type: 'input', content: text }, ctx)
       return resultOf(await submission.wait(ctx))
     },
 
@@ -159,10 +160,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       queued.expect(text)
       let submission: Awaited<ReturnType<typeof root.submit>>
       try {
-        submission = await root.submit(
-          { type: 'input', content: expand(text), whenBusy: mode },
-          ctx
-        )
+        submission = await root.submit({ type: 'input', content: text, whenBusy: mode }, ctx)
       } catch (error) {
         queued.cancel(text)
         throw error
@@ -207,6 +205,12 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       await root.abort(ctx)
     },
 
+    renderInput(text: string) {
+      return expand(text)
+    },
+
+    promptCommands: () => slashCommandsOf(customizations),
+
     watch(onView: (view: DurableView) => void): () => void {
       let stopped = false
       let stopHandle: (() => void) | undefined
@@ -233,9 +237,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return toView(root.id, view.entries)
     },
 
-    diagnostics(): readonly CustomizationDiagnostic[] {
-      return diagnostics
-    },
+    diagnostics: (): readonly CustomizationDiagnostic[] => diagnostics,
 
     async watchEvents(
       onEvent: (event: Record<string, unknown>) => void
