@@ -25,9 +25,19 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime: everything a session needs, including
- * the command set (prompt, steer/follow-up, abort, model/thinking/name, compact, shell commands,
- * reload, fork and tree navigation). An opt-in now lands on the durable runtime.
+ * Capabilities this build has wired for the durable runtime. The command set is written and tested,
+ * but three things reachable only through it are still open, so the gate stays shut:
+ *
+ * - replacing a durable session does not abort its run, and pi-durable keeps the abandoned prompt
+ *   pending in the store, so the next message re-runs it (reload works around this; `start_session`
+ *   does not);
+ * - a durable start that fails after the SDK session was disposed leaves the sidecar without a
+ *   session while main restores the old one;
+ * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` still read
+ *   the SDK state, which is null on a durable session.
+ *
+ * Add `sessionCommands` here when those are closed and a real session has been driven through the
+ * renderer.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -37,7 +47,6 @@ const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'sessionIndex',
   'eventBridge',
   'sessionFiles',
-  'sessionCommands',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
 import { teardownSession } from './sessionTeardown'
@@ -116,8 +125,9 @@ export async function startSession(
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
   const trusted = opts.workspaceTrusted ?? false
   // A resumed file is only reopened when this runtime wrote it and the file is still the one it
-  // wrote; anything else is read by the SDK path below, as before. The check comes before the
-  // running session is disposed, so a file it declines does not cost the user their session.
+  // wrote; anything else is read by the SDK path below, as before. Reading it here rather than
+  // after the teardown keeps the two reads and the disposal in one readable order, and means a
+  // declined file never reaches the durable start at all.
   const resumable =
     choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile
       ? await durableSessions.canResume(opts.sessionFile)

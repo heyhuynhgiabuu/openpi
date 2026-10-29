@@ -26,9 +26,6 @@ export function createResumeFrom(
     resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, requestId, start)
 }
 
-/** See `canResumeFile`. */
-export const canResume = canResumeFile
-
 type StartSession = (cwd: string, options: DurableStartOptions) => Promise<void>
 
 /**

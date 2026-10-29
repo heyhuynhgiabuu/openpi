@@ -76,7 +76,10 @@ export interface DurableSessions {
    */
   /** Whether this runtime can reopen the file, without opening its store or touching the session. */
   canResume(sessionFile: string): Promise<boolean>
-  /** Reopen the file's session. Only meaningful after `canResume` said yes. */
+  /**
+   * Reopen the file's session. `false` when the file is no longer one this runtime wrote, which can
+   * happen between `canResume` and here; the caller has to answer the request itself.
+   */
   resumeFrom(
     cwd: string,
     sessionFile: string,

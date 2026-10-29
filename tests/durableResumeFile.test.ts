@@ -138,3 +138,27 @@ describe('an export with no messages yet', () => {
     expect(readResumeTarget(`${text}${line({ type: 'message', id: 'beef' })}`)).toBeUndefined()
   })
 })
+
+describe('canResumeFile', () => {
+  it('says yes only for a file this runtime wrote and still matches', async () => {
+    const { canResumeFile } = await import('../electron/pi/durableResume')
+    const { mkdtemp, writeFile } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = await mkdtemp(join(tmpdir(), 'openpi-can-resume-'))
+    const path = join(dir, 's.jsonl')
+    const { text } = renderSessionTree({ ...header, durable }, [[message]])
+    await writeFile(path, text, 'utf8')
+
+    expect(await canResumeFile(path)).toBe(true)
+    // Changed since the export: no longer ours to reopen.
+    await writeFile(path, `${text}${line({ type: 'message', id: 'beef' })}`, 'utf8')
+    expect(await canResumeFile(path)).toBe(false)
+    // Missing entirely.
+    expect(await canResumeFile(join(dir, 'nope.jsonl'))).toBe(false)
+    // An SDK session.
+    const sdk = join(dir, 'sdk.jsonl')
+    await writeFile(sdk, line({ type: 'session', version: 3, id: 'sdk-1' }), 'utf8')
+    expect(await canResumeFile(sdk)).toBe(false)
+  })
+})
