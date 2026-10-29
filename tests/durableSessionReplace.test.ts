@@ -35,11 +35,13 @@ function gate(text: string) {
 
 describe('replacing a durable session mid-run', () => {
   it('aborts the run instead of letting it die on a closed harness', async () => {
+    const requests: string[] = []
     const held = gate('ABANDONED-ANSWER')
-    const t = await setup({
-      persistent: true,
-      responses: [answer('a1'), held.step, answer('later')],
-    })
+    const record = (context: { messages: readonly { role: string }[] }) => {
+      requests.push(readable(context.messages))
+      return answer('later')
+    }
+    const t = await setup({ persistent: true, responses: [answer('a1'), held.step, record] })
     await t.sessions.start('/work', { workspaceTrusted: false })
     try {
       await t.sessions.handleCommand(prompt('q1'))
@@ -56,8 +58,10 @@ describe('replacing a durable session mid-run', () => {
       expect(await running).toBe('handled')
 
       // And the new session answers the next message rather than picking up the abandoned one.
-      const requests: string[] = []
-      await t.sessions.handleCommand(prompt('q3')).catch(() => undefined)
+      await t.sessions.handleCommand(prompt('q3'))
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toContain('q3')
+      expect(requests[0]).not.toContain('ABANDONED-ANSWER')
       expect(t.logs.filter((line) => line.includes('unanswered'))).toEqual([])
     } finally {
       held.release()

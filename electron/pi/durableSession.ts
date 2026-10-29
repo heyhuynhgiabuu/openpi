@@ -7,9 +7,11 @@ import {
 } from './durableSettings'
 import { counted, countedUnlessAborted, newActivity } from './durableActivity'
 import { canResumeFile, createResumeFrom, durableHeaderOf } from './durableResume'
+import { reopenableOf } from './durableSessionView'
 import { runCompact } from './durableCompact'
 import { forkSession, navigateSession, reloadSession, type FlowOps } from './durableFlow'
 import { errorText, promptText } from './durablePrompt'
+import { promptOnce, queueOnce } from './durableSend'
 import { inspectOpened } from './durableOpen'
 import type { SidecarCommand } from './sidecarTypes'
 import type {
@@ -69,6 +71,8 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     active = null
     if (!session) return
     session.closing = true
+    // The run is being cancelled on purpose; `reportUnanswered` must not warn about it.
+    session.abortRequested = true
     try {
       await session.stopEvents()
       // Abort before closing: pi-durable keeps an unfinished run pending in the store, and the next
@@ -160,53 +164,21 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     }
   }
 
-  function reportUnanswered(
-    session: ActiveSession,
-    result: { status: string; reason?: string }
-  ): void {
-    if (result.status !== 'unanswered' || session.abortRequested) return
-    deps.log(
-      'warn',
-      `[durable] run ended without an answer${result.reason ? `: ${result.reason}` : ''}`
-    )
-  }
-
-  async function prompt(cmd: Extract<SidecarCommand, { type: 'prompt' }>): Promise<void> {
-    const session = active
-    if (!session) return
-    const text = promptText(cmd)
-    session.abortRequested = false
-    const result = await countedUnlessAborted(session.activity, () => session.harness.prompt(text))
-    if (result) reportUnanswered(session, result)
-    await exportNow(session)
-  }
-
-  /**
-   * Steer / follow-up: returns once the message is admitted, like the SDK's `steer()`. The run it
-   * joins (or starts, when idle) is tracked in the background so its outcome is still exported.
-   */
-  async function queue(
-    cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>
-  ): Promise<void> {
-    const session = active
-    if (!session) return
-    const text = promptText(cmd)
-    session.abortRequested = false
-    const mode = cmd.type === 'steer' ? 'steer' : 'followUp'
-    const queued = await countedUnlessAborted(session.activity, () =>
-      session.harness.queue(text, mode)
-    )
-    if (!queued) return
-    void queued.settled
-      .then(async (result) => {
-        if (session.closing) return
-        reportUnanswered(session, result)
-        await exportNow(session)
-      })
-      .catch((error) => {
-        if (!session.closing)
-          deps.log('error', `[durable] queued message failed: ${errorText(error)}`)
-      })
+  /** Hand a message to the harness; `renderInput` expands a `/template` or `/skill:` first. */
+  const send = (session: ActiveSession) => {
+    const hooks = { log: deps.log, exportNow: () => exportNow(session) }
+    const text = (input: string): string => session.harness.renderInput(input)
+    return {
+      prompt: (cmd: Extract<SidecarCommand, { type: 'prompt' }>) =>
+        promptOnce(session, promptText(cmd, text), hooks),
+      queue: (cmd: Extract<SidecarCommand, { type: 'steer' | 'follow_up' }>) =>
+        queueOnce(
+          session,
+          promptText(cmd, text),
+          cmd.type === 'steer' ? 'steer' : 'followUp',
+          hooks
+        ),
+    }
   }
 
   const flow: FlowOps = {
@@ -230,11 +202,11 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
   async function handleCommand(cmd: SidecarCommand): Promise<boolean> {
     if (!active) return false
     if (cmd.type === 'prompt') {
-      await prompt(cmd)
+      await send(active).prompt(cmd)
       return true
     }
     if (cmd.type === 'steer' || cmd.type === 'follow_up') {
-      await queue(cmd)
+      await send(active).queue(cmd)
       return true
     }
     if (isSettingsCommand(cmd)) {
@@ -298,12 +270,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
 
   const resumeFrom = createResumeFrom(start)
 
-  const canResume = canResumeFile
   return {
     isActive: () => active !== null,
     cwd: () => active?.cwd,
+    reopenable: () => reopenableOf(active),
+    promptCommands: () => active?.harness.promptCommands() ?? [],
     start,
-    canResume,
+    canResume: canResumeFile,
     resumeFrom,
     handleCommand,
     stop,

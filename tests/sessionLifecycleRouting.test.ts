@@ -9,6 +9,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const durable = vi.hoisted(() => ({
   canResume: vi.fn(async () => true),
+  // No durable session running unless a test says so.
+  reopenable: vi.fn(() => undefined),
+  cwd: vi.fn(() => undefined as string | undefined),
   resumeFrom: vi.fn(async () => true),
   start: vi.fn(async () => undefined),
   stop: vi.fn(async () => undefined),
