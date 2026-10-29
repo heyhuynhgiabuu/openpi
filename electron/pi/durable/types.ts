@@ -174,14 +174,13 @@ export interface DurableHarness {
    */
   exportSession(path: string, header: SessionFileHeader): Promise<SessionFileResult>
   /**
-   * Run whatever the store still had in flight when the previous process died.
+   * Settle once nothing in this session can still run.
    *
-   * pi-durable keeps an unsettled task and turns it back into a pending one on open, but it does not
-   * dispatch until this is called: without it the prompt is not resumed by the restart, and instead
-   * runs later, silently, behind whatever command happens to enable scheduling next.
+   * This is what resumes an interrupted run: pi-durable keeps an unsettled task and re-pends it on
+   * open, but dispatch waits for scheduling to be enabled, and `harness.waitForIdle()` enables it
+   * before waiting. Calling it on reopen is therefore both the resume and the wait — a separate
+   * `resume()` call would be redundant, which is why there is not one here.
    */
-  resumeInterrupted(): Promise<void>
-  /** Settle once nothing in this session can still run; used to export a resumed run's answer. */
   waitIdle(): Promise<void>
   close(): Promise<void>
 }

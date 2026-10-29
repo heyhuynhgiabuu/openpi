@@ -182,8 +182,13 @@ export function createDurableSessions(deps: DurableSessionDeps): DurableSessions
     // dispatch it until scheduling is enabled. Resume without waiting, and export when it settles,
     // so the answer lands in the file the renderer reads rather than being run by a later command.
     if (options.resume) {
-      session.harness.resumeInterrupted()
-      void exportWhenIdle(session).catch(() => undefined)
+      // Not awaited: a reopened session must be usable at once. The wait both resumes whatever the
+      // previous process left in flight and settles with it, then the answer is exported. A failure
+      // here (the store could not be read, or the session closed under it) must not surface as an
+      // unhandled rejection in a utility process that has no handler for one.
+      void exportWhenIdle(session).catch((error: unknown) => {
+        deps.log('warn', `[durable] resuming the interrupted run failed: ${errorText(error)}`)
+      })
     }
   }
 

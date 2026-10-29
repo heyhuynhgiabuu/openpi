@@ -84,7 +84,13 @@ describe('a restart during a run', () => {
         async () => (await readFile(first.identity.sessionFile, 'utf-8')).includes(RESUMED),
         'the resumed answer in the session file'
       )
-      expect(after.sent.filter((m) => m.type === 'session_event')).not.toHaveLength(0)
+      // The resumed run must announce itself. pi-durable only sends `run_start` when a run changes,
+      // so a run that was already live before the crash starts again silently — and an unannounced
+      // run means the app shows Send instead of Stop for work that may be running tools.
+      const eventTypes = after.sent.flatMap((m) =>
+        m.type === 'session_event' ? [String(m.event.type)] : []
+      )
+      expect(eventTypes).toContain('agent_start')
     } finally {
       await after.sessions.stop()
     }

@@ -83,10 +83,18 @@ export function createWireTranslator(
 
   return (event) => {
     switch (event.type) {
-      case 'snapshot':
+      case 'snapshot': {
         inboxPending = event.inbox.length
         partial = event.generation?.message
-        return []
+        // A snapshot can carry a run that was already live when the process died: the reopen hands
+        // it back this way, and pi-durable only sends `run_start` when a run *changes*. Without
+        // `agent_start` the app would show a run it never sees start, with no Stop button for work
+        // that may already be touching the workspace.
+        if (event.run === undefined) return []
+        runMessages = []
+        options.consumeAborted?.()
+        return [{ type: 'agent_start' }]
+      }
       case 'run_start':
         runMessages = []
         // An abort requested while idle must not mark the next run as aborted.

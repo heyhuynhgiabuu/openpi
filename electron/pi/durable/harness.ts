@@ -277,12 +277,9 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
       return runAndRecord(bashRunner, root, ctx, command, workspace, bash?.excludeFromContext)
     },
 
-    async resumeInterrupted(): Promise<void> {
-      // `Harness.resume()` is synchronous: it enables scheduling, so the pending work runs on its own.
-      harness.resume()
-    },
-
     async waitIdle(): Promise<void> {
+      // `waitForIdle` enables scheduling before waiting (`harness.js`), so this both resumes an
+      // interrupted run and settles with it.
       await harness.waitForIdle(ctx)
     },
 
