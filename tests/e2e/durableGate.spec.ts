@@ -44,7 +44,7 @@ const command = 'echo DURABLE_E2E_$(echo MARKER)'
 test('drives a shell turn through the renderer on the durable runtime', async () => {
   test.skip(
     process.env.OPENPI_E2E_DURABLE !== '1',
-    'needs the durable gate open (sessionCommands wired); set OPENPI_E2E_DURABLE=1 to run'
+    'manual run: set OPENPI_E2E_DURABLE=1 (this drives a real renderer session)'
   )
 
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'openpi-durable-e2e-'))

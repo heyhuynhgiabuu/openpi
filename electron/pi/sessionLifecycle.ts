@@ -50,8 +50,10 @@ import {
  *
  * This does NOT flip the default: the runtime still needs the preference set to `durable`, and
  * anything without one keeps running on the SDK path. Flipping needs the remaining ROADMAP Phase 8
- * conditions — items 6 and 7 must be resolved or explicitly accepted, and item 8 (CI running those
- * specs automatically) must be done, because a green CI currently says nothing about them.
+ * conditions — items 6 and 7 must be resolved or explicitly accepted, item 8 (CI running those
+ * specs automatically, because a green CI currently says nothing about them), and item 9: this
+ * runtime loads no extensions at all, so the pre-apply review gate and extension-provided model
+ * providers are missing.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',

@@ -129,10 +129,11 @@ describe('a tool call', () => {
         ),
         fauxAssistantMessage([fauxText('done')], stop),
       ],
+      true,
+      // The production default. A write inside the workspace must pass the gate, which is also the
+      // half of the gate's behaviour that a "blocks everything" bug would break.
       true
     )
-    // `policy: false` in `open` is what this file uses for every case; the policy gate has its own
-    // test in `durableParity.test.ts`. Here the question is whether the tool itself runs.
     await h.harness.prompt('write it')
     await finish(h)
 

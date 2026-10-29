@@ -121,7 +121,7 @@ const modelsFile = z.object({
 test('runs a prompt turn through the model on the durable runtime', async () => {
   test.skip(
     process.env.OPENPI_E2E_DURABLE !== '1',
-    'needs the durable gate open (sessionCommands wired); set OPENPI_E2E_DURABLE=1 to run'
+    'manual run: set OPENPI_E2E_DURABLE=1 (this drives a real renderer session)'
   )
   // A real model round-trip on a cold Electron launch.
   test.setTimeout(180_000)
