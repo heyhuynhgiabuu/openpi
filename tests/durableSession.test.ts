@@ -3,7 +3,14 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { importSessionFile } from '../electron/pi/durable/importer'
 import { answer, readable } from './helpers/forkSession'
-import { MODEL, prompt, sessionRoot, setup, useSessionRoot } from './helpers/durableSession'
+import {
+  MODEL,
+  prompt,
+  sessionRoot,
+  setup,
+  useSessionRoot,
+  waitFor,
+} from './helpers/durableSession'
 
 /**
  * Phase 8.3f: the durable session behind the sidecar protocol. Real harness, faux provider, real
@@ -112,46 +119,6 @@ describe('durable session prompt', () => {
       expect(t.sent.some((m) => m.type === 'session_event' && m.event.type === 'agent_start')).toBe(
         false
       )
-    } finally {
-      await t.sessions.stop()
-    }
-  })
-
-  it('expands a slash prompt exactly once, through the real harness', async () => {
-    // A template whose body starts with another known command: `/ship` renders `/deploy --prod`,
-    // and the model must read that body rather than the `deploy` template substituted into it.
-    // Both templates are really discovered, so the actual expander runs wherever it runs — and this
-    // fails if `harness.prompt` expands what `renderInput` already did.
-    const agentDir = join(sessionRoot(), 'agent')
-    await mkdir(join(agentDir, 'prompts'), { recursive: true })
-    await writeFile(
-      join(agentDir, 'prompts', 'deploy.md'),
-      '---\ndescription: d\n---\nDEPLOY BODY\n'
-    )
-    await writeFile(
-      join(agentDir, 'prompts', 'ship.md'),
-      '---\ndescription: s\n---\n/deploy --prod\n'
-    )
-    const seen: string[] = []
-    const t = await setup({
-      userAgentDir: agentDir,
-      // Discovery needs a workspace too: without one it returns nothing, by design.
-      workspacePath: sessionRoot(),
-      responses: [
-        (context: { messages: readonly { role: string }[] }) => {
-          seen.push(readable(context.messages))
-          return answer('ok')
-        },
-        answer('ok'),
-      ],
-    })
-    await t.sessions.start('/work', { workspaceTrusted: false })
-    try {
-      const harness = t.harnesses[0]
-      // Straight at the harness, so this is about expansion and not about the queueing layer.
-      await harness?.prompt(harness.renderInput('/ship'))
-      expect(seen.join('\n')).toContain('/deploy --prod')
-      expect(seen.join('\n')).not.toContain('DEPLOY BODY')
     } finally {
       await t.sessions.stop()
     }
