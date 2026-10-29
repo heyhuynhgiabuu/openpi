@@ -26,6 +26,17 @@ export function createResumeFrom(
     resumeDurableFromFile(cwd, sessionFile, workspaceTrusted, requestId, start)
 }
 
+type StartSession = (cwd: string, options: DurableStartOptions) => Promise<void>
+
+/**
+ * Whether this runtime can reopen the file. Reading only — no store is opened — so a caller can
+ * decide before it disposes the session it is running.
+ */
+export async function canResumeFile(sessionFile: string): Promise<boolean> {
+  const text = await readFile(sessionFile, 'utf8').catch(() => undefined)
+  return text !== undefined && readResumeTarget(text) !== undefined
+}
+
 /**
  * Resume the session an exported file belongs to. `false` when the file says nothing about a store
  * — an SDK session, or one written before this slice — so the caller can use the SDK path.
@@ -33,7 +44,6 @@ export function createResumeFrom(
  * The identity is taken from the file, not from the request, so a resume cannot point at another
  * session's store: the file is the one the user opened.
  */
-type StartSession = (cwd: string, options: DurableStartOptions) => Promise<void>
 
 export async function resumeDurableFromFile(
   cwd: string,

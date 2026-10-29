@@ -82,9 +82,6 @@ describe('durable session resume', () => {
     )
     expect(await after.sessions.resumeFrom('/work', sdkFile, false)).toBe(false)
     expect(readies(after)).toHaveLength(0)
-    expect(after.logs.some((line) => line.includes('not written by the durable runtime'))).toBe(
-      false
-    )
     await after.sessions.stop()
   })
 

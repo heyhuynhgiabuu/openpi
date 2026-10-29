@@ -42,7 +42,7 @@ export const durableHeaderSchema = z
      * header, and the id of the last one. A file that no longer matches was written by something
      * else (the SDK path appends to a file it opens), and reopening it here would drop those turns.
      */
-    lines: z.number().int().positive(),
+    lines: z.number().int().nonnegative(),
     lastLineId: z.string().min(1),
   })
   .strict()

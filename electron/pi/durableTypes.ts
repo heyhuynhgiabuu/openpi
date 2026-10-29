@@ -70,9 +70,11 @@ export interface ActiveSession {
 export interface DurableSessions {
   isActive(): boolean
   start(cwd: string, options: DurableStartOptions): Promise<void>
+  /** Whether this runtime can reopen the file, without opening its store or touching the session. */
+  canResume(sessionFile: string): Promise<boolean>
   /**
-   * Reopen the durable session an exported file belongs to. `false` when the file is not one this
-   * runtime wrote (no store to reopen), so the caller can use the SDK path instead.
+   * Reopen the file's session. `false` when the file is no longer one this runtime wrote, which can
+   * happen between `canResume` and here; the caller has to answer the request itself.
    */
   resumeFrom(
     cwd: string,

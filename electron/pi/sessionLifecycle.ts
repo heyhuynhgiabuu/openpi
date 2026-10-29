@@ -25,9 +25,24 @@ import {
 } from './sidecarContext'
 
 /**
- * Capabilities this build has wired for the durable runtime. Everything a session needs except the
- * command set: prompt works, but steer/follow-up/abort/model/thinking/compact/bash/fork/navigate do
- * not, so `sessionCommands` stays missing and an opt-in still lands on the SDK path.
+ * Capabilities this build has wired for the durable runtime. The command set is written and tested,
+ * but four things reachable only through it are still open, so the gate stays shut:
+ *
+ * - replacing a durable session does not abort its run, and pi-durable keeps the abandoned prompt
+ *   pending in the store, so the next message re-runs it (reload works around this; `start_session`
+ *   does not);
+ * - a durable start or resume that fails after the SDK session was disposed leaves the sidecar
+ *   without a session, while main restores the old one and goes on sending prompts into nothing;
+ * - `get_default_project_trust` / `set_default_project_trust` / `list_slash_commands` read the SDK
+ *   state, which is null on a durable session (the trust toggle goes nowhere, the slash menu is
+ *   empty);
+ * - a prompt starting with `/` is refused on the durable side, so prompt templates, `/skill:`
+ *   invocations and extension commands cannot be typed even though customizations are meant to
+ *   work (model-invocable skills still reach the model through the prompt sections).
+ *
+ * Add `sessionCommands` here when those are closed and a real session has been driven through the
+ * renderer. Nothing in the suite fails when the gate opens (checked: flipping it leaves every test
+ * green), so opening it is a deliberate change, not something a green build will tell you.
  */
 const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -113,25 +128,39 @@ export async function startSession(
   const choice = chooseSessionRuntime(decision, opts)
   const reason = decision.reason ?? choice.reason
   if (reason) outputLine('warn', `[runtime] staying on the Pi SDK path: ${reason}`)
-  if (choice.runtime === 'durable') {
-    const trusted = opts.workspaceTrusted ?? false
+  const trusted = opts.workspaceTrusted ?? false
+  // A resumed file is only reopened when this runtime wrote it and the file is still the one it
+  // wrote; anything else is read by the SDK path below, as before. Reading it here rather than
+  // after the teardown keeps the two reads and the disposal in one readable order, and means a
+  // declined file never reaches the durable start at all.
+  const resumable =
+    choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile
+      ? await durableSessions.canResume(opts.sessionFile)
+      : false
+  if (choice.runtime === 'durable' && (choice.start === 'new' || resumable)) {
     await stopSdkSession(choice.start)
-    // A resumed file is only reopened when this runtime wrote it; a session it does not own (an
-    // SDK one) has no store here, so it is read by the SDK path below, as before.
-    if (choice.start === 'resume' && opts.sessionFile) {
+    if (opts.sessionFile && choice.start === 'resume') {
+      // `canResume` said yes, but the file can change between the two reads. The sidecar is left
+      // without a session either way (see `WIRED_DURABLE_CAPABILITIES`); at least answer the open
+      // request instead of leaving main to time out against a session that will never exist.
       const resumed = await durableSessions.resumeFrom(
         cwd,
         opts.sessionFile,
         trusted,
         opts.requestId
       )
-      if (resumed) return
-      outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
-    } else {
-      await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+      if (!resumed) {
+        throw new Error(
+          `${opts.sessionFile} changed while it was being opened; open it again to continue`
+        )
+      }
       return
     }
+    await durableSessions.start(cwd, { workspaceTrusted: trusted, requestId: opts.requestId })
+    return
   }
+  if (choice.runtime === 'durable' && choice.start === 'resume' && opts.sessionFile)
+    outputLine('warn', `[runtime] ${opts.sessionFile} is not a session this runtime can reopen`)
 
   // Validate fork identity before disposing the active session so malformed or
   // stale renderer entry IDs cannot leave the sidecar without a session.
