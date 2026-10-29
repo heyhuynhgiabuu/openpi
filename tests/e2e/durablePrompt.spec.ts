@@ -93,7 +93,27 @@ function userTexts(exported: string): string[] {
 
 /** The developer's `models.json` entry, validated rather than cast. */
 const modelsFile = z.object({
-  providers: z.record(z.object({ apiKey: z.string().optional() }).passthrough()),
+  providers: z.record(
+    z.object({
+      baseUrl: z.string().optional(),
+      api: z.string().optional(),
+      apiKey: z.string().optional(),
+      // Model entries are passed through: only `id`/`name` and sampling fields matter here, but
+      // their `headers` (if any) must be dropped, so keep only the scalar shape the app needs.
+      models: z
+        .array(
+          z.object({
+            id: z.string(),
+            name: z.string().optional(),
+            reasoning: z.boolean().optional(),
+            input: z.array(z.string()).optional(),
+            contextWindow: z.number().optional(),
+            maxTokens: z.number().optional(),
+          })
+        )
+        .optional(),
+    })
+  ),
 })
 
 test('runs a prompt turn through the model on the durable runtime', async () => {
@@ -121,6 +141,8 @@ test('runs a prompt turn through the model on the durable runtime', async () => 
   if (hive.apiKey?.startsWith('$') === false) {
     throw new Error(`${provider} in ${realModels} has a literal apiKey; refuse to copy a secret`)
   }
+  // The schema above admits only these fields, so provider- or model-level `headers` (where a
+  // secret could also live) cannot reach the sandbox even if a developer's config grows one.
   fs.writeFileSync(
     path.join(agentDir, 'models.json'),
     JSON.stringify({ providers: { [provider]: hive } }, null, 2)
@@ -173,7 +195,9 @@ test('runs a prompt turn through the model on the durable runtime', async () => 
     await composer.press('Enter')
     await expect(page.locator('.message-list')).toContainText(token, { timeout: 120_000 })
 
-    // Nothing reported the run as unanswered (a model error would log it; see durableSend.ts:50).
+    // Advisory only: this line is logged after `harness.prompt()` returns (durableSend.ts:60), so
+    // it races the render above and does not decide the result. A model error fails the answer
+    // assertion first; this is here to make such a failure easier to read in the report.
     const after = await page.evaluate(() => window.openpi.getOutputBuffer())
     expect(after.filter((line) => line.text.includes('run ended without an answer'))).toEqual([])
 
