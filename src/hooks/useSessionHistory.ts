@@ -69,8 +69,13 @@ export function useSessionHistory(options: SessionHistoryOptions) {
    * Use it only where the caller has just cleared the list (`session_ready`) —
    * everywhere else those "live" messages are actually the previous view, e.g.
    * the abandoned branch after navigating the session tree.
+   *
+   * `mode` is required on purpose: the default would let a new caller inherit a
+   * choice it never considered, and the two wrong answers fail differently —
+   * merging a stale view leaves the wrong conversation on screen, while
+   * replacing loses a message until the next reload.
    */
-  const loadInitialMessages = (sessionFile: string, mode: 'merge' | 'replace' = 'replace') => {
+  const loadInitialMessages = (sessionFile: string, mode: 'merge' | 'replace') => {
     latestSessionFile = sessionFile
     window.openpi
       .getSessionMessages(sessionFile, {
