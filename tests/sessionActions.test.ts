@@ -41,7 +41,7 @@ function setup(result: { cancelled: boolean; leafId: string | null; editorText?:
     refreshContextUsage: vi.fn(async () => {}),
     remoteSync: { markLocalActivity: vi.fn() },
     sessionHistory: { loadInitialMessages },
-  } as unknown as SessionActionDeps
+  } satisfies SessionActionDeps
 
   return { actions: createSessionActions(deps), loadInitialMessages, setInput, navigateSessionTree }
 }
@@ -56,7 +56,19 @@ describe('navigateTree history mode (#71)', () => {
 
     await actions.navigateTree('e1')
 
-    expect(loadInitialMessages).toHaveBeenCalledWith('/tmp/s.jsonl', 'replace')
+    // Exact list, not `toHaveBeenCalledWith`: the latter passes if the mode is
+    // also called with something else, or only on some paths.
+    expect(loadInitialMessages.mock.calls).toEqual([['/tmp/s.jsonl', 'replace']])
+  })
+
+  it('still replaces when Pi returns no leaf or editor text', async () => {
+    // The mode must not depend on the payload: a different result shape is not a
+    // different history-mode decision.
+    const { actions, loadInitialMessages } = setup({ cancelled: false, leafId: null })
+
+    await actions.navigateTree('e1')
+
+    expect(loadInitialMessages.mock.calls).toEqual([['/tmp/s.jsonl', 'replace']])
   })
 
   it('does not reload when the navigation was cancelled', async () => {
