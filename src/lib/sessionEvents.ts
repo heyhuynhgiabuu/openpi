@@ -137,7 +137,11 @@ export function applySessionEvent(
       // A card for this call may already exist: history builds one for every call in the last
       // assistant message, and a call that was still running at a reopen ends without ever having
       // been started in this feed. Appending blindly showed the same call twice.
-      const known = lastA.toolCards.some((card) => card.toolCallId === toolCallId)
+      // Only for a real id: a provider that sends none gives every call `""`, and two parallel calls
+      // would then collapse into one card — trading a duplicate for a lost card. History never
+      // builds a card for an empty id, so the reopen case never needs this check for one.
+      const known =
+        toolCallId !== '' && lastA.toolCards.some((card) => card.toolCallId === toolCallId)
       const next = [...messages]
       next[next.length - 1] = {
         ...lastA,

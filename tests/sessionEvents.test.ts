@@ -201,7 +201,11 @@ describe('a tool start for a call that already has a card', () => {
   const cardsOf = (messages: Message[]): ToolCard[] =>
     messages.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
 
-  /** The state after a history load that already rendered the call, per `sessionHistory.ts`. */
+  /**
+   * The shape a history load leaves: the call is a card on the last assistant message, with its real
+   * arguments. History builds cards `streaming:false` with no `startedAt`; the fields this test does
+   * not exercise are left as they were rather than faked precisely.
+   */
   const loaded = (): Message[] =>
     fold(
       parseEvents([{ type: 'message_start', message: { role: 'assistant', timestamp: 1 } }])
@@ -223,6 +227,27 @@ describe('a tool start for a call that already has a card', () => {
           }
         : message
     )
+
+  it('still gives two parallel calls their own cards when the id is empty', () => {
+    // A provider that sends no tool-call id gives every call `""`. Collapsing them would hide the
+    // refusal behind a different call's card, which is worse than the duplicate this fix removes.
+    const starts = parseEvents([
+      { type: 'tool_execution_start', toolCallId: '', toolName: 'bash', args: { command: 'ls' } },
+      {
+        type: 'tool_execution_start',
+        toolCallId: '',
+        toolName: 'bash',
+        args: { command: 'rm -rf /tmp/x' },
+      },
+    ])
+    const cards = cardsOf(
+      fold(
+        starts,
+        fold(parseEvents([{ type: 'message_start', message: { role: 'assistant', timestamp: 1 } }]))
+      )
+    )
+    expect(cards.map((card) => card.args.command)).toEqual(['ls', 'rm -rf /tmp/x'])
+  })
 
   it('keeps one card and does not append a second for the same call', () => {
     const [start] = parseEvents([
