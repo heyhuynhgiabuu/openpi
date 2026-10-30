@@ -128,10 +128,21 @@ describe('session_ready history mode (#71)', () => {
 
     stubs.fireReady(readyPayload())
 
-    const clears = stubs.setMessages.mock.calls.filter((call) => call[0]([]).length === 0)
-    expect(clears).toHaveLength(1)
-    // And the clear must happen before the read is requested.
-    const clearOrder = stubs.setMessages.mock.invocationCallOrder[0] ?? 0
+    // Probe with a NON-empty list: an updater that merely returns an empty list for
+    // an empty one (keep everything, keep some) would pass an empty-list probe while
+    // leaving stale messages on screen.
+    // One of each role, so a filter that keeps only some roles is not mistaken for a clear.
+    const stale: Message[] = [
+      { id: 'stale-u', role: 'user', text: 'previous view', toolCards: [] },
+      { id: 'stale-a', role: 'assistant', text: 'previous view', toolCards: [] },
+    ]
+    const clearIndexes = stubs.setMessages.mock.calls.flatMap((call, index) =>
+      call[0](stale).length === 0 ? [index] : []
+    )
+    expect(clearIndexes).toHaveLength(1)
+
+    // And that clear must happen before the read is requested.
+    const clearOrder = stubs.setMessages.mock.invocationCallOrder[clearIndexes[0] ?? 0] ?? 0
     expect(clearOrder).toBeLessThan(stubs.loadInitialMessages.mock.invocationCallOrder[0] ?? 0)
   })
 
