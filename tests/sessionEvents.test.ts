@@ -190,6 +190,37 @@ describe('nested tool events (codemode)', () => {
 })
 
 /**
+ * Live user/assistant cards must carry `message.timestamp`: it is the only value a history load can
+ * match against the file, since ids differ (`entry.id` vs `u-`/`a-<ts>`). Without it, every message
+ * would be duplicated by the merge instead of recognised.
+ */
+describe('live cards carry the message timestamp', () => {
+  const fold = (events: SessionEvent[]): Message[] =>
+    events.reduce<Message[]>((messages, event) => applySessionEvent(messages, event), [])
+
+  it('stamps a user card', () => {
+    const messages = fold([
+      {
+        type: 'message_start',
+        message: { role: 'user', content: 'hi', timestamp: 1_700_000_000_000 },
+      },
+    ])
+    const user = messages.find((message) => message.role === 'user')
+
+    expect(user?.role === 'user' ? user.timestamp : undefined).toBe(1_700_000_000_000)
+  })
+
+  it('stamps an assistant card', () => {
+    const messages = fold([
+      { type: 'message_start', message: { role: 'assistant', timestamp: 1_700_000_001_000 } },
+    ])
+    const card = messages.find((message) => message.role === 'assistant')
+
+    expect(card?.role === 'assistant' ? card.timestamp : undefined).toBe(1_700_000_001_000)
+  })
+})
+
+/**
  * A call can already have a card when its start arrives: history builds one for every call in the
  * last assistant message, and on a reopen a call that was still running ends without ever having
  * been started in the new feed. Appending blindly showed the same call twice — the bug a reviewer

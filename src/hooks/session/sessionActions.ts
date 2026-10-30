@@ -176,7 +176,8 @@ export function createSessionActions(deps: SessionActionDeps) {
       // Pi hands back the target user message so it can be edited and resent.
       if (result.editorText !== undefined) deps.setInput(result.editorText)
     })
-    deps.sessionHistory.loadInitialMessages(sessionFile)
+    // The list still holds the abandoned branch; merging would keep it on screen.
+    deps.sessionHistory.loadInitialMessages(sessionFile, 'replace')
   }
 
   /**

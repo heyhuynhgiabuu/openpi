@@ -116,3 +116,48 @@ describe('live tool rail and resumed tool rail agree for a codemode turn', () =>
     )
   })
 })
+
+describe('history messages carry their timestamp for history/live dedupe (#71)', () => {
+  const entry = (id: string, message: Record<string, unknown>) => ({
+    type: 'message',
+    id,
+    parentId: null,
+    timestamp: '2023-11-14T22:13:20.000Z',
+    message,
+  })
+
+  it('stamps user and assistant messages with the payload timestamp', () => {
+    const messages = mapEntries([
+      entry('e1', { role: 'user', content: 'hi', timestamp: 1_700_000_000_000 }),
+      entry('e2', {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'yo' }],
+        timestamp: 1_700_000_001_000,
+      }),
+    ])
+
+    expect(messages.map((message) => message.timestamp)).toEqual([
+      1_700_000_000_000, 1_700_000_001_000,
+    ])
+  })
+
+  it('stamps a bash execution message too', () => {
+    const messages = mapEntries([
+      entry('e1', {
+        role: 'bashExecution',
+        command: 'ls',
+        output: 'a',
+        exitCode: 0,
+        timestamp: 1_700_000_002_000,
+      }),
+    ])
+
+    expect(messages[0]?.timestamp).toBe(1_700_000_002_000)
+  })
+
+  it('falls back to the entry timestamp when the payload has none', () => {
+    const messages = mapEntries([entry('e1', { role: 'user', content: 'hi' })])
+
+    expect(messages[0]?.timestamp).toBe(Date.parse('2023-11-14T22:13:20.000Z'))
+  })
+})
