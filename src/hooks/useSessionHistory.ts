@@ -64,7 +64,13 @@ export function useSessionHistory(options: SessionHistoryOptions) {
     setHistoryBeforeEntryId(null)
   }
 
-  const loadInitialMessages = (sessionFile: string) => {
+  /**
+   * `merge` keeps messages the live stream added while the read was in flight.
+   * Use it only where the caller has just cleared the list (`session_ready`) —
+   * everywhere else those "live" messages are actually the previous view, e.g.
+   * the abandoned branch after navigating the session tree.
+   */
+  const loadInitialMessages = (sessionFile: string, mode: 'merge' | 'replace' = 'replace') => {
     latestSessionFile = sessionFile
     window.openpi
       .getSessionMessages(sessionFile, {
@@ -74,7 +80,8 @@ export function useSessionHistory(options: SessionHistoryOptions) {
       .then((page) => {
         if (latestSessionFile !== sessionFile) return
         batch(() => {
-          options.setMessages((previous) => mergeHistoryPage(page.messages, previous))
+          if (mode === 'replace') options.setMessages(page.messages)
+          else options.setMessages((previous) => mergeHistoryPage(page.messages, previous))
           setHasMoreHistoryBefore(page.hasMoreBefore)
           setHistoryBeforeEntryId(page.nextBeforeEntryId)
         })

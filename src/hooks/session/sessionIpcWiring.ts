@@ -144,7 +144,8 @@ export function registerSessionIpc(deps: SessionIpcWiringDeps): void {
           })
 
         if (payload.sessionFile) {
-          deps.sessionHistory.loadInitialMessages(payload.sessionFile)
+          // Messages were just cleared, so anything here came from the live stream.
+          deps.sessionHistory.loadInitialMessages(payload.sessionFile, 'merge')
         }
 
         void deps.sessionIndex.loadSessionIndex(payload.cwd)

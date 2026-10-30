@@ -61,7 +61,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 describe('loadInitialMessages (#71)', () => {
   it('keeps a live message added while the read was in flight', async () => {
     const { messages, setMessages, history } = setup()
-    history.loadInitialMessages('/tmp/s.jsonl')
+    history.loadInitialMessages('/tmp/s.jsonl', 'merge')
 
     // A resumed run emits its first output while the read is still open.
     setMessages([
@@ -84,7 +84,7 @@ describe('loadInitialMessages (#71)', () => {
 
   it('does not duplicate a message the page also carries', async () => {
     const { messages, setMessages, history } = setup()
-    history.loadInitialMessages('/tmp/s.jsonl')
+    history.loadInitialMessages('/tmp/s.jsonl', 'merge')
 
     setMessages([
       { id: 'u-1000', role: 'user', text: 'hello', toolCards: [], timestamp: 1_000 },
@@ -115,6 +115,24 @@ describe('loadInitialMessages (#71)', () => {
     await flush()
 
     expect(messages().map((message) => message.id)).toEqual(['entry-1'])
+  })
+
+  it('drops the previous view by default, as branch navigation needs (#71)', async () => {
+    // navigateTree sets a new leaf and reloads WITHOUT clearing messages, so the
+    // list still holds the abandoned branch. Merging there would keep it.
+    const { messages, setMessages, history } = setup()
+    setMessages([
+      { id: 'entry-e1', role: 'user', text: 'kept', toolCards: [], timestamp: 1_000 },
+      { id: 'entry-e3', role: 'user', text: 'abandoned branch', toolCards: [], timestamp: 3_000 },
+    ])
+    history.loadInitialMessages('/tmp/s.jsonl')
+
+    resolveRead?.(
+      page([{ id: 'entry-e1', role: 'user', text: 'kept', toolCards: [], timestamp: 1_000 }])
+    )
+    await flush()
+
+    expect(messages().map((message) => message.text)).toEqual(['kept'])
   })
 
   it('ignores a page that lands after the session was switched away', async () => {

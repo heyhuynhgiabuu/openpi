@@ -98,3 +98,22 @@ describe('merging a history page with live messages (#71)', () => {
     expect(mergeHistoryPage(page, [])).toEqual(page)
   })
 })
+
+describe('the (role, timestamp) key is what matches, not the text (#71)', () => {
+  it('matches a page message whose text differs from the live card', () => {
+    // The live assistant text is partial while streaming; the file copy is final.
+    // Matching on text would fail here and show the message twice.
+    const merged = mergeHistoryPage(
+      [assistant('entry-1', 'the full answer', 5_000)],
+      [assistant('a-5000', 'the ful', 5_000)]
+    )
+
+    expect(merged.map((message) => message.id)).toEqual(['entry-1'])
+  })
+
+  it('does not treat two messages as one just because they have no timestamp', () => {
+    const merged = mergeHistoryPage([user('entry-1', 'from file')], [user('u-1', 'from file')])
+
+    expect(merged.map((message) => message.id)).toEqual(['entry-1', 'u-1'])
+  })
+})
