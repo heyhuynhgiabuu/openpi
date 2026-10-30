@@ -47,6 +47,7 @@ export function appendHistoryEntry(
       role: 'user',
       text: contentToText(message.content),
       toolCards: [],
+      timestamp: entryTimestampMs(entry, message) ?? undefined,
     })
     return
   }
@@ -70,6 +71,7 @@ export function appendHistoryEntry(
       durationMs,
       cost: cost || undefined,
       streaming: false,
+      timestamp: entryTimestampMs(entry, message) ?? undefined,
       modelName: state.currentModelName,
     })
     return
@@ -95,6 +97,7 @@ export function appendHistoryEntry(
           streaming: false,
         },
       ],
+      timestamp: entryTimestampMs(entry, message) ?? undefined,
     })
   }
 }

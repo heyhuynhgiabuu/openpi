@@ -346,6 +346,12 @@ export const sessionHistoryMessageSchema = z.object({
   durationMs: z.number().optional(),
   cost: z.number().optional(),
   streaming: z.boolean().optional(),
+  /**
+   * Epoch ms of the message itself, when the file recorded one. Live events carry the same value
+   * for the same message, which is what lets a history load recognise a message it already
+   * rendered live instead of showing it twice.
+   */
+  timestamp: z.number().optional(),
   /** Display name of the model that produced this message */
   modelName: z.string().optional(),
 })

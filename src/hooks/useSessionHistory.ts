@@ -4,6 +4,44 @@ import type { Message } from '../types/session'
 
 const HISTORY_PAGE_LIMIT = 200
 
+/**
+ * Combine a freshly read page with what the live event stream already added.
+ *
+ * The read is async, so a message can land live while it is in flight — a
+ * resumed run's first output used to disappear when the page replaced the list.
+ * Replacing with a plain concat is not the fix either: the same message can be
+ * in both, and the ids differ (`entry.id` from the file, `u-`/`a-<timestamp>`
+ * live), so neither id nor order can dedupe it.
+ *
+ * What does match is `(role, timestamp)`: the live event carries the message
+ * payload that gets persisted, so the file records the same value. Messages the
+ * file cannot carry (system notices, extension output) are always kept.
+ */
+export function mergeHistoryPage(page: Message[], live: Message[]): Message[] {
+  const persisted = (
+    message: Message
+  ): message is Extract<Message, { role: 'user' | 'assistant' }> =>
+    message.role === 'user' || message.role === 'assistant'
+  const key = (message: { role: string; timestamp?: number }) =>
+    message.timestamp === undefined ? null : `${message.role}:${message.timestamp}`
+
+  const loaded = new Set<string>()
+  for (const message of page) {
+    const id = persisted(message) ? key(message) : null
+    if (id !== null) loaded.add(id)
+  }
+
+  const kept = live.filter((message) => {
+    if (!persisted(message)) return true
+    const id = key(message)
+    // No timestamp means no way to tell it apart from its own file copy; it was
+    // added live after the read started, so it is the newer of the two.
+    return id === null || !loaded.has(id)
+  })
+
+  return [...page, ...kept]
+}
+
 interface SessionHistoryOptions {
   setMessages: Setter<Message[]>
   setError: Setter<string | null>
@@ -36,7 +74,7 @@ export function useSessionHistory(options: SessionHistoryOptions) {
       .then((page) => {
         if (latestSessionFile !== sessionFile) return
         batch(() => {
-          options.setMessages(page.messages)
+          options.setMessages((previous) => mergeHistoryPage(page.messages, previous))
           setHasMoreHistoryBefore(page.hasMoreBefore)
           setHistoryBeforeEntryId(page.nextBeforeEntryId)
         })

@@ -45,6 +45,7 @@ export function applySessionEvent(
             role: 'user',
             text: contentToText(msg.content),
             toolCards: [],
+            timestamp: msg.timestamp,
           },
         ]
       }
@@ -57,6 +58,7 @@ export function applySessionEvent(
             text: '',
             toolCards: [],
             streaming: true,
+            timestamp: msg.timestamp,
             modelName: currentModelName || undefined,
           },
         ]
