@@ -84,6 +84,28 @@ export function createWireTranslator(
     if (message.role === 'toolResult') turnResults.push(message)
   }
 
+  /**
+   * The arguments the model asked for, from the assistant message that issued the call.
+   *
+   * Needed for a call the renderer never saw start: pi-durable settles a hook-blocked call as
+   * already finished, so only `tool_execution_end` arrives, and its payload carries no arguments.
+   * The renderer's schema requires `args`, and drops an event without one *silently*, so a card
+   * would be missing again for a different reason.
+   */
+  const callArgsOf = (toolCallId: string): Record<string, unknown> => {
+    // Newest first: an id can repeat across turns (a provider that sends no id gives every call
+    // `""`), and the call that just ended is the later one. Oldest-first was observed returning the
+    // *previous* turn's arguments, so a refused `rm -rf` would display a harmless earlier command.
+    for (let index = runMessages.length - 1; index >= 0; index -= 1) {
+      const message = runMessages[index]
+      if (message?.role !== 'assistant') continue
+      for (const part of message.content) {
+        if (part.type === 'toolCall' && part.id === toolCallId) return part.arguments
+      }
+    }
+    return {}
+  }
+
   return (event) => {
     switch (event.type) {
       case 'snapshot': {
@@ -187,6 +209,12 @@ export function createWireTranslator(
         return [update]
       }
       case 'tool_execution_end': {
+        // A call the policy gate refused is settled before it ever runs, so no start was emitted.
+        // Without one the renderer has no card to update and the refusal is invisible — the worst
+        // possible silence, since these are the calls a user most needs to see being stopped.
+        const unseenStart = toolArgs.has(event.toolCallId)
+          ? undefined
+          : toolEnvelope('tool_execution_start', event)
         toolArgs.delete(event.toolCallId)
         toolOutput.delete(event.toolCallId)
         const end = toolEnvelope('tool_execution_end', event)
@@ -208,7 +236,9 @@ export function createWireTranslator(
           end.result = { content: [] }
           end.isError = true
         }
-        return [end]
+        if (!unseenStart) return [end]
+        unseenStart.args = callArgsOf(event.toolCallId)
+        return [unseenStart, end]
       }
       case 'inbox_update':
         inboxPending = event.items.length

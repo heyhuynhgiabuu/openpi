@@ -172,6 +172,26 @@ describe('a tool call', () => {
     expect(ends).toHaveLength(1)
     expect(ends[0]).toMatchObject({ toolName: 'bash', isError: true })
     expect(JSON.stringify(ends[0]?.result)).toContain('Blocked by desktop policy')
+
+    // And the user can see it: a refusal that renders nothing is the worst silence, since these are
+    // the calls a user most needs to watch being stopped. pi-durable never starts a call the hook
+    // blocks, so the adapter supplies the missing start — with the real arguments, or the card would
+    // render without the command it refused.
+    const calls = h.events.filter((e) => String(e.type).startsWith('tool_execution'))
+    expect(calls.map((e) => e.type)).toEqual(['tool_execution_start', 'tool_execution_end'])
+    expect(calls[0]).toMatchObject({ toolName: 'bash' })
+    const startArgs = calls[0]?.args
+    const startCommand =
+      typeof startArgs === 'object' && startArgs !== null && 'command' in startArgs
+        ? String(startArgs.command)
+        : undefined
+    expect(startCommand).toBe(`rm -rf ${victim}`)
+
+    const card = render(h.events)
+      .flatMap((m) => ('toolCards' in m ? m.toolCards : []))
+      .find((c) => c.toolName === 'bash')
+    expect(card).toMatchObject({ isError: true, streaming: false })
+    expect(card && card.output).toContain('Blocked by desktop policy')
   })
 })
 

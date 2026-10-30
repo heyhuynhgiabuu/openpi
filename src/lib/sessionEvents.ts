@@ -133,21 +133,32 @@ export function applySessionEvent(
       if (!last || last.role !== 'assistant') return messages
       type AssistantMsg = { toolCards: ToolCard[] } & typeof last
       const lastA = last as AssistantMsg
+      const toolCallId = event.toolCallId as string
+      // A card for this call may already exist: history builds one for every call in the last
+      // assistant message, and a call that was still running at a reopen ends without ever having
+      // been started in this feed. Appending blindly showed the same call twice.
+      // Only for a real id: a provider that sends none gives every call `""`, and two parallel calls
+      // would then collapse into one card — trading a duplicate for a lost card. History never
+      // builds a card for an empty id, so the reopen case never needs this check for one.
+      const known =
+        toolCallId !== '' && lastA.toolCards.some((card) => card.toolCallId === toolCallId)
       const next = [...messages]
       next[next.length - 1] = {
         ...lastA,
-        toolCards: [
-          ...lastA.toolCards,
-          {
-            toolCallId: event.toolCallId as string,
-            toolName: event.toolName as string,
-            args: (event.args ?? {}) as Record<string, unknown>,
-            output: '',
-            isError: false,
-            streaming: true,
-            startedAt: Date.now(),
-          },
-        ],
+        toolCards: known
+          ? lastA.toolCards
+          : [
+              ...lastA.toolCards,
+              {
+                toolCallId,
+                toolName: event.toolName as string,
+                args: (event.args ?? {}) as Record<string, unknown>,
+                output: '',
+                isError: false,
+                streaming: true,
+                startedAt: Date.now(),
+              },
+            ],
       }
       return next
     }

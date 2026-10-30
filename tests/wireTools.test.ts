@@ -4,6 +4,7 @@ import { sessionEventSchema } from '../src/lib/ipc'
 import type { Message } from '../src/types/session'
 import {
   assistant,
+  messageEnd,
   schemaFailures,
   taskId,
   toolEndWithDetails,
@@ -121,6 +122,54 @@ describe('tool events', () => {
         result: { taskId: taskId(9), isError: false, diagnostics: [], details: { phase: 'done' } },
       },
     ])
-    expect(wire[0]).toMatchObject({ parentToolCallId: 'p', details: { phase: 'done' } })
+    // A call that never started — a hook-blocked or nested one — now gets a start synthesized from
+    // its end, so the renderer can show a card instead of silently dropping the call.
+    expect(wire.map((e) => e.type)).toEqual(['tool_execution_start', 'tool_execution_end'])
+    expect(wire[0]).toMatchObject({ parentToolCallId: 'p', toolName: 'write' })
+    expect(wire[1]).toMatchObject({ parentToolCallId: 'p', details: { phase: 'done' } })
+  })
+})
+
+/**
+ * A provider that sends no tool-call id gives every call `""` (pi-ai's OpenAI-completions path), so
+ * ids repeat. The arguments for a refused call must come from the call that just ended, not from an
+ * earlier one with the same id — the difference between showing the command that was actually
+ * blocked and showing a harmless earlier one.
+ *
+ * Both assistant messages live in one run (`runMessages` is cleared at `run_start`/`run_end`), which
+ * is what makes newest-vs-oldest observable at all.
+ */
+describe('recovering the arguments of a call that was never started', () => {
+  const toolCall = (command: string, timestamp: number) => ({
+    ...assistant(''),
+    timestamp,
+    content: [{ type: 'toolCall' as const, id: '', name: 'bash', arguments: { command } }],
+  })
+
+  it('takes them from the newest matching call, not an earlier one', () => {
+    const wire = translateAll([
+      // Earlier in the run: the same empty id, a harmless command that did start.
+      messageEnd(toolCall('ls', 1)),
+      { type: 'tool_execution_start', toolCallId: '', toolName: 'bash', args: { command: 'ls' } },
+      {
+        type: 'tool_execution_end',
+        toolCallId: '',
+        toolName: 'bash',
+        result: { taskId: taskId(1), isError: false, diagnostics: [], structuredOutput: 'ok' },
+      },
+      // Later in the same run: the same id, a refused command that never started.
+      messageEnd(toolCall('rm -rf /tmp/x', 2)),
+      {
+        type: 'tool_execution_end',
+        toolCallId: '',
+        toolName: 'bash',
+        result: { taskId: taskId(2), isError: true, diagnostics: [], structuredOutput: 'blocked' },
+      },
+    ])
+
+    const starts = wire.filter((event) => event.type === 'tool_execution_start')
+    // The real start from earlier, plus the synthesized one for the refused call.
+    expect(starts).toHaveLength(2)
+    expect(starts.at(-1)?.args).toMatchObject({ command: 'rm -rf /tmp/x' })
   })
 })
