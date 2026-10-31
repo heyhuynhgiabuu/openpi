@@ -44,25 +44,33 @@ export default function (pi) {
 
 function fakeRuntime() {
   const registered: Array<{ providerId: string; config: ProviderConfig }> = []
+  const native: string[] = []
   return {
     registered,
+    native,
     registerProvider: vi.fn((providerId: string, config: ProviderConfig) => {
       registered.push({ providerId, config })
+    }),
+    registerNativeProvider: vi.fn((provider: { id: string }) => {
+      native.push(provider.id)
     }),
   }
 }
 
+/** A global settings.json that names an extension outside the extensions/ dir. */
+async function withSettingsExtension(agentDir: string, providerId: string): Promise<void> {
+  await writeFile(join(agentDir, 'extra.ts'), registeringExtensionFor(providerId))
+  await writeFile(
+    join(agentDir, 'settings.json'),
+    JSON.stringify({ extensions: [join(agentDir, 'extra.ts')] })
+  )
+}
+
+function registeringExtensionFor(providerId: string): string {
+  return registeringExtension.replace('fixture-provider', providerId)
+}
+
 describe('extension-provided model providers on the durable path (#37 item 9)', () => {
-  it('registers a provider declared by a global extension', async () => {
-    const agentDir = await agentWithProvider(registeringExtension)
-    const models = fakeRuntime()
-
-    const diagnostics = await registerExtensionProviders({ agentDir, models })
-
-    expect(models.registered.map((entry) => entry.providerId)).toEqual(['fixture-provider'])
-    expect(diagnostics).toEqual([])
-  })
-
   it('reports an extension that fails to load, instead of failing the session', async () => {
     const agentDir = await agentWithProvider('throw new Error("boom")\n')
     const models = fakeRuntime()
@@ -91,6 +99,7 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
       registerProvider: vi.fn((providerId: string) => {
         if (providerId === 'fixture-provider') throw new Error('rejected')
       }),
+      registerNativeProvider: vi.fn(),
     }
 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
@@ -99,7 +108,7 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
     expect(diagnostics.some((entry) => entry.message.includes('rejected'))).toBe(true)
   })
 
-  it('does not register the same provider twice across calls', async () => {
+  it('registers the provider once per call, with no stale queue carried over', async () => {
     // The queue lives on the runtime the loader hands out. Leaving it populated would stack a
     // duplicate registration for every later session in the process.
     const agentDir = await agentWithProvider(registeringExtension)
@@ -113,6 +122,72 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
       'fixture-provider',
     ])
     expect(second).toEqual([])
+  })
+
+  it('registers a provider declared by a global extension', async () => {
+    const agentDir = await agentWithProvider(registeringExtension)
+    const models = fakeRuntime()
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+
+    expect(models.registered.map((entry) => entry.providerId)).toEqual(['fixture-provider'])
+    expect(diagnostics).toEqual([])
+  })
+
+  it('registers providers named by the global settings.json, not just the extensions dir', async () => {
+    // These are the same trust level as `extensions/` — the user's own global config — and a `pi
+    // install`ed provider package lands here, which is how most extension providers actually ship.
+    const agentDir = await agentWithProvider(registeringExtension)
+    await withSettingsExtension(agentDir, 'settings-provider')
+    const models = fakeRuntime()
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+
+    expect(models.registered.map((entry) => entry.providerId).sort()).toEqual([
+      'fixture-provider',
+      'settings-provider',
+    ])
+    expect(diagnostics).toEqual([])
+  })
+
+  it('registers a provider handed over in the native provider form', async () => {
+    // `pi.registerProvider(providerObject)` queues a native provider instead of a config; the
+    // durable path dropped those silently before.
+    const agentDir = await agentWithProvider(`
+export default function (pi) {
+  pi.registerProvider({
+    id: 'native-provider',
+    name: 'Native',
+    auth: { apiKey: { name: 'Native', getKey: () => 'k' } },
+    getModels: () => [],
+    stream: () => { throw new Error('not used') },
+    streamSimple: () => { throw new Error('not used') },
+  })
+}
+`)
+    const models = fakeRuntime()
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+
+    expect(models.native).toEqual(['native-provider'])
+    expect(diagnostics).toEqual([])
+  })
+
+  it('reports a virtual model as unsupported rather than registering one that would throw', async () => {
+    // A virtual model's `route` needs a bound runner context; the durable path never binds one, so
+    // registering it would look fine and then throw on the first request.
+    const agentDir = await agentWithProvider(`
+export default function (pi) {
+  pi.registerVirtualModel({ id: 'virt', provider: 'virt', name: 'Virtual', route: () => [] })
+}
+`)
+    const models = fakeRuntime()
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+
+    expect(models.registered).toEqual([])
+    expect(diagnostics.map((entry) => entry.type)).toEqual(['warning'])
+    expect(diagnostics[0]?.message).toContain('virtual')
   })
 
   it('stays quiet when the user has never installed an extension', async () => {

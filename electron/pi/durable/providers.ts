@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent'
+import type { Provider } from '@earendil-works/pi-ai'
 import type { ProviderConfig } from '@earendil-works/pi-coding-agent'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 
@@ -12,35 +13,45 @@ export interface ProviderRegistrar {
   // `ProviderConfig` is what the extension-facing `registerProvider` takes, and it is assignable to
   // what `ModelRuntime.registerProvider` wants, so the real runtime satisfies this without a cast.
   registerProvider(providerId: string, config: ProviderConfig): void
+  /** The other registerProvider form: a whole `Provider` object rather than a config. */
+  registerNativeProvider(provider: Provider): void
 }
 
 export interface ExtensionProviderRoots {
   /** The global Pi agent dir; its `extensions/` is the user's own code. */
   agentDir: string
   /**
-   * Workspace whose `.pi/extensions` must NOT be loaded. Only used to give the loader a cwd, since
-   * project-local extensions are excluded (`noExtensions`).
+   * Workspace whose `.pi/extensions` and `.pi/settings.json` must NOT be loaded. Only used to give
+   * the loader a cwd; `projectTrusted: false` is what keeps the workspace's own extensions out.
    */
   cwd?: string
   models: ProviderRegistrar
 }
 
 /**
- * Load global Pi extensions and register the model providers they declare.
+ * Load the user's global Pi extensions and register the model providers they declare.
  *
  * The durable runtime loads no extensions (`customizations.ts` sets `noExtensions`), so a user whose
  * only model comes from an extension — `copilot-provider.ts` registering `github-copilot` is the
  * example the shipped path names — starts a session here and is told "no model has credentials".
  * This closes that: register the providers before the model is chosen.
  *
- * ## Only global extensions, deliberately
+ * Covered: `~/.pi/agent/extensions`, and the global `settings.json`'s `extensions` and installed
+ * packages, which is how a `pi install`ed provider actually ships. Both `registerProvider` forms are
+ * drained. Virtual models are refused with a warning instead (see below).
  *
- * Project-local `.pi/extensions` are excluded even in a trusted workspace. `getModelRuntime()` is a
- * process-wide singleton, so a provider registered from one workspace would be visible to every
- * later session in that process, including untrusted ones. A provider config carries a `baseUrl` and
- * an `apiKey`, so that would let one workspace route another workspace's prompts to its own
- * endpoint. Global extensions do not have that problem: they are the same for every workspace, which
- * is exactly why the shipped path loads them regardless of trust (`sidecarContext.ts`).
+ * ## Why the workspace's own extensions are excluded
+ *
+ * `getModelRuntime()` is a process-wide singleton, so a provider registered from one workspace stays
+ * visible to every later session in that process. A provider config carries a `baseUrl` and an
+ * `apiKey`, so that would let one workspace route another workspace's prompts to its own endpoint,
+ * and keep doing it after the user switches away. Global extensions are the same code for every
+ * workspace, so they cannot carry that risk.
+ *
+ * This is a narrowing, not a boundary: the SDK path already loads a trusted workspace's extensions
+ * into that same shared runtime, so a trusted workspace can influence later sessions today. Closing
+ * that is a separate change on the SDK path; this module simply does not extend it to a runtime
+ * nobody is watching.
  *
  * ## Failures are diagnostics, never a thrown error
  *
@@ -57,16 +68,16 @@ export async function registerExtensionProviders(
   // never installed an extension.
   if (!existsSync(join(roots.agentDir, 'extensions'))) return diagnostics
   const cwd = roots.cwd ?? roots.agentDir
-  const settingsManager = SettingsManager.create(cwd, roots.agentDir)
+  // `projectTrusted: false` is what excludes `<cwd>/.pi/extensions` and the workspace's own
+  // settings, without also excluding the user's global ones. `noExtensions: true` could not express
+  // that: it drops global `settings.json` extensions and `pi install`ed packages too, which is how
+  // most extension providers actually ship.
+  const settingsManager = SettingsManager.create(cwd, roots.agentDir, { projectTrusted: false })
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir: roots.agentDir,
     settingsManager,
-    // Project-local extensions stay out; the global dir is added back explicitly. This is the same
-    // arrangement the shipped path uses for an untrusted workspace, and it is the only arrangement
-    // that is safe with a shared model runtime.
-    noExtensions: true,
-    additionalExtensionPaths: [roots.agentDir],
+    noExtensions: false,
   })
 
   try {
@@ -74,9 +85,7 @@ export async function registerExtensionProviders(
   } catch (error) {
     diagnostics.push({
       type: 'warning',
-      message: `Extension loading failed (npm may not be in PATH): ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      message: `Extension loading failed (npm may not be in PATH): ${error instanceof Error ? error.message : String(error)}`,
     })
   }
 
@@ -84,23 +93,45 @@ export async function registerExtensionProviders(
   // (that field does not exist on this result) — the loader collects them in `errors`, one entry per
   // extension, whether the module failed to import or its factory threw.
   const loaded = loader.getExtensions()
+  // Same shape the shipped path prints, so an extension failure reads the same on both runtimes.
   for (const { path, error } of loaded.errors) {
-    diagnostics.push({ type: 'error', message: error, path })
+    diagnostics.push({ type: 'error', message: `[extension] ${path} (load): ${error}`, path })
   }
 
-  const pending = loaded.runtime.pendingProviderRegistrations
-  for (const { name, config, extensionPath } of pending) {
+  for (const { name, config, extensionPath } of loaded.runtime.pendingProviderRegistrations) {
     try {
       roots.models.registerProvider(name, config)
     } catch (error) {
       diagnostics.push({
         type: 'error',
-        message: `Extension "${extensionPath}" could not register provider "${name}": ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `[extension] ${extensionPath} (register_provider): ${error instanceof Error ? error.message : String(error)}`,
         path: extensionPath,
       })
     }
+  }
+
+  // The other `registerProvider` form takes a whole `Provider`, and arrives in its own queue.
+  for (const { provider, extensionPath } of loaded.runtime.pendingNativeProviderRegistrations) {
+    try {
+      roots.models.registerNativeProvider(provider)
+    } catch (error) {
+      diagnostics.push({
+        type: 'error',
+        message: `[extension] ${extensionPath} (register_provider): ${error instanceof Error ? error.message : String(error)}`,
+        path: extensionPath,
+      })
+    }
+  }
+
+  // Virtual models are NOT registered: their `route` is handed a runtime context that only a bound
+  // runner provides, and this path never binds one — a registered virtual model would look fine and
+  // then throw on its first request. Reported so the extension is not silently half-applied.
+  for (const { definition, extensionPath } of loaded.runtime.pendingVirtualModelRegistrations) {
+    diagnostics.push({
+      type: 'warning',
+      message: `[extension] ${extensionPath} (register_virtual_model): virtual models are not supported by the durable runtime (id "${definition.id}")`,
+      path: extensionPath,
+    })
   }
   // The queue is not drained like the SDK does: every call here builds its own loader, so the queue
   // cannot outlive the call. Draining looked defensive but nothing could observe it, and a test that
