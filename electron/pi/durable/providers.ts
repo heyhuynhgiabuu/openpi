@@ -1,5 +1,3 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent'
 import type { Provider } from '@earendil-works/pi-ai'
 import type { ProviderConfig } from '@earendil-works/pi-coding-agent'
@@ -15,6 +13,12 @@ export interface ProviderRegistrar {
   registerProvider(providerId: string, config: ProviderConfig): void
   /** The other registerProvider form: a whole `Provider` object rather than a config. */
   registerNativeProvider(provider: Provider): void
+  /**
+   * Recomputes which models are available; needed before an auth-resolved provider is usable.
+   * Awaited for its effect only, so the value is never read — `object` rather than `unknown`
+   * because `ModelRuntime` returns a result object and nothing here narrows it.
+   */
+  refresh(options: { allowNetwork: boolean }): Promise<object>
 }
 
 export interface ExtensionProviderRoots {
@@ -56,17 +60,16 @@ export interface ExtensionProviderRoots {
  * ## Failures are diagnostics, never a thrown error
  *
  * A broken extension must not stop a session from opening, and one bad provider must not cost the
- * user the others. The loader's own failure is a warning for the same reason `customizations.ts`
+ * user the others — per extension. One known limit that is *not* per extension: if a package named
+ * in the global `settings.json` is not installed and `npm install` fails, `reload()` rejects and
+ * every provider is lost with a single warning. The SDK path behaves the same way, and the fix
+ * (retrying offline) would still lose the package, so it is disclosed rather than papered over. The loader's own failure is a warning for the same reason `customizations.ts`
  * treats it as one: package resolution needs `npm`, which a GUI launch may not have on PATH.
  */
 export async function registerExtensionProviders(
   roots: ExtensionProviderRoots
 ): Promise<CustomizationDiagnostic[]> {
   const diagnostics: CustomizationDiagnostic[] = []
-  // Without this the loader treats `agentDir` itself as an extension to import (its package-root
-  // fallback) and every start reports "Cannot find module <agentDir>" for a user who has simply
-  // never installed an extension.
-  if (!existsSync(join(roots.agentDir, 'extensions'))) return diagnostics
   const cwd = roots.cwd ?? roots.agentDir
   // `projectTrusted: false` is what excludes `<cwd>/.pi/extensions` and the workspace's own
   // settings, without also excluding the user's global ones. `noExtensions: true` could not express
@@ -122,6 +125,12 @@ export async function registerExtensionProviders(
       })
     }
   }
+
+  // Match the SDK (`agent-session-services.js`): a native provider whose key is resolved at request
+  // time is not "configured" until a refresh runs, so without this the model choice below can fall
+  // back to a different provider while a usable one was just registered. `allowNetwork: false`
+  // keeps it offline, exactly as the shipped path does.
+  await roots.models.refresh({ allowNetwork: false })
 
   // Virtual models are NOT registered: their `route` is handed a runtime context that only a bound
   // runner provides, and this path never binds one — a registered virtual model would look fine and

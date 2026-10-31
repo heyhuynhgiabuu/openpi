@@ -54,6 +54,7 @@ function fakeRuntime() {
     registerNativeProvider: vi.fn((provider: { id: string }) => {
       native.push(provider.id)
     }),
+    refresh: vi.fn(async () => ({})),
   }
 }
 
@@ -78,9 +79,9 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
 
     expect(models.registered).toEqual([])
-    expect(diagnostics.some((entry) => entry.type === 'error' || entry.type === 'warning')).toBe(
-      true
-    )
+    // The format matches the shipped path, so a failure reads the same on both runtimes.
+    expect(diagnostics.map((entry) => entry.type)).toEqual(['error'])
+    expect(diagnostics[0]?.message).toMatch(/^\[extension\] .+ \(load\): /)
   })
 
   it('reports a rejected provider registration and still registers the others', async () => {
@@ -100,6 +101,7 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
         if (providerId === 'fixture-provider') throw new Error('rejected')
       }),
       registerNativeProvider: vi.fn(),
+      refresh: vi.fn(async () => ({})),
     }
 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
@@ -173,6 +175,40 @@ export default function (pi) {
     expect(diagnostics).toEqual([])
   })
 
+  it('keeps the working native provider when another one is rejected', async () => {
+    // Two extensions queue native providers; the first is refused by the runtime.
+    const agentDir = await mkdtemp(join(tmpdir(), 'openpi-providers-'))
+    dirs.push(agentDir)
+    await mkdir(join(agentDir, 'extensions'), { recursive: true })
+    const nativeSource = (id: string) => `
+export default function (pi) {
+  pi.registerProvider({
+    id: '${id}', name: '${id}',
+    auth: { apiKey: { name: 'k', getKey: () => 'k' } },
+    getModels: () => [], stream: () => { throw new Error('unused') },
+    streamSimple: () => { throw new Error('unused') },
+  })
+}
+`
+    await writeFile(join(agentDir, 'extensions', 'a.ts'), nativeSource('bad-native'))
+    await writeFile(join(agentDir, 'extensions', 'b.ts'), nativeSource('good-native'))
+
+    const native: string[] = []
+    const models = {
+      registerProvider: vi.fn(),
+      registerNativeProvider: vi.fn((provider: { id: string }) => {
+        if (provider.id === 'bad-native') throw new Error('refused')
+        native.push(provider.id)
+      }),
+      refresh: vi.fn(async () => ({})),
+    }
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+
+    expect(native).toEqual(['good-native'])
+    expect(diagnostics.map((entry) => entry.message).join()).toContain('refused')
+  })
+
   it('reports a virtual model as unsupported rather than registering one that would throw', async () => {
     // A virtual model's `route` needs a bound runner context; the durable path never binds one, so
     // registering it would look fine and then throw on the first request.
@@ -188,6 +224,52 @@ export default function (pi) {
     expect(models.registered).toEqual([])
     expect(diagnostics.map((entry) => entry.type)).toEqual(['warning'])
     expect(diagnostics[0]?.message).toContain('virtual')
+  })
+
+  it('still loads a provider that ships as an installed package, with no extensions dir', async () => {
+    // `pi install` puts packages under `<agentDir>/npm`, not `extensions/`. An earlier version
+    // returned early when `extensions/` was absent, silently skipping exactly this case.
+    const agentDir = await mkdtemp(join(tmpdir(), 'openpi-providers-'))
+    dirs.push(agentDir)
+    const pkgDir = join(agentDir, 'npm', 'node_modules', 'npm-provider')
+    await mkdir(pkgDir, { recursive: true })
+    await writeFile(join(pkgDir, 'index.js'), registeringExtensionFor('npm-provider'))
+    // Both fields are load-bearing: without `pi.extensions` the package contributes nothing (a root
+    // `index.js` is not auto-discovered), and without `version` the npm spec does not resolve.
+    await writeFile(
+      join(pkgDir, 'package.json'),
+      JSON.stringify({
+        name: 'npm-provider',
+        type: 'module',
+        version: '1.0.0',
+        pi: { extensions: ['./index.js'] },
+      })
+    )
+    await writeFile(
+      join(agentDir, 'settings.json'),
+      JSON.stringify({ packages: ['npm:npm-provider'] })
+    )
+    // Keeps the loader off `npm install`: offline mode skips a missing package silently, which is
+    // exactly the failure this test must not mask.
+    const previousOffline = process.env.PI_OFFLINE
+    process.env.PI_OFFLINE = '1'
+    const models = fakeRuntime()
+
+    const diagnostics = await registerExtensionProviders({ agentDir, models })
+    if (previousOffline === undefined) delete process.env.PI_OFFLINE
+    else process.env.PI_OFFLINE = previousOffline
+
+    expect(models.registered.map((entry) => entry.providerId)).toEqual(['npm-provider'])
+    expect(diagnostics).toEqual([])
+  })
+
+  it('refreshes availability, which an auth-resolved native provider needs to be usable', async () => {
+    const agentDir = await agentWithProvider(registeringExtension)
+    const models = fakeRuntime()
+
+    await registerExtensionProviders({ agentDir, models })
+
+    expect(models.refresh).toHaveBeenCalledWith({ allowNetwork: false })
   })
 
   it('stays quiet when the user has never installed an extension', async () => {
