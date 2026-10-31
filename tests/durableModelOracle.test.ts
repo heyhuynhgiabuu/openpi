@@ -27,7 +27,7 @@ import { chooseDurableModel } from '../electron/pi/durableModel'
  * first available model became `amazon-bedrock/…`, and bedrock is first in the SDK's table).
  */
 const PROVIDER_ENV =
-  /^(?:[A-Z0-9_]+_(?:API_KEY|TOKEN)|ANTHROPIC_OAUTH_TOKEN|AWS_.*|GOOGLE_CLOUD_.*|GOOGLE_APPLICATION_CREDENTIALS)$/
+  /^(?:[A-Z0-9_]+_(?:API_KEY|TOKEN)|ANTHROPIC_OAUTH_TOKEN|AWS_.*|GOOGLE_CLOUD_.*|GOOGLE_APPLICATION_CREDENTIALS|GCLOUD_PROJECT)$/
 const savedEnv: Record<string, string | undefined> = {}
 const dirs: string[] = []
 
@@ -93,8 +93,10 @@ async function sdkChoice(home: string, models: ModelRuntime): Promise<string | u
 
 describe('durable model choice against the SDK oracle (#37 item 7)', () => {
   it('agrees with the SDK when a usable default is stored', async () => {
-    // Deliberately not `gpt-5.5`: that IS openai's table default, so an SDK that ignored
-    // `settings.json` would still return it and this test would prove nothing.
+    // Deliberately not `gpt-5.5`, which is openai's table default. A reviewer measured that with
+    // this two-provider fixture, an SDK ignoring `settings.json` picks anthropic either way, so
+    // `gpt-5.5` was not vacuous outright — but it could not catch the narrower case where the SDK
+    // keeps the stored provider and substitutes that provider's table default. `o4-mini` does.
     const stored = { defaultProvider: 'openai', defaultModel: 'o4-mini' }
     const home = await agentDir(stored)
     const models = await runtime(home)
