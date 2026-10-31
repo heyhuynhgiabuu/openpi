@@ -23,8 +23,12 @@ export interface ProviderRegistrar {
   refresh(options: { allowNetwork: boolean }): Promise<object>
   /** Whether a provider is usable right now — the question a refresh is trying to answer. */
   hasConfiguredAuth(providerId: string): boolean
-  /** The last availability error, if the runtime kept one — one bad provider's reason, not a guess. */
-  getError?(providerId: string): string | undefined
+  /**
+   * The runtime's last reported error, if it kept one. Note this is a single global message — a
+   * models.json parse error, a provider-build error or the last availability failure — not a
+   * per-provider reason, so it is read once and only appended as context.
+   */
+  getError?(): string | undefined
 }
 
 export interface ProviderLoadOptions {
@@ -90,11 +94,10 @@ export async function settleProviders(
   const left = unusable()
   if (left.length === 0) return []
   // The runtime refreshes every provider with `Promise.all`, so one throwing `resolve` also leaves
-  // its neighbours unusable. Include the reason when the runtime exposes one, otherwise the message
-  // names providers that are fine and hides the one that is not.
-  // `getError` is declared `string | undefined`, so an empty string is the only thing to drop.
-  const reasons = left.map((id) => models.getError?.(id) ?? '').filter(Boolean)
-  const detail = reasons.length > 0 ? ` (${[...new Set(reasons)].join('; ')})` : ''
+  // its neighbours unusable and the message above names providers that are fine. Append the
+  // runtime's own error as context when it kept one; it is a single global string, not per provider.
+  const reason = models.getError?.() ?? ''
+  const detail = reason.length > 0 ? ` (${reason})` : ''
   return [
     {
       type: 'warning',

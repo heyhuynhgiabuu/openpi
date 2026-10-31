@@ -96,6 +96,27 @@ describe('waiting for extension providers to be usable (#37 item 9)', () => {
     }
   })
 
+  it('appends the runtime error when it kept one, because the named providers may be innocent', async () => {
+    // The runtime refreshes with `Promise.all`: one throwing `resolve` leaves its neighbours
+    // unusable too, so the provider list alone points at the wrong one.
+    const models = registrar({ usableAfter: 99 })
+    models.getError = vi.fn(() => 'API key auth failed for provider bad')
+
+    const diagnostics = await settleProviders(models, ['good'], { refreshAttempts: 1 })
+
+    expect(diagnostics[0]?.message).toContain('API key auth failed for provider bad')
+  })
+
+  it('reads the runtime error once, since it is a single global message', async () => {
+    const models = registrar({ usableAfter: 99 })
+    models.getError = vi.fn(() => 'boom')
+
+    await settleProviders(models, ['a', 'b', 'c'], { refreshAttempts: 1 })
+
+    expect(models.getError).toHaveBeenCalledTimes(1)
+    expect(models.getError).toHaveBeenCalledWith()
+  })
+
   it('does nothing at all when no provider was registered', async () => {
     const models = registrar()
 
