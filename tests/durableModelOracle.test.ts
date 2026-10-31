@@ -20,7 +20,14 @@ import { chooseDurableModel } from '../electron/pi/durableModel'
  * would depend on the machine.
  */
 
-const PROVIDER_ENV = /^(?:[A-Z0-9_]+_(?:API_KEY|TOKEN)|ANTHROPIC_OAUTH_TOKEN)$/
+/**
+ * Anything pi-ai can read a credential from. `*_API_KEY`/`*_TOKEN` covers most providers, but Bedrock
+ * counts as configured from `AWS_*` and Vertex from `GOOGLE_CLOUD_*`/`GOOGLE_APPLICATION_CREDENTIALS`,
+ * so leaving those set made the oracle's answer depend on the machine (measured: with AWS_PROFILE the
+ * first available model became `amazon-bedrock/…`, and bedrock is first in the SDK's table).
+ */
+const PROVIDER_ENV =
+  /^(?:[A-Z0-9_]+_(?:API_KEY|TOKEN)|ANTHROPIC_OAUTH_TOKEN|AWS_.*|GOOGLE_CLOUD_.*|GOOGLE_APPLICATION_CREDENTIALS)$/
 const savedEnv: Record<string, string | undefined> = {}
 const dirs: string[] = []
 
@@ -86,9 +93,18 @@ async function sdkChoice(home: string, models: ModelRuntime): Promise<string | u
 
 describe('durable model choice against the SDK oracle (#37 item 7)', () => {
   it('agrees with the SDK when a usable default is stored', async () => {
-    const stored = { defaultProvider: 'openai', defaultModel: 'gpt-5.5' }
+    // Deliberately not `gpt-5.5`: that IS openai's table default, so an SDK that ignored
+    // `settings.json` would still return it and this test would prove nothing.
+    const stored = { defaultProvider: 'openai', defaultModel: 'o4-mini' }
     const home = await agentDir(stored)
     const models = await runtime(home)
+
+    // Precondition: if the fixture model leaves the SDK catalog, say so plainly rather than
+    // letting the assertion below report a confusing model mismatch.
+    expect(
+      models.getModel(stored.defaultProvider, stored.defaultModel),
+      'fixture model missing from SDK catalog'
+    ).toBeDefined()
 
     const choice = chooseDurableModel(
       {
@@ -119,9 +135,12 @@ describe('durable model choice against the SDK oracle (#37 item 7)', () => {
     expect(choice?.fallback).toBe(true)
 
     // The divergence, stated as one fact. Both sides can land on the same provider, so what
-    // separates them is the model: the snapshot lists `anthropic/claude-fable-5` first, while the
-    // SDK prefers its table default (`anthropic/claude-opus-4-8` in SDK 1.4.0). If this equality
-    // ever starts holding, the gap closed — update ROADMAP item 7 rather than this test.
+    // separates them is the model — in SDK 1.4.0 the snapshot lists anthropic's first model while
+    // the SDK prefers its table default. Two different failures mean two different things:
+    //   - the assertion above fails → `chooseDurableModel` changed; check whether the gap closed.
+    //   - this assertion fails → the fixture no longer demonstrates the gap (likely an SDK catalog
+    //     change, e.g. the table default now being the first listed model). Re-check against the
+    //     SDK before touching ROADMAP item 7; the gap may still exist for other providers.
     expect(await sdkChoice(home, models)).not.toBe(`${choice?.provider}/${choice?.modelId}`)
   })
 })
