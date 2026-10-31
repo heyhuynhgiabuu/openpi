@@ -30,6 +30,26 @@ describe('the durable cutover gate as shipped', () => {
     ).toBe('sdk')
   })
 
+  it('requires exactly these capabilities, so dropping one is a visible change', () => {
+    // Both the gate constant and `REQUIRED_CAPABILITIES` are read from the source elsewhere, which
+    // makes every other assertion here move with them: a capability could vanish and nothing fail.
+    // This list is the pin. Adding a capability to the runtime means adding it here deliberately.
+    expect([...SHIPPED].sort()).toEqual(
+      [
+        'adapter',
+        'customizations',
+        'eventBridge',
+        'extensionProviders',
+        'mcp',
+        'policy',
+        'sessionCommands',
+        'sessionFiles',
+        'sessionIndex',
+      ].sort()
+    )
+    expect([...REQUIRED_CAPABILITIES].sort()).toEqual([...SHIPPED].sort())
+  })
+
   it('admits an opt-in session once every required capability is wired', () => {
     const decision = decide(REQUIRED_CAPABILITIES)
     expect(decision.missing).toEqual([])
