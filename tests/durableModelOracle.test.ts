@@ -93,10 +93,10 @@ async function sdkChoice(home: string, models: ModelRuntime): Promise<string | u
 
 describe('durable model choice against the SDK oracle (#37 item 7)', () => {
   it('agrees with the SDK when a usable default is stored', async () => {
-    // Deliberately not `gpt-5.5`, which is openai's table default. A reviewer measured that with
-    // this two-provider fixture, an SDK ignoring `settings.json` picks anthropic either way, so
-    // `gpt-5.5` was not vacuous outright — but it could not catch the narrower case where the SDK
-    // keeps the stored provider and substitutes that provider's table default. `o4-mini` does.
+    // Deliberately not `gpt-5.5`, which is openai's table default. With this two-provider fixture
+    // an SDK ignoring `settings.json` picks anthropic either way, so that is not what the choice is
+    // for: what only `o4-mini` catches is an SDK that keeps the stored provider and substitutes
+    // that provider's table default.
     const stored = { defaultProvider: 'openai', defaultModel: 'o4-mini' }
     const home = await agentDir(stored)
     const models = await runtime(home)
