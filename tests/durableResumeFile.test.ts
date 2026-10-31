@@ -104,9 +104,11 @@ describe('durable session file header', () => {
       'nullable',
       'null-1',
       'com0',
+      'com5x',
       'com10',
       'lpt0',
       'aux1',
+      'lpt10',
     ]) {
       expect(readResumeTarget(stamped({ storeId, conversationIds: [1], ...stamp }))?.storeId).toBe(
         storeId
