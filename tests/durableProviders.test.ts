@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CustomizationDiagnostic } from '../src/lib/ipc'
 import { registerExtensionProviders } from '../electron/pi/durable/providers'
 import {
   agentWithProvider,
@@ -216,9 +217,15 @@ export default function (pi) {
     process.env.PI_OFFLINE = '1'
     const models = fakeRuntime()
 
-    const diagnostics = await registerExtensionProviders({ agentDir, models })
-    if (previousOffline === undefined) delete process.env.PI_OFFLINE
-    else process.env.PI_OFFLINE = previousOffline
+    let diagnostics: CustomizationDiagnostic[]
+    try {
+      diagnostics = await registerExtensionProviders({ agentDir, models })
+    } finally {
+      // In `finally`: a throw above would otherwise leave offline mode on for every later test in
+      // this process, which is the kind of cross-test leak that looks like an unrelated failure.
+      if (previousOffline === undefined) delete process.env.PI_OFFLINE
+      else process.env.PI_OFFLINE = previousOffline
+    }
 
     expect(models.registered.map((entry) => entry.providerId)).toEqual(['npm-provider'])
     expect(diagnostics).toEqual([])
