@@ -1,9 +1,17 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ProviderConfig } from '@earendil-works/pi-coding-agent'
 import { registerExtensionProviders } from '../electron/pi/durable/providers'
+import {
+  agentWithProvider,
+  dirs,
+  fakeRuntime,
+  registeringExtension,
+  registeringExtensionFor,
+  rmAll,
+  withSettingsExtension,
+} from './helpers/durableProviders'
 
 /**
  * Cutover gate item 9, consequence two: a user whose model comes from an extension (the SDK's own
@@ -16,60 +24,7 @@ import { registerExtensionProviders } from '../electron/pi/durable/providers'
  * process-wide model runtime.
  */
 
-const dirs: string[] = []
-
-afterEach(async () => {
-  for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
-})
-
-/** A global extension dir whose one extension registers a provider. */
-async function agentWithProvider(extensionSource: string): Promise<string> {
-  const agentDir = await mkdtemp(join(tmpdir(), 'openpi-providers-'))
-  dirs.push(agentDir)
-  await mkdir(join(agentDir, 'extensions'), { recursive: true })
-  await writeFile(join(agentDir, 'extensions', 'fixture.ts'), extensionSource)
-  return agentDir
-}
-
-const registeringExtension = `
-export default function (pi) {
-  pi.registerProvider('fixture-provider', {
-    baseUrl: 'https://example.invalid/v1',
-    apiKey: 'fixture-key',
-    api: 'openai-completions',
-    models: [{ id: 'fixture-model', name: 'Fixture' }],
-  })
-}
-`
-
-function fakeRuntime() {
-  const registered: Array<{ providerId: string; config: ProviderConfig }> = []
-  const native: string[] = []
-  return {
-    registered,
-    native,
-    registerProvider: vi.fn((providerId: string, config: ProviderConfig) => {
-      registered.push({ providerId, config })
-    }),
-    registerNativeProvider: vi.fn((provider: { id: string }) => {
-      native.push(provider.id)
-    }),
-    refresh: vi.fn(async () => ({})),
-  }
-}
-
-/** A global settings.json that names an extension outside the extensions/ dir. */
-async function withSettingsExtension(agentDir: string, providerId: string): Promise<void> {
-  await writeFile(join(agentDir, 'extra.ts'), registeringExtensionFor(providerId))
-  await writeFile(
-    join(agentDir, 'settings.json'),
-    JSON.stringify({ extensions: [join(agentDir, 'extra.ts')] })
-  )
-}
-
-function registeringExtensionFor(providerId: string): string {
-  return registeringExtension.replace('fixture-provider', providerId)
-}
+afterEach(rmAll)
 
 describe('extension-provided model providers on the durable path (#37 item 9)', () => {
   it('reports an extension that fails to load, instead of failing the session', async () => {
@@ -102,6 +57,7 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
       }),
       registerNativeProvider: vi.fn(),
       refresh: vi.fn(async () => ({})),
+      hasConfiguredAuth: vi.fn(() => true),
     }
 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
@@ -201,6 +157,7 @@ export default function (pi) {
         native.push(provider.id)
       }),
       refresh: vi.fn(async () => ({})),
+      hasConfiguredAuth: vi.fn(() => true),
     }
 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
@@ -261,15 +218,6 @@ export default function (pi) {
 
     expect(models.registered.map((entry) => entry.providerId)).toEqual(['npm-provider'])
     expect(diagnostics).toEqual([])
-  })
-
-  it('refreshes availability, which an auth-resolved native provider needs to be usable', async () => {
-    const agentDir = await agentWithProvider(registeringExtension)
-    const models = fakeRuntime()
-
-    await registerExtensionProviders({ agentDir, models })
-
-    expect(models.refresh).toHaveBeenCalledWith({ allowNetwork: false })
   })
 
   it('stays quiet when the user has never installed an extension', async () => {

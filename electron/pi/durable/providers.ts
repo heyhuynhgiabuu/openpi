@@ -1,25 +1,11 @@
 import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent'
-import type { Provider } from '@earendil-works/pi-ai'
-import type { ProviderConfig } from '@earendil-works/pi-coding-agent'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
+import { settleProviders, type ProviderLoadOptions, type ProviderRegistrar } from './providerSettle'
 
 /**
  * The part of the model runtime this needs; `ModelRuntime` satisfies it structurally, which keeps
  * the tests free of a real runtime and its auth files.
  */
-export interface ProviderRegistrar {
-  // `ProviderConfig` is what the extension-facing `registerProvider` takes, and it is assignable to
-  // what `ModelRuntime.registerProvider` wants, so the real runtime satisfies this without a cast.
-  registerProvider(providerId: string, config: ProviderConfig): void
-  /** The other registerProvider form: a whole `Provider` object rather than a config. */
-  registerNativeProvider(provider: Provider): void
-  /**
-   * Recomputes which models are available; needed before an auth-resolved provider is usable.
-   * Awaited for its effect only, so the value is never read — `object` rather than `unknown`
-   * because `ModelRuntime` returns a result object and nothing here narrows it.
-   */
-  refresh(options: { allowNetwork: boolean }): Promise<object>
-}
 
 export interface ExtensionProviderRoots {
   /** The global Pi agent dir; its `extensions/` is the user's own code. */
@@ -67,7 +53,8 @@ export interface ExtensionProviderRoots {
  * treats it as one: package resolution needs `npm`, which a GUI launch may not have on PATH.
  */
 export async function registerExtensionProviders(
-  roots: ExtensionProviderRoots
+  roots: ExtensionProviderRoots,
+  options: ProviderLoadOptions = {}
 ): Promise<CustomizationDiagnostic[]> {
   const diagnostics: CustomizationDiagnostic[] = []
   const cwd = roots.cwd ?? roots.agentDir
@@ -126,12 +113,11 @@ export async function registerExtensionProviders(
     }
   }
 
-  // Match the SDK (`agent-session-services.js`): a native provider whose key is resolved at request
-  // time is not "configured" until a refresh runs, so without this the model choice below can fall
-  // back to a different provider while a usable one was just registered. `allowNetwork: false`
-  // keeps it offline, exactly as the shipped path does.
-  await roots.models.refresh({ allowNetwork: false })
-
+  const registered = [
+    ...loaded.runtime.pendingProviderRegistrations.map((entry) => entry.name),
+    ...loaded.runtime.pendingNativeProviderRegistrations.map((entry) => entry.provider.id),
+  ]
+  diagnostics.push(...(await settleProviders(roots.models, registered, options)))
   // Virtual models are NOT registered: their `route` is handed a runtime context that only a bound
   // runner provides, and this path never binds one — a registered virtual model would look fine and
   // then throw on its first request. Reported so the extension is not silently half-applied.
