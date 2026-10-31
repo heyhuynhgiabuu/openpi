@@ -28,10 +28,21 @@ export interface DurableHeader {
  */
 const STORE_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 
+/**
+ * Windows reserves these as device names in any directory, with or without an extension, so a store
+ * directory called `CON` or `nul.tar.gz` cannot be created or opened there. The id is normally a
+ * random SDK session id, so this only guards a hand-edited or foreign session file — but such a
+ * file would otherwise fail at store open with nothing explaining why.
+ */
+const WINDOWS_DEVICE = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i
+
 /** What the header holds: the request, plus what the export wrote, so a later resume can tell. */
 export const durableHeaderSchema = z
   .object({
-    storeId: z.string().regex(STORE_ID),
+    storeId: z
+      .string()
+      .regex(STORE_ID)
+      .refine((id) => !WINDOWS_DEVICE.test(id)),
     /**
      * Conversations the session is made of, oldest branch first, the active one last. Never empty:
      * an empty list would fall back to the store's root and export that over the session's file.

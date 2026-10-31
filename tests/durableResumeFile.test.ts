@@ -76,9 +76,43 @@ describe('durable session file header', () => {
       { storeId: 'a.', conversationIds: [1], ...stamp },
       { storeId: 'a ', conversationIds: [1], ...stamp },
       { storeId: '-rf', conversationIds: [1], ...stamp },
+      // Windows reserves these as device names, with or without an extension, in any directory:
+      // mkdir/open on `…\durable\CON` fails, so the store would never open on resume.
+      { storeId: 'CON', conversationIds: [1], ...stamp },
+      { storeId: 'con', conversationIds: [1], ...stamp },
+      { storeId: 'NUL', conversationIds: [1], ...stamp },
+      { storeId: 'AUX', conversationIds: [1], ...stamp },
+      { storeId: 'PRN', conversationIds: [1], ...stamp },
+      { storeId: 'COM1', conversationIds: [1], ...stamp },
+      // Not just the endpoints: a guard narrowed to COM1/LPT9 would pass without this.
+      { storeId: 'COM5', conversationIds: [1], ...stamp },
+      { storeId: 'LPT4', conversationIds: [1], ...stamp },
+      { storeId: 'LPT9', conversationIds: [1], ...stamp },
+      { storeId: 'CON.txt', conversationIds: [1], ...stamp },
+      { storeId: 'nul.tar.gz', conversationIds: [1], ...stamp },
       'store-1',
     ]) {
       expect(readResumeTarget(stamped(marker))).toBeUndefined()
+    }
+  })
+
+  it('still accepts ordinary ids that merely start like a device name', () => {
+    // The guard must not be a prefix match: these are legitimate store ids.
+    for (const storeId of [
+      'console',
+      'common',
+      'nullable',
+      'null-1',
+      'com0',
+      'com5x',
+      'com10',
+      'lpt0',
+      'aux1',
+      'lpt10',
+    ]) {
+      expect(readResumeTarget(stamped({ storeId, conversationIds: [1], ...stamp }))?.storeId).toBe(
+        storeId
+      )
     }
   })
 
