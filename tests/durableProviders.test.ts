@@ -57,13 +57,17 @@ describe('extension-provided model providers on the durable path (#37 item 9)', 
       }),
       registerNativeProvider: vi.fn(),
       refresh: vi.fn(async () => ({})),
-      hasConfiguredAuth: vi.fn(() => true),
+      // Keyed off the runtime's own view, so this fails if the refused name is still waited on.
+      hasConfiguredAuth: vi.fn((providerId: string) => providerId !== 'fixture-provider'),
     }
 
     const diagnostics = await registerExtensionProviders({ agentDir, models })
 
     expect(models.registerProvider).toHaveBeenCalledTimes(2)
     expect(diagnostics.some((entry) => entry.message.includes('rejected'))).toBe(true)
+    // A refused provider must not cost extra refreshes or a second, misleading warning.
+    expect(models.hasConfiguredAuth).not.toHaveBeenCalledWith('fixture-provider')
+    expect(diagnostics.map((entry) => entry.type)).toEqual(['error'])
   })
 
   it('registers the provider once per call, with no stale queue carried over', async () => {

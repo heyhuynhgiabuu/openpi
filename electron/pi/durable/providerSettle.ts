@@ -23,6 +23,8 @@ export interface ProviderRegistrar {
   refresh(options: { allowNetwork: boolean }): Promise<object>
   /** Whether a provider is usable right now — the question a refresh is trying to answer. */
   hasConfiguredAuth(providerId: string): boolean
+  /** The last availability error, if the runtime kept one — one bad provider's reason, not a guess. */
+  getError?(providerId: string): string | undefined
 }
 
 export interface ProviderLoadOptions {
@@ -42,17 +44,21 @@ const DEFAULT_REFRESH_ATTEMPTS = 3
  * what is actually true, so one rejected pass is information rather than a failed load.
  */
 async function settle(start: () => Promise<object>, ms: number): Promise<boolean> {
+  // `start()` is called inside the guarded region: a synchronous throw would otherwise skip the
+  // `clearTimeout` below and leave the timer armed.
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<false>((resolve) => {
     timer = setTimeout(() => resolve(false), ms)
   })
-  return Promise.race([
-    start().then(
-      () => true,
-      () => true
-    ),
-    timeout,
-  ]).finally(() => clearTimeout(timer))
+  const attempt = (async () => {
+    try {
+      await start()
+      return true
+    } catch {
+      return true
+    }
+  })()
+  return Promise.race([attempt, timeout]).finally(() => clearTimeout(timer))
 }
 
 /** Diagnostics for whichever registered providers are still unusable after the bounded retries. */
@@ -66,7 +72,12 @@ export async function settleProviders(
   const attempts = options.refreshAttempts ?? DEFAULT_REFRESH_ATTEMPTS
   const unusable = () => registered.filter((id) => !models.hasConfiguredAuth(id))
 
-  for (let attempt = 0; attempt < attempts && unusable().length > 0; attempt += 1) {
+  // At least one attempt always runs, even when every provider already counts as configured: being
+  // configured is not the same as having a model list. A native provider whose models are published
+  // by `refreshModels` is "configured" from its stored credential yet has no models until a pass
+  // runs, and `registerNativeProvider`'s own refresh is fire-and-forget.
+  for (let attempt = 0; attempt < Math.max(attempts, 1); attempt += 1) {
+    if (attempt > 0 && unusable().length === 0) break
     if (!(await settle(() => models.refresh({ allowNetwork: false }), timeoutMs)))
       return [
         {
@@ -78,10 +89,16 @@ export async function settleProviders(
 
   const left = unusable()
   if (left.length === 0) return []
+  // The runtime refreshes every provider with `Promise.all`, so one throwing `resolve` also leaves
+  // its neighbours unusable. Include the reason when the runtime exposes one, otherwise the message
+  // names providers that are fine and hides the one that is not.
+  // `getError` is declared `string | undefined`, so an empty string is the only thing to drop.
+  const reasons = left.map((id) => models.getError?.(id) ?? '').filter(Boolean)
+  const detail = reasons.length > 0 ? ` (${[...new Set(reasons)].join('; ')})` : ''
   return [
     {
       type: 'warning',
-      message: `[durable] extension provider(s) ${left.join(', ')} have no usable credentials`,
+      message: `[durable] extension provider(s) ${left.join(', ')} have no usable credentials${detail}`,
     },
   ]
 }

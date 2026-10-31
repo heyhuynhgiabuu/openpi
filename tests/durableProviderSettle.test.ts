@@ -39,6 +39,18 @@ describe('waiting for extension providers to be usable (#37 item 9)', () => {
     expect(diagnostics).toEqual([])
   })
 
+  it('refreshes once even when every provider already counts as configured', async () => {
+    // Being configured is not the same as having models: a native provider with a stored credential
+    // is "configured" immediately, but its model list only arrives from a refresh. Skipping the pass
+    // here made the session fail with "no model has credentials" (measured 20/20 runs).
+    const models = registrar({ usableAfter: 0 })
+
+    const diagnostics = await settleProviders(models, ['prov-1'])
+
+    expect(models.refresh).toHaveBeenCalledTimes(1)
+    expect(diagnostics).toEqual([])
+  })
+
   it('gives up instead of hanging when a provider never settles', async () => {
     const models = registrar({ hangs: true })
 
@@ -60,6 +72,28 @@ describe('waiting for extension providers to be usable (#37 item 9)', () => {
 
     expect(models.refresh).toHaveBeenCalledTimes(2)
     expect(diagnostics[0]?.message).toContain('no usable credentials')
+  })
+
+  it('leaves no timer armed, even when the refresh throws synchronously', async () => {
+    // An armed timer outlives the wait; a synchronous throw used to skip `clearTimeout` entirely.
+    vi.useFakeTimers()
+    try {
+      const models: ProviderRegistrar = {
+        registerProvider: vi.fn(),
+        registerNativeProvider: vi.fn(),
+        refresh: vi.fn(() => {
+          throw new Error('boom')
+        }),
+        hasConfiguredAuth: vi.fn(() => false),
+      }
+
+      const diagnostics = await settleProviders(models, ['prov-1'], { refreshAttempts: 1 })
+
+      expect(vi.getTimerCount()).toBe(0)
+      expect(diagnostics[0]?.message).toContain('no usable credentials')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does nothing at all when no provider was registered', async () => {

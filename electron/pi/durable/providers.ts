@@ -2,11 +2,6 @@ import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-codin
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import { settleProviders, type ProviderLoadOptions, type ProviderRegistrar } from './providerSettle'
 
-/**
- * The part of the model runtime this needs; `ModelRuntime` satisfies it structurally, which keeps
- * the tests free of a real runtime and its auth files.
- */
-
 export interface ExtensionProviderRoots {
   /** The global Pi agent dir; its `extensions/` is the user's own code. */
   agentDir: string
@@ -88,9 +83,14 @@ export async function registerExtensionProviders(
     diagnostics.push({ type: 'error', message: `[extension] ${path} (load): ${error}`, path })
   }
 
+  // Only providers that actually registered are waited on: one the runtime refused would otherwise
+  // cost three refreshes and a second, misleading "no usable credentials" warning.
+  const registered: string[] = []
+
   for (const { name, config, extensionPath } of loaded.runtime.pendingProviderRegistrations) {
     try {
       roots.models.registerProvider(name, config)
+      registered.push(name)
     } catch (error) {
       diagnostics.push({
         type: 'error',
@@ -104,6 +104,7 @@ export async function registerExtensionProviders(
   for (const { provider, extensionPath } of loaded.runtime.pendingNativeProviderRegistrations) {
     try {
       roots.models.registerNativeProvider(provider)
+      registered.push(provider.id)
     } catch (error) {
       diagnostics.push({
         type: 'error',
@@ -113,10 +114,6 @@ export async function registerExtensionProviders(
     }
   }
 
-  const registered = [
-    ...loaded.runtime.pendingProviderRegistrations.map((entry) => entry.name),
-    ...loaded.runtime.pendingNativeProviderRegistrations.map((entry) => entry.provider.id),
-  ]
   diagnostics.push(...(await settleProviders(roots.models, registered, options)))
   // Virtual models are NOT registered: their `route` is handed a runtime context that only a bound
   // runner provides, and this path never binds one — a registered virtual model would look fine and
