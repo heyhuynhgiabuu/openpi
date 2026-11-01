@@ -77,47 +77,6 @@ describe('release artifact contract', () => {
     expect(hasMacArchitecture('Mach-O 64-bit bundle x86_64', 'x64')).toBe(true)
   })
 
-  it('can verify the release toolchain without publishing anything', () => {
-    // `release.yml` used to be dispatchable only on a tag, so the only way to check a
-    // runner image was to run a real release -- and re-dispatching an existing tag would
-    // overwrite the release already published for it. A dry run builds, packages and
-    // verifies every target while `publish` (the only job with a side effect) is skipped.
-    const workflow = releaseWorkflow
-
-    expect(workflow).toMatch(/dry_run:[\s\S]{0,120}type: boolean/)
-    // Nothing may publish unless the dispatch asked for a real release, and a failed
-    // build must never reach publish, so the condition cannot be an `always()` form.
-    const publish = workflow.slice(workflow.indexOf('  publish:'))
-    expect(publish).toMatch(/if: \$\{\{ inputs\.dry_run != true \}\}/)
-    // A status function in the condition (always/failure/cancelled) would both ignore
-    // `needs` and disable the implicit success() check, publishing after a failed build.
-    expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
-    expect(publish).toContain('needs: build')
-    // `main` has to be listed among the dispatch refs, or a dry run dispatched from
-    // main may be rejected. Read the branches block itself, not the whole trigger.
-    const dispatch = workflow.slice(workflow.indexOf('workflow_dispatch:'))
-    const branches = dispatch.slice(dispatch.indexOf('branches:'), dispatch.indexOf('tags:'))
-    expect(branches).toContain('branches:')
-    expect(branches.split('\n').map((line) => line.trim())).toContain('- "main"')
-    // No build step may derive the artifact version from the ref. On a dry run the ref is
-    // a branch, so such a step resolves release/main/ -- a directory electron-builder
-    // never writes -- and fails before the verification a dry run exists to perform.
-    // The Validate step is the one place allowed to read the ref, because it is what
-    // translates a tag into that same metadata version.
-    const build = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  publish:'))
-    const validateStart = build.indexOf('- name: Validate release version')
-    const validateEnd = build.indexOf('- name: Setup Node', validateStart)
-    expect(validateStart).toBeGreaterThan(-1)
-    expect(validateEnd).toBeGreaterThan(validateStart)
-    const validateStep = build.slice(validateStart, validateEnd)
-    // A dry run has no tag, so this step must fall back to the package version.
-    expect(validateStep).toContain('VERSION="$PACKAGE_VERSION"')
-    const stepsOutsideValidate = build.slice(0, validateStart) + build.slice(validateEnd)
-    expect(stepsOutsideValidate).not.toMatch(
-      /VERSION="?\$\{\{ github\.ref_name|GITHUB_REF_NAME|release\/\$\{\{ github\.ref/
-    )
-  })
-
   it('creates one combined macOS updater manifest and does not merge per-arch manifests', () => {
     expect(builderConfig.mac).toMatchObject({ target: ['dmg', 'zip'] })
     expect(releaseWorkflow).toContain('rm -f "release/$VERSION/latest-mac.yml"')
@@ -135,7 +94,7 @@ describe('release artifact contract', () => {
 
   it('scopes the Homebrew token to only Homebrew steps', () => {
     // The publish job stays gated on a successful build and keeps its own runner; the
-    // dry-run condition is asserted separately below.
+    // dry-run condition itself is asserted in releaseDryRun.test.ts.
     expect(releaseWorkflow).toMatch(
       /publish:\n    name: Publish GitHub release\n    needs: build\n(?:    #.*\n)*    if: .*\n    runs-on: ubuntu-latest\n    steps:/
     )
