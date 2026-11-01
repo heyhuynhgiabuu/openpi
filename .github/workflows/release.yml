@@ -5,10 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
-    # A real release is dispatched on its tag. A dry run builds, packages and
-    # verifies every target without publishing, so the toolchain on each runner
-    # image can be checked before a tag is cut. `package.json` supplies the
-    # version in that mode, so a dry run can be started from `main` rather than a tag.
+    # A real release arrives as a tag push. A dry run builds, packages and verifies
+    # every target without publishing, so the toolchain on each runner image can be
+    # checked before a tag is cut; `package.json` supplies the version in that mode.
+    # `main` is listed for documentation: GitHub's workflow schema accepts only `inputs`
+    # under `workflow_dispatch`, so `branches`/`tags` below are not enforced.
     inputs:
       dry_run:
         description: "Build and verify only; never publish or touch an existing release"

@@ -1,10 +1,24 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const root = resolve(import.meta.dirname, '..')
+
+/**
+ * The release build runs `npm test` on every matrix leg, including windows-2022, where
+ * `bash` may not be on PATH. Executing the validate step is only possible where it is;
+ * the static assertions above always run.
+ */
+function hasBash(): boolean {
+  try {
+    execSync('bash --version', { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
 const workflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8')
 
 /** The build job only: `publish` holds the side effects and is asserted separately. */
@@ -35,13 +49,18 @@ function validateScript(build: string): string {
     .join('\n')
 }
 
-/** Render a run block the way GitHub does, then run it under bash with a GITHUB_OUTPUT. */
+/**
+ * Render a run block the way GitHub does, then run it under bash with a GITHUB_OUTPUT.
+ * `dryRun` is the *rendered text*, not a boolean: a push renders `''` (the `inputs`
+ * context is empty), an unchecked dispatch renders `'false'`, and a checked one renders
+ * `'true'`. Modelling only the boolean would miss that a real dispatch renders 'false'.
+ */
 function runValidate(
   script: string,
-  values: { dryRun?: boolean; refName: string }
+  values: { dryRun: string; refName: string }
 ): { status: number; version: string; stderr: string } {
   const rendered = script
-    .replaceAll('${{ inputs.dry_run }}', values.dryRun === true ? 'true' : '')
+    .replaceAll('${{ inputs.dry_run }}', values.dryRun)
     .replaceAll('${{ github.ref_name }}', values.refName)
   expect(rendered).not.toContain('${{')
   return runShell(rendered)
@@ -81,21 +100,26 @@ const packageVersion = (
 describe('release dry run', () => {
   it('publishes only for a real release, never for a dry run and never after a failure', () => {
     const publish = workflow.slice(workflow.indexOf('  publish:'))
-    expect(publish).toMatch(/if: \$\{\{ inputs\.dry_run != true \}\}/)
+    // Anchored to the whole job-level line: trailing text outside `${{ }}` would turn the
+    // condition into a non-empty string, which GitHub treats as true -- publishing always.
+    expect(publish).toMatch(/^    if: \$\{\{ inputs\.dry_run != true \}\}$/m)
+    expect(publish).not.toMatch(/^    if: .*\}\}.*\S$/m)
     // A status function in the condition would both ignore `needs` and disable the
     // implicit success() check, publishing after a failed build.
     expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
     expect(publish).toContain('needs: build')
   })
 
-  it('can be dispatched from main without a tag', () => {
+  it('takes a boolean dry_run input', () => {
     const dispatch = workflow.slice(
       workflow.indexOf('workflow_dispatch:'),
       workflow.indexOf('permissions:')
     )
-    const branches = dispatch.slice(dispatch.indexOf('branches:'), dispatch.indexOf('tags:'))
-    expect(branches).toContain('branches:')
-    expect(branches.split('\n').map((line) => line.trim())).toContain('- "main"')
+    // `type: boolean` is load-bearing, not cosmetic. As a string input, GitHub compares
+    // 'true' with the boolean in the publish condition by coercing both to numbers
+    // (NaN vs 1), so `inputs.dry_run != true` is TRUE and a dry run would publish.
+    expect(dispatch).toMatch(/dry_run:[\s\S]*?type: boolean/)
+    expect(dispatch).toContain('- "main"')
   })
 
   it('resolves the release version from metadata in every build step', () => {
@@ -139,22 +163,31 @@ describe('release dry run', () => {
     ])
   })
 
-  it('derives the dry-run version from package.json and keeps the tag check for a tag', () => {
-    const script = validateScript(buildJob())
+  it.skipIf(!hasBash())(
+    'derives the dry-run version from package.json and keeps the tag check for a tag',
+    () => {
+      const script = validateScript(buildJob())
 
-    // A dry run carries no tag, so it must fall back to the package version.
-    const dryRun = runValidate(script, { dryRun: true, refName: 'main' })
-    expect(dryRun.status, dryRun.stderr).toBe(0)
-    expect(dryRun.version).toBe(packageVersion)
+      // A tag push renders '' for the input (the `inputs` context is empty) and must
+      // still resolve to the tag's own version.
+      const tag = runValidate(script, { dryRun: '', refName: `v${packageVersion}` })
+      expect(tag.status, tag.stderr).toBe(0)
+      expect(tag.version).toBe(packageVersion)
 
-    // A tag push must still resolve to its own version.
-    const tag = runValidate(script, { refName: `v${packageVersion}` })
-    expect(tag.status, tag.stderr).toBe(0)
-    expect(tag.version).toBe(packageVersion)
+      // A dry run carries no tag, so it must fall back to the package version.
+      const dryRun = runValidate(script, { dryRun: 'true', refName: 'main' })
+      expect(dryRun.status, dryRun.stderr).toBe(0)
+      expect(dryRun.version).toBe(packageVersion)
 
-    // And a tag that disagrees with the package metadata must still fail the release.
-    const mismatched = runValidate(script, { refName: 'v0.0.1' })
-    expect(mismatched.status).not.toBe(0)
-    expect(mismatched.stderr).toContain('does not match package metadata')
-  })
+      // A tag that disagrees with the package metadata must still fail the release, on a
+      // push and on an unchecked dispatch -- both are real releases. 'false' is what
+      // GitHub renders for an unchecked boolean input, so it must not take the dry-run
+      // branch; if it did, the tag check would be skipped and publish would still run.
+      for (const dryRunText of ['', 'false']) {
+        const mismatched = runValidate(script, { dryRun: dryRunText, refName: 'v0.0.1' })
+        expect(mismatched.status, `dry_run='${dryRunText}'`).not.toBe(0)
+        expect(mismatched.stderr).toContain('does not match package metadata')
+      }
+    }
+  )
 })
