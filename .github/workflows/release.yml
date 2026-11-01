@@ -21,8 +21,10 @@ on:
     tags:
       - "v*"
 
+# Read at the workflow level; only `publish` escalates. Every build leg runs repository
+# code and third-party actions, so none of them should hold a write-capable GITHUB_TOKEN.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: beta-release-${{ github.ref }}
@@ -228,11 +230,21 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: build
-    # The only job with a side effect, so it is the only one a dry run skips. No
-    # unconditional-run modifier is used: a dry run must not publish even when the build
-    # jobs are green, and a failed build must never reach here.
-    if: ${{ inputs.dry_run != true }}
+    # The only job with a side effect, so the only one that both escalates and is skipped.
+    # All three conjuncts are load-bearing:
+    # - `event_name == 'push'`: a dispatch must never publish. Testing only `inputs.dry_run`
+    #   was fail-open, because a dispatch with the box left unchecked evaluates true on any
+    #   branch; what stopped it was the tag check in "Validate release version" happening to
+    #   fail, which is incidental rather than designed.
+    # - `startsWith(github.ref, 'refs/tags/')`: a pushed tag is the only ref that may publish,
+    #   even if the event check is ever widened to another trigger.
+    # - `inputs.dry_run != true`: a dry run must not publish even when the build jobs are green.
+    # No unconditional-run modifier anywhere: a failed build must never reach here.
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true }}
     runs-on: ubuntu-latest
+    # Release upload is the only step that needs this; the Homebrew steps use BREW_TAP_TOKEN.
+    permissions:
+      contents: write
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v5

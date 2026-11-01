@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { job, jobCondition, parseReleaseWorkflow, writeGrants } from './helpers/releaseYaml'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -98,16 +99,127 @@ const packageVersion = (
 ).version
 
 describe('release dry run', () => {
+  const parsed = parseReleaseWorkflow(workflow)
+
   it('publishes only for a real release, never for a dry run and never after a failure', () => {
     const publish = workflow.slice(workflow.indexOf('  publish:'))
+    // The whole condition, verbatim, read from the publish job's OWN `if:` -- not from any line
+    // between `publish:` and the end of the file, which a later job could satisfy while publish's
+    // own condition was weakened. An earlier version matched only `${{ .* }}`, which admits
+    // `|| true` or a widened event check: the exact fail-open class #84 is about.
+    expect(jobCondition(job(parsed, 'publish'))).toBe(
+      "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true }}"
+    )
     // Anchored to the whole job-level line: trailing text outside `${{ }}` would turn the
     // condition into a non-empty string, which GitHub treats as true -- publishing always.
-    expect(publish).toMatch(/^    if: \$\{\{ inputs\.dry_run != true \}\}$/m)
     expect(publish).not.toMatch(/^    if: .*\}\}.*\S$/m)
     // A status function in the condition would both ignore `needs` and disable the
     // implicit success() check, publishing after a failed build.
     expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
     expect(publish).toContain('needs: build')
+  })
+
+  it('refuses to publish unless a tag was pushed, not merely because dry_run is false', () => {
+    // The gate used to test only `inputs.dry_run`, which is fail-open: a `workflow_dispatch`
+    // with the box left unchecked on ANY branch evaluated true. What stopped it was the tag
+    // check in "Validate release version" happening to fail -- incidental, not designed, and
+    // one relaxation of that check away from publishing from a branch.
+    const publish = workflow.slice(workflow.indexOf('  publish:'))
+    const condition = publish.match(/^    if: (.*)$/m)?.[1] ?? ''
+    expect(condition).toContain("github.event_name == 'push'")
+    expect(condition).toContain("startsWith(github.ref, 'refs/tags/')")
+    expect(condition).toContain('inputs.dry_run != true')
+    // Every conjunct is required; assert there are exactly three of them so dropping one from
+    // the middle is caught too, not just dropping the last.
+    expect(condition.split('&&')).toHaveLength(3)
+  })
+
+  it('keeps the release permission at the job that needs it, not the whole workflow', () => {
+    // Every build leg runs repository code and third-party actions; none of them needs a
+    // write-capable GITHUB_TOKEN. Only `publish` does, and only for the release upload --
+    // the Homebrew steps use BREW_TAP_TOKEN, which is not GITHUB_TOKEN at all.
+    // Deep equality, not a substring: `contents: read` sitting beside an `actions: write` would
+    // pass a text check while handing every leg a write token again.
+    expect(parsed.topLevelPermissions).toEqual({ contents: 'read' })
+    expect(writeGrants(parsed)).toEqual(['publish/contents'])
+  })
+
+  it('grants write to the publish job and to nothing else', () => {
+    // #85 was `contents: write` at workflow level, where every build leg held it. Scoping it to
+    // `publish` is only half the fix: a second job or a second scope could re-add it, and a test
+    // that checks "publish has write" alone would not notice.
+    // Reading scopes rather than text is what makes `actions: write # cache`, `packages: 'write'`,
+    // `write-all`, a trailing space and an inline `permissions: { contents: write }` all count as
+    // the same grant instead of each evading a different regex.
+    expect(job(parsed, 'publish').permissions).toEqual({ contents: 'write' })
+    // Declaring a `permissions:` key on a job REPLACES the workflow default, so a build leg that
+    // declares `permissions: {}` is tighter, not looser; what matters is that no other job grants
+    // write, and `writeGrants` above covers every job and scope exhaustively.
+    expect(parsed.jobs.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['build', 'publish'])
+    )
+  })
+
+  it('refuses a permissions form it cannot read, instead of reading it as no grant', () => {
+    // The reader is hand-rolled to avoid a YAML dependency. Its failure mode must be a red run,
+    // not a green one: a form it does not model could hold `write` it never sees. Each case below
+    // was a way past an earlier version -- three of them left every check green.
+    const wrap = (body: string) =>
+      `name: x\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n${body}`
+    const unreadable = [
+      // An anchor would name a grant the block reader never resolves.
+      '  publish:\n    permissions: &all\n      contents: write\n    steps: []\n',
+      // An inline map split across lines never reaches the `{...}` branch.
+      '  publish:\n    permissions: {\n      contents: write\n    }\n    steps: []\n',
+      // A scope value outside the known set means this reader does not understand the file.
+      '  publish:\n    permissions:\n      contents: rw\n    steps: []\n',
+      // Two blocks at one level: the second could be the one that grants write.
+      '  publish:\n    permissions:\n      contents: read\n    permissions:\n      contents: write\n    steps: []\n',
+    ]
+    for (const body of unreadable) {
+      expect(() => parseReleaseWorkflow(wrap(body)), body).toThrow(/cannot read release\.yml/)
+    }
+    // A quoted or complex KEY, and a flow-style job, all read as ordinary entries to a real YAML
+    // parser and each slipped a write grant past the text checks. They fail on SHAPE now.
+    for (const body of [
+      '  publish:\n    "permissions": write-all\n    steps: []\n',
+      "  publish:\n    'permissions': write-all\n    steps: []\n",
+      '  publish:\n    ? permissions\n    : write-all\n    steps: []\n',
+      '  publish: { runs-on: ubuntu-latest, permissions: write-all, steps: [] }\n',
+    ]) {
+      expect(() => parseReleaseWorkflow(wrap(body)), body).toThrow(/cannot read release\.yml/)
+    }
+    // The EMPTY flow collections cannot carry a scope, so they stay allowed -- otherwise a
+    // legitimate tightening (`permissions: {}` on a build leg) would turn CI red.
+    expect(() =>
+      parseReleaseWorkflow(wrap('  publish:\n    permissions: {}\n    steps: []\n'))
+    ).not.toThrow()
+
+    // A continued plain scalar is a `jobCondition` concern, not a parse one: the real value is
+    // `${{ ... }} || true`, and returning only the first line read that as the safe form.
+    const continued = parseReleaseWorkflow(
+      wrap('  publish:\n    if: ${{ a }}\n      || true\n    steps: []\n')
+    )
+    expect(() => jobCondition(job(continued, 'publish'))).toThrow(/cannot read release\.yml/)
+    // A blank line does not end a plain scalar, so this is the same continuation.
+    const blankThenContinuation = parseReleaseWorkflow(
+      wrap('  publish:\n    if: ${{ a }}\n\n      || true\n    steps: []\n')
+    )
+    expect(() => jobCondition(job(blankThenContinuation, 'publish'))).toThrow(
+      /cannot read release\.yml/
+    )
+    // A QUOTED `write-all` is read as the grant it is, not as an empty block: reading it as empty
+    // was the original bug, and it let a whole-job grant through while every check stayed green.
+    for (const quoted of ["'write-all'", '"write-all"']) {
+      const parsedQuoted = parseReleaseWorkflow(
+        wrap(`  publish:\n    permissions: ${quoted}\n    steps: []\n`)
+      )
+      expect(writeGrants(parsedQuoted), quoted).toEqual(['publish/*'])
+    }
+    // And the forms it DOES model still parse, so the guard is not vacuous.
+    expect(() =>
+      parseReleaseWorkflow(wrap('  publish:\n    permissions: write-all\n    steps: []\n'))
+    ).not.toThrow()
   })
 
   it('takes a boolean dry_run input', () => {
