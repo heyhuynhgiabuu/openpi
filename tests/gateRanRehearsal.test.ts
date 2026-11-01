@@ -24,14 +24,30 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
 })
 
-/** Write a report with the given stats and run the assertion; return its exit code and output. */
-function run(report: unknown, write = true): { code: number; output: string } {
+/**
+ * Write a report with the given stats and run the assertion; return its exit code and output.
+ *
+ * `file` exists so a case can use the exact argument CI passes (`durable-gate.json`) rather than
+ * an absolute temp path: a script edited to exit 0 on that one name would otherwise never be
+ * exercised by this rehearsal.
+ */
+function run(
+  report: unknown,
+  write = true,
+  file = 'report.json'
+): { code: number; output: string } {
   const dir = mkdtempSync(join(tmpdir(), 'openpi-gate-'))
   dirs.push(dir)
-  const path = join(dir, 'report.json')
+  const path = join(dir, file)
   if (write) writeFileSync(path, typeof report === 'string' ? report : JSON.stringify(report))
   try {
-    const output = execFileSync(process.execPath, [script, path], { encoding: 'utf8' })
+    // The argument is the *relative* name, matching the workflow line verbatim. Passing an
+    // absolute path instead would leave a `if (path === 'durable-gate.json') exit(0)` branch
+    // unexercised -- measured: that mutant survived every case until this was relative.
+    const output = execFileSync(process.execPath, [script, file], {
+      encoding: 'utf8',
+      cwd: dir,
+    })
     return { code: 0, output }
   } catch (error) {
     const failed = error as { status?: number; stdout?: string; stderr?: string }
@@ -111,6 +127,30 @@ describe('the durable gate asserts it ran', () => {
     expect(result.code).toBe(1)
   })
 
+  it('fails when the annotation has the right description but the wrong type', () => {
+    // Both halves of the witness are load-bearing. Matching only the description would let any
+    // annotation that happens to carry the string stand in for the gate's own marker.
+    const wrongType = {
+      ...witnessed(),
+      stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 },
+    }
+    const annotation = { type: 'something-else', description: 'durable-shell-turn' }
+    wrongType.suites[0].specs[0].tests[0].results[0].annotations = [annotation]
+    const result = run(wrongType)
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('completion witness')
+  })
+
+  it('reports a flaky run as flaky, not as a run that never happened', () => {
+    // `expected: 0, flaky: 1` is what a retried pass looks like, and it used to be reported as
+    // "the spec did not run" -- a message that sends the reader to the wrong place.
+    const result = run(passing({ expected: 0, skipped: 0, unexpected: 0, flaky: 1 }))
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('flaky')
+    expect(result.output).not.toContain('did not run (the spec did not run)')
+    expect(result.output).not.toContain('expected exactly 1')
+  })
+
   it('fails rather than passing when there is no report at all', () => {
     const result = run(null, false)
     expect(result.code).toBe(1)
@@ -127,6 +167,30 @@ describe('the durable gate asserts it ran', () => {
     const result = run({ stats: { expected: 1, skipped: 0, unexpected: 0 } })
     expect(result.code).toBe(1)
     expect(result.output).toContain('flaky')
+  })
+
+  it('holds to the same verdict with the literal argument CI passes', () => {
+    // Same two verdicts, but through `durable-gate.json` exactly as `.github/workflows/ci.yml`
+    // invokes the script. A branch keyed on that filename -- `if (path === 'durable-gate.json')
+    // process.exit(0)` -- would pass every other case here and retire the gate, so the failing
+    // verdict has to be exercised on this path too. A stale report is the case that reaches it:
+    // Playwright never writes a fresh report, `rm -f` in the step is what prevents this, and no
+    // check inside the script can tell an old report from a new one.
+    const unwitnessed = {
+      ...witnessed(),
+      stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 },
+    }
+    unwitnessed.suites[0].specs[0].tests[0].results[0].annotations = []
+    const failed = run(unwitnessed, true, 'durable-gate.json')
+    expect(failed.code).toBe(1)
+    expect(failed.output).toContain('completion witness')
+
+    const healthy = run(
+      passing({ expected: 1, skipped: 0, unexpected: 0, flaky: 0 }),
+      true,
+      'durable-gate.json'
+    )
+    expect(healthy.code).toBe(0)
   })
 
   it('fails on malformed JSON', () => {

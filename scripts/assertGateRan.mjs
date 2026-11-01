@@ -106,10 +106,16 @@ const parsed = JSON.parse(readFileSync(path, 'utf8'))
 // Most specific cause first: a skip is a different failure from a run that never happened, and
 // saying "skipped" is what points at the guard rather than at the config.
 if (stats.skipped !== 0) fail(`${stats.skipped} test(s) skipped, so the gate retired itself`)
-if (stats.expected !== 1)
-  fail(`expected exactly 1 test to pass, got ${stats.expected} (the spec did not run)`)
+// A failure or a flaky retry is a more specific cause than the count being off, and both make the
+// count off. Reported in this order so the message names what actually happened: a flaky run
+// reports `expected: 0, flaky: 1`, which used to be described as "the spec did not run".
 if (stats.unexpected !== 0) fail(`${stats.unexpected} test(s) failed unexpectedly`)
 if (stats.flaky !== 0) fail(`${stats.flaky} test(s) were flaky, so the run is not trustworthy`)
+if (stats.expected !== 1)
+  fail(
+    `expected exactly 1 test to pass, got ${stats.expected}. If you added a test, it needs its ` +
+      'own witness and an updated scripts/assertGateRan.mjs; if you did not, the gate did not run.'
+  )
 
 // The counters can be satisfied by a body that returned immediately. The witness cannot.
 if (!hasWitness(parsed)) fail('the test body did not reach its end (no completion witness)')

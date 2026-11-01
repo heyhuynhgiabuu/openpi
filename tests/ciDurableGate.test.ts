@@ -27,7 +27,17 @@ describe('durable runtime e2e gate', () => {
     // The reporter is required, not cosmetic: the assertion script reads its output, and a run
     // without it would fail the step for the wrong reason.
     expect(runBody).toContain('--reporter=json')
-    expect(runBody).toContain('PLAYWRIGHT_JSON_OUTPUT_NAME=durable-gate.json')
+    // _OUTPUT_FILE, not _OUTPUT_NAME: Playwright resolves FILE before DIR before NAME, so the
+    // name form loses to an _OUTPUT_DIR that a later edit could add to this step's `env:`.
+    expect(runBody).toContain('PLAYWRIGHT_JSON_OUTPUT_FILE=durable-gate.json')
+    expect(runBody).not.toContain('PLAYWRIGHT_JSON_OUTPUT_DIR')
+    // The report is removed first: without this, a report left in the workspace by an earlier run
+    // satisfies the assertion even when this run's spec returned early.
+    const firstCommand = runBody
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)[1]
+    expect(firstCommand).toBe('rm -f durable-gate.json')
     expect(runBody).toContain('tests/e2e/durableGate.spec.ts')
     // The assertion must be the last thing the step does. If Playwright's exit code were allowed
     // to be the verdict, a suite that skips itself would pass.
@@ -95,15 +105,25 @@ describe('durable runtime e2e gate', () => {
     expect(spec).toContain("test('drives a shell turn through the renderer on the durable runtime'")
   })
 
+  /** Escape a literal for use inside `new RegExp`. */
+  function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
   it('requires the spec to record that its body reached the end', () => {
     // Counters cannot catch an early return: measured with Playwright, a body that returns right
     // after the skip call still reports expected:1, skipped:0 and "passed". The witness annotation
     // is the only signal a report-reading script can require, so it is pinned on both sides.
     expect(spec).toContain("const GATE_WITNESS_TYPE = 'gate-body-completed'")
     expect(spec).toContain("const GATE_WITNESS = 'durable-shell-turn'")
-    expect(spec).toContain(
+    const push =
       'test.info().annotations.push({ type: GATE_WITNESS_TYPE, description: GATE_WITNESS })'
-    )
+    // Exactly once. `toContain` alone let a second copy sit anywhere, so a body could push the
+    // witness and then return -- the report carries the annotation and every check stays green.
+    expect(spec.split(push)).toHaveLength(2)
+    // And last in the `try` block, because "the body reached its end" is only true of the final
+    // statement. Anything after the push can retire the test with the witness already recorded.
+    expect(spec).toMatch(new RegExp(`${escapeRegExp(push)}\\s*\\}\\s*finally\\s*\\{`))
     const runner = readFileSync(resolve(root, 'scripts/assertGateRan.mjs'), 'utf8')
     expect(runner).toContain("const WITNESS_TYPE = 'gate-body-completed'")
     expect(runner).toContain("const WITNESS = 'durable-shell-turn'")

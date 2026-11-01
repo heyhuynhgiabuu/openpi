@@ -29,6 +29,7 @@ builder-effective-config.yaml
 # ── Test / browser automation ──────────────────────────────────────────────
 playwright-report/
 test-results/
+durable-gate.json
 
 # ── Runtime data ───────────────────────────────────────────────────────────
 *.log
