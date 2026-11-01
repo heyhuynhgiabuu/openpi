@@ -160,6 +160,45 @@ describe('release dry run', () => {
     )
   })
 
+  it('refuses a permissions form it cannot read, instead of reading it as no grant', () => {
+    // The reader is hand-rolled to avoid a YAML dependency. Its failure mode must be a red run,
+    // not a green one: a form it does not model could hold `write` it never sees. Each case below
+    // was a way past an earlier version -- three of them left every check green.
+    const wrap = (body: string) =>
+      `name: x\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n${body}`
+    const unreadable = [
+      // An anchor would name a grant the block reader never resolves.
+      '  publish:\n    permissions: &all\n      contents: write\n    steps: []\n',
+      // An inline map split across lines never reaches the `{...}` branch.
+      '  publish:\n    permissions: {\n      contents: write\n    }\n    steps: []\n',
+      // A scope value outside the known set means this reader does not understand the file.
+      '  publish:\n    permissions:\n      contents: rw\n    steps: []\n',
+      // Two blocks at one level: the second could be the one that grants write.
+      '  publish:\n    permissions:\n      contents: read\n    permissions:\n      contents: write\n    steps: []\n',
+    ]
+    for (const body of unreadable) {
+      expect(() => parseReleaseWorkflow(wrap(body)), body).toThrow(/cannot read release\.yml/)
+    }
+    // A continued plain scalar is a `jobCondition` concern, not a parse one: the real value is
+    // `${{ ... }} || true`, and returning only the first line read that as the safe form.
+    const continued = parseReleaseWorkflow(
+      wrap('  publish:\n    if: ${{ a }}\n      || true\n    steps: []\n')
+    )
+    expect(() => jobCondition(job(continued, 'publish'))).toThrow(/cannot read release\.yml/)
+    // A QUOTED `write-all` is read as the grant it is, not as an empty block: reading it as empty
+    // was the original bug, and it let a whole-job grant through while every check stayed green.
+    for (const quoted of ["'write-all'", '"write-all"']) {
+      const parsedQuoted = parseReleaseWorkflow(
+        wrap(`  publish:\n    permissions: ${quoted}\n    steps: []\n`)
+      )
+      expect(writeGrants(parsedQuoted), quoted).toEqual(['publish/*'])
+    }
+    // And the forms it DOES model still parse, so the guard is not vacuous.
+    expect(() =>
+      parseReleaseWorkflow(wrap('  publish:\n    permissions: write-all\n    steps: []\n'))
+    ).not.toThrow()
+  })
+
   it('takes a boolean dry_run input', () => {
     const dispatch = workflow.slice(
       workflow.indexOf('workflow_dispatch:'),
