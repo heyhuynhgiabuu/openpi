@@ -5,24 +5,15 @@ import type { Message } from '../types/session'
 const HISTORY_PAGE_LIMIT = 200
 
 /**
- * Combine a freshly read page with what the live event stream already added.
- *
- * The read is async, so a message can land live while it is in flight — a
- * resumed run's first output used to disappear when the page replaced the list.
- * Replacing with a plain concat is not the fix either: the same message can be
- * in both, and the ids differ (`entry.id` from the file, `u-`/`a-<timestamp>`
- * live), so neither id nor order can dedupe it.
- *
- * What does match is `(role, timestamp)`: the live event carries the message
- * payload that gets persisted, so the file records the same value. Messages the
- * file cannot carry (system notices, extension output) are always kept.
- */
-/**
  * Fill a page message's empty tool cards from its live counterpart, keyed by `toolCallId`.
  *
  * Only ever moves state *into* the file copy, and only where the file copy has nothing to say:
- * a card with output keeps it, because the file is the record. `streaming`/`startedAt` come across
- * too, so a call that is still running does not render as finished until its end event arrives.
+ * a card with output keeps it, because the file is the record.
+ *
+ * "Nothing to say" is not just an empty string. A tool that threw with no message ends with an
+ * empty output *and* `isError`, and a card with no text would read as a success; and a file card
+ * whose output is already final must never be marked `streaming`, because the tool row hides the
+ * output of a streaming card and the finished result would vanish until the next event.
  */
 function withLiveToolState(message: Message, live: Message[]): Message {
   if (!('toolCards' in message) || message.toolCards.length === 0) return message
@@ -39,16 +30,20 @@ function withLiveToolState(message: Message, live: Message[]): Message {
   const toolCards = message.toolCards.map((card) => {
     const liveCard = byId.get(card.toolCallId)
     if (!liveCard) return card
-    const takeOutput = card.output === '' && liveCard.output !== ''
-    const takeStreaming = liveCard.streaming && !card.streaming
+    // The file card has no text. The live card may still be empty legitimately, so the flag is
+    // what carries the error state: without it a tool that failed with no message reads as a
+    // success until a reload, which never comes because nothing re-reads history.
+    const empty = card.output === ''
+    const takeOutput = empty && liveCard.output !== ''
+    const takeError = empty && !liveCard.streaming && card.isError !== liveCard.isError
+    // Only onto a card that has nothing yet: marking a finished card streaming hides its output.
+    const takeStreaming = empty && liveCard.streaming && !card.streaming
     const takeStart = card.startedAt === undefined && liveCard.startedAt !== undefined
-    if (!takeOutput && !takeStreaming && !takeStart) return card
+    if (!takeOutput && !takeError && !takeStreaming && !takeStart) return card
     changed = true
     const next = { ...card }
-    if (takeOutput) {
-      next.output = liveCard.output
-      next.isError = liveCard.isError
-    }
+    if (takeOutput) next.output = liveCard.output
+    if (takeOutput || takeError) next.isError = liveCard.isError
     if (takeStreaming) next.streaming = true
     if (takeStart) next.startedAt = liveCard.startedAt
     return next
@@ -56,6 +51,19 @@ function withLiveToolState(message: Message, live: Message[]): Message {
   return changed ? { ...message, toolCards } : message
 }
 
+/**
+ * Combine a freshly read page with what the live event stream already added.
+ *
+ * The read is async, so a message can land live while it is in flight — a
+ * resumed run's first output used to disappear when the page replaced the list.
+ * Replacing with a plain concat is not the fix either: the same message can be
+ * in both, and the ids differ (`entry.id` from the file, `u-`/`a-<timestamp>`
+ * live), so neither id nor order can dedupe it.
+ *
+ * What does match is `(role, timestamp)`: the live event carries the message
+ * payload that gets persisted, so the file records the same value. Messages the
+ * file cannot carry (system notices, extension output) are always kept.
+ */
 export function mergeHistoryPage(page: Message[], live: Message[]): Message[] {
   const persisted = (
     message: Message

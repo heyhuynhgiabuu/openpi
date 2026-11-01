@@ -23,13 +23,20 @@ export type UiPromptSessionEvent = Extract<
  *
  * Returns null when no message owns the id, so a caller can leave the list untouched rather than
  * allocating a new array for nothing.
+ *
+ * An empty id is not an id. Providers that send none give every call `""`
+ * (`pi-ai` `openai-completions` does `id: toolCall.id || ''`), so scanning back for one would find
+ * an older turn's card and overwrite a finished result with this turn's. `tool_execution_start`
+ * already treats `""` as "not a real id"; the same rule has to hold here, which means such a call
+ * may only patch the current message.
  */
 function patchToolCard(
   messages: Message[],
   toolCallId: string,
   patch: (card: ToolCard) => ToolCard
 ): Message[] | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  const floor = toolCallId === '' ? Math.max(0, messages.length - 1) : 0
+  for (let index = messages.length - 1; index >= floor; index -= 1) {
     const message = messages[index]
     if (!message || !('toolCards' in message)) continue
     const cards = message.toolCards

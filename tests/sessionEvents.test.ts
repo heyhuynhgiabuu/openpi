@@ -189,11 +189,6 @@ describe('nested tool events (codemode)', () => {
   })
 })
 
-/**
- * Live user/assistant cards must carry `message.timestamp`: it is the only value a history load can
- * match against the file, since ids differ (`entry.id` vs `u-`/`a-<ts>`). Without it, every message
- * would be duplicated by the merge instead of recognised.
- */
 describe('a tool result for a message that is no longer the last one (#76)', () => {
   const assistant = (id: string, timestamp: number): Message => ({
     id,
@@ -222,8 +217,80 @@ describe('a tool result for a message that is no longer the last one (#76)', () 
     expect(cards[0]?.output).toBe('DONE')
     expect(cards[0]?.streaming).toBe(false)
   })
+
+  it('fills the owning card from a tool_execution_update, not just the last message', () => {
+    // The update branch was rewritten with no positive test at all: making it a no-op left the
+    // whole suite green. A partial result has to reach a card that is no longer last, same as end.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_update',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      partialResult: { content: [{ type: 'text', text: 'PARTIAL' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.output).toBe('PARTIAL')
+  })
+
+  it('patches the newest owner when two messages carry the same toolCallId', () => {
+    // The scan runs backwards because the newest owner is the current turn. A server that reuses
+    // an id, or a reopened session that re-appends a card, otherwise sends the result into an
+    // earlier turn. Pinned because reversing the loop left the whole suite green.
+    const duplicated = (id: string, timestamp: number, marker: string): Message => ({
+      id,
+      role: 'assistant',
+      text: marker,
+      timestamp,
+      toolCards: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'bash',
+          args: {},
+          output: '',
+          isError: false,
+          streaming: true,
+        },
+      ],
+    })
+    const messages = [duplicated('a-1', 1, 'older'), duplicated('a-2', 2, 'newer')]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'NEWEST' }] },
+    } as SessionEvent)
+    const outputs = next.flatMap((message) =>
+      'toolCards' in message ? message.toolCards[0]?.output : []
+    )
+
+    expect(outputs).toEqual(['', 'NEWEST'])
+  })
+
+  it('does not let an empty toolCallId patch an earlier turn', () => {
+    // Providers that send no id give every call `""`. Scanning back for one would find an older
+    // turn's card and overwrite a finished result with this turn's -- a regression the scan
+    // introduced. An empty id may only patch the current message.
+    const older = assistant('', 1)
+    const messages = [older, user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: '',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'NEW' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    // The older turn's card is untouched, and the user message is not an assistant card.
+    expect(cards[0]?.output).toBe('')
+  })
 })
 
+/**
+ * Live user/assistant cards must carry `message.timestamp`: it is the only value a history load can
+ * match against the file, since ids differ (`entry.id` vs `u-`/`a-<ts>`). Without it, every message
+ * would be duplicated by the merge instead of recognised.
+ */
 describe('live cards carry the message timestamp', () => {
   const fold = (events: SessionEvent[]): Message[] =>
     events.reduce<Message[]>((messages, event) => applySessionEvent(messages, event), [])

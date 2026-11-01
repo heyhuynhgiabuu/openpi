@@ -90,6 +90,32 @@ describe('merging a history page with live messages (#71)', () => {
     expect(cards[0]?.startedAt).toBe(9_000)
   })
 
+  it('takes the error flag even when the failed tool produced no output', () => {
+    // A tool that throws with no message ends with `output: ''` and `isError: true`. Copying the
+    // output only when it is non-empty therefore left the file card reading as a SUCCESS until a
+    // reload -- and nothing re-reads history on `agent_end`. Wrong, not merely stale.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', '', false)])
+    const live = assistantWith('a-1', 1_000, [{ ...card('call-1', '', false), isError: true }])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.isError).toBe(true)
+  })
+
+  it('never marks a file card streaming when it already holds the final output', () => {
+    // The tool row hides the output of a streaming card, so copying `streaming` onto a finished
+    // card made the final result disappear until the end event happened to arrive.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', 'FINAL', false)])
+    const live = assistantWith('a-1', 1_000, [card('call-1', 'FINAL', true)])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.streaming).toBe(false)
+    expect(cards[0]?.output).toBe('FINAL')
+  })
+
   it('leaves a card with no live counterpart alone', () => {
     const fromFile = assistantWith('entry-1', 1_000, [
       card('call-1', '', false),
