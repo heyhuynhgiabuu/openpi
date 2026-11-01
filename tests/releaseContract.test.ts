@@ -93,20 +93,29 @@ describe('release artifact contract', () => {
     // `needs` and disable the implicit success() check, publishing after a failed build.
     expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
     expect(publish).toContain('needs: build')
-    // A dry run has no tag, so the version has to come from the package metadata.
-    expect(workflow).toContain('Dry run: using package.json version')
-    // And it must be dispatchable on a branch, or there is no way to run it pre-tag.
+    // `main` has to be listed among the dispatch refs, or a dry run dispatched from
+    // main may be rejected. Read the branches block itself, not the whole trigger.
     const dispatch = workflow.slice(workflow.indexOf('workflow_dispatch:'))
-    expect(dispatch).toContain('- "main"')
-    // The artifact version must come from the validated metadata in every build step.
-    // On a dry run the ref is a branch, so a step that derives it from `github.ref_name`
-    // looks in release/main/ -- a directory electron-builder never writes -- and fails
-    // before the very verification a dry run exists to perform.
+    const branches = dispatch.slice(dispatch.indexOf('branches:'), dispatch.indexOf('tags:'))
+    expect(branches).toContain('branches:')
+    expect(branches.split('\n').map((line) => line.trim())).toContain('- "main"')
+    // No build step may derive the artifact version from the ref. On a dry run the ref is
+    // a branch, so such a step resolves release/main/ -- a directory electron-builder
+    // never writes -- and fails before the verification a dry run exists to perform.
+    // The Validate step is the one place allowed to read the ref, because it is what
+    // translates a tag into that same metadata version.
     const build = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  publish:'))
-    expect(build).not.toMatch(
-      /VERSION="\$\{\{ github\.ref_name \}\}"[^\n]*\n\s+VERSION="\$\{VERSION#v\}"\n\s+RELEASE_DIR=/
+    const validateStart = build.indexOf('- name: Validate release version')
+    const validateEnd = build.indexOf('- name: Setup Node', validateStart)
+    expect(validateStart).toBeGreaterThan(-1)
+    expect(validateEnd).toBeGreaterThan(validateStart)
+    const validateStep = build.slice(validateStart, validateEnd)
+    // A dry run has no tag, so this step must fall back to the package version.
+    expect(validateStep).toContain('VERSION="$PACKAGE_VERSION"')
+    const stepsOutsideValidate = build.slice(0, validateStart) + build.slice(validateEnd)
+    expect(stepsOutsideValidate).not.toMatch(
+      /VERSION="?\$\{\{ github\.ref_name|GITHUB_REF_NAME|release\/\$\{\{ github\.ref/
     )
-    expect(build).toContain('VERSION="${{ steps.release_meta.outputs.version }}"')
   })
 
   it('creates one combined macOS updater manifest and does not merge per-arch manifests', () => {
