@@ -89,14 +89,24 @@ describe('release artifact contract', () => {
     // build must never reach publish, so the condition cannot be an `always()` form.
     const publish = workflow.slice(workflow.indexOf('  publish:'))
     expect(publish).toMatch(/if: \$\{\{ inputs\.dry_run != true \}\}/)
-    // A modifier that ignores `needs` would publish after a failed build.
-    expect(publish).not.toMatch(/if:.*always\(/)
+    // A status function in the condition (always/failure/cancelled) would both ignore
+    // `needs` and disable the implicit success() check, publishing after a failed build.
+    expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
     expect(publish).toContain('needs: build')
     // A dry run has no tag, so the version has to come from the package metadata.
     expect(workflow).toContain('Dry run: using package.json version')
     // And it must be dispatchable on a branch, or there is no way to run it pre-tag.
     const dispatch = workflow.slice(workflow.indexOf('workflow_dispatch:'))
     expect(dispatch).toContain('- "main"')
+    // The artifact version must come from the validated metadata in every build step.
+    // On a dry run the ref is a branch, so a step that derives it from `github.ref_name`
+    // looks in release/main/ -- a directory electron-builder never writes -- and fails
+    // before the very verification a dry run exists to perform.
+    const build = workflow.slice(workflow.indexOf('  build:'), workflow.indexOf('  publish:'))
+    expect(build).not.toMatch(
+      /VERSION="\$\{\{ github\.ref_name \}\}"[^\n]*\n\s+VERSION="\$\{VERSION#v\}"\n\s+RELEASE_DIR=/
+    )
+    expect(build).toContain('VERSION="${{ steps.release_meta.outputs.version }}"')
   })
 
   it('creates one combined macOS updater manifest and does not merge per-arch manifests', () => {

@@ -8,7 +8,7 @@ on:
     # A real release is dispatched on its tag. A dry run builds, packages and
     # verifies every target without publishing, so the toolchain on each runner
     # image can be checked before a tag is cut. `package.json` supplies the
-    # version in that mode, which is why any branch is accepted here.
+    # version in that mode, which is why `main` is accepted here alongside `v*`.
     inputs:
       dry_run:
         description: "Build and verify only; never publish or touch an existing release"
@@ -146,8 +146,9 @@ jobs:
         shell: bash
         run: |
           set -e
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
+          # The version comes from the validated metadata, not the ref: on a dry run the
+          # ref is a branch, while electron-builder still writes to release/<version>/.
+          VERSION="${{ steps.release_meta.outputs.version }}"
           RELEASE_DIR="release/${VERSION}"
 
           echo "=== Verifying packaged artifacts in $RELEASE_DIR ==="
@@ -187,8 +188,7 @@ jobs:
       - name: Generate per-platform checksums
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ steps.release_meta.outputs.version }}"
           RELEASE_DIR="release/${VERSION}"
 
           if [ ! -d "$RELEASE_DIR" ]; then
