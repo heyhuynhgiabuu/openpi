@@ -28,6 +28,10 @@
     {
       "from": "out/pwa",
       "to": "pwa"
+    },
+    {
+      "from": ".pi/extensions/openpi-preapply-review",
+      "to": "extensions/openpi-preapply-review"
     }
   ],
   "mac": {

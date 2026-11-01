@@ -153,11 +153,19 @@ export class PiSidecarHost {
     const nodeExecutable = findNodeExecutable()
     // Let the openpi-bridge extension identify itself as OpenPi, and hand the
     // extensions the app-level policy the user enabled.
-    const bridgeEnv = {
+    const bridgeEnv: NodeJS.ProcessEnv = {
       ...process.env,
       OPENPI_BRIDGE_APP: 'openpi',
       ...this.getPolicyEnv(),
     }
+    // Where shipped assets live (the pre-apply gate is copied here by `extraResources`).
+    // Read here because only main can ask Electron; the sidecar bundle must not reach
+    // `electron` at all (`tests/sidecarBundle.test.ts`). Deleted — not merely left unset —
+    // when not packaged: Pi's bash tool spawns with `{...process.env}`, so a dev run
+    // started from inside the packaged app would otherwise inherit the installed app's
+    // Resources path and load that (possibly older) copy of the gate.
+    if (app.isPackaged) bridgeEnv.OPENPI_RESOURCES_PATH = process.resourcesPath
+    else delete bridgeEnv.OPENPI_RESOURCES_PATH
     const child: SidecarProcess = nodeExecutable
       ? fork(SIDECAR_PATH, [], {
           execPath: nodeExecutable,
