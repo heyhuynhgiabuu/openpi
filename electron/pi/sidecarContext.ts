@@ -18,6 +18,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { ProviderAuthBridge } from './providerAuth'
 import { createSessionSettingsManager } from './sessionSettings'
+import { existingPreapplyExtensionPath } from './preapplyExtension'
 import type { SidecarMessage } from './sidecarTypes'
 
 export type SessionState = {
@@ -183,12 +184,20 @@ export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) 
   // fall back to adding the directory itself, and loadExtension would fail trying
   // to jiti.import() a directory.
   const noExtensions = !workspaceTrusted
+  // The pre-apply gate ships with the app (issue #80) and is added in *both* branches: Pi
+  // discovers project extensions from `<cwd>/.pi/extensions`, which a user's workspace does
+  // not have, and this list is the only way to hand Pi a path it did not discover itself.
+  const shippedPreapply = existingPreapplyExtensionPath()
+  const additionalExtensionPaths = [
+    ...(noExtensions ? [agentDir] : []),
+    ...(shippedPreapply ? [shippedPreapply] : []),
+  ]
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir,
     settingsManager,
     noExtensions,
-    additionalExtensionPaths: noExtensions ? [agentDir] : [],
+    additionalExtensionPaths,
     // `noExtensions` drops every `builtin:<name>` path from the load set
     // (dist/core/resource-loader.js:409), so all three builtins are skipped in an
     // untrusted workspace even though they are listed here.
