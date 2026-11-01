@@ -42,17 +42,18 @@ import {
  * `connectServer` closing its client when a tool listing fails), and a restart during a run resumes
  * the in-flight prompt (a reopen waits for idle, which also enables scheduling, then exports).
  *
- * Two e2e specs are the witnesses, and both must be run by hand with `OPENPI_E2E_DURABLE=1`:
- * `durableGate.spec.ts` drives a real session through the renderer (a shell turn, so no model), and
- * `durablePrompt.spec.ts` drives a prompt turn through a real model and asserts its answer on screen
- * and in the exported tree. Those drives are what found the model-choice and no-default-model defects;
- * keeping them is why opening the gate was worth delaying.
+ * Two e2e specs are the witnesses, both gated on `OPENPI_E2E_DURABLE=1`. `durableGate.spec.ts`
+ * drives a real session through the renderer (a shell turn, so no model) and runs on every PR in
+ * CI's Linux build leg; `durablePrompt.spec.ts` drives a prompt turn through a real model and
+ * asserts its answer on screen and in the exported tree, and stays a hand-run pre-release check
+ * because it needs a model key and the developer's own `models.json` (ROADMAP Phase 8, item 8).
+ * Those drives are what found the model-choice and no-default-model defects; keeping them is why
+ * opening the gate was worth delaying.
  *
  * This does NOT flip the default: the runtime still needs the preference set to `durable`, and
  * anything without one keeps running on the SDK path. Flipping needs the remaining ROADMAP Phase 8
- * conditions — items 6 and 7 must be resolved or explicitly accepted, item 8 (CI running those
- * specs automatically, because a green CI currently says nothing about them), and the rest of
- * item 9: the pre-apply review gate is still missing. Extension-provided model providers are now
+ * conditions — item 7 must be resolved or explicitly accepted (item 6 is done, item 8 now runs the
+ * shell-turn witness in CI), and the rest of item 9: the pre-apply review gate is still missing. Extension-provided model providers are now
  * loaded (`durable/providers.ts`, global extensions only), which is why that capability is listed.
  * This runtime still loads no project extensions and no tool_call hooks.
  */

@@ -94,3 +94,24 @@ jobs:
         run: xvfb-run --auto-servernum node scripts/smoke-electron.mjs
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
+
+      # The Phase 8 cutover gate requires the durable runtime's own e2e witness to run
+      # automatically rather than by manual dispatch. It rides this leg because the app is
+      # already built here and xvfb is the same recipe the smoke above uses. Only the
+      # shell-turn spec is automated: it needs no model and no secret. The prompt-turn spec
+      # needs a model key and the developer's own models.json, so it stays a manual
+      # pre-release check (see ROADMAP Phase 8, item 8).
+      - name: Durable runtime e2e (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum npx playwright test tests/e2e/durableGate.spec.ts
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
+          OPENPI_E2E_DURABLE: '1'
+
+      - name: Upload Playwright traces on failure
+        if: failure() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-durable-gate
+          path: test-results/
+          retention-days: 7
