@@ -19,6 +19,18 @@
  *
  * Deliberately strict about shape: a missing or malformed report is a failure, never a pass. That
  * is the difference between a check and the appearance of one.
+ *
+ * WHAT THIS DOES NOT PROVE. A person can still retire this gate, and every automated check will
+ * stay green. Three routes survive by construction:
+ *   1. A spec that records the witness but asserts nothing about the app. Nothing in the report
+ *      distinguishes "the marker was verified" from "the marker was never looked for".
+ *   2. A spec edited to write the witness before doing the work and return afterwards. The pins in
+ *      `ciDurableGate.test.ts` count the annotation accessor and forbid the declarative form and
+ *      the lifecycle hooks, which closes the rewrites found so far -- not the next one.
+ *   3. An edit to THIS file that keys on the environment or working directory, because the
+ *      rehearsal in `gateRanRehearsal.test.ts` runs in a temp directory of its own.
+ * This is a guard against ACCIDENT, and against a model confidently "fixing" the gate by moving
+ * the witness up. It is not a proof. Changes here and in the spec need a human.
  */
 import { readFileSync } from 'node:fs'
 

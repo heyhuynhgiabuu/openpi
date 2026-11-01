@@ -141,6 +141,15 @@ describe('the durable gate asserts it ran', () => {
     expect(result.output).toContain('completion witness')
   })
 
+  it('reports a failed test as a failure, not as a run that never happened', () => {
+    // `unexpected` had no case, so deleting the check that reads it kept the rehearsal green.
+    // A failure is also a more specific cause than the count, so it is reported first.
+    const result = run(passing({ expected: 0, skipped: 0, unexpected: 1, flaky: 0 }))
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('failed unexpectedly')
+    expect(result.output).not.toContain('expected exactly 1')
+  })
+
   it('reports a flaky run as flaky, not as a run that never happened', () => {
     // `expected: 0, flaky: 1` is what a retried pass looks like, and it used to be reported as
     // "the spec did not run" -- a message that sends the reader to the wrong place.

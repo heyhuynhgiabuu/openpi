@@ -33,11 +33,10 @@ describe('durable runtime e2e gate', () => {
     expect(runBody).not.toContain('PLAYWRIGHT_JSON_OUTPUT_DIR')
     // The report is removed first: without this, a report left in the workspace by an earlier run
     // satisfies the assertion even when this run's spec returned early.
-    const firstCommand = runBody
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)[1]
-    expect(firstCommand).toBe('rm -f durable-gate.json')
+    //
+    // The WHOLE command list is pinned below, not just the first and last entries. Anything in
+    // between could otherwise overwrite the report after Playwright wrote it -- `cp forged.json
+    // durable-gate.json` right before the assertion passed a first-and-last check.
     expect(runBody).toContain('tests/e2e/durableGate.spec.ts')
     // The assertion must be the last thing the step does. If Playwright's exit code were allowed
     // to be the verdict, a suite that skips itself would pass.
@@ -47,7 +46,13 @@ describe('durable runtime e2e gate', () => {
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
-    expect(commands.at(-1)).toBe('node scripts/assertGateRan.mjs durable-gate.json')
+    expect(commands).toEqual([
+      'rm -f durable-gate.json',
+      'PLAYWRIGHT_JSON_OUTPUT_FILE=durable-gate.json \\',
+      'xvfb-run --auto-servernum npx playwright test \\',
+      'tests/e2e/durableGate.spec.ts --reporter=json',
+      'node scripts/assertGateRan.mjs durable-gate.json',
+    ])
     // The flag has to be on this step, as its own line: moved elsewhere the spec skips and
     // the run is green for the wrong reason.
     expect(lines.filter((line) => line.startsWith('OPENPI_E2E_DURABLE'))).toEqual([
@@ -121,6 +126,16 @@ describe('durable runtime e2e gate', () => {
     // Exactly once. `toContain` alone let a second copy sit anywhere, so a body could push the
     // witness and then return -- the report carries the annotation and every check stays green.
     expect(spec.split(push)).toHaveLength(2)
+    // And nothing else in the spec may touch annotations at all. Pinning the one exact line still
+    // let `const info = test.info(); info.annotations.push(...)` retire the gate: a review ran
+    // exactly that with the pinned line left in place, and every check stayed green. Counting the
+    // ACCESSOR rather than one spelling closes the rewrite; banning the declarative form closes
+    // `test('x', { annotation: [...] }, ...)`, and banning the hooks closes an annotation written
+    // for a body that returned early.
+    expect(spec.match(/annotations/g) ?? []).toHaveLength(1)
+    for (const banned of ['annotation:', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll']) {
+      expect(spec).not.toContain(banned)
+    }
     // And last in the `try` block, because "the body reached its end" is only true of the final
     // statement. Anything after the push can retire the test with the witness already recorded.
     expect(spec).toMatch(new RegExp(`${escapeRegExp(push)}\\s*\\}\\s*finally\\s*\\{`))
@@ -140,8 +155,17 @@ describe('durable runtime e2e gate', () => {
   it('does not run the other e2e specs with this step', () => {
     // A bare `npx playwright test` would also run smoke.spec.ts, which has no env guard.
     // Naming the spec file keeps the automated gate limited to the durable witness.
-    const step = ciWorkflow.slice(ciWorkflow.indexOf('name: Durable runtime e2e'))
-    const runLine = step.slice(step.indexOf('run:'), step.indexOf('\n', step.indexOf('run:')))
-    expect(runLine).not.toMatch(/playwright test\s*$/)
+    //
+    // Reads the joined command list: slicing to the end of the `run:` LINE only ever saw the
+    // literal `run: |` block header, so this assertion could not fail. It can again.
+    const commands = gateStep()
+      .split('\n')
+      .map((line) => line.trim())
+      .join(' ')
+    const invocations = commands.match(/playwright test[^&|;]*/g) ?? []
+    expect(invocations.length).toBeGreaterThan(0)
+    for (const invocation of invocations) {
+      expect(invocation).toContain('tests/e2e/durableGate.spec.ts')
+    }
   })
 })
