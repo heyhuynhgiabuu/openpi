@@ -179,12 +179,35 @@ describe('release dry run', () => {
     for (const body of unreadable) {
       expect(() => parseReleaseWorkflow(wrap(body)), body).toThrow(/cannot read release\.yml/)
     }
+    // A quoted or complex KEY, and a flow-style job, all read as ordinary entries to a real YAML
+    // parser and each slipped a write grant past the text checks. They fail on SHAPE now.
+    for (const body of [
+      '  publish:\n    "permissions": write-all\n    steps: []\n',
+      "  publish:\n    'permissions': write-all\n    steps: []\n",
+      '  publish:\n    ? permissions\n    : write-all\n    steps: []\n',
+      '  publish: { runs-on: ubuntu-latest, permissions: write-all, steps: [] }\n',
+    ]) {
+      expect(() => parseReleaseWorkflow(wrap(body)), body).toThrow(/cannot read release\.yml/)
+    }
+    // The EMPTY flow collections cannot carry a scope, so they stay allowed -- otherwise a
+    // legitimate tightening (`permissions: {}` on a build leg) would turn CI red.
+    expect(() =>
+      parseReleaseWorkflow(wrap('  publish:\n    permissions: {}\n    steps: []\n'))
+    ).not.toThrow()
+
     // A continued plain scalar is a `jobCondition` concern, not a parse one: the real value is
     // `${{ ... }} || true`, and returning only the first line read that as the safe form.
     const continued = parseReleaseWorkflow(
       wrap('  publish:\n    if: ${{ a }}\n      || true\n    steps: []\n')
     )
     expect(() => jobCondition(job(continued, 'publish'))).toThrow(/cannot read release\.yml/)
+    // A blank line does not end a plain scalar, so this is the same continuation.
+    const blankThenContinuation = parseReleaseWorkflow(
+      wrap('  publish:\n    if: ${{ a }}\n\n      || true\n    steps: []\n')
+    )
+    expect(() => jobCondition(job(blankThenContinuation, 'publish'))).toThrow(
+      /cannot read release\.yml/
+    )
     // A QUOTED `write-all` is read as the grant it is, not as an empty block: reading it as empty
     // was the original bug, and it let a whole-job grant through while every check stayed green.
     for (const quoted of ["'write-all'", '"write-all"']) {
