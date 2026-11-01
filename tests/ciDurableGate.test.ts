@@ -48,6 +48,16 @@ describe('durable runtime e2e gate', () => {
     const buildJob = ciWorkflow.slice(buildStart)
     expect(buildJob).toContain('matrix:')
     expect(buildJob).not.toContain('continue-on-error')
+    // The step's guard compares against 'ubuntu-latest', so that exact label has to stay in
+    // the matrix. Renaming it (pinning the runner, as windows-2022 already is) would skip
+    // the gate silently while every check stayed green.
+    const osLine = buildJob.split('\n').find((line) => line.trim().startsWith('os: ['))
+    expect(osLine).toBeDefined()
+    expect(osLine?.split(',').map((entry) => entry.trim())).toContain('ubuntu-latest')
+    // No job-level `if:` either: `if: github.event_name == 'push'` on this job would skip
+    // the gate on every PR while the check stayed green.
+    const jobLevelConditions = buildJob.split('\n').filter((line) => /^    if:/.test(line))
+    expect(jobLevelConditions).toEqual([])
     // `--pass-with-no-tests` would let a deleted or renamed spec exit 0.
     expect(body).not.toContain('--pass-with-no-tests')
   })
