@@ -34,7 +34,115 @@ const system = (id: string): Message => ({
 
 const ids = (messages: Message[]) => messages.map((message) => message.id)
 
+const card = (toolCallId: string, output: string, streaming = false) => ({
+  toolCallId,
+  toolName: 'bash',
+  args: {},
+  output,
+  isError: false,
+  streaming,
+})
+
+const assistantWith = (id: string, timestamp: number, toolCards: ReturnType<typeof card>[]) => ({
+  ...assistant(id, '', timestamp),
+  toolCards,
+})
+
 describe('merging a history page with live messages (#71)', () => {
+  it('keeps the live tool output when the file copy of the same message is stale (#76)', () => {
+    // The file copy is the message of record (its entry id is what fork and branch need), but it
+    // carries the tool card as the JSONL had it at read time: `output: ''`, `streaming: false`.
+    // If the read lands after the tool ended and before the result was written, keeping the file
+    // copy verbatim throws that output away -- and nothing re-reads history on `agent_end`.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', '', false)])
+    const live = assistantWith('a-1', 1_000, [card('call-1', 'DURABLE_E2E_MARKER', true)])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+
+    expect(merged?.id).toBe('entry-1')
+    expect(merged?.role === 'assistant' ? merged.toolCards[0]?.output : null).toBe(
+      'DURABLE_E2E_MARKER'
+    )
+  })
+
+  it('keeps the file copy own output when it already has one', () => {
+    // Only an empty file-side card defers to the live one: a file copy with output is the
+    // authoritative record, and the live stream may be a partial that ended abruptly.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', 'from file', false)])
+    const live = assistantWith('a-1', 1_000, [card('call-1', 'different', true)])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+
+    expect(merged?.role === 'assistant' ? merged.toolCards[0]?.output : null).toBe('from file')
+  })
+
+  it('takes streaming and startedAt from the live card so an in-flight tool still looks live', () => {
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', '', false)])
+    const live = {
+      ...assistantWith('a-1', 1_000, [card('call-1', '', true)]),
+      toolCards: [{ ...card('call-1', '', true), startedAt: 9_000 }],
+    }
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.streaming).toBe(true)
+    expect(cards[0]?.startedAt).toBe(9_000)
+  })
+
+  it('takes the error flag even when the failed tool produced no output', () => {
+    // A tool that throws with no message ends with `output: ''` and `isError: true`. Copying the
+    // output only when it is non-empty therefore left the file card reading as a SUCCESS until a
+    // reload -- and nothing re-reads history on `agent_end`. Wrong, not merely stale.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', '', false)])
+    const live = assistantWith('a-1', 1_000, [{ ...card('call-1', '', false), isError: true }])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.isError).toBe(true)
+  })
+
+  it('keeps a recorded error when the live card has not ended yet', () => {
+    // The live list can lag the file. Without the ended-check on the error carry, a file record
+    // that already says "failed" would be flipped back to success by a card still streaming.
+    const fromFile = assistantWith('entry-1', 1_000, [
+      { ...card('call-1', '', false), isError: true },
+    ])
+    const live = assistantWith('a-1', 1_000, [{ ...card('call-1', '', true), isError: false }])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.isError).toBe(true)
+  })
+
+  it('never marks a file card streaming when it already holds the final output', () => {
+    // The tool row hides the output of a streaming card, so copying `streaming` onto a finished
+    // card made the final result disappear until the end event happened to arrive.
+    const fromFile = assistantWith('entry-1', 1_000, [card('call-1', 'FINAL', false)])
+    const live = assistantWith('a-1', 1_000, [card('call-1', 'FINAL', true)])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.streaming).toBe(false)
+    expect(cards[0]?.output).toBe('FINAL')
+  })
+
+  it('leaves a card with no live counterpart alone', () => {
+    const fromFile = assistantWith('entry-1', 1_000, [
+      card('call-1', '', false),
+      card('call-2', 'kept', false),
+    ])
+    const live = assistantWith('a-1', 1_000, [card('call-1', 'filled', true)])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards.map((entry) => entry.output)).toEqual(['filled', 'kept'])
+  })
+
   it('keeps a live message the page does not contain', () => {
     const merged = mergeHistoryPage(
       [user('entry-1', 'from file', 1_000)],

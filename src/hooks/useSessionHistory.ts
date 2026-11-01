@@ -5,6 +5,53 @@ import type { Message } from '../types/session'
 const HISTORY_PAGE_LIMIT = 200
 
 /**
+ * Fill a page message's empty tool cards from its live counterpart, keyed by `toolCallId`.
+ *
+ * Only ever moves state *into* the file copy, and only where the file copy has nothing to say:
+ * a card with output keeps it, because the file is the record.
+ *
+ * "Nothing to say" is not just an empty string. A tool that threw with no message ends with an
+ * empty output *and* `isError`, and a card with no text would read as a success; and a file card
+ * whose output is already final must never be marked `streaming`, because the tool row hides the
+ * output of a streaming card and the finished result would vanish until the next event.
+ */
+function withLiveToolState(message: Message, live: Message[]): Message {
+  if (!('toolCards' in message) || message.toolCards.length === 0) return message
+  const counterpart = live.find(
+    (candidate) =>
+      candidate.role === message.role &&
+      candidate.timestamp === message.timestamp &&
+      'toolCards' in candidate
+  )
+  if (!counterpart || !('toolCards' in counterpart)) return message
+
+  const byId = new Map(counterpart.toolCards.map((card) => [card.toolCallId, card]))
+  let changed = false
+  const toolCards = message.toolCards.map((card) => {
+    const liveCard = byId.get(card.toolCallId)
+    if (!liveCard) return card
+    // The file card has no text. The live card may still be empty legitimately, so the flag is
+    // what carries the error state: without it a tool that failed with no message reads as a
+    // success until a reload, which never comes because nothing re-reads history.
+    const empty = card.output === ''
+    const takeOutput = empty && liveCard.output !== ''
+    const takeError = empty && !liveCard.streaming && card.isError !== liveCard.isError
+    // Only onto a card that has nothing yet: marking a finished card streaming hides its output.
+    const takeStreaming = empty && liveCard.streaming && !card.streaming
+    const takeStart = card.startedAt === undefined && liveCard.startedAt !== undefined
+    if (!takeOutput && !takeError && !takeStreaming && !takeStart) return card
+    changed = true
+    const next = { ...card }
+    if (takeOutput) next.output = liveCard.output
+    if (takeOutput || takeError) next.isError = liveCard.isError
+    if (takeStreaming) next.streaming = true
+    if (takeStart) next.startedAt = liveCard.startedAt
+    return next
+  })
+  return changed ? { ...message, toolCards } : message
+}
+
+/**
  * Combine a freshly read page with what the live event stream already added.
  *
  * The read is async, so a message can land live while it is in flight — a
@@ -39,7 +86,12 @@ export function mergeHistoryPage(page: Message[], live: Message[]): Message[] {
     return id === null || !loaded.has(id)
   })
 
-  return [...page, ...kept]
+  // The file copy stays the message of record -- its `entryId` is what fork and branch need -- but
+  // its tool cards were built from the JSONL as it was when the read started, with `output: ''` and
+  // `streaming: false`. If that read landed after a tool finished but before its result was written,
+  // the live card knows the output and the file copy does not, and nothing re-reads history on
+  // `agent_end`, so the blank would survive until the user reloaded (issue #76).
+  return [...page.map((message) => withLiveToolState(message, live)), ...kept]
 }
 
 interface SessionHistoryOptions {

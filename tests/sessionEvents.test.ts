@@ -189,6 +189,154 @@ describe('nested tool events (codemode)', () => {
   })
 })
 
+describe('a tool result for a message that is no longer the last one (#76)', () => {
+  const assistant = (id: string, timestamp: number): Message => ({
+    id,
+    role: 'assistant',
+    text: '',
+    timestamp,
+    toolCards: [
+      { toolCallId: id, toolName: 'bash', args: {}, output: '', isError: false, streaming: true },
+    ],
+  })
+  const user: Message = { id: 'u-1', role: 'user', text: 'next', toolCards: [], timestamp: 2 }
+
+  it('fills the card in the assistant message that owns the toolCallId', () => {
+    // Only `messages.at(-1)` used to be considered, so a tool finishing after the user had already
+    // sent the next message updated nothing: the card stayed empty until a reload. The repair has
+    // to find the owning message by toolCallId.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'DONE' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.output).toBe('DONE')
+    expect(cards[0]?.streaming).toBe(false)
+  })
+
+  it('fills the owning card from a tool_execution_update, not just the last message', () => {
+    // The update branch was rewritten with no positive test at all: making it a no-op left the
+    // whole suite green. A partial result has to reach a card that is no longer last, same as end.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_update',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      partialResult: { content: [{ type: 'text', text: 'PARTIAL' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.output).toBe('PARTIAL')
+  })
+
+  it('patches the newest owner when two messages carry the same toolCallId', () => {
+    // The scan runs backwards because the newest owner is the current turn. A server that reuses
+    // an id, or a reopened session that re-appends a card, otherwise sends the result into an
+    // earlier turn. Pinned because reversing the loop left the whole suite green.
+    const duplicated = (id: string, timestamp: number, marker: string): Message => ({
+      id,
+      role: 'assistant',
+      text: marker,
+      timestamp,
+      toolCards: [
+        {
+          toolCallId: 'call-1',
+          toolName: 'bash',
+          args: {},
+          output: '',
+          isError: false,
+          streaming: true,
+        },
+      ],
+    })
+    const messages = [duplicated('a-1', 1, 'older'), duplicated('a-2', 2, 'newer')]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'NEWEST' }] },
+    } as SessionEvent)
+    const outputs = next.flatMap((message) =>
+      'toolCards' in message ? message.toolCards[0]?.output : []
+    )
+
+    expect(outputs).toEqual(['', 'NEWEST'])
+  })
+
+  it('still patches the CURRENT message for a provider that sends an empty id', () => {
+    // The floor stops an empty id reaching an older turn. It must not stop it reaching the
+    // current one: `if (toolCallId === '') return null` survived the whole suite, so a one-step
+    // slip at the floor would leave every card from such a provider spinning forever, silently.
+    const messages: Message[] = [
+      user,
+      {
+        id: 'a-2',
+        role: 'assistant',
+        text: '',
+        timestamp: 3,
+        toolCards: [
+          {
+            toolCallId: '',
+            toolName: 'bash',
+            args: {},
+            output: '',
+            isError: false,
+            streaming: true,
+          },
+        ],
+      },
+    ]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: '',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'EMPTY-ID DONE' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards.at(-1)?.output).toBe('EMPTY-ID DONE')
+    expect(cards.at(-1)?.streaming).toBe(false)
+  })
+
+  it('carries details from a tool_execution_update, which the task row reads', () => {
+    // The update branch was rewritten here; replacing its merge with `{ ...card, output }` left
+    // the whole suite green, and the task row reads `details` for `task_id` and `phase`.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_update',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      partialResult: { content: [{ type: 'text', text: 'P' }] },
+      details: { task_id: 'mv-task', phase: 'running' },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.details).toEqual({ task_id: 'mv-task', phase: 'running' })
+  })
+
+  it('does not let an empty toolCallId patch an earlier turn', () => {
+    // Providers that send no id give every call `""`. Scanning back for one would find an older
+    // turn's card and overwrite a finished result with this turn's -- a regression the scan
+    // introduced. An empty id may only patch the current message.
+    const older = assistant('', 1)
+    const messages = [older, user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: '',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'NEW' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    // The older turn's card is untouched, and the user message is not an assistant card.
+    expect(cards[0]?.output).toBe('')
+  })
+})
+
 /**
  * Live user/assistant cards must carry `message.timestamp`: it is the only value a history load can
  * match against the file, since ids differ (`entry.id` vs `u-`/`a-<ts>`). Without it, every message
