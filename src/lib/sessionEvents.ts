@@ -14,6 +14,36 @@ export type UiPromptSessionEvent = Extract<
  * string, so a `type` check cannot narrow on its own. This returns the declared
  * shape the schema already validated, or null for every other event.
  */
+/**
+ * Patch one tool card wherever it lives, by `toolCallId`.
+ *
+ * The live handlers used to look only at `messages.at(-1)`, so a tool that finished after the next
+ * user message had been appended updated nothing and its card kept `output: ''` until a reload.
+ * A tool result identifies its card by id, so the owning message is findable from the end.
+ *
+ * Returns null when no message owns the id, so a caller can leave the list untouched rather than
+ * allocating a new array for nothing.
+ */
+function patchToolCard(
+  messages: Message[],
+  toolCallId: string,
+  patch: (card: ToolCard) => ToolCard
+): Message[] | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message || !('toolCards' in message)) continue
+    const cards = message.toolCards
+    if (!cards.some((card) => card.toolCallId === toolCallId)) continue
+    const next = [...messages]
+    next[index] = {
+      ...message,
+      toolCards: cards.map((card) => (card.toolCallId === toolCallId ? patch(card) : card)),
+    }
+    return next
+  }
+  return null
+}
+
 export function asUiPromptEvent(event: SessionEvent): UiPromptSessionEvent | null {
   if (event.type !== 'ui_prompt_start' && event.type !== 'ui_prompt_end') return null
   // SAFETY: sessionEventKnownSchema validated id/kind/title for these two types.
@@ -167,49 +197,32 @@ export function applySessionEvent(
 
     case 'tool_execution_update': {
       // Also a hot path during long-running tool calls.
-      const last = messages.at(-1)
-      if (!last || last.role !== 'assistant') return messages
-      type AssistantMsg = { toolCards: ToolCard[] } & typeof last
-      const lastA = last as AssistantMsg
-      const toolCallId = event.toolCallId as string
       const output = resultText(event.partialResult)
       const partialDetails =
         event.details && typeof event.details === 'object'
           ? (event.details as Record<string, unknown>)
           : undefined
-      const next = [...messages]
-      next[next.length - 1] = {
-        ...lastA,
-        toolCards: lastA.toolCards.map((card) => {
-          if (card.toolCallId !== toolCallId) return card
-          if (!partialDetails) return { ...card, output }
-          return { ...card, output, details: { ...card.details, ...partialDetails } }
-        }),
-      }
-      return next
+      return (
+        patchToolCard(messages, event.toolCallId as string, (card) =>
+          partialDetails
+            ? { ...card, output, details: { ...card.details, ...partialDetails } }
+            : { ...card, output }
+        ) ?? messages
+      )
     }
 
     case 'tool_execution_end': {
-      const last = messages.at(-1)
-      if (!last || last.role !== 'assistant') return messages
-      type AssistantMsg = { toolCards: ToolCard[] } & typeof last
-      const lastA = last as AssistantMsg
-      const toolCallId = event.toolCallId as string
       const output = resultText(event.result)
       const endDetails =
         event.details && typeof event.details === 'object'
           ? (event.details as Record<string, unknown>)
           : undefined
-      const next = [...messages]
-      next[next.length - 1] = {
-        ...lastA,
-        toolCards: lastA.toolCards.map((card) => {
-          if (card.toolCallId !== toolCallId) return card
+      return (
+        patchToolCard(messages, event.toolCallId as string, (card) => {
           const base = { ...card, output, isError: !!event.isError, streaming: false }
           return endDetails ? { ...base, details: endDetails } : base
-        }),
-      }
-      return next
+        }) ?? messages
+      )
     }
 
     // ── Phase 3: compaction / retry system messages ──────────────────────────

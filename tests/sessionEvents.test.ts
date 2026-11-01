@@ -194,6 +194,36 @@ describe('nested tool events (codemode)', () => {
  * match against the file, since ids differ (`entry.id` vs `u-`/`a-<ts>`). Without it, every message
  * would be duplicated by the merge instead of recognised.
  */
+describe('a tool result for a message that is no longer the last one (#76)', () => {
+  const assistant = (id: string, timestamp: number): Message => ({
+    id,
+    role: 'assistant',
+    text: '',
+    timestamp,
+    toolCards: [
+      { toolCallId: id, toolName: 'bash', args: {}, output: '', isError: false, streaming: true },
+    ],
+  })
+  const user: Message = { id: 'u-1', role: 'user', text: 'next', toolCards: [], timestamp: 2 }
+
+  it('fills the card in the assistant message that owns the toolCallId', () => {
+    // Only `messages.at(-1)` used to be considered, so a tool finishing after the user had already
+    // sent the next message updated nothing: the card stayed empty until a reload. The repair has
+    // to find the owning message by toolCallId.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'DONE' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.output).toBe('DONE')
+    expect(cards[0]?.streaming).toBe(false)
+  })
+})
+
 describe('live cards carry the message timestamp', () => {
   const fold = (events: SessionEvent[]): Message[] =>
     events.reduce<Message[]>((messages, event) => applySessionEvent(messages, event), [])

@@ -17,6 +17,45 @@ const HISTORY_PAGE_LIMIT = 200
  * payload that gets persisted, so the file records the same value. Messages the
  * file cannot carry (system notices, extension output) are always kept.
  */
+/**
+ * Fill a page message's empty tool cards from its live counterpart, keyed by `toolCallId`.
+ *
+ * Only ever moves state *into* the file copy, and only where the file copy has nothing to say:
+ * a card with output keeps it, because the file is the record. `streaming`/`startedAt` come across
+ * too, so a call that is still running does not render as finished until its end event arrives.
+ */
+function withLiveToolState(message: Message, live: Message[]): Message {
+  if (!('toolCards' in message) || message.toolCards.length === 0) return message
+  const counterpart = live.find(
+    (candidate) =>
+      candidate.role === message.role &&
+      candidate.timestamp === message.timestamp &&
+      'toolCards' in candidate
+  )
+  if (!counterpart || !('toolCards' in counterpart)) return message
+
+  const byId = new Map(counterpart.toolCards.map((card) => [card.toolCallId, card]))
+  let changed = false
+  const toolCards = message.toolCards.map((card) => {
+    const liveCard = byId.get(card.toolCallId)
+    if (!liveCard) return card
+    const takeOutput = card.output === '' && liveCard.output !== ''
+    const takeStreaming = liveCard.streaming && !card.streaming
+    const takeStart = card.startedAt === undefined && liveCard.startedAt !== undefined
+    if (!takeOutput && !takeStreaming && !takeStart) return card
+    changed = true
+    const next = { ...card }
+    if (takeOutput) {
+      next.output = liveCard.output
+      next.isError = liveCard.isError
+    }
+    if (takeStreaming) next.streaming = true
+    if (takeStart) next.startedAt = liveCard.startedAt
+    return next
+  })
+  return changed ? { ...message, toolCards } : message
+}
+
 export function mergeHistoryPage(page: Message[], live: Message[]): Message[] {
   const persisted = (
     message: Message
@@ -39,7 +78,12 @@ export function mergeHistoryPage(page: Message[], live: Message[]): Message[] {
     return id === null || !loaded.has(id)
   })
 
-  return [...page, ...kept]
+  // The file copy stays the message of record -- its `entryId` is what fork and branch need -- but
+  // its tool cards were built from the JSONL as it was when the read started, with `output: ''` and
+  // `streaming: false`. If that read landed after a tool finished but before its result was written,
+  // the live card knows the output and the file copy does not, and nothing re-reads history on
+  // `agent_end`, so the blank would survive until the user reloaded (issue #76).
+  return [...page.map((message) => withLiveToolState(message, live)), ...kept]
 }
 
 interface SessionHistoryOptions {
