@@ -3,6 +3,7 @@ import { getSupportedThinkingLevels, type Api, type Model } from '@earendil-work
 import { SessionManager } from '@earendil-works/pi-coding-agent'
 import { openDurableHarness } from './durable/harness'
 import { chooseDurableModel } from './durableModel'
+import { registerExtensionProviders } from './durable/providers'
 import {
   createDurableSessions,
   type DurableIdentity,
@@ -36,6 +37,14 @@ async function open(
 ): Promise<DurableOpenResult> {
   const agentDir = getAgentDir()
   const modelRuntime = await getModelRuntime()
+  // Extensions can declare the model providers a user runs on (the shipped path names
+  // `copilot-provider.ts`), and the durable runtime otherwise loads no extensions at all — so a
+  // user whose only model comes from one is told "no model has credentials" below. Registering them
+  // has to happen before the choice is made, and failures stay diagnostics rather than blocking a
+  // session that could still work on a provider the user already has.
+  for (const diagnostic of await registerExtensionProviders({ agentDir, models: modelRuntime }))
+    // `outputLine` has no 'warning' level; the diagnostic scale does.
+    outputLine(diagnostic.type === 'info' ? 'info' : 'warn', diagnostic.message)
   const settings = createSessionSettingsManager(cwd, agentDir, workspaceTrusted)
   // The harness takes an explicit model, so one is chosen here instead of refusing to start. This
   // approximates the SDK's own choice rather than reproducing it; see `durableModel.ts`.
@@ -48,8 +57,8 @@ async function open(
   // is wired to `set_model` only — so choosing one explicitly is what makes both runtimes agree.
   if (choice.fallback && !resuming)
     outputLine('info', `[durable] no usable default model; using ${provider}/${modelId}`)
-  // The durable runtime loads no extensions (`durable/customizations.ts` sets `noExtensions`), so a
-  // safety gate the user turned on is simply absent here. Saying so is the least this can do while
+  // The durable runtime still runs no extension `tool_call` hooks, so a safety gate the user turned
+  // on is simply absent here. Saying so is the least this can do while
   // opting in is a preference nobody is shown: silently applying edits with no review is exactly the
   // failure that gate exists to prevent.
   // The host passes the app-level policy into this process as environment (`sidecarPolicyEnv` at

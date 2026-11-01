@@ -20,6 +20,7 @@ export const durableCapabilitySchema = z.enum([
   'eventBridge',
   'sessionFiles',
   'sessionCommands',
+  'extensionProviders',
 ])
 
 export type DurableCapability = z.infer<typeof durableCapabilitySchema>
@@ -34,6 +35,7 @@ export const REQUIRED_CAPABILITIES: readonly DurableCapability[] = [
   'eventBridge',
   'sessionFiles',
   'sessionCommands',
+  'extensionProviders',
 ]
 
 export const cutoverDecisionSchema = z.object({

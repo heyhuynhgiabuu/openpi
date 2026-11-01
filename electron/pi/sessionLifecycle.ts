@@ -51,9 +51,10 @@ import {
  * This does NOT flip the default: the runtime still needs the preference set to `durable`, and
  * anything without one keeps running on the SDK path. Flipping needs the remaining ROADMAP Phase 8
  * conditions — items 6 and 7 must be resolved or explicitly accepted, item 8 (CI running those
- * specs automatically, because a green CI currently says nothing about them), and item 9: this
- * runtime loads no extensions at all, so the pre-apply review gate and extension-provided model
- * providers are missing.
+ * specs automatically, because a green CI currently says nothing about them), and the rest of
+ * item 9: the pre-apply review gate is still missing. Extension-provided model providers are now
+ * loaded (`durable/providers.ts`, global extensions only), which is why that capability is listed.
+ * This runtime still loads no project extensions and no tool_call hooks.
  */
 export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'adapter',
@@ -64,6 +65,7 @@ export const WIRED_DURABLE_CAPABILITIES: readonly DurableCapability[] = [
   'eventBridge',
   'sessionFiles',
   'sessionCommands',
+  'extensionProviders',
 ]
 const DURABLE_ADAPTER_AVAILABLE = true
 import { startDurable } from './sessionDurableStart'
