@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { job, jobCondition, parseReleaseWorkflow, writeGrants } from './helpers/releaseYaml'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -98,13 +99,16 @@ const packageVersion = (
 ).version
 
 describe('release dry run', () => {
+  const parsed = parseReleaseWorkflow(workflow)
+
   it('publishes only for a real release, never for a dry run and never after a failure', () => {
     const publish = workflow.slice(workflow.indexOf('  publish:'))
-    // The whole condition, verbatim. An earlier version matched only `${{ .* }}`, which still
-    // admits `|| true` or a widened event check -- the exact fail-open class #84 is about. A
-    // three-way conjunct has no reason to change silently, so require this one, not a shape.
-    expect(publish).toMatch(
-      /^ {4}if: \$\{\{ github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\) && inputs\.dry_run != true \}\}$/m
+    // The whole condition, verbatim, read from the publish job's OWN `if:` -- not from any line
+    // between `publish:` and the end of the file, which a later job could satisfy while publish's
+    // own condition was weakened. An earlier version matched only `${{ .* }}`, which admits
+    // `|| true` or a widened event check: the exact fail-open class #84 is about.
+    expect(jobCondition(job(parsed, 'publish'))).toBe(
+      "${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true }}"
     )
     // Anchored to the whole job-level line: trailing text outside `${{ }}` would turn the
     // condition into a non-empty string, which GitHub treats as true -- publishing always.
@@ -134,28 +138,26 @@ describe('release dry run', () => {
     // Every build leg runs repository code and third-party actions; none of them needs a
     // write-capable GITHUB_TOKEN. Only `publish` does, and only for the release upload --
     // the Homebrew steps use BREW_TAP_TOKEN, which is not GITHUB_TOKEN at all.
-    const topLevel = workflow.slice(0, workflow.indexOf('\njobs:'))
-    expect(topLevel).toMatch(/^permissions:\n  contents: read$/m)
-    expect(topLevel).not.toContain('contents: write')
-    const publish = workflow.slice(workflow.indexOf('  publish:'))
-    expect(publish).toMatch(/^    permissions:\n      contents: write$/m)
+    // Deep equality, not a substring: `contents: read` sitting beside an `actions: write` would
+    // pass a text check while handing every leg a write token again.
+    expect(parsed.topLevelPermissions).toEqual({ contents: 'read' })
+    expect(writeGrants(parsed)).toEqual(['publish/contents'])
   })
 
   it('grants write to the publish job and to nothing else', () => {
     // #85 was `contents: write` at workflow level, where every build leg held it. Scoping it to
     // `publish` is only half the fix: a second job or a second scope could re-add it, and a test
     // that checks "publish has write" alone would not notice.
-    const writes = workflow.match(/^\s*[a-z-]+: write$/gm) ?? []
-    expect(writes).toHaveLength(1)
-    expect(writes[0]?.trim()).toBe('contents: write')
-    const publish = workflow.slice(workflow.indexOf('  publish:'))
-    expect(publish).toContain('contents: write')
-    // Every job but `publish` must inherit, never declare. An empty `permissions:` on a job
-    // silently removes all scopes, so presence of the key is what matters, not its content.
-    const jobBlocks = workflow.split(/\n(?=  [a-z-]+:\n)/)
-    const declaring = jobBlocks.filter((block) => /^ {4}permissions:/m.test(block))
-    expect(declaring).toHaveLength(1)
-    expect(declaring[0]).toContain('Publish GitHub release')
+    // Reading scopes rather than text is what makes `actions: write # cache`, `packages: 'write'`,
+    // `write-all`, a trailing space and an inline `permissions: { contents: write }` all count as
+    // the same grant instead of each evading a different regex.
+    expect(job(parsed, 'publish').permissions).toEqual({ contents: 'write' })
+    // Declaring a `permissions:` key on a job REPLACES the workflow default, so a build leg that
+    // declares `permissions: {}` is tighter, not looser; what matters is that no other job grants
+    // write, and `writeGrants` above covers every job and scope exhaustively.
+    expect(parsed.jobs.map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['build', 'publish'])
+    )
   })
 
   it('takes a boolean dry_run input', () => {
