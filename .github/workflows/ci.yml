@@ -65,9 +65,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Verify both supported macOS architectures. macos-14 is Apple silicon;
-        # macos-15-intel is Intel. Keep Windows pinned until node-gyp supports VS2026.
-        os: [macos-14, macos-15-intel, ubuntu-latest, windows-2022]
+        # Verify both supported macOS architectures on arm64 and x64 respectively.
+        # macos-14 is retired (2026-11-02) and its jobs were cancelled before running a
+        # single step, so the arm64 data point now comes from macos-15.
+        # Keep Windows pinned until node-gyp supports VS2026.
+        os: [macos-15, macos-15-intel, ubuntu-latest, windows-2022]
     steps:
       - name: Checkout
         uses: actions/checkout@v5

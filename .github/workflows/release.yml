@@ -28,7 +28,11 @@ jobs:
           # Build native modules on their target architecture. Cross-compiling would
           # leave better-sqlite3 and optional native dependencies at the host ABI.
           - name: macOS ARM64
-            os: macos-14
+            # macos-15 is the arm64 image; macos-14 is retired 2026-11-02 and its jobs
+            # were cancelled before running a single step. Pinned rather than
+            # `macos-latest`, which is a moving label (currently macOS 26) and would
+            # change the toolchain under a release artifact without a commit.
+            os: macos-15
             arch: arm64
             artifactArch: arm64
             extensions: "dmg zip"

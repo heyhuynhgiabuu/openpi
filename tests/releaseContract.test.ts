@@ -43,6 +43,21 @@ describe('release artifact contract', () => {
     }
   })
 
+  it('never asks for a retired macOS runner image', () => {
+    // macos-14 retires 2026-11-02, and before that its jobs were cancelled having run
+    // zero steps (no runner assigned), which reddened every PR on a check that never
+    // executed code. Pinned here so the label cannot come back silently.
+    const ciWorkflow = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8')
+    for (const workflow of [releaseWorkflow, ciWorkflow]) {
+      expect(workflow).not.toMatch(/^\s*(os|runs-on):.*\bmacos-14\b/m)
+      expect(workflow).not.toMatch(/os: \[[^\]]*\bmacos-14\b/m)
+    }
+
+    // The two macOS data points must stay one arm64 and one x64.
+    expect(matrixEntry('macOS ARM64')).toContain('\n            os: macos-15\n')
+    expect(matrixEntry('macOS Intel')).toContain('\n            os: macos-15-intel\n')
+  })
+
   it('verifies packaged macOS native dependencies match the target architecture', () => {
     expect(releaseWorkflow).toContain(
       `node scripts/verifyMacPackage.mjs "$VERSION" "\${{ matrix.arch }}"`
