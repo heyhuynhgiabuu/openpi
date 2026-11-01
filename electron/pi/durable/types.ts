@@ -1,6 +1,7 @@
 import type { ModelThinkingLevel, Models, MutableModels } from '@earendil-works/pi-ai'
 import type { ReportInfo } from '@earendil-works/pi-durable'
 import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
+import type { DurableReviewOptions } from './review'
 import type { SessionFileHeader, SessionFileResult } from './sessionFile'
 import type { BashResult } from './bash'
 import type { DurableStats } from './stats'
@@ -77,6 +78,11 @@ export interface DurableHarnessOptions {
   workspacePath?: string | null
   /** Install the desktop policy gate (`beforeTool`) on tool calls. Defaults to true. */
   policy?: boolean
+  /**
+   * Install the pre-apply review gate (`beforeTool`) on file-changing tool calls. Omit when the
+   * user has not enabled it: the hook then never asks, so leaving it installed costs nothing.
+   */
+  review?: DurableReviewWiring
   /** Install pi-durable's built-in coding tools (read/write/edit/bash). Defaults to true. */
   tools?: boolean
   /** Compaction policy overrides, e.g. a small `keepRecentTokens` so a short conversation compacts (tests). */
@@ -91,6 +97,9 @@ export interface DurableHarnessOptions {
   /** Whether the workspace is trusted, gating `.pi/mcp.json` and project extensions. */
   projectTrusted?: boolean
 }
+
+/** Everything the review hook needs except the cwd, which the harness supplies. */
+export type DurableReviewWiring = Omit<DurableReviewOptions, 'workspacePath'>
 
 /** What a `navigate_tree` did: the new leaf's line (null before the first message), and any text to edit. */
 export interface DurableNavigation {

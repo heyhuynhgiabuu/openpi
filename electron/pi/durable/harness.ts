@@ -61,6 +61,7 @@ export async function openDurableHarness(options: DurableHarnessOptions): Promis
     userAgentDir: options.userAgentDir,
     workspacePath: options.workspacePath,
     policy: options.policy,
+    review: options.review,
   })
   const { customizations, diagnostics } = prepared
   // The built-in coding tools need an execution environment; without it every tool call would fail.
