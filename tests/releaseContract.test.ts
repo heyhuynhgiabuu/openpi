@@ -93,8 +93,10 @@ describe('release artifact contract', () => {
   })
 
   it('scopes the Homebrew token to only Homebrew steps', () => {
-    expect(releaseWorkflow).toContain(
-      'publish:\n    name: Publish GitHub release\n    needs: build\n    runs-on: ubuntu-latest\n    steps:'
+    // The publish job stays gated on a successful build and keeps its own runner; the
+    // dry-run condition itself is asserted in releaseDryRun.test.ts.
+    expect(releaseWorkflow).toMatch(
+      /publish:\n    name: Publish GitHub release\n    needs: build\n(?:    #.*\n)*    if: .*\n    runs-on: ubuntu-latest\n    steps:/
     )
     expect(releaseWorkflow).toContain('id: brew_status')
     expect(
