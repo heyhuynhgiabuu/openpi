@@ -103,6 +103,20 @@ describe('merging a history page with live messages (#71)', () => {
     expect(cards[0]?.isError).toBe(true)
   })
 
+  it('keeps a recorded error when the live card has not ended yet', () => {
+    // The live list can lag the file. Without the ended-check on the error carry, a file record
+    // that already says "failed" would be flipped back to success by a card still streaming.
+    const fromFile = assistantWith('entry-1', 1_000, [
+      { ...card('call-1', '', false), isError: true },
+    ])
+    const live = assistantWith('a-1', 1_000, [{ ...card('call-1', '', true), isError: false }])
+
+    const [merged] = mergeHistoryPage([fromFile], [live])
+    const cards = merged?.role === 'assistant' ? merged.toolCards : []
+
+    expect(cards[0]?.isError).toBe(true)
+  })
+
   it('never marks a file card streaming when it already holds the final output', () => {
     // The tool row hides the output of a streaming card, so copying `streaming` onto a finished
     // card made the final result disappear until the end event happened to arrive.

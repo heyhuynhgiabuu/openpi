@@ -10,11 +10,6 @@ export type UiPromptSessionEvent = Extract<
 >
 
 /**
- * The session event union keeps an open extension branch whose `type` is any
- * string, so a `type` check cannot narrow on its own. This returns the declared
- * shape the schema already validated, or null for every other event.
- */
-/**
  * Patch one tool card wherever it lives, by `toolCallId`.
  *
  * The live handlers used to look only at `messages.at(-1)`, so a tool that finished after the next
@@ -51,6 +46,11 @@ function patchToolCard(
   return null
 }
 
+/**
+ * The session event union keeps an open extension branch whose `type` is any
+ * string, so a `type` check cannot narrow on its own. This returns the declared
+ * shape the schema already validated, or null for every other event.
+ */
 export function asUiPromptEvent(event: SessionEvent): UiPromptSessionEvent | null {
   if (event.type !== 'ui_prompt_start' && event.type !== 'ui_prompt_end') return null
   // SAFETY: sessionEventKnownSchema validated id/kind/title for these two types.

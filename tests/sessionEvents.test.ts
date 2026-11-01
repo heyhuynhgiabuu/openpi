@@ -267,6 +267,57 @@ describe('a tool result for a message that is no longer the last one (#76)', () 
     expect(outputs).toEqual(['', 'NEWEST'])
   })
 
+  it('still patches the CURRENT message for a provider that sends an empty id', () => {
+    // The floor stops an empty id reaching an older turn. It must not stop it reaching the
+    // current one: `if (toolCallId === '') return null` survived the whole suite, so a one-step
+    // slip at the floor would leave every card from such a provider spinning forever, silently.
+    const messages: Message[] = [
+      user,
+      {
+        id: 'a-2',
+        role: 'assistant',
+        text: '',
+        timestamp: 3,
+        toolCards: [
+          {
+            toolCallId: '',
+            toolName: 'bash',
+            args: {},
+            output: '',
+            isError: false,
+            streaming: true,
+          },
+        ],
+      },
+    ]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_end',
+      toolCallId: '',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'EMPTY-ID DONE' }] },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards.at(-1)?.output).toBe('EMPTY-ID DONE')
+    expect(cards.at(-1)?.streaming).toBe(false)
+  })
+
+  it('carries details from a tool_execution_update, which the task row reads', () => {
+    // The update branch was rewritten here; replacing its merge with `{ ...card, output }` left
+    // the whole suite green, and the task row reads `details` for `task_id` and `phase`.
+    const messages = [assistant('call-1', 1), user]
+    const next = applySessionEvent(messages, {
+      type: 'tool_execution_update',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      partialResult: { content: [{ type: 'text', text: 'P' }] },
+      details: { task_id: 'mv-task', phase: 'running' },
+    } as SessionEvent)
+    const cards = next.flatMap((message) => ('toolCards' in message ? message.toolCards : []))
+
+    expect(cards[0]?.details).toEqual({ task_id: 'mv-task', phase: 'running' })
+  })
+
   it('does not let an empty toolCallId patch an earlier turn', () => {
     // Providers that send no id give every call `""`. Scanning back for one would find an older
     // turn's card and overwrite a finished result with this turn's -- a regression the scan
