@@ -54,8 +54,10 @@ export function workspacePreapplyExtensionPath(workspacePath: string): string {
  *
  * Omitted when the workspace supplies its own copy: Pi dedupes extensions by realpath, and
  * these are two different files, so passing both loads the gate twice and the user gets two
- * prompts per edit. The project copy wins, which is how a checkout behaved before the
- * shipped copy existed.
+ * prompts per edit. The project copy wins, which is how a checkout behaved before the shipped
+ * copy existed. That includes a copy that is old or fails to load — Pi then reports the load
+ * error and the gate is off, which is the pre-#80 behaviour for anyone editing the gate inside
+ * an OpenPi checkout.
  */
 export function shippedPreapplyPathFor(options: {
   workspacePath: string

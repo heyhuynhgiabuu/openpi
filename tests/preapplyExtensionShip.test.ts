@@ -82,18 +82,6 @@ describe('shipped pre-apply extension (#80)', () => {
     expect(source).not.toMatch(/services\/shellEnv/)
   })
 
-  it('is added to the loader paths in BOTH trust branches', async () => {
-    // The trusted branch used to pass `[]`, so a trusted workspace got no shipped gate at all.
-    const { readFile } = await import('node:fs/promises')
-    const source = await readFile(
-      path.join(import.meta.dirname, '../electron/pi/sidecarContext.ts'),
-      'utf-8'
-    )
-
-    expect(source).toMatch(/shippedPreapplyPathFor\(\{ workspacePath: cwd, workspaceTrusted \}\)/)
-    expect(source).toMatch(/\.\.\.\(shippedPreapply \? \[shippedPreapply\] : \[\]\)/)
-  })
-
   describe('when the workspace supplies its own copy', () => {
     function packaged(workspace: string, trusted: boolean) {
       const resources = mkdtempSync(path.join(os.tmpdir(), 'openpi-res-'))
@@ -121,6 +109,19 @@ describe('shipped pre-apply extension (#80)', () => {
       const setup = packaged(workspace, true)
       try {
         expect(setup.run()).toBeUndefined()
+      } finally {
+        rmSync(workspace, { recursive: true, force: true })
+        rmSync(setup.resources, { recursive: true, force: true })
+      }
+    })
+
+    it('returns the shipped path when a trusted workspace has no copy of its own', () => {
+      // This is the ordinary user: trusted workspace, nothing vendored. Mutant-proof against
+      // 'trusted workspaces never get the shipped copy', which is issue #80 again.
+      const workspace = mkdtempSync(path.join(os.tmpdir(), 'openpi-ws-'))
+      const setup = packaged(workspace, true)
+      try {
+        expect(setup.run()).toContain(path.join('extensions', 'openpi-preapply-review', 'index.ts'))
       } finally {
         rmSync(workspace, { recursive: true, force: true })
         rmSync(setup.resources, { recursive: true, force: true })

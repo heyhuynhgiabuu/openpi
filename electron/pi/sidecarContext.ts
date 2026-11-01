@@ -184,9 +184,10 @@ export async function getResourceLoader(cwd: string, workspaceTrusted: boolean) 
   // fall back to adding the directory itself, and loadExtension would fail trying
   // to jiti.import() a directory.
   const noExtensions = !workspaceTrusted
-  // The pre-apply gate ships with the app (issue #80) and is added in *both* branches: Pi
-  // discovers project extensions from `<cwd>/.pi/extensions`, which a user's workspace does
-  // not have, and this list is the only way to hand Pi a path it did not discover itself.
+  // The pre-apply gate ships with the app (issue #80). Pi discovers project extensions from
+  // `<cwd>/.pi/extensions`, which a user's workspace does not have, so this list is the only way
+  // to hand Pi a path it did not discover itself. Added unless a *trusted* workspace supplies its
+  // own copy — see `shippedPreapplyPathFor`, which exists to stop the gate loading twice.
   const shippedPreapply = shippedPreapplyPathFor({ workspacePath: cwd, workspaceTrusted })
   const additionalExtensionPaths = [
     ...(noExtensions ? [agentDir] : []),
