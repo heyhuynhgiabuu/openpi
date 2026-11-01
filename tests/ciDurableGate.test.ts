@@ -23,9 +23,45 @@ describe('durable runtime e2e gate', () => {
     const lines = body.split('\n').map((line) => line.trim())
     // Exact lines, not `toContain`: a `|| true` suffix would make the step exit 0 even when
     // the spec fails, and a commented-out env line would still contain the flag text.
-    expect(lines).toContain(
-      'run: xvfb-run --auto-servernum npx playwright test tests/e2e/durableGate.spec.ts'
-    )
+    const runBody = body.slice(body.indexOf('run: |'))
+    // The reporter is required, not cosmetic: the assertion script reads its output, and a run
+    // without it would fail the step for the wrong reason.
+    expect(runBody).toContain('--reporter=json')
+    // _OUTPUT_FILE, not _OUTPUT_NAME: Playwright resolves FILE before DIR before NAME, so the
+    // name form loses to an _OUTPUT_DIR that a later edit could add to this step's `env:`.
+    expect(runBody).toContain('PLAYWRIGHT_JSON_OUTPUT_FILE=durable-gate.json')
+    expect(runBody).not.toContain('PLAYWRIGHT_JSON_OUTPUT_DIR')
+    // The report is removed first: without this, a report left in the workspace by an earlier run
+    // satisfies the assertion even when this run's spec returned early.
+    //
+    // The WHOLE command list is pinned below, not just the first and last entries. Anything in
+    // between could otherwise overwrite the report after Playwright wrote it -- `cp forged.json
+    // durable-gate.json` right before the assertion passed a first-and-last check.
+    expect(runBody).toContain('tests/e2e/durableGate.spec.ts')
+    // The assertion must be the last thing the step does. If Playwright's exit code were allowed
+    // to be the verdict, a suite that skips itself would pass.
+    // Slice to the end of the `run:` scalar, which stops where the next `env:` key begins.
+    const runScalar = runBody.slice(runBody.indexOf('|') + 1, runBody.indexOf('env:'))
+    const commands = runScalar
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    expect(commands).toEqual([
+      'rm -f durable-gate.json',
+      'PLAYWRIGHT_JSON_OUTPUT_FILE=durable-gate.json \\',
+      'xvfb-run --auto-servernum npx playwright test \\',
+      'tests/e2e/durableGate.spec.ts --reporter=json',
+      'node scripts/assertGateRan.mjs durable-gate.json',
+    ])
+    // The step's OTHER keys are pinned too, not just its `run:` lines. `env:` is the way a
+    // command can be made to do nothing without touching the pinned lines: adding
+    // `NODE_OPTIONS: --import=data:text/javascript,process.exit(0)` made the step exit 0 with
+    // Playwright and the assertion never running, and no test noticed. `shell:` can do the same
+    // by prefixing the script with `true`.
+    expect(gateStep()).not.toMatch(/^\s*(NODE_OPTIONS|BASH_ENV|PLAYWRIGHT_JSON_OUTPUT_DIR)\s*:/m)
+    expect(gateStep()).not.toMatch(/^\s*shell\s*:/m)
+    expect(gateStep()).toContain("ELECTRON_DISABLE_SANDBOX: '1'")
+    expect(gateStep()).toContain("OPENPI_E2E_DURABLE: '1'")
     // The flag has to be on this step, as its own line: moved elsewhere the spec skips and
     // the run is green for the wrong reason.
     expect(lines.filter((line) => line.startsWith('OPENPI_E2E_DURABLE'))).toEqual([
@@ -83,6 +119,50 @@ describe('durable runtime e2e gate', () => {
     expect(spec).toContain("test('drives a shell turn through the renderer on the durable runtime'")
   })
 
+  /** Escape a literal for use inside `new RegExp`. */
+  function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  it('requires the spec to record that its body reached the end', () => {
+    // Counters cannot catch an early return: measured with Playwright, a body that returns right
+    // after the skip call still reports expected:1, skipped:0 and "passed". The witness annotation
+    // is the only signal a report-reading script can require, so it is pinned on both sides.
+    expect(spec).toContain("const GATE_WITNESS_TYPE = 'gate-body-completed'")
+    expect(spec).toContain("const GATE_WITNESS = 'durable-shell-turn'")
+    const push =
+      'test.info().annotations.push({ type: GATE_WITNESS_TYPE, description: GATE_WITNESS })'
+    // Exactly once. `toContain` alone let a second copy sit anywhere, so a body could push the
+    // witness and then return -- the report carries the annotation and every check stays green.
+    expect(spec.split(push)).toHaveLength(2)
+    // And nothing else in the spec may touch annotations at all. Pinning the one exact line still
+    // let `const info = test.info(); info.annotations.push(...)` retire the gate: a review ran
+    // exactly that with the pinned line left in place, and every check stayed green. Counting the
+    // ACCESSOR rather than one spelling closes the rewrite; banning the declarative form closes
+    // `test('x', { annotation: [...] }, ...)`, and banning the hooks closes an annotation written
+    // for a body that returned early.
+    expect(spec.match(/annotations/g) ?? []).toHaveLength(1)
+    for (const banned of ['annotation:', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll']) {
+      expect(spec).not.toContain(banned)
+    }
+    // And last, immediately before the test's OWN cleanup `finally`, because "the body reached
+    // its end" is only true of the final statement.
+    //
+    // Matching `push } finally {` alone was not enough: a review wrapped the single push in
+    // `const recordWitness = () => { try { <push> } finally {} }`, called it right after
+    // test.skip, then returned. `annotations` still appeared exactly once, the regex still
+    // matched, and the gate ran in 313 ms with Electron never launching. Requiring the cleanup
+    // lines this file actually has, after the push, leaves nowhere else the pattern can match.
+    expect(spec).toMatch(
+      new RegExp(`${escapeRegExp(push)}\\s*\\}\\s*finally\\s*{\\s*await app\\?\\.close\\(\\)`)
+    )
+    // Exactly one finally in the whole file, so "the finally after the push" is unambiguous.
+    expect(spec.match(/\}\s*finally\s*\{/g) ?? []).toHaveLength(1)
+    const runner = readFileSync(resolve(root, 'scripts/assertGateRan.mjs'), 'utf8')
+    expect(runner).toContain("const WITNESS_TYPE = 'gate-body-completed'")
+    expect(runner).toContain("const WITNESS = 'durable-shell-turn'")
+  })
+
   it('leaves the prompt-turn spec manual, because it needs a model key and the local models.json', () => {
     // Automating it would put HIVE_API_KEY in CI and read the developer's own
     // ~/.pi/agent/models.json, so the gate would be both secret-bearing and machine-
@@ -94,8 +174,17 @@ describe('durable runtime e2e gate', () => {
   it('does not run the other e2e specs with this step', () => {
     // A bare `npx playwright test` would also run smoke.spec.ts, which has no env guard.
     // Naming the spec file keeps the automated gate limited to the durable witness.
-    const step = ciWorkflow.slice(ciWorkflow.indexOf('name: Durable runtime e2e'))
-    const runLine = step.slice(step.indexOf('run:'), step.indexOf('\n', step.indexOf('run:')))
-    expect(runLine).not.toMatch(/playwright test\s*$/)
+    //
+    // Reads the joined command list: slicing to the end of the `run:` LINE only ever saw the
+    // literal `run: |` block header, so this assertion could not fail. It can again.
+    const commands = gateStep()
+      .split('\n')
+      .map((line) => line.trim())
+      .join(' ')
+    const invocations = commands.match(/playwright test[^&|;]*/g) ?? []
+    expect(invocations.length).toBeGreaterThan(0)
+    for (const invocation of invocations) {
+      expect(invocation).toContain('tests/e2e/durableGate.spec.ts')
+    }
   })
 })

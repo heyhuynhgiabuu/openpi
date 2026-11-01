@@ -103,7 +103,22 @@ jobs:
       # pre-release check (see ROADMAP Phase 8, item 8).
       - name: Durable runtime e2e (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run --auto-servernum npx playwright test tests/e2e/durableGate.spec.ts
+        # The exit code cannot distinguish "the gate ran" from "the gate skipped itself", because a
+        # suite where everything skips still exits 0. So the run writes a JSON report and the next
+        # line requires the facts a real run produces. See scripts/assertGateRan.mjs.
+        #
+        # The report is deleted first and its path is forced with PLAYWRIGHT_JSON_OUTPUT_FILE, not
+        # _OUTPUT_NAME. Playwright's resolveOutputFile reads FILE, then options, then DIR, then
+        # NAME (node_modules/playwright/lib/runner/index.js), so an _OUTPUT_NAME set here loses to
+        # an _OUTPUT_DIR that a later edit could add to this step's `env:` -- and reading that file
+        # without deleting it first would accept a report left over from an earlier run. Either
+        # one lets a spec that returned early pass on a report that proves nothing.
+        run: |
+          rm -f durable-gate.json
+          PLAYWRIGHT_JSON_OUTPUT_FILE=durable-gate.json \
+            xvfb-run --auto-servernum npx playwright test \
+              tests/e2e/durableGate.spec.ts --reporter=json
+          node scripts/assertGateRan.mjs durable-gate.json
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
           OPENPI_E2E_DURABLE: '1'
@@ -113,5 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-durable-gate
-          path: test-results/
+          path: |
+            test-results/
+            durable-gate.json
           retention-days: 7
