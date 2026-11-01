@@ -66,7 +66,16 @@ describe('durable runtime e2e gate', () => {
     // The whole gate disappears silently if the spec's own guard is renamed or a skip is
     // added: Playwright reports "1 skipped" and exits 0, and ci.yml is untouched. Pin the
     // guard, and pin that the spec still names the file CI invokes.
-    expect(spec).toContain("process.env.OPENPI_E2E_DURABLE !== '1'")
+    // Pin the WHOLE skip call, not a substring of its condition: appending `|| true` to
+    // the condition keeps `toContain` happy while turning the gate into a permanent skip.
+    expect(spec).toContain(
+      [
+        '  test.skip(',
+        "    process.env.OPENPI_E2E_DURABLE !== '1',",
+        "    'manual run: set OPENPI_E2E_DURABLE=1 (this drives a real renderer session)'",
+        '  )',
+      ].join('\n')
+    )
     // `test.fixme` and `describe.skip` retire the gate just as `test.skip` does; count all
     // of them, and require that the live (non-skipped) test case still exists.
     const retirePatterns = spec.match(/test\.(skip|fixme)\(|describe\.skip\(/g) ?? []
