@@ -43,7 +43,52 @@ const deny = (request: ExtensionUiRequest): Promise<ExtensionUiResponse> =>
       : { id: request.id, confirmed: false }
   )
 
+/** A prompt nobody answers: the gate must not hold the run open forever. */
+const neverAnswers = (request: ExtensionUiRequest, signal?: AbortSignal) =>
+  new Promise<ExtensionUiResponse>((resolve, reject) => {
+    // Rejecting on abort is what `createReviewAsk` does, and what lets pi-durable stop waiting.
+    signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+    void request
+    void resolve
+  })
+
 describe('durable pre-apply review, through a real harness', () => {
+  it('lets an abort end a pending review instead of freezing the run', async () => {
+    // Stop, a new session, reload and fork all abort the harness; a review nobody answers used to
+    // hold that abort for the full ten-minute timeout.
+    const setup = fauxSetup()
+    const target = join(workspace, 'pending.txt')
+    setup.faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('write', { path: target, content: 'x' }, { id: 'c1' })], {
+        stopReason: 'toolUse' as const,
+      }),
+      fauxAssistantMessage([fauxText('never')], { stopReason: 'stop' as const }),
+    ])
+    const harness = await openDurableHarness({
+      backend: 'memory',
+      model: setup.model,
+      registerProviders: setup.registerProviders,
+      workspacePath: workspace,
+      review: { enabled: true, ask: neverAnswers, timeoutMs: 600_000 },
+    })
+    try {
+      const prompted = harness.prompt('write it')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      // The point is that this settles at all: before the abort signal was threaded through, it
+      // waited for the ten-minute prompt timeout.
+      await expect(
+        Promise.race([
+          harness.abort(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('abort hung')), 3000)),
+        ])
+      ).resolves.not.toThrow()
+      await prompted.catch(() => undefined)
+      expect(existsSync(target)).toBe(false)
+    } finally {
+      await harness.close()
+    }
+  }, 20_000)
+
   it('does not write the file when the review is denied, and tells the model why', async () => {
     const setup = fauxSetup()
     const target = join(workspace, 'denied.txt')

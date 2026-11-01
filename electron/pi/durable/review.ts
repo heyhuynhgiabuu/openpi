@@ -28,9 +28,11 @@ import type { ToolHookCall, ToolHooks } from '@earendil-works/pi-durable'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../../../src/lib/extensionUiTypes'
 import {
   asRecord,
+  confirmMessage,
   displayPath,
   editHunks,
   hunksSummary,
+  previewForWrite,
   str,
   writeReviewParts,
 } from '../../../.pi/extensions/openpi-preapply-review/preview'
@@ -38,8 +40,11 @@ import {
 export interface DurableReviewOptions {
   /** Mirrors `OPENPI_PREAPPLY_REVIEW=1`; off means this hook never asks. */
   enabled: boolean
-  /** Sends one request and settles with the user's answer. */
-  ask: (request: ExtensionUiRequest) => Promise<ExtensionUiResponse>
+  /**
+   * Sends one request and settles with the user's answer. It takes the run's abort signal so a
+   * Stop, a new session, reload or fork ends the wait instead of leaving the run blocked.
+   */
+  ask: (request: ExtensionUiRequest, signal?: AbortSignal) => Promise<ExtensionUiResponse>
   /** Captured at registration: a hook is given no cwd, so relative paths resolve against this. */
   workspacePath?: string | null
   /** Reviewing a diff takes longer than a yes/no glance; the SDK gate waits ten minutes too. */
@@ -77,7 +82,7 @@ export function confirmed(answer: ExtensionUiResponse): boolean {
  * without fabricating SDK objects, and `reviewToolHooks` adapts it to the hook shape.
  */
 export interface ReviewGate {
-  decide(call: ToolHookCall): Promise<{ block: string } | undefined>
+  decide(call: ToolHookCall, signal?: AbortSignal): Promise<{ block: string } | undefined>
 }
 
 export function reviewGate(options: DurableReviewOptions): ReviewGate {
@@ -85,20 +90,48 @@ export function reviewGate(options: DurableReviewOptions): ReviewGate {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const cwd = options.workspacePath ?? process.cwd()
 
-  async function decide(call: ToolHookCall): Promise<{ block: string } | undefined> {
+  async function decide(
+    call: ToolHookCall,
+    signal?: AbortSignal
+  ): Promise<{ block: string } | undefined> {
     if (!options.enabled) return undefined
     if (!reviewTools.includes(call.name)) return undefined
     const input = asRecord(call.arguments)
 
     const parts = call.name === 'write' ? writeReviewParts(input, cwd) : null
+    // A write the hunk view cannot render — an existing binary file, one over the read limit, one
+    // that cannot be read, or an empty create — must still be asked about. Falling through to
+    // "cannot describe it, step aside" was a real hole: a blind overwrite of a large file applied
+    // with no prompt at all, while the SDK gate falls back to a text confirm. Ask, with whatever
+    // description is available.
+    if (call.name === 'write' && !parts) {
+      const preview = previewForWrite(input, cwd)
+      if (!preview) return undefined
+      const answer = await options.ask(
+        {
+          id: randomUUID(),
+          method: 'confirm',
+          title: `Review before applying: ${preview.path}`,
+          message: `${preview.summary}\n\n${confirmMessage(preview)}`,
+          timeout: timeoutMs,
+        },
+        signal
+      )
+      if (answer.cancelled === true) return denial(preview.path, 'the review was not answered')
+      if (answer.confirmed === true) return undefined
+      return denial(preview.path, 'the user denied this change')
+    }
     if (parts) {
-      const answer = await options.ask({
-        id: randomUUID(),
-        method: 'preapply_review',
-        title: `Review before applying: ${parts.shownPath}`,
-        review: { path: parts.shownPath, summary: parts.summary, hunks: parts.hunks },
-        timeout: timeoutMs,
-      })
+      const answer = await options.ask(
+        {
+          id: randomUUID(),
+          method: 'preapply_review',
+          title: `Review before applying: ${parts.shownPath}`,
+          review: { path: parts.shownPath, summary: parts.summary, hunks: parts.hunks },
+          timeout: timeoutMs,
+        },
+        signal
+      )
       return verdict(parts.shownPath, answer, parts.hunks.length)
     }
 
@@ -106,13 +139,16 @@ export function reviewGate(options: DurableReviewOptions): ReviewGate {
     const target = str(input.path)
     if (hunks && target) {
       const shownPath = displayPath(cwd, target)
-      const answer = await options.ask({
-        id: randomUUID(),
-        method: 'preapply_review',
-        title: `Review before applying: ${shownPath}`,
-        review: { path: shownPath, summary: hunksSummary(hunks), hunks },
-        timeout: timeoutMs,
-      })
+      const answer = await options.ask(
+        {
+          id: randomUUID(),
+          method: 'preapply_review',
+          title: `Review before applying: ${shownPath}`,
+          review: { path: shownPath, summary: hunksSummary(hunks), hunks },
+          timeout: timeoutMs,
+        },
+        signal
+      )
       return verdict(shownPath, answer, hunks.length)
     }
 
@@ -126,7 +162,10 @@ export function reviewGate(options: DurableReviewOptions): ReviewGate {
 
 export function reviewToolHooks(options: DurableReviewOptions): ToolHooks {
   const gate = reviewGate(options)
-  return { beforeTool: (call) => gate.decide(call), afterTool: () => undefined }
+  return {
+    beforeTool: (call, _api, context) => gate.decide(call, context.abortSignal),
+    afterTool: () => undefined,
+  }
 }
 
 /** Reads an answer as approve-or-refuse; a partial approval is a refusal (see the header). */
@@ -135,6 +174,8 @@ function verdict(
   answer: ExtensionUiResponse,
   hunkCount: number
 ): { block: string } | undefined {
+  // Cancellation wins over any approval in the same answer: a cancelled prompt was withdrawn, so
+  // an `approved` list beside it belongs to a dialog the user no longer had.
   if (answer.cancelled === true || answer.approved === undefined)
     return denial(shownPath, 'the review was not answered')
   if (answer.approved.length === 0) return denial(shownPath, 'the user denied the change')

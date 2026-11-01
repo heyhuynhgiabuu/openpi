@@ -121,6 +121,58 @@ describe('durable pre-apply review', () => {
     expect(ui.asked).toEqual([])
   })
 
+  it('still asks before overwriting a file it cannot show as a diff', async () => {
+    // The hunk view returns nothing for an existing binary file, one over the read limit, or an
+    // empty create. Stepping aside there let a blind overwrite apply with no prompt at all, which
+    // is the failure this whole gate exists to prevent.
+    const target = join(root, 'big.txt')
+    await writeFile(target, 'a\n'.repeat(400_000), 'utf8')
+    const ui = answering(denyAll)
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    const decision = await gate.decide(call('write', { path: target, content: 'CLOBBERED' }))
+
+    expect(ui.asked).toHaveLength(1)
+    expect(ui.asked[0]?.method).toBe('confirm')
+    expect(decision?.block).toContain('big.txt')
+  })
+
+  it('still asks before overwriting a binary file it cannot read', async () => {
+    const target = join(root, 'blob.bin')
+    await writeFile(target, Buffer.from([0x00, 0x01, 0x02, 0x00]))
+    const ui = answering(denyAll)
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    const decision = await gate.decide(call('write', { path: target, content: 'text' }))
+
+    expect(ui.asked).toHaveLength(1)
+    expect(decision?.block).toContain('blob.bin')
+  })
+
+  it('asks before creating an empty file, which also has no diff to show', async () => {
+    const target = join(root, 'empty.txt')
+    const ui = answering(approveAll)
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    expect(await gate.decide(call('write', { path: target, content: '' }))).toBeUndefined()
+    expect(ui.asked).toHaveLength(1)
+  })
+
+  it('reads a cancelled answer as a denial even when it also carries approvals', async () => {
+    const target = join(root, 'existing.txt')
+    await writeFile(target, 'one\ntwo\n', 'utf8')
+    // A withdrawn prompt: `cancelled` says the dialog no longer exists, so the stale approval list
+    // must not be honoured.
+    const ui = answering((request) => ({ id: request.id, cancelled: true, approved: [0] }))
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    const decision = await gate.decide(
+      call('edit', { path: target, edits: [{ oldText: 'two', newText: 'TWO' }] })
+    )
+
+    expect(decision?.block).toBeTruthy()
+  })
+
   it('shows an edit as a reviewable change instead of a bare confirm', async () => {
     const target = join(root, 'existing.txt')
     await writeFile(target, 'one\ntwo\n', 'utf8')

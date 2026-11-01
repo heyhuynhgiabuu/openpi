@@ -13,7 +13,7 @@ import type { ResolvedModel } from './durableSettings'
 import { createSessionSettingsManager } from './sessionSettings'
 import type { SessionReadyPayload } from './sidecarTypes'
 import { fulfillExtensionUiPending, registerExtensionUiPending } from './extensionUiPending'
-import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
+import { createReviewAsk } from './durable/reviewAsk'
 import { getAgentDir, getModelRuntime, outputLine, send } from './sidecarContext'
 
 /**
@@ -34,21 +34,27 @@ const REVIEW_TIMEOUT_MS = 600_000
  * `extension_ui_response` command that `handleExtensionUiResponseCommand` feeds to
  * `fulfillExtensionUiPending`. No new IPC channel, no new schema.
  */
-function askReview(request: ExtensionUiRequest): Promise<ExtensionUiResponse> {
-  return new Promise((resolve, reject) => {
-    registerExtensionUiPending(request.id, request.timeout ?? REVIEW_TIMEOUT_MS, resolve, reject)
-    try {
-      send({ type: 'extension_ui_request', request })
-    } catch (error) {
-      // A send that never left would otherwise hang the tool call until the timeout.
-      fulfillExtensionUiPending({ id: request.id, cancelled: true })
-      outputLine(
-        'error',
-        `[durable] could not ask for review: ${error instanceof Error ? error.message : String(error)}`
-      )
-    }
-  })
-}
+const askReview = createReviewAsk({
+  send: (request) => send({ type: 'extension_ui_request', request }),
+  register: registerExtensionUiPending,
+  fulfill: fulfillExtensionUiPending,
+  log: outputLine,
+  // Mirrors what the SDK path emits in `extensionUiRpc`: without the end event the renderer keeps
+  // the dialog up after an expiry, the "awaiting prompt" indicator never clears, and a bridged
+  // remote gate is never withdrawn.
+  emitPrompt: (phase, request) =>
+    send({
+      type: 'session_event',
+      event: {
+        type: phase === 'start' ? 'ui_prompt_start' : 'ui_prompt_end',
+        reason: 'ui_prompt',
+        id: request.id,
+        kind: request.method,
+        title: request.title,
+      },
+    }),
+  defaultTimeoutMs: REVIEW_TIMEOUT_MS,
+})
 
 function newIdentity(cwd: string): DurableIdentity {
   // `SessionManager.create` only computes the id and path (no file is written until the first
