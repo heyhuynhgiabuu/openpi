@@ -102,12 +102,38 @@ describe('release dry run', () => {
     const publish = workflow.slice(workflow.indexOf('  publish:'))
     // Anchored to the whole job-level line: trailing text outside `${{ }}` would turn the
     // condition into a non-empty string, which GitHub treats as true -- publishing always.
-    expect(publish).toMatch(/^    if: \$\{\{ inputs\.dry_run != true \}\}$/m)
+    expect(publish).toMatch(/^    if: \$\{\{ .*\}\}$/m)
     expect(publish).not.toMatch(/^    if: .*\}\}.*\S$/m)
     // A status function in the condition would both ignore `needs` and disable the
     // implicit success() check, publishing after a failed build.
     expect(publish).not.toMatch(/if:.*(always|failure|cancelled)\(/)
     expect(publish).toContain('needs: build')
+  })
+
+  it('refuses to publish unless a tag was pushed, not merely because dry_run is false', () => {
+    // The gate used to test only `inputs.dry_run`, which is fail-open: a `workflow_dispatch`
+    // with the box left unchecked on ANY branch evaluated true. What stopped it was the tag
+    // check in "Validate release version" happening to fail -- incidental, not designed, and
+    // one relaxation of that check away from publishing from a branch.
+    const publish = workflow.slice(workflow.indexOf('  publish:'))
+    const condition = publish.match(/^    if: (.*)$/m)?.[1] ?? ''
+    expect(condition).toContain("github.event_name == 'push'")
+    expect(condition).toContain("startsWith(github.ref, 'refs/tags/')")
+    expect(condition).toContain('inputs.dry_run != true')
+    // Every conjunct is required; assert there are exactly three of them so dropping one from
+    // the middle is caught too, not just dropping the last.
+    expect(condition.split('&&')).toHaveLength(3)
+  })
+
+  it('keeps the release permission at the job that needs it, not the whole workflow', () => {
+    // Every build leg runs repository code and third-party actions; none of them needs a
+    // write-capable GITHUB_TOKEN. Only `publish` does, and only for the release upload --
+    // the Homebrew steps use BREW_TAP_TOKEN, which is not GITHUB_TOKEN at all.
+    const topLevel = workflow.slice(0, workflow.indexOf('\njobs:'))
+    expect(topLevel).toMatch(/^permissions:\n  contents: read$/m)
+    expect(topLevel).not.toContain('contents: write')
+    const publish = workflow.slice(workflow.indexOf('  publish:'))
+    expect(publish).toMatch(/^    permissions:\n      contents: write$/m)
   })
 
   it('takes a boolean dry_run input', () => {

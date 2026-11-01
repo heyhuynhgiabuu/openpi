@@ -95,9 +95,19 @@ describe('release artifact contract', () => {
   it('scopes the Homebrew token to only Homebrew steps', () => {
     // The publish job stays gated on a successful build and keeps its own runner; the
     // dry-run condition itself is asserted in releaseDryRun.test.ts.
-    expect(releaseWorkflow).toMatch(
-      /publish:\n    name: Publish GitHub release\n    needs: build\n(?:    #.*\n)*    if: .*\n    runs-on: ubuntu-latest\n    steps:/
-    )
+    // Order, not adjacency: comments and the job-scoped `permissions:` block legitimately sit
+    // between these keys, and a regex that demands adjacency breaks on every such edit without
+    // protecting anything the ordering check does not.
+    const publishJob = releaseWorkflow.slice(releaseWorkflow.indexOf('\n  publish:\n'))
+    const order = [
+      'name: Publish GitHub release',
+      'needs: build',
+      '    if: ',
+      'runs-on: ubuntu-latest',
+      '    steps:',
+    ].map((key) => publishJob.indexOf(key))
+    expect(order.every((at) => at > -1)).toBe(true)
+    expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(releaseWorkflow).toContain('id: brew_status')
     expect(
       releaseWorkflow.match(/BREW_TAP_TOKEN: \$\{\{ secrets\.BREW_TAP_TOKEN \}\}/g)
