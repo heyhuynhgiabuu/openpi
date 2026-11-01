@@ -100,9 +100,14 @@ const packageVersion = (
 describe('release dry run', () => {
   it('publishes only for a real release, never for a dry run and never after a failure', () => {
     const publish = workflow.slice(workflow.indexOf('  publish:'))
+    // The whole condition, verbatim. An earlier version matched only `${{ .* }}`, which still
+    // admits `|| true` or a widened event check -- the exact fail-open class #84 is about. A
+    // three-way conjunct has no reason to change silently, so require this one, not a shape.
+    expect(publish).toMatch(
+      /^ {4}if: \$\{\{ github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\) && inputs\.dry_run != true \}\}$/m
+    )
     // Anchored to the whole job-level line: trailing text outside `${{ }}` would turn the
     // condition into a non-empty string, which GitHub treats as true -- publishing always.
-    expect(publish).toMatch(/^    if: \$\{\{ .*\}\}$/m)
     expect(publish).not.toMatch(/^    if: .*\}\}.*\S$/m)
     // A status function in the condition would both ignore `needs` and disable the
     // implicit success() check, publishing after a failed build.
@@ -134,6 +139,23 @@ describe('release dry run', () => {
     expect(topLevel).not.toContain('contents: write')
     const publish = workflow.slice(workflow.indexOf('  publish:'))
     expect(publish).toMatch(/^    permissions:\n      contents: write$/m)
+  })
+
+  it('grants write to the publish job and to nothing else', () => {
+    // #85 was `contents: write` at workflow level, where every build leg held it. Scoping it to
+    // `publish` is only half the fix: a second job or a second scope could re-add it, and a test
+    // that checks "publish has write" alone would not notice.
+    const writes = workflow.match(/^\s*[a-z-]+: write$/gm) ?? []
+    expect(writes).toHaveLength(1)
+    expect(writes[0]?.trim()).toBe('contents: write')
+    const publish = workflow.slice(workflow.indexOf('  publish:'))
+    expect(publish).toContain('contents: write')
+    // Every job but `publish` must inherit, never declare. An empty `permissions:` on a job
+    // silently removes all scopes, so presence of the key is what matters, not its content.
+    const jobBlocks = workflow.split(/\n(?=  [a-z-]+:\n)/)
+    const declaring = jobBlocks.filter((block) => /^ {4}permissions:/m.test(block))
+    expect(declaring).toHaveLength(1)
+    expect(declaring[0]).toContain('Publish GitHub release')
   })
 
   it('takes a boolean dry_run input', () => {

@@ -99,13 +99,19 @@ describe('release artifact contract', () => {
     // between these keys, and a regex that demands adjacency breaks on every such edit without
     // protecting anything the ordering check does not.
     const publishJob = releaseWorkflow.slice(releaseWorkflow.indexOf('\n  publish:\n'))
+    // Anchored, not bare substrings: `indexOf('needs: build')` also matches a commented-out
+    // `# needs: build`, so the dependency could be dropped and this check would still pass.
     const order = [
-      'name: Publish GitHub release',
-      'needs: build',
-      '    if: ',
-      'runs-on: ubuntu-latest',
-      '    steps:',
-    ].map((key) => publishJob.indexOf(key))
+      /^ {4}name: Publish GitHub release$/m,
+      /^ {4}needs: build$/m,
+      /^ {4}if: /m,
+      /^ {4}runs-on: ubuntu-latest$/m,
+      /^ {4}steps:$/m,
+    ].map((pattern) => {
+      const match = publishJob.match(pattern)
+      expect(match, `publish job is missing ${String(pattern)}`).not.toBeNull()
+      return match?.index ?? -1
+    })
     expect(order.every((at) => at > -1)).toBe(true)
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(releaseWorkflow).toContain('id: brew_status')
