@@ -103,7 +103,14 @@ jobs:
       # pre-release check (see ROADMAP Phase 8, item 8).
       - name: Durable runtime e2e (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run --auto-servernum npx playwright test tests/e2e/durableGate.spec.ts
+        # The exit code cannot distinguish "the gate ran" from "the gate skipped itself", because a
+        # suite where everything skips still exits 0. So the run writes a JSON report and the next
+        # line requires the facts a real run produces. See scripts/assertGateRan.mjs.
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_NAME=durable-gate.json \
+            xvfb-run --auto-servernum npx playwright test \
+              tests/e2e/durableGate.spec.ts --reporter=json
+          node scripts/assertGateRan.mjs durable-gate.json
         env:
           ELECTRON_DISABLE_SANDBOX: '1'
           OPENPI_E2E_DURABLE: '1'
@@ -113,5 +120,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces-durable-gate
-          path: test-results/
+          path: |
+            test-results/
+            durable-gate.json
           retention-days: 7

@@ -23,9 +23,21 @@ describe('durable runtime e2e gate', () => {
     const lines = body.split('\n').map((line) => line.trim())
     // Exact lines, not `toContain`: a `|| true` suffix would make the step exit 0 even when
     // the spec fails, and a commented-out env line would still contain the flag text.
-    expect(lines).toContain(
-      'run: xvfb-run --auto-servernum npx playwright test tests/e2e/durableGate.spec.ts'
-    )
+    const runBody = body.slice(body.indexOf('run: |'))
+    // The reporter is required, not cosmetic: the assertion script reads its output, and a run
+    // without it would fail the step for the wrong reason.
+    expect(runBody).toContain('--reporter=json')
+    expect(runBody).toContain('PLAYWRIGHT_JSON_OUTPUT_NAME=durable-gate.json')
+    expect(runBody).toContain('tests/e2e/durableGate.spec.ts')
+    // The assertion must be the last thing the step does. If Playwright's exit code were allowed
+    // to be the verdict, a suite that skips itself would pass.
+    // Slice to the end of the `run:` scalar, which stops where the next `env:` key begins.
+    const runScalar = runBody.slice(runBody.indexOf('|') + 1, runBody.indexOf('env:'))
+    const commands = runScalar
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    expect(commands.at(-1)).toBe('node scripts/assertGateRan.mjs durable-gate.json')
     // The flag has to be on this step, as its own line: moved elsewhere the spec skips and
     // the run is green for the wrong reason.
     expect(lines.filter((line) => line.startsWith('OPENPI_E2E_DURABLE'))).toEqual([
@@ -81,6 +93,20 @@ describe('durable runtime e2e gate', () => {
     const retirePatterns = spec.match(/test\.(skip|fixme)\(|describe\.skip\(/g) ?? []
     expect(retirePatterns).toHaveLength(1)
     expect(spec).toContain("test('drives a shell turn through the renderer on the durable runtime'")
+  })
+
+  it('requires the spec to record that its body reached the end', () => {
+    // Counters cannot catch an early return: measured with Playwright, a body that returns right
+    // after the skip call still reports expected:1, skipped:0 and "passed". The witness annotation
+    // is the only signal a report-reading script can require, so it is pinned on both sides.
+    expect(spec).toContain("const GATE_WITNESS_TYPE = 'gate-body-completed'")
+    expect(spec).toContain("const GATE_WITNESS = 'durable-shell-turn'")
+    expect(spec).toContain(
+      'test.info().annotations.push({ type: GATE_WITNESS_TYPE, description: GATE_WITNESS })'
+    )
+    const runner = readFileSync(resolve(root, 'scripts/assertGateRan.mjs'), 'utf8')
+    expect(runner).toContain("const WITNESS_TYPE = 'gate-body-completed'")
+    expect(runner).toContain("const WITNESS = 'durable-shell-turn'")
   })
 
   it('leaves the prompt-turn spec manual, because it needs a model key and the local models.json', () => {

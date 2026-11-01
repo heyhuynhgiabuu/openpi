@@ -39,6 +39,13 @@ import { _electron as electron, expect, test } from '@playwright/test'
  * shell had run at all.
  */
 const marker = 'DURABLE_E2E_MARKER'
+/**
+ * Written into the JSON report as the test body's last act, so a run that returns early is not
+ * indistinguishable from one that did the work. Pinned by `tests/ciDurableGate.test.ts` and
+ * required by `scripts/assertGateRan.mjs`; change one and both must change.
+ */
+const GATE_WITNESS_TYPE = 'gate-body-completed'
+const GATE_WITNESS = 'durable-shell-turn'
 const command = 'echo DURABLE_E2E_$(echo MARKER)'
 
 test('drives a shell turn through the renderer on the durable runtime', async () => {
@@ -137,6 +144,11 @@ test('drives a shell turn through the renderer on the durable runtime', async ()
     expect(header.type).toBe('session')
     expect(header['openpi.durable']).toMatchObject({ conversationIds: [1] })
     expect(exported).toContain(marker)
+    // Proof that this body reached its end. Playwright reports an early `return` as a pass, so
+    // its counters cannot tell "the gate ran" from "the gate returned early" -- but this
+    // annotation is only written if the line above is reached. scripts/assertGateRan.mjs
+    // requires it, which is what makes an early return fail the step instead of passing it.
+    test.info().annotations.push({ type: GATE_WITNESS_TYPE, description: GATE_WITNESS })
   } finally {
     await app?.close()
     fs.rmSync(profile, { recursive: true, force: true })
