@@ -53,6 +53,15 @@ describe('durable runtime e2e gate', () => {
       'tests/e2e/durableGate.spec.ts --reporter=json',
       'node scripts/assertGateRan.mjs durable-gate.json',
     ])
+    // The step's OTHER keys are pinned too, not just its `run:` lines. `env:` is the way a
+    // command can be made to do nothing without touching the pinned lines: adding
+    // `NODE_OPTIONS: --import=data:text/javascript,process.exit(0)` made the step exit 0 with
+    // Playwright and the assertion never running, and no test noticed. `shell:` can do the same
+    // by prefixing the script with `true`.
+    expect(gateStep()).not.toMatch(/^\s*(NODE_OPTIONS|BASH_ENV|PLAYWRIGHT_JSON_OUTPUT_DIR)\s*:/m)
+    expect(gateStep()).not.toMatch(/^\s*shell\s*:/m)
+    expect(gateStep()).toContain("ELECTRON_DISABLE_SANDBOX: '1'")
+    expect(gateStep()).toContain("OPENPI_E2E_DURABLE: '1'")
     // The flag has to be on this step, as its own line: moved elsewhere the spec skips and
     // the run is green for the wrong reason.
     expect(lines.filter((line) => line.startsWith('OPENPI_E2E_DURABLE'))).toEqual([
@@ -136,9 +145,19 @@ describe('durable runtime e2e gate', () => {
     for (const banned of ['annotation:', 'beforeEach', 'afterEach', 'beforeAll', 'afterAll']) {
       expect(spec).not.toContain(banned)
     }
-    // And last in the `try` block, because "the body reached its end" is only true of the final
-    // statement. Anything after the push can retire the test with the witness already recorded.
-    expect(spec).toMatch(new RegExp(`${escapeRegExp(push)}\\s*\\}\\s*finally\\s*\\{`))
+    // And last, immediately before the test's OWN cleanup `finally`, because "the body reached
+    // its end" is only true of the final statement.
+    //
+    // Matching `push } finally {` alone was not enough: a review wrapped the single push in
+    // `const recordWitness = () => { try { <push> } finally {} }`, called it right after
+    // test.skip, then returned. `annotations` still appeared exactly once, the regex still
+    // matched, and the gate ran in 313 ms with Electron never launching. Requiring the cleanup
+    // lines this file actually has, after the push, leaves nowhere else the pattern can match.
+    expect(spec).toMatch(
+      new RegExp(`${escapeRegExp(push)}\\s*\\}\\s*finally\\s*{\\s*await app\\?\\.close\\(\\)`)
+    )
+    // Exactly one finally in the whole file, so "the finally after the push" is unambiguous.
+    expect(spec.match(/\}\s*finally\s*\{/g) ?? []).toHaveLength(1)
     const runner = readFileSync(resolve(root, 'scripts/assertGateRan.mjs'), 'utf8')
     expect(runner).toContain("const WITNESS_TYPE = 'gate-body-completed'")
     expect(runner).toContain("const WITNESS = 'durable-shell-turn'")

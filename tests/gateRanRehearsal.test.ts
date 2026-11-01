@@ -55,14 +55,32 @@ function run(
   }
 }
 
-/** A report shaped like a real run: one passing test carrying the spec's completion witness. */
+/**
+ * A report shaped like a real run: one passing test in the gate's own file, carrying the witness.
+ *
+ * The file and title are load-bearing, not decoration. The script matches them so a decoy spec
+ * selected by the CLI filter, or a witness recorded somewhere else in the tree, cannot stand in
+ * for the gate test.
+ */
+const GATE_FILE = 'durableGate.spec.ts'
+const GATE_TITLE = 'drives a shell turn through the renderer on the durable runtime'
+
 const witnessed = () => ({
+  // Real-report fields, so an edit to the script keyed on them is visible here. Without these, a
+  // check like `if (!parsed.config && !holdsWitness(...))` -- accept anything that looks like a
+  // real report -- passed the whole rehearsal and let an early return through.
+  config: { rootDir: '/repo/tests/e2e', projects: [{ name: 'chromium' }] },
+  stats: { startTime: '2026-11-01T00:00:00.000Z', duration: 4308 },
   suites: [
     {
+      file: GATE_FILE,
       specs: [
         {
+          title: GATE_TITLE,
+          file: GATE_FILE,
           tests: [
             {
+              title: GATE_TITLE,
               status: 'expected',
               results: [
                 {
@@ -78,7 +96,24 @@ const witnessed = () => ({
   ],
 })
 
-const passing = (stats: Record<string, number>) => ({ ...witnessed(), stats })
+// Merge the counters INTO the realistic stats block rather than replacing it: replacing dropped
+// `startTime`/`duration`, which is how an edit keyed on those fields stayed invisible to this file.
+/**
+ * Replace only the counters, keeping the realistic report fields a real run writes.
+ *
+ * Generic so the caller keeps its concrete type: a plain `Record<string, unknown>` spread erased
+ * `suites`, and the cases that mutate `suites[0]` then failed typecheck while the tests passed.
+ */
+function counted<T extends object>(report: T, stats: Record<string, number>): T {
+  const previous = 'stats' in report ? report.stats : undefined
+  const merged = { ...(previous as Record<string, unknown> | undefined), ...stats }
+  return { ...report, stats: merged }
+}
+
+const passing = (stats: Record<string, number>) => {
+  const base = witnessed()
+  return { ...base, stats: { ...base.stats, ...stats } }
+}
 
 describe('the durable gate asserts it ran', () => {
   it('passes on a healthy run of exactly one test', () => {
@@ -95,7 +130,7 @@ describe('the durable gate asserts it ran', () => {
       stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 },
     })
     expect(result.code).toBe(1)
-    expect(result.output).toContain('did not reach its end')
+    expect(result.output).toContain('completion witness')
   })
 
   it('fails when the witness names a different test, so a copy-paste cannot stand in', () => {
@@ -103,7 +138,7 @@ describe('the durable gate asserts it ran', () => {
     report.suites[0].specs[0].tests[0].results[0].annotations = [
       { type: 'gate-body-completed', description: 'some-other-spec' },
     ]
-    const result = run({ ...report, stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 } })
+    const result = run(counted(report, { expected: 1, skipped: 0, unexpected: 0, flaky: 0 }))
     expect(result.code).toBe(1)
   })
 
@@ -127,13 +162,39 @@ describe('the durable gate asserts it ran', () => {
     expect(result.code).toBe(1)
   })
 
+  it('fails when the witness comes from a different file, even with every counter right', () => {
+    // The CLI filter is a substring match, so `durableGate.spec.tsx` is selected by
+    // `playwright test tests/e2e/durableGate.spec.ts`. With `testIgnore` in the config pointing
+    // away from the real spec, a decoy carrying the witness made every check green while Electron
+    // never launched. The file has to match, not just the annotation.
+    const decoy = witnessed()
+    decoy.suites[0].file = 'durableGate.spec.tsx'
+    decoy.suites[0].specs[0].file = 'durableGate.spec.tsx'
+    const result = run(counted(decoy, { expected: 1, skipped: 0, unexpected: 0, flaky: 0 }))
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('completion witness')
+  })
+
+  it('fails when the witness sits on an earlier result than the one that decided the run', () => {
+    // A retried run's first attempt can carry an annotation the final one does not. Only the last
+    // result speaks for the outcome.
+    const retried = witnessed()
+    const test = retried.suites[0].specs[0].tests[0]
+    test.results = [test.results[0], { status: 'passed', annotations: [] }]
+    const result = run(counted(retried, { expected: 1, skipped: 0, unexpected: 0, flaky: 0 }))
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('completion witness')
+  })
+
   it('fails when the annotation has the right description but the wrong type', () => {
     // Both halves of the witness are load-bearing. Matching only the description would let any
     // annotation that happens to carry the string stand in for the gate's own marker.
-    const wrongType = {
-      ...witnessed(),
-      stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 },
-    }
+    const wrongType = counted(witnessed(), {
+      expected: 1,
+      skipped: 0,
+      unexpected: 0,
+      flaky: 0,
+    })
     const annotation = { type: 'something-else', description: 'durable-shell-turn' }
     wrongType.suites[0].specs[0].tests[0].results[0].annotations = [annotation]
     const result = run(wrongType)
@@ -185,10 +246,12 @@ describe('the durable gate asserts it ran', () => {
     // verdict has to be exercised on this path too. A stale report is the case that reaches it:
     // Playwright never writes a fresh report, `rm -f` in the step is what prevents this, and no
     // check inside the script can tell an old report from a new one.
-    const unwitnessed = {
-      ...witnessed(),
-      stats: { expected: 1, skipped: 0, unexpected: 0, flaky: 0 },
-    }
+    const unwitnessed = counted(witnessed(), {
+      expected: 1,
+      skipped: 0,
+      unexpected: 0,
+      flaky: 0,
+    })
     unwitnessed.suites[0].specs[0].tests[0].results[0].annotations = []
     const failed = run(unwitnessed, true, 'durable-gate.json')
     expect(failed.code).toBe(1)

@@ -20,17 +20,24 @@
  * Deliberately strict about shape: a missing or malformed report is a failure, never a pass. That
  * is the difference between a check and the appearance of one.
  *
- * WHAT THIS DOES NOT PROVE. A person can still retire this gate, and every automated check will
- * stay green. Three routes survive by construction:
+ * WHAT THIS DOES NOT PROVE. A person can still retire this gate, and every automated check can stay
+ * green. This list is what is KNOWN to survive today, not a proof that it is complete:
  *   1. A spec that records the witness but asserts nothing about the app. Nothing in the report
  *      distinguishes "the marker was verified" from "the marker was never looked for".
- *   2. A spec edited to write the witness before doing the work and return afterwards. The pins in
- *      `ciDurableGate.test.ts` count the annotation accessor and forbid the declarative form and
- *      the lifecycle hooks, which closes the rewrites found so far -- not the next one.
- *   3. An edit to THIS file that keys on the environment or working directory, because the
- *      rehearsal in `gateRanRehearsal.test.ts` runs in a temp directory of its own.
+ *   2. A spec that writes the witness before doing the work and returns afterwards. The pins in
+ *      `ciDurableGate.test.ts` require it exactly once, as the last statement before the cleanup
+ *      `finally`, with no lifecycle hooks -- which closes every rewrite found so far, not the next.
+ *   3. An edit to THIS file. The rehearsal runs fixtures in a temp directory, so anything keyed on
+ *      the environment, the working directory, or a report field a fixture does not carry can add
+ *      a bypass unexercised. Fixtures now carry `config`/`startTime`/`duration` for that reason.
+ *   4. Skipping the leg entirely: `matrix.exclude` dropping ubuntu, or the step's own `env:` /
+ *      `shell:` being changed. Nothing here reads the matrix, and the repository has no branch
+ *      protection, so even a red gate would not block a merge.
+ *   5. Anything that changes `playwright.config.ts` together with the spec, or emits the witness
+ *      from a worker that did no work.
  * This is a guard against ACCIDENT, and against a model confidently "fixing" the gate by moving
- * the witness up. It is not a proof. Changes here and in the spec need a human.
+ * the witness up. Treat changes to this file, the spec, the config and the workflow as needing a
+ * human, because nothing enforces that they get one.
  */
 import { readFileSync } from 'node:fs'
 
@@ -83,31 +90,63 @@ function readStats(path) {
 const WITNESS_TYPE = 'gate-body-completed'
 const WITNESS = 'durable-shell-turn'
 
+/** The gate test's file and title, matched against the report's own structure. */
+const GATE_FILE = 'durableGate.spec.ts'
+const GATE_TITLE = 'drives a shell turn through the renderer on the durable runtime'
+
 /**
- * Find the witness annotation in the report, whichever nesting Playwright used.
+ * Find the ONE test the gate is about, and require ITS result to carry the witness.
+ *
+ * Searching the whole tree for an annotation was not enough. A report also describes WHICH file
+ * and which test produced it, and ignoring that let two edits through with every check green:
+ * `testIgnore` in `playwright.config.ts` plus a decoy `durableGate.spec.tsx` (the CLI filter is a
+ * substring match, so it still selected the decoy), and moving the single witness push into a
+ * helper called before an early `return`. Binding to the file and title closes the decoy; requiring
+ * the witness on that test's own last result closes the "somewhere in the tree" reading.
+ *
  * @param {unknown} node
+ * @param {string[]} files
  * @returns {boolean}
  */
-function hasWitness(node) {
+function holdsWitness(node, files) {
   if (typeof node !== 'object' || node === null) return false
   const record = /** @type {Record<string, unknown>} */ (node)
-  const annotations = record.annotations
-  if (Array.isArray(annotations)) {
-    for (const annotation of annotations) {
-      if (typeof annotation !== 'object' || annotation === null) continue
-      const entry = /** @type {Record<string, unknown>} */ (annotation)
-      if (entry.type === WITNESS_TYPE && entry.description === WITNESS) return true
+  const ownFile = typeof record.file === 'string' ? record.file : undefined
+  const nextFiles = ownFile ? [...files, ownFile] : files
+  const inGateFile = nextFiles.some((file) => file.endsWith(GATE_FILE))
+
+  if (inGateFile && Array.isArray(record.tests)) {
+    for (const candidate of record.tests) {
+      if (typeof candidate !== 'object' || candidate === null) continue
+      const test = /** @type {Record<string, unknown>} */ (candidate)
+      if (test.title !== GATE_TITLE) continue
+      if (!Array.isArray(test.results) || test.results.length === 0) continue
+      // The LAST result is the one that decided the outcome; an earlier retry's annotation is
+      // not evidence that this run reached the end.
+      const last = test.results[test.results.length - 1]
+      if (hasAnnotation(last) || hasAnnotation(test)) return true
+      return false
     }
   }
-  const results = record.results
-  if (Array.isArray(results) && results.some(hasWitness)) return true
-  const suites = record.suites
-  if (Array.isArray(suites) && suites.some(hasWitness)) return true
-  const specs = record.specs
-  if (Array.isArray(specs) && specs.some(hasWitness)) return true
-  const tests = record.tests
-  if (Array.isArray(tests) && tests.some(hasWitness)) return true
+  for (const key of ['suites', 'specs']) {
+    const children = record[key]
+    if (Array.isArray(children) && children.some((child) => holdsWitness(child, nextFiles))) {
+      return true
+    }
+  }
   return false
+}
+
+/** @param {unknown} node */
+function hasAnnotation(node) {
+  if (typeof node !== 'object' || node === null) return false
+  const annotations = /** @type {Record<string, unknown>} */ (node).annotations
+  if (!Array.isArray(annotations)) return false
+  return annotations.some((annotation) => {
+    if (typeof annotation !== 'object' || annotation === null) return false
+    const entry = /** @type {Record<string, unknown>} */ (annotation)
+    return entry.type === WITNESS_TYPE && entry.description === WITNESS
+  })
 }
 
 const path = process.argv[2]
@@ -130,6 +169,8 @@ if (stats.expected !== 1)
   )
 
 // The counters can be satisfied by a body that returned immediately. The witness cannot.
-if (!hasWitness(parsed)) fail('the test body did not reach its end (no completion witness)')
+if (!holdsWitness(parsed, [])) {
+  fail(`the gate test (${GATE_FILE} > ${GATE_TITLE}) did not record a completion witness`)
+}
 
 process.stdout.write('durable gate: exactly one test ran, none skipped\n')
