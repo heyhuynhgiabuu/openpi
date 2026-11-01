@@ -29,9 +29,11 @@ const RESOURCES_ENV = 'OPENPI_RESOURCES_PATH'
  * The entry path, or `undefined` when nothing is shipped or the file is not there.
  *
  * A missing path handed to `additionalExtensionPaths` makes the loader report
- * `Extension path does not exist` for every session, so absence is reported by the caller
- * instead of giving Pi a path it cannot load. In a dev run no resources directory is set and
- * Pi discovers the source tree itself, so `undefined` is the normal case there.
+ * `Extension path does not exist` for every session, so absence is reported as `undefined`
+ * instead. In a dev run no resources directory is set and Pi discovers the source tree
+ * itself, so `undefined` is the normal case there. When the gate is enabled but the files are
+ * missing it is simply off; `tests/preapplyExtensionShip.test.ts` is what catches that
+ * packaging regression, not a runtime warning.
  */
 export function existingPreapplyExtensionPath(
   env: NodeJS.ProcessEnv = process.env
@@ -40,4 +42,29 @@ export function existingPreapplyExtensionPath(
   if (!resources) return undefined
   const entry = path.join(resources, 'extensions', DIR, ENTRY)
   return existsSync(entry) ? entry : undefined
+}
+
+/** A workspace's own copy of the gate, which Pi discovers from `<cwd>/.pi/extensions`. */
+export function workspacePreapplyExtensionPath(workspacePath: string): string {
+  return path.join(workspacePath, '.pi', 'extensions', DIR, ENTRY)
+}
+
+/**
+ * The shipped path to hand Pi, or `undefined` when it must not be added.
+ *
+ * Omitted when the workspace supplies its own copy: Pi dedupes extensions by realpath, and
+ * these are two different files, so passing both loads the gate twice and the user gets two
+ * prompts per edit. The project copy wins, which is how a checkout behaved before the
+ * shipped copy existed.
+ */
+export function shippedPreapplyPathFor(options: {
+  workspacePath: string
+  workspaceTrusted: boolean
+  env?: NodeJS.ProcessEnv
+}): string | undefined {
+  const shipped = existingPreapplyExtensionPath(options.env ?? process.env)
+  if (!shipped) return undefined
+  // An untrusted workspace's extensions are not loaded by Pi, so its copy cannot stand in.
+  if (!options.workspaceTrusted) return shipped
+  return existsSync(workspacePreapplyExtensionPath(options.workspacePath)) ? undefined : shipped
 }

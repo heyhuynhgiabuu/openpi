@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { forkMock } = vi.hoisted(() => ({ forkMock: vi.fn() }))
+const { forkMock, utilityForkMock } = vi.hoisted(() => ({
+  forkMock: vi.fn(),
+  utilityForkMock: vi.fn(),
+}))
 
 vi.mock('node:child_process', () => {
   const spawnSync = vi.fn(() => ({ status: 0 }))
@@ -13,7 +16,7 @@ vi.mock('node:child_process', () => {
 })
 vi.mock('electron', () => ({
   app: { isPackaged: false },
-  utilityProcess: { fork: vi.fn() },
+  utilityProcess: { fork: utilityForkMock },
 }))
 
 import { PiSidecarHost } from '../electron/pi/sidecarHost'
@@ -83,5 +86,58 @@ describe('PiSidecarHost response routing', () => {
         text: expect.stringContaining('orphaned session replacement'),
       }),
     })
+  })
+})
+
+/**
+ * The pre-apply gate ships in `extraResources` and reaches the sidecar only through the fork
+ * env (issue #80). These pin the two lines that deliver it: without them every other test
+ * still passes, because `getResourceLoader` is mocked everywhere else.
+ */
+describe('PiSidecarHost shipped-asset env', () => {
+  function forkEnv(): NodeJS.ProcessEnv {
+    // A packaged build spawns through `utilityProcess.fork` (Electron's ASAR support) and a
+    // dev build through `child_process.fork` with the system node, so read whichever ran.
+    const call = [...forkMock.mock.calls, ...utilityForkMock.mock.calls].at(-1)
+    if (!call) throw new Error('expected the sidecar to be forked')
+    return (call[2] as { env?: NodeJS.ProcessEnv } | undefined)?.env ?? {}
+  }
+
+  beforeEach(() => {
+    forkMock.mockReset()
+    utilityForkMock.mockReset()
+    forkMock.mockReturnValue(new FakeChild())
+    utilityForkMock.mockReturnValue(new FakeChild())
+  })
+
+  it('passes the resources path when packaged', async () => {
+    const electron = await import('electron')
+    Object.defineProperty(electron.app, 'isPackaged', { value: true, configurable: true })
+    try {
+      Object.defineProperty(process, 'resourcesPath', {
+        value: '/Applications/OpenPi.app/Contents/Resources',
+        configurable: true,
+      })
+      new PiSidecarHost({ onMessage: vi.fn(), onCrash: vi.fn() }).start()
+
+      expect(forkEnv().OPENPI_RESOURCES_PATH).toBe('/Applications/OpenPi.app/Contents/Resources')
+    } finally {
+      Object.defineProperty(electron.app, 'isPackaged', { value: false, configurable: true })
+    }
+  })
+
+  it('removes an inherited resources path in a dev run, rather than passing it through', () => {
+    // Pi's bash tool spawns with `{...process.env}`, so a dev run started from inside the
+    // packaged app inherits its Resources path and would load that (older) copy too.
+    const previous = process.env.OPENPI_RESOURCES_PATH
+    process.env.OPENPI_RESOURCES_PATH = '/stale/from/packaged/app'
+    try {
+      new PiSidecarHost({ onMessage: vi.fn(), onCrash: vi.fn() }).start()
+
+      expect(forkEnv().OPENPI_RESOURCES_PATH).toBeUndefined()
+    } finally {
+      if (previous === undefined) delete process.env.OPENPI_RESOURCES_PATH
+      else process.env.OPENPI_RESOURCES_PATH = previous
+    }
   })
 })
