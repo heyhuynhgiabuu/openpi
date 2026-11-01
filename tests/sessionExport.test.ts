@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildSessionExportBundle,
   findSessionTaskIds,
@@ -183,10 +183,23 @@ describe('buildSessionExportBundle', () => {
       sessionPath: fixture.sessionFile,
       outRoot: tmpDir('out5'),
     }
-    const first = buildSessionExportBundle(args)
-    // Same second, same session id → identical bundle name.
-    expect(() => buildSessionExportBundle(args)).toThrow(/already exists/)
-    expect(fs.existsSync(first.outDir)).toBe(true)
+    // The bundle name embeds a second-resolution timestamp, so two calls only collide when
+    // they land in the same second. Freezing the clock makes the collision the subject of
+    // the test instead of a race: on a slow runner the second call crossed into the next
+    // second, got a different directory name and legitimately did not throw.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-01-02T03:04:05.000Z'))
+    try {
+      const first = buildSessionExportBundle(args)
+      // Assert the error TYPE, not just a message fragment: a bare `throw err` would let
+      // Node's raw `EEXIST: file already exists` satisfy `/already exists/`, so the test
+      // could not tell a deliberate refusal from an unhandled filesystem error.
+      expect(() => buildSessionExportBundle(args)).toThrow(SessionExportError)
+      expect(() => buildSessionExportBundle(args)).toThrow(/Export bundle already exists/)
+      expect(fs.existsSync(first.outDir)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('exports multiple sub-sessions without clobbering (each is named session.jsonl upstream)', () => {
