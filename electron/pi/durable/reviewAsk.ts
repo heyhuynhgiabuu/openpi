@@ -51,9 +51,9 @@ export function createReviewAsk(deps: ReviewAskDeps): ReviewAsk {
       }
 
       let open = true
-      // Settling happens before the end-of-prompt event, and the event is guarded: `emitPrompt` is
-      // the same `send` the request went out on, so a port that throws must not be able to leave the
-      // promise unsettled — that would hang the run with no way out.
+      // The end-of-prompt event is guarded, and `open` is flipped before it runs, so a throwing
+      // port cannot prevent settling: `emitPrompt` is the same `send` the request went out on, and a
+      // promise left unsettled here would hang the run with no way out.
       const close = (): boolean => {
         if (!open) return false
         open = false

@@ -162,6 +162,17 @@ describe('durable pre-apply review', () => {
     expect(decision?.block).toContain('blob.bin')
   })
 
+  it('reads a cancelled confirm as a denial even when it also carries an approval', async () => {
+    const target = join(root, 'big.txt')
+    await writeFile(target, 'a\n'.repeat(400_000), 'utf8')
+    const ui = answering((request) => ({ id: request.id, cancelled: true, confirmed: true }))
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    const decision = await gate.decide(call('write', { path: target, content: 'CLOBBERED' }))
+
+    expect(decision?.block).toBeTruthy()
+  })
+
   it('asks before creating an empty file, which also has no diff to show', async () => {
     const target = join(root, 'empty.txt')
     const ui = answering(approveAll)

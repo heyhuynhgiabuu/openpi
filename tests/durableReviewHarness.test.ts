@@ -145,6 +145,55 @@ describe('durable pre-apply review, through a real harness', () => {
     }
   }, 20_000)
 
+  it('lets an abort end a pending edit review, not just a write', async () => {
+    // The edit path is a third ask site; abort was covered end to end only for writes.
+    const setup = fauxSetup()
+    const target = join(workspace, 'existing.txt')
+    await writeFile(target, 'one\ntwo\n', 'utf8')
+    let asked = 0
+    setup.faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall(
+            'edit',
+            { path: target, edits: [{ oldText: 'two', newText: 'TWO' }] },
+            { id: 'c1' }
+          ),
+        ],
+        { stopReason: 'toolUse' as const }
+      ),
+      fauxAssistantMessage([fauxText('never')], { stopReason: 'stop' as const }),
+    ])
+    const harness = await openDurableHarness({
+      backend: 'memory',
+      model: setup.model,
+      registerProviders: setup.registerProviders,
+      workspacePath: workspace,
+      review: {
+        enabled: true,
+        ask: (request, signal) => {
+          asked += 1
+          return neverAnswers(request, signal)
+        },
+        timeoutMs: 600_000,
+      },
+    })
+    try {
+      const prompted = harness.prompt('edit it')
+      await vi.waitFor(() => expect(asked).toBe(1), { timeout: 5000 })
+      await expect(
+        Promise.race([
+          harness.abort(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('abort hung')), 3000)),
+        ])
+      ).resolves.not.toThrow()
+      await prompted.catch(() => undefined)
+      expect(await readFile(target, 'utf8')).toBe('one\ntwo\n')
+    } finally {
+      await harness.close()
+    }
+  }, 20_000)
+
   it('does not write the file when the review is denied, and tells the model why', async () => {
     const setup = fauxSetup()
     const target = join(workspace, 'denied.txt')
