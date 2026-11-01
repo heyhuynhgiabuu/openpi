@@ -12,6 +12,8 @@ import {
 import type { ResolvedModel } from './durableSettings'
 import { createSessionSettingsManager } from './sessionSettings'
 import type { SessionReadyPayload } from './sidecarTypes'
+import { fulfillExtensionUiPending, registerExtensionUiPending } from './extensionUiPending'
+import type { ExtensionUiRequest, ExtensionUiResponse } from '../../src/lib/extensionUiTypes'
 import { getAgentDir, getModelRuntime, outputLine, send } from './sidecarContext'
 
 /**
@@ -19,6 +21,34 @@ import { getAgentDir, getModelRuntime, outputLine, send } from './sidecarContext
  * directory. Kept apart from `durableSession.ts` because importing the sidecar context requires a
  * parent process, which tests do not have.
  */
+
+/**
+ * Reviewing a diff takes longer than a yes/no glance, matching the SDK gate's ten minutes. An
+ * unanswered prompt settles as `cancelled`, which the hook reads as a denial — never as approval.
+ */
+const REVIEW_TIMEOUT_MS = 600_000
+
+/**
+ * Ask the renderer, and wait. This process is the sidecar, so the request goes out as the same
+ * `extension_ui_request` every other extension dialog uses, and the answer comes back as an
+ * `extension_ui_response` command that `handleExtensionUiResponseCommand` feeds to
+ * `fulfillExtensionUiPending`. No new IPC channel, no new schema.
+ */
+function askReview(request: ExtensionUiRequest): Promise<ExtensionUiResponse> {
+  return new Promise((resolve, reject) => {
+    registerExtensionUiPending(request.id, request.timeout ?? REVIEW_TIMEOUT_MS, resolve, reject)
+    try {
+      send({ type: 'extension_ui_request', request })
+    } catch (error) {
+      // A send that never left would otherwise hang the tool call until the timeout.
+      fulfillExtensionUiPending({ id: request.id, cancelled: true })
+      outputLine(
+        'error',
+        `[durable] could not ask for review: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+  })
+}
 
 function newIdentity(cwd: string): DurableIdentity {
   // `SessionManager.create` only computes the id and path (no file is written until the first
@@ -57,17 +87,6 @@ async function open(
   // is wired to `set_model` only — so choosing one explicitly is what makes both runtimes agree.
   if (choice.fallback && !resuming)
     outputLine('info', `[durable] no usable default model; using ${provider}/${modelId}`)
-  // The durable runtime still runs no extension `tool_call` hooks, so a safety gate the user turned
-  // on is simply absent here. Saying so is the least this can do while
-  // opting in is a preference nobody is shown: silently applying edits with no review is exactly the
-  // failure that gate exists to prevent.
-  // The host passes the app-level policy into this process as environment (`sidecarPolicyEnv` at
-  // spawn), which is the only place it is readable here.
-  if (!resuming && process.env.OPENPI_PREAPPLY_REVIEW === '1')
-    outputLine(
-      'warn',
-      '[durable] pre-apply review is enabled, but the durable runtime loads no extensions: edits will apply without review'
-    )
   const model = modelRuntime.getModel(provider, modelId)
   if (!model) throw new Error(`default model ${provider}/${modelId} is not available`)
 
@@ -85,6 +104,15 @@ async function open(
     workspacePath: cwd,
     projectTrusted: workspaceTrusted,
     mcp: true,
+    // The pre-apply review gate. pi-durable has no extension host, so the gate's decision lives on
+    // `beforeTool` (see `durable/review.ts`) and the prompt travels the same sidecar ->
+    // renderer -> sidecar round trip every other extension dialog uses. The app hands the policy in
+    // as environment (`sidecarPolicyEnv` at spawn), the only place it is readable here.
+    review: {
+      enabled: process.env.OPENPI_PREAPPLY_REVIEW === '1',
+      ask: askReview,
+      timeoutMs: REVIEW_TIMEOUT_MS,
+    },
     // A task that faulted or hit the restart limit must say so: the prompt would otherwise just
     // stop answering, with nothing in the transcript to explain why.
     onReport: (error, info) => {

@@ -4,6 +4,8 @@ import type { CustomizationDiagnostic } from '../../../src/lib/ipc'
 import { loadCustomizationsExtension } from './sections'
 import type { DurableCustomizations } from './customizations'
 import { policyToolHooks } from './policy'
+import { reviewToolHooks } from './review'
+import type { DurableReviewWiring } from './types'
 
 /**
  * The extensions an open installs before the harness exists, and the customizations they came from.
@@ -22,7 +24,12 @@ export interface PreparedRegistry {
 /** Install the parity extensions into `registry` and report what loading them found. */
 export async function prepareRegistry(
   registry: Registry,
-  options: { userAgentDir?: string; workspacePath?: string | null; policy?: boolean }
+  options: {
+    userAgentDir?: string
+    workspacePath?: string | null
+    policy?: boolean
+    review?: DurableReviewWiring
+  }
 ): Promise<PreparedRegistry> {
   const diagnostics: CustomizationDiagnostic[] = []
   let customizations: DurableCustomizations | undefined
@@ -40,6 +47,21 @@ export async function prepareRegistry(
       defineExtension({
         name: 'openpi.policy',
         hooks: [hook(ToolTask, policyToolHooks({ workspacePath: options.workspacePath }))],
+      })
+    )
+  }
+  // Separate extension on purpose: the policy hook blocks without asking, the review hook asks.
+  // Installed only when the caller passes wiring, so the gate stays off unless the user opted in.
+  if (options.review) {
+    registry.install(
+      defineExtension({
+        name: 'openpi.review',
+        hooks: [
+          hook(
+            ToolTask,
+            reviewToolHooks({ ...options.review, workspacePath: options.workspacePath })
+          ),
+        ],
       })
     )
   }
