@@ -5,8 +5,18 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    # A real release is dispatched on its tag. A dry run builds, packages and
+    # verifies every target without publishing, so the toolchain on each runner
+    # image can be checked before a tag is cut. `package.json` supplies the
+    # version in that mode, which is why any branch is accepted here.
+    inputs:
+      dry_run:
+        description: "Build and verify only; never publish or touch an existing release"
+        type: boolean
+        default: false
     branches:
       - "v*"
+      - "main"
     tags:
       - "v*"
 
@@ -69,13 +79,24 @@ jobs:
         id: release_meta
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           LOCK_VERSION=$(node -p "require('./package-lock.json').version")
           ROOT_LOCK_VERSION=$(node -p "require('./package-lock.json').packages[''].version")
-          if [ "$VERSION" != "$PACKAGE_VERSION" ] || [ "$VERSION" != "$LOCK_VERSION" ] || [ "$VERSION" != "$ROOT_LOCK_VERSION" ]; then
-            echo "::error::Tag version $VERSION does not match package metadata ($PACKAGE_VERSION, $LOCK_VERSION, $ROOT_LOCK_VERSION)"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # A dry run carries no tag, so there is nothing to match it against; the
+            # package metadata still has to agree with itself.
+            VERSION="$PACKAGE_VERSION"
+            echo "Dry run: using package.json version $VERSION; nothing will be published."
+          else
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            if [ "$VERSION" != "$PACKAGE_VERSION" ] || [ "$VERSION" != "$LOCK_VERSION" ] || [ "$VERSION" != "$ROOT_LOCK_VERSION" ]; then
+              echo "::error::Tag version $VERSION does not match package metadata ($PACKAGE_VERSION, $LOCK_VERSION, $ROOT_LOCK_VERSION)"
+              exit 1
+            fi
+          fi
+          if [ "$PACKAGE_VERSION" != "$LOCK_VERSION" ] || [ "$PACKAGE_VERSION" != "$ROOT_LOCK_VERSION" ]; then
+            echo "::error::package.json ($PACKAGE_VERSION), package-lock.json ($LOCK_VERSION) and its root entry ($ROOT_LOCK_VERSION) disagree"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -206,6 +227,10 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: build
+    # The only job with a side effect, so it is the only one a dry run skips. No
+    # unconditional-run modifier is used: a dry run must not publish even when the build
+    # jobs are green, and a failed build must never reach here.
+    if: ${{ inputs.dry_run != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release notes

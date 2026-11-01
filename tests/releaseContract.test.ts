@@ -77,6 +77,28 @@ describe('release artifact contract', () => {
     expect(hasMacArchitecture('Mach-O 64-bit bundle x86_64', 'x64')).toBe(true)
   })
 
+  it('can verify the release toolchain without publishing anything', () => {
+    // `release.yml` used to be dispatchable only on a tag, so the only way to check a
+    // runner image was to run a real release -- and re-dispatching an existing tag would
+    // overwrite the release already published for it. A dry run builds, packages and
+    // verifies every target while `publish` (the only job with a side effect) is skipped.
+    const workflow = releaseWorkflow
+
+    expect(workflow).toMatch(/dry_run:[\s\S]{0,120}type: boolean/)
+    // Nothing may publish unless the dispatch asked for a real release, and a failed
+    // build must never reach publish, so the condition cannot be an `always()` form.
+    const publish = workflow.slice(workflow.indexOf('  publish:'))
+    expect(publish).toMatch(/if: \$\{\{ inputs\.dry_run != true \}\}/)
+    // A modifier that ignores `needs` would publish after a failed build.
+    expect(publish).not.toMatch(/if:.*always\(/)
+    expect(publish).toContain('needs: build')
+    // A dry run has no tag, so the version has to come from the package metadata.
+    expect(workflow).toContain('Dry run: using package.json version')
+    // And it must be dispatchable on a branch, or there is no way to run it pre-tag.
+    const dispatch = workflow.slice(workflow.indexOf('workflow_dispatch:'))
+    expect(dispatch).toContain('- "main"')
+  })
+
   it('creates one combined macOS updater manifest and does not merge per-arch manifests', () => {
     expect(builderConfig.mac).toMatchObject({ target: ['dmg', 'zip'] })
     expect(releaseWorkflow).toContain('rm -f "release/$VERSION/latest-mac.yml"')
@@ -93,8 +115,10 @@ describe('release artifact contract', () => {
   })
 
   it('scopes the Homebrew token to only Homebrew steps', () => {
-    expect(releaseWorkflow).toContain(
-      'publish:\n    name: Publish GitHub release\n    needs: build\n    runs-on: ubuntu-latest\n    steps:'
+    // The publish job stays gated on a successful build and keeps its own runner; the
+    // dry-run condition is asserted separately below.
+    expect(releaseWorkflow).toMatch(
+      /publish:\n    name: Publish GitHub release\n    needs: build\n(?:    #.*\n)*    if: .*\n    runs-on: ubuntu-latest\n    steps:/
     )
     expect(releaseWorkflow).toContain('id: brew_status')
     expect(
