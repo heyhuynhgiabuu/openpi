@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { TranscriptContext } from '@earendil-works/pi-ai'
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from '@earendil-works/pi-ai'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDurableHarness } from '../electron/pi/durable/harness'
 import type { ExtensionUiRequest, ExtensionUiResponse } from '../src/lib/extensionUiTypes'
 
@@ -57,6 +57,7 @@ describe('durable pre-apply review, through a real harness', () => {
     // Stop, a new session, reload and fork all abort the harness; a review nobody answers used to
     // hold that abort for the full ten-minute timeout.
     const setup = fauxSetup()
+    let asked = 0
     const target = join(workspace, 'pending.txt')
     setup.faux.setResponses([
       fauxAssistantMessage([fauxToolCall('write', { path: target, content: 'x' }, { id: 'c1' })], {
@@ -69,11 +70,20 @@ describe('durable pre-apply review, through a real harness', () => {
       model: setup.model,
       registerProviders: setup.registerProviders,
       workspacePath: workspace,
-      review: { enabled: true, ask: neverAnswers, timeoutMs: 600_000 },
+      review: {
+        enabled: true,
+        ask: (request, signal) => {
+          asked += 1
+          return neverAnswers(request, signal)
+        },
+        timeoutMs: 600_000,
+      },
     })
     try {
       const prompted = harness.prompt('write it')
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      // Wait for the gate to actually reach the prompt: a fixed sleep made this test pass without
+      // testing anything when the tool call had not arrived yet.
+      await vi.waitFor(() => expect(asked).toBe(1), { timeout: 5000 })
       // The point is that this settles at all: before the abort signal was threaded through, it
       // waited for the ten-minute prompt timeout.
       await expect(
@@ -84,6 +94,52 @@ describe('durable pre-apply review, through a real harness', () => {
       ).resolves.not.toThrow()
       await prompted.catch(() => undefined)
       expect(existsSync(target)).toBe(false)
+    } finally {
+      await harness.close()
+    }
+  }, 20_000)
+
+  it('lets an abort end a pending confirm too, on a file it cannot show as a diff', async () => {
+    // The confirm fallback is a second ask path, and it dropped the abort signal at first: the exact
+    // ten-minute Stop hang came back for blind overwrites while the review path looked fixed.
+    const setup = fauxSetup()
+    const target = join(workspace, 'big.txt')
+    await writeFile(target, 'a\n'.repeat(400_000), 'utf8')
+    let asked = 0
+    setup.faux.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall('write', { path: target, content: 'CLOBBER' }, { id: 'c1' })],
+        {
+          stopReason: 'toolUse' as const,
+        }
+      ),
+      fauxAssistantMessage([fauxText('never')], { stopReason: 'stop' as const }),
+    ])
+    const harness = await openDurableHarness({
+      backend: 'memory',
+      model: setup.model,
+      registerProviders: setup.registerProviders,
+      workspacePath: workspace,
+      review: {
+        enabled: true,
+        ask: (request, signal) => {
+          asked += 1
+          return neverAnswers(request, signal)
+        },
+        timeoutMs: 600_000,
+      },
+    })
+    try {
+      const prompted = harness.prompt('overwrite it')
+      await vi.waitFor(() => expect(asked).toBe(1), { timeout: 5000 })
+      await expect(
+        Promise.race([
+          harness.abort(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('abort hung')), 3000)),
+        ])
+      ).resolves.not.toThrow()
+      await prompted.catch(() => undefined)
+      expect(await readFile(target, 'utf8')).toBe('a\n'.repeat(400_000))
     } finally {
       await harness.close()
     }

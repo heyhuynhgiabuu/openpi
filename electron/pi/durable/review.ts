@@ -17,11 +17,14 @@
  * whose hook throws. A gate that fails open would be worse than no gate, because the user believes
  * it is on.
  *
- * Limit, stated because it is visible to the user: approval is all-or-nothing. The SDK path drops
- * the hunks the user did not approve and lets Pi apply the rest; a `beforeTool` can only block or
- * replace the call's arguments wholesale, and replacing `edit` arguments would mean rebuilding a
- * JSON value this module has no schema for. Partial approval is therefore a denial here, with a
- * reason that says so rather than silently applying a subset nobody approved.
+ * Limits, stated because they are visible to the user:
+ * - approval is all-or-nothing. The SDK path drops the hunks the user did not approve and lets Pi
+ *   apply the rest; a `beforeTool` can only block or replace the call's arguments wholesale, and
+ *   rebuilding `edit` arguments would mean reshaping a JSON value this module has no schema for. A
+ *   partial approval is therefore a denial, with a reason that says so rather than silently
+ *   applying a subset nobody approved;
+ * - only `write`/`edit` are gated, matching the SDK gate: a `bash` command that writes a file is
+ *   reviewed on neither runtime.
  */
 import { randomUUID } from 'node:crypto'
 import type { ToolHookCall, ToolHooks } from '@earendil-works/pi-durable'
@@ -64,21 +67,8 @@ function denial(shownPath: string, reason: string): { block: string } {
 }
 
 /**
- * A `confirm`-style request that hides whether the human approved, for callers that answer with a
- * bare yes/no: `confirmed` is set, `approved` is absent (which `verdict` reads as unanswered).
- */
-export function confirmRequest(title: string, timeoutMs: number): ExtensionUiRequest {
-  return { id: randomUUID(), method: 'confirm', title, timeout: timeoutMs }
-}
-
-/** Reads a `confirm` answer: only an explicit `true` approves. */
-export function confirmed(answer: ExtensionUiResponse): boolean {
-  return answer.cancelled !== true && answer.confirmed === true
-}
-
-/**
  * The decision on its own. `beforeTool` also receives a `HookApi` and a `Context`, and this gate
- * reads neither — it needs only the call. Keeping the decision separate is what lets it be tested
+ * reads only the context's abort signal. Keeping the decision separate is what lets it be tested
  * without fabricating SDK objects, and `reviewToolHooks` adapts it to the hook shape.
  */
 export interface ReviewGate {
@@ -98,13 +88,27 @@ export function reviewGate(options: DurableReviewOptions): ReviewGate {
     if (!reviewTools.includes(call.name)) return undefined
     const input = asRecord(call.arguments)
 
-    const parts = call.name === 'write' ? writeReviewParts(input, cwd) : null
-    // A write the hunk view cannot render — an existing binary file, one over the read limit, one
-    // that cannot be read, or an empty create — must still be asked about. Falling through to
-    // "cannot describe it, step aside" was a real hole: a blind overwrite of a large file applied
-    // with no prompt at all, while the SDK gate falls back to a text confirm. Ask, with whatever
-    // description is available.
-    if (call.name === 'write' && !parts) {
+    if (call.name === 'write') {
+      const parts = writeReviewParts(input, cwd)
+      if (parts) {
+        const answer = await options.ask(
+          {
+            id: randomUUID(),
+            method: 'preapply_review',
+            title: `Review before applying: ${parts.shownPath}`,
+            review: { path: parts.shownPath, summary: parts.summary, hunks: parts.hunks },
+            timeout: timeoutMs,
+          },
+          signal
+        )
+        return verdict(parts.shownPath, answer, parts.hunks.length)
+      }
+
+      // The hunk view returns nothing for an existing file it cannot read as text — binary, over the
+      // read limit, unreadable — and for an empty create. Stepping aside there was a real hole: a
+      // blind overwrite of a large file applied with no prompt at all. The SDK gate does not step
+      // aside either; it falls back to a text confirm. So does this, using whatever description
+      // exists, which reports "current content not previewable" rather than implying a safe create.
       const preview = previewForWrite(input, cwd)
       if (!preview) return undefined
       const answer = await options.ask(
@@ -117,55 +121,27 @@ export function reviewGate(options: DurableReviewOptions): ReviewGate {
         },
         signal
       )
-      if (answer.cancelled === true) return denial(preview.path, 'the review was not answered')
-      if (answer.confirmed === true) return undefined
-      return denial(preview.path, 'the user denied this change')
-    }
-    if (parts) {
-      const answer = await options.ask(
-        {
-          id: randomUUID(),
-          method: 'preapply_review',
-          title: `Review before applying: ${parts.shownPath}`,
-          review: { path: parts.shownPath, summary: parts.summary, hunks: parts.hunks },
-          timeout: timeoutMs,
-        },
-        signal
-      )
-      return verdict(parts.shownPath, answer, parts.hunks.length)
+      return confirmVerdict(preview.path, answer)
     }
 
-    const hunks = call.name === 'edit' ? editHunks(input) : null
+    const hunks = editHunks(input)
     const target = str(input.path)
-    if (hunks && target) {
-      const shownPath = displayPath(cwd, target)
-      const answer = await options.ask(
-        {
-          id: randomUUID(),
-          method: 'preapply_review',
-          title: `Review before applying: ${shownPath}`,
-          review: { path: shownPath, summary: hunksSummary(hunks), hunks },
-          timeout: timeoutMs,
-        },
-        signal
-      )
-      return verdict(shownPath, answer, hunks.length)
-    }
-
-    // No describable change: step aside, exactly as the SDK gate does for input it cannot read.
-    // Pi's own tool validation rejects such a call, so nothing is applied behind the user's back.
-    return undefined
+    if (!hunks || !target) return undefined
+    const shownPath = displayPath(cwd, target)
+    const answer = await options.ask(
+      {
+        id: randomUUID(),
+        method: 'preapply_review',
+        title: `Review before applying: ${shownPath}`,
+        review: { path: shownPath, summary: hunksSummary(hunks), hunks },
+        timeout: timeoutMs,
+      },
+      signal
+    )
+    return verdict(shownPath, answer, hunks.length)
   }
 
   return { decide }
-}
-
-export function reviewToolHooks(options: DurableReviewOptions): ToolHooks {
-  const gate = reviewGate(options)
-  return {
-    beforeTool: (call, _api, context) => gate.decide(call, context.abortSignal),
-    afterTool: () => undefined,
-  }
 }
 
 /** Reads an answer as approve-or-refuse; a partial approval is a refusal (see the header). */
@@ -185,4 +161,22 @@ function verdict(
       'the user approved only some of the changes, and this runtime applies all or none'
     )
   return undefined
+}
+
+/** Reads a yes/no answer: only an explicit `true` approves; cancellation wins. */
+function confirmVerdict(
+  shownPath: string,
+  answer: ExtensionUiResponse
+): { block: string } | undefined {
+  if (answer.cancelled === true) return denial(shownPath, 'the review was not answered')
+  if (answer.confirmed === true) return undefined
+  return denial(shownPath, 'the user denied this change')
+}
+
+export function reviewToolHooks(options: DurableReviewOptions): ToolHooks {
+  const gate = reviewGate(options)
+  return {
+    beforeTool: (call, _api, context) => gate.decide(call, context.abortSignal),
+    afterTool: () => undefined,
+  }
 }

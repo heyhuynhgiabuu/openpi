@@ -137,6 +137,19 @@ describe('durable pre-apply review', () => {
     expect(decision?.block).toContain('big.txt')
   })
 
+  it('does not read an answer with neither field set as approval of a blind overwrite', async () => {
+    const target = join(root, 'big.txt')
+    await writeFile(target, 'a\n'.repeat(400_000), 'utf8')
+    // A client that forgot to fill in its answer, or a future method. On the confirm path silence
+    // must not mean yes: the file it would approve is one the user was never shown.
+    const ui = answering((request) => ({ id: request.id }))
+    const gate = reviewGate({ enabled: true, ask: ui.ask, workspacePath: root })
+
+    const decision = await gate.decide(call('write', { path: target, content: 'CLOBBERED' }))
+
+    expect(decision?.block).toBeTruthy()
+  })
+
   it('still asks before overwriting a binary file it cannot read', async () => {
     const target = join(root, 'blob.bin')
     await writeFile(target, Buffer.from([0x00, 0x01, 0x02, 0x00]))

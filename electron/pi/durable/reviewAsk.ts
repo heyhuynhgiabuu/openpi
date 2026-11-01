@@ -9,11 +9,14 @@ import type { ExtensionUiRequest, ExtensionUiResponse } from '../../../src/lib/e
  * Three ways out, and all of them deny:
  * - the renderer answers;
  * - nobody answers within the timeout (`register` settles it as `cancelled`);
- * - the run is aborted (Stop, new session, reload, fork). That path releases the pending entry
- *   *and* rejects, because pi-durable only stops waiting on a hook that throws. Without it a
- *   pending review held the run open for the full ten minutes: `harness.abort()` and `close()`
- *   both waited, and `sessionLifecycle` awaits the durable stop before every session start, so
- *   Stop and "new session" looked frozen.
+ * - the run is aborted (Stop, new session, reload, fork). That path releases the pending entry and
+ *   rejects. Releasing alone would also end the wait — the gate turns a cancelled answer into a
+ *   block — but rejecting ends the *task* as aborted rather than as a blocked tool call, which is
+ *   what the user actually asked for.
+ *
+ * Without any abort path a pending review held the run open for the full ten minutes:
+ * `harness.abort()` and `close()` both waited, and `sessionLifecycle` awaits the durable stop
+ * before every session start, so Stop and "new session" looked frozen.
  */
 export interface ReviewAskDeps {
   /** Hands one request to the sidecar's parent process. */
@@ -48,16 +51,26 @@ export function createReviewAsk(deps: ReviewAskDeps): ReviewAsk {
       }
 
       let open = true
+      // Settling happens before the end-of-prompt event, and the event is guarded: `emitPrompt` is
+      // the same `send` the request went out on, so a port that throws must not be able to leave the
+      // promise unsettled — that would hang the run with no way out.
       const close = (): boolean => {
         if (!open) return false
         open = false
         signal?.removeEventListener('abort', onAbort)
-        deps.emitPrompt?.('end', request)
+        try {
+          deps.emitPrompt?.('end', request)
+        } catch (error) {
+          deps.log(
+            'warn',
+            `[durable] could not report the end of a review prompt: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
         return true
       }
       function onAbort(): void {
-        // Reject before releasing the entry: `fulfill` calls back into `resolve` below, and a
-        // fulfilled promise would win the race against this rejection.
+        // `close()` flips `open` first, so the `fulfill` below cannot resolve this promise: the
+        // rejection below is the only settlement.
         if (!close()) return
         deps.fulfill({ id: request.id, cancelled: true })
         reject(new Error('the run was aborted while the review was open'))
@@ -77,9 +90,9 @@ export function createReviewAsk(deps: ReviewAskDeps): ReviewAsk {
         }
       )
       signal?.addEventListener('abort', onAbort, { once: true })
-      deps.emitPrompt?.('start', request)
 
       try {
+        deps.emitPrompt?.('start', request)
         deps.send(request)
       } catch (error) {
         // A send that never left would otherwise hang the tool call until the timeout.

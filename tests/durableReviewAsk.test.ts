@@ -122,6 +122,37 @@ describe('review ask', () => {
     expect(h.logs.join()).toContain('could not ask for review')
   })
 
+  it('settles even when reporting the prompt start throws, and leaves no entry behind', async () => {
+    // In production `emitPrompt` is the same `send` the request goes out on, so a port that throws
+    // must not leave the promise unsettled: that hangs the run with no way out.
+    const h = harness()
+    const ask = createReviewAsk({
+      ...h.deps,
+      emitPrompt: () => {
+        throw new Error('port closed')
+      },
+    })
+    const pending = ask(request)
+    expect(h.sent).toHaveLength(0)
+    await expect(pending).resolves.toEqual({ id: 'req-1', cancelled: true })
+    expect(h.logs.join()).toContain('could not ask for review')
+  })
+
+  it('settles even when reporting the prompt end throws', async () => {
+    const h = harness()
+    const ask = createReviewAsk({
+      ...h.deps,
+      emitPrompt: (phase) => {
+        if (phase === 'end') throw new Error('port closed')
+      },
+    })
+    const pending = ask(request)
+    h.answer({ id: 'req-1', approved: [0] })
+    // The answer still wins; a failed end-of-prompt report is logged, never a reason to hang.
+    await expect(pending).resolves.toEqual({ id: 'req-1', approved: [0] })
+    expect(h.logs.join()).toContain('could not report the end')
+  })
+
   it('uses the caller timeout, and the default when the request carries none', async () => {
     const timeouts: number[] = []
     const h = harness()
